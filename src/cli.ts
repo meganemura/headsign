@@ -97,6 +97,14 @@ function ensureHeadsignGitignored(cwd: string): void {
   if (content !== original) fs.writeFileSync(gitignorePath, content);
 }
 
+function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): void {
+  for (const rel of phase.clear ?? []) {
+    // Best-effort: force suppresses ENOENT; a directory (EISDIR) or any other
+    // error is ignored so a bad `clear` entry never wedges a transition.
+    try { fs.rmSync(path.join(cwd, rel), { force: true }); } catch { /* best effort */ }
+  }
+}
+
 function cmdStart(args: string[]): void {
   const workflowPath = resolveWorkflowPath(args);
   const wf = loadWorkflowOrExit(workflowPath);
@@ -112,6 +120,7 @@ function cmdStart(args: string[]): void {
     attempts: {}, total_iterations: 0, last_eval: null, history: [], end_reason: null, stop_nudges: 0,
   });
   ensureHeadsignGitignored(cwd);
+  clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   exitAfter(render.start(wf.entry, wf.phases[wf.entry].description), 0);
 }
 
@@ -140,6 +149,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   const phase = wf.phases[current.phase];
   const gateResult = gate.runGate(phase.gate.checks, cwd, gate.coerceEnv(phase.env));
   const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, new Date().toISOString());
+  if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);
   return outcome;
 }

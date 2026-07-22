@@ -7425,6 +7425,15 @@ function validatePhase(name, p, names, errors) {
       }
     });
   }
+  if (p.clear !== void 0) {
+    if (!Array.isArray(p.clear)) errors.push(`phase '${name}': clear must be an array`);
+    else {
+      p.clear.forEach((rel, i) => {
+        const ok = typeof rel === "string" && rel.length > 0 && !rel.startsWith("/") && !rel.split("/").includes("..");
+        if (!ok) errors.push(`phase '${name}': clear[${i}] must be a relative path without '..'`);
+      });
+    }
+  }
   if (p.env !== void 0 && !isMap(p.env)) errors.push(`phase '${name}': env must be a mapping`);
   if (typeof p.on_pass !== "string" || !p.on_pass) errors.push(`phase '${name}': on_pass is required`);
   else if (p.on_pass === "retry") errors.push(`phase '${name}': on_pass cannot be 'retry'`);
@@ -7880,6 +7889,14 @@ function ensureHeadsignGitignored(cwd) {
   }
   if (content !== original) fs5.writeFileSync(gitignorePath, content);
 }
+function clearPhaseArtifacts(cwd, phase) {
+  for (const rel of phase.clear ?? []) {
+    try {
+      fs5.rmSync(path4.join(cwd, rel), { force: true });
+    } catch {
+    }
+  }
+}
 function cmdStart(args) {
   const workflowPath = resolveWorkflowPath(args);
   const wf = loadWorkflowOrExit(workflowPath);
@@ -7902,6 +7919,7 @@ function cmdStart(args) {
     stop_nudges: 0
   });
   ensureHeadsignGitignored(cwd);
+  clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   exitAfter(start(wf.entry, wf.phases[wf.entry].description), 0);
 }
 function evaluateNext(cwd, wf, current) {
@@ -7921,6 +7939,7 @@ function evaluateNext(cwd, wf, current) {
   const phase = wf.phases[current.phase];
   const gateResult = runGate(phase.gate.checks, cwd, coerceEnv(phase.env));
   const { state: nextState, outcome } = step(wf, current, gateResult, hash, (/* @__PURE__ */ new Date()).toISOString());
+  if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);
   return outcome;
 }

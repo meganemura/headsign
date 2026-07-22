@@ -7,6 +7,7 @@ import { parse as parseYaml } from "yaml";
 export interface Check { name?: string; run: string; timeout?: number }
 export interface Phase {
   description: string;
+  clear?: string[];
   env?: Record<string, unknown>;
   gate: { checks: Check[] };
   on_pass: string;
@@ -77,6 +78,16 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
         errors.push(`phase '${name}': gate.checks[${i}].timeout must be a positive number`);
       }
     });
+  }
+
+  if (p.clear !== undefined) {
+    if (!Array.isArray(p.clear)) errors.push(`phase '${name}': clear must be an array`);
+    else {
+      p.clear.forEach((rel: unknown, i: number) => {
+        const ok = typeof rel === "string" && rel.length > 0 && !rel.startsWith("/") && !rel.split("/").includes("..");
+        if (!ok) errors.push(`phase '${name}': clear[${i}] must be a relative path without '..'`);
+      });
+    }
   }
 
   if (p.env !== undefined && !isMap(p.env)) errors.push(`phase '${name}': env must be a mapping`);

@@ -87,6 +87,7 @@ phases:
     description: >
       reviewer サブエージェント(読み取り専用ツールのみ)に、
       .headsign/verdict へ APPROVED または REJECTED を書かせる。
+    clear: [.headsign/verdict]
     gate:
       checks:
         - name: review approved
@@ -130,6 +131,9 @@ limits:
 ワークフローは、スキルやサブエージェントの仕事をゲート付きの順番に並べる緩い段取りであって、どのスキルを使うかまでは縛らない。
 実際に効くのはゲートのほうで、チェックの exit code だけが結果を確かめる。
 あるスキルの使用を必須にしたいなら、その成果物を確かめるゲートを書く(たとえば、そのスキルが生むファイルを `grep` する)。
+レビューのような soft gate のフェーズでは、reviewer が書く判定ファイル(`.headsign/verdict` など)を、そのフェーズの `clear:` に挙げておくとよい。
+前回の判定が残っていると、今回の判定と取り違えられてしまう。
+headsign がフェーズ進入のたびにそれを削除するので、reviewer は毎回新しく書き直すことになる。
 
 ## コマンドと出力の契約
 

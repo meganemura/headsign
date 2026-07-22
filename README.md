@@ -87,6 +87,7 @@ phases:
     description: >
       Have a reviewer subagent (read-only tools) write APPROVED or REJECTED
       to .headsign/verdict.
+    clear: [.headsign/verdict]
     gate:
       checks:
         - name: review approved
@@ -127,7 +128,10 @@ subagent check it"; headsign hands it to Claude verbatim. A workflow
 *orchestrate* them, and it never forces which skill the agent uses. Only the
 gate is enforced: the checks' exit codes are the sole thing that verifies the
 result. To require a skill's use, gate its output (e.g. `grep` the file that
-skill produces).
+skill produces). A review/soft-gate phase should list its verdict file under
+that phase's `clear:` so a verdict left over from a previous pass can't be
+mistaken for the current one — headsign deletes it on entry, and the
+reviewer writes a fresh one.
 
 ## The contract
 

@@ -520,6 +520,166 @@ test("validate <name> validates .headsign/<name>.yaml", () => {
   assert.match(result.stdout, /^OK: workflow 'demo'/);
 });
 
+// --- clear: phase-entry artifact reset ---
+
+test("clear-on-ADVANCE: entering a phase deletes its declared artifacts, so a stale verdict left from a previous pass can't wrongly pass the gate", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: review
+  review:
+    description: "Review."
+    clear: [.headsign/verdict]
+    gate:
+      checks:
+        - run: "grep -qx APPROVED .headsign/verdict"
+    on_pass: "$end"
+`,
+  );
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".headsign", "verdict"), "APPROVED\n");
+
+  const startResult = run(["start"], { cwd: dir });
+  assert.equal(startResult.status, 0);
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "verdict")), true, "build has no `clear`, so the stale verdict survives entry into build");
+
+  // build's gate passes trivially -> ADVANCE into review, whose entry must delete the
+  // stale verdict left over from before `start`. Without the fix, the very next `next`
+  // would wrongly read the leftover APPROVED and pass immediately.
+  const advanceResult = run(["next"], { cwd: dir });
+  assert.equal(advanceResult.status, 0);
+  assert.match(advanceResult.stdout, /^ADVANCE review\n/);
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "verdict")), false, "entering review must delete the stale verdict");
+
+  const retryResult = run(["next"], { cwd: dir });
+  assert.equal(retryResult.status, 1);
+  assert.match(retryResult.stdout, /^RETRY 1 review\n/);
+
+  fs.writeFileSync(path.join(dir, ".headsign", "verdict"), "APPROVED\n");
+  const completeResult = run(["next"], { cwd: dir });
+  assert.equal(completeResult.status, 0);
+  assert.match(completeResult.stdout, /^COMPLETE\n/);
+});
+
+test("clear-on-START: the entry phase's declared artifacts are deleted by `start` itself", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: [.headsign/scratch]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".headsign", "scratch"), "leftover\n");
+
+  const result = run(["start"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "scratch")), false);
+});
+
+test("clear is NOT applied on RETRY: staying in the same phase must not delete its artifacts again", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: phase2
+  phase2:
+    description: "Phase 2."
+    clear: [artifact.txt]
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir });
+  const advanceResult = run(["next"], { cwd: dir }); // ADVANCE into phase2; artifact.txt doesn't exist yet, so this clear is a no-op
+  assert.match(advanceResult.stdout, /^ADVANCE phase2\n/);
+
+  fs.writeFileSync(path.join(dir, "artifact.txt"), "produced by the agent\n");
+  const retryResult = run(["next"], { cwd: dir }); // phase2's gate always fails -> RETRY, staying in phase2 (not a fresh entry)
+  assert.equal(retryResult.status, 1);
+  assert.match(retryResult.stdout, /^RETRY 1 phase2\n/);
+  assert.equal(fs.existsSync(path.join(dir, "artifact.txt")), true, "a retry within the same phase must not re-run that phase's clear");
+});
+
+test("validate rejects a phase's clear entry that is an absolute path", () => {
+  const dir = tmpdir();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: ["/abs/path"]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  const result = run(["validate", "--workflow", ".headsign/workflow.yaml"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /INVALID/);
+  assert.match(result.stderr, /clear/);
+});
+
+test("validate rejects a phase's clear entry containing a '..' path segment", () => {
+  const dir = tmpdir();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: ["../escape"]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  const result = run(["validate", "--workflow", ".headsign/workflow.yaml"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /INVALID/);
+  assert.match(result.stderr, /clear/);
+});
+
 // --- stop hook (ADR-0006) ---
 
 test("stop-hook: no state file -> exit 0", () => {
