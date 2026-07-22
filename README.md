@@ -133,6 +133,56 @@ that phase's `clear:` so a verdict left over from a previous pass can't be
 mistaken for the current one — headsign deletes it on entry, and the
 reviewer writes a fresh one.
 
+## How a run flows
+
+Three roles turn the loop: the agent (Claude) does the work and drives;
+**headsign** runs the current phase's gate and answers with a token; the
+**checks** are ordinary shell, so the verdict is deterministic. Each turn,
+Claude obeys the token — `RETRY` means fix the reported failure and ask
+again, `ADVANCE` means move to the printed phase, a fail-route (`gate failed
+→ routed to …`) sends the work back, and `COMPLETE` ends the run. One pass
+through the Quick start workflow:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Claude
+    participant H as headsign
+    participant S as gate checks
+
+    C->>H: headsign start
+    H-->>C: START plan (the phase's instructions)
+    Note over C: writes docs/spec.md
+    C->>H: headsign next
+    H->>S: run plan's checks
+    S-->>H: exit 1 (spec incomplete)
+    H-->>C: RETRY 1/3 plan (failing check + output)
+    Note over C: fixes the spec
+    C->>H: headsign next
+    H->>S: run plan's checks
+    S-->>H: exit 0
+    H-->>C: ADVANCE implement
+    Note over C: implements, test-first
+    C->>H: headsign next
+    H->>S: bundle exec rspec
+    S-->>H: exit 0
+    H-->>C: ADVANCE review (clears .headsign/verdict)
+    Note over C: read-only reviewer subagent<br/>writes REJECTED to .headsign/verdict
+    C->>H: headsign next
+    H->>S: grep -qx APPROVED .headsign/verdict
+    S-->>H: exit 1 (REJECTED)
+    H-->>C: ADVANCE implement (gate failed → routed back)
+    Note over C: reworks; implement re-passes and<br/>ADVANCE review clears the verdict again;<br/>reviewer now writes APPROVED
+    C->>H: headsign next
+    H->>S: grep -qx APPROVED .headsign/verdict
+    S-->>H: exit 0
+    H-->>C: COMPLETE
+```
+
+Every arrow from headsign is driven by a shell exit code, never the LLM's
+own say-so. The Stop hook (not shown) is the backstop: if Claude tries to
+stop while the run is `running`, it's pointed back to `headsign next`.
+
 ## The contract
 
 Four commands; the agent routinely uses one:

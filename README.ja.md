@@ -135,6 +135,54 @@ limits:
 前回の判定が残っていると、今回の判定と取り違えられてしまう。
 headsign がフェーズ進入のたびにそれを削除するので、reviewer は毎回新しく書き直すことになる。
 
+## 実行の流れ
+
+ループを回すのは三者である。
+**Claude** が作業を進めてループを駆動し、**headsign** が現在のフェーズのゲートを実行してトークンで答え、**チェック**は普通のシェルなので判定は決定論的になる。
+周回のたびに Claude はトークンに従う。
+`RETRY` なら報告された失敗を直して再度尋ね、`ADVANCE` なら表示されたフェーズへ移り、失敗時ルーティング(`gate failed → routed to …`)なら作業が差し戻され、`COMPLETE` で run が終わる。
+上のクイックスタートのワークフローを一度回すと、こう進む。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Claude
+    participant H as headsign
+    participant S as ゲートのチェック
+
+    C->>H: headsign start
+    H-->>C: START plan(フェーズの指示)
+    Note over C: docs/spec.md を書く
+    C->>H: headsign next
+    H->>S: plan のチェックを実行
+    S-->>H: exit 1(spec 不足)
+    H-->>C: RETRY 1/3 plan(落ちたチェックと出力)
+    Note over C: spec を直す
+    C->>H: headsign next
+    H->>S: plan のチェックを実行
+    S-->>H: exit 0
+    H-->>C: ADVANCE implement
+    Note over C: テストファーストで実装
+    C->>H: headsign next
+    H->>S: bundle exec rspec
+    S-->>H: exit 0
+    H-->>C: ADVANCE review(.headsign/verdict を clear)
+    Note over C: 読み取り専用の reviewer サブエージェントが<br/>.headsign/verdict に REJECTED を書く
+    C->>H: headsign next
+    H->>S: grep -qx APPROVED .headsign/verdict
+    S-->>H: exit 1(REJECTED)
+    H-->>C: ADVANCE implement(gate failed → 差し戻し)
+    Note over C: 手直し。implement が再度パスし、<br/>ADVANCE review で verdict を再び clear、<br/>今度は reviewer が APPROVED を書く
+    C->>H: headsign next
+    H->>S: grep -qx APPROVED .headsign/verdict
+    S-->>H: exit 0
+    H-->>C: COMPLETE
+```
+
+headsign から出る矢印はすべてシェルの exit code で駆動され、LLM の自己申告では動かない。
+図には出していないが、Stop hook がバックストップである。
+run が `running` の間に Claude が止まろうとすると、`headsign next` に差し戻される。
+
 ## コマンドと出力の契約
 
 コマンドは四つで、エージェントが日常的に使うのは一つだけである。
