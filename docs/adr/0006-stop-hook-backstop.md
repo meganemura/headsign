@@ -16,9 +16,10 @@ and must never wedge a session.
 The hook is the hidden `stop-hook` subcommand of the bundled CLI (single
 artifact, no second file to keep in sync). Logic, in order:
 
-1. If `.headsign/state.json` does not exist in cwd → **exit 0**, immediately.
-   This early return is written first: sessions not using headsign must pay
-   nothing.
+1. Locate `.headsign/state.json` by walking up from the session's cwd,
+   bounded by the enclosing git worktree/repo root (see "Bounded walk-up"
+   below). If none is found → **exit 0**, immediately. This early return is
+   written first: sessions not using headsign must pay nothing.
 2. Read hook JSON from stdin. If `stop_hook_active` is true → **exit 0**.
    (Legacy field: "Claude is already continuing as a result of a stop
    hook". Honored when present; see loop guard below for why we do not
@@ -70,14 +71,27 @@ Claude as the reason to continue.
   2, and covered by `tests/acceptance.test.ts`'s test titled "stop-hook: a
   directory that has never used headsign exits 0".
 
-### Known limitation
+### Bounded walk-up (the hook's one exception to cwd-only)
 
-The hook is cwd-only, like the rest of headsign (see ADR-0004's resolution
-contract): it looks for `.headsign/state.json` in the session's current
-directory and never searches parent directories. If a session stops while
-cwd is a subdirectory that has no `.headsign/` of its own — even if an
-ancestor directory does — step 1 finds nothing and the hook exits 0; the
-backstop simply does not fire. This is the accepted cost of the cwd-only
-model, not a bug to be worked around with a walk-up search: run headsign
-(and let the session's cwd sit at) the workflow's own directory — the repo
-or git-worktree root — for the backstop to apply.
+Unlike the rest of headsign (see ADR-0004's resolution contract), the hook
+does not stop at a bare cwd-only lookup. It reads the session's cwd from
+the Stop-hook stdin `cwd` field (falling back to the invocation cwd if that
+field is absent), then walks up from there looking for
+`.headsign/state.json`, bounded by the enclosing git worktree/repo root:
+the walk stops at the first directory containing a `.git` entry — a
+directory in a normal checkout, a *file* in a linked worktree — whether or
+not a run is found there. This lets the backstop fire from any
+subdirectory of the run's project, while never crossing into a sibling or
+parent checkout's run, preserving the git-worktree parallel-run
+independence ADR-0004 exists to protect. The walk is fs-only (`existsSync`
+calls up the path, no `git` subprocess), so it stays the near-no-op step 1
+requires.
+
+Residual limitation, by design and not a bug: if a run's `.headsign/`
+lives outside the current `.git` root — cwd has been `cd`'d past the repo
+boundary, or the run's `.headsign/` genuinely lives elsewhere — the hook
+still won't find it and exits 0.
+
+This walk-up is hook-only. `next`, `start`, and `abort` remain strictly
+cwd-only, exactly as ADR-0004 describes; they still error with "no run in
+progress here" if invoked from the wrong directory.

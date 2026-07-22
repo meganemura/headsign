@@ -123,7 +123,11 @@ being invoked from a subdirectory. It also matches the thin, cwd-scoped
 model the rest of the tool follows (ADR-0001). The cost of this is a plain
 "no run in progress" if you invoke headsign from the wrong directory; `next`
 and `abort` say so explicitly and point at running it from the directory
-that owns the workflow (usually the repo or git-worktree root).
+that owns the workflow (usually the repo or git-worktree root). The Stop
+hook is the one exception: it walks up from the session's cwd, bounded by
+the enclosing git worktree/repo root, to find the run so the backstop still
+fires from a subdirectory — `next`/`start`/`abort` themselves stay strictly
+cwd-only (see ADR-0006).
 
 ### The `lock` file (serializing concurrent `next`)
 

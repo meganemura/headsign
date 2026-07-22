@@ -553,3 +553,109 @@ test("stop-hook: corrupt state.json fails open (exit 0)", () => {
   const result = run(["stop-hook"], { cwd: dir, input: "{}" });
   assert.equal(result.status, 0);
 });
+
+// --- stop hook: bounded walk-up (fs-only, bounded by the enclosing git worktree/repo root) ---
+
+test("stop-hook: stdin cwd in a deep subdirectory of a running root finds the root run and increments the root's stop_nudges", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const sub = path.join(dir, "a", "b", "c");
+  fs.mkdirSync(sub, { recursive: true });
+
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: sub }) });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, new RegExp(dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(result.stderr, /cd there/);
+  assert.equal(readState(dir).stop_nudges, 1);
+});
+
+test("stop-hook: a nested project's own run (no .git of its own) is found before reaching the enclosing repo's .git", () => {
+  const dir = initRepo(); // repo root has .git, but NO headsign run of its own
+  const svc = path.join(dir, "svc");
+  writeWorkflow(svc, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: svc });
+
+  const sub = path.join(svc, "src");
+  fs.mkdirSync(sub, { recursive: true });
+
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: sub }) });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, new RegExp(svc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(readState(svc).stop_nudges, 1);
+  assert.ok(!fs.existsSync(path.join(dir, ".headsign", "state.json")));
+});
+
+test("stop-hook: walk-up stops at a linked worktree's .git FILE and never crosses into the main worktree's running run", () => {
+  const base = tmpdir();
+  const main = path.join(base, "main");
+  fs.mkdirSync(main);
+  execFileSync("git", ["init", "-q"], { cwd: main });
+  execFileSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "-m", "init", "--allow-empty"], { cwd: main });
+  writeWorkflow(main, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: main });
+  assert.equal(readState(main).status, "running");
+
+  const wt = path.join(main, "wt");
+  execFileSync("git", ["worktree", "add", "-b", "wt-branch", "./wt"], { cwd: main });
+  assert.ok(fs.statSync(path.join(wt, ".git")).isFile(), "linked worktree's .git must be a file, not a directory");
+
+  const somesub = path.join(wt, "somesub");
+  fs.mkdirSync(somesub, { recursive: true });
+
+  const result = run(["stop-hook"], { cwd: wt, input: JSON.stringify({ cwd: somesub }) });
+  assert.equal(result.status, 0, "must allow: the walk-up should stop at wt/.git and never reach main's running run");
+  assert.equal(readState(main).stop_nudges, 0, "main's running run must never be touched by a stop-hook invoked inside the sibling worktree");
+});
+
+test("stop-hook: no .headsign anywhere from cwd up to the git root -> exit 0", () => {
+  const dir = initRepo();
+  const sub = path.join(dir, "x", "y");
+  fs.mkdirSync(sub, { recursive: true });
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: sub }) });
+  assert.equal(result.status, 0);
+});
+
+test("stop-hook: backward-compat — stdin with no `cwd` field falls back to the process cwd (unchanged behavior)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(result.status, 2);
+  assert.equal(readState(dir).stop_nudges, 1);
+});
+
+test("stop-hook: stop_hook_active true with a walked-up cwd allows and does not increment nudges", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const sub = path.join(dir, "deep", "sub");
+  fs.mkdirSync(sub, { recursive: true });
+
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ stop_hook_active: true, cwd: sub }) });
+  assert.equal(result.status, 0);
+  assert.equal(readState(dir).stop_nudges, 0);
+});
+
+test("stop-hook: the 3-nudge cap and final-reminder text still work when the run is found via walk-up", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const sub = path.join(dir, "deep", "sub");
+  fs.mkdirSync(sub, { recursive: true });
+  const stdin = JSON.stringify({ cwd: sub });
+
+  for (let expected = 1; expected <= 3; expected++) {
+    const result = run(["stop-hook"], { cwd: dir, input: stdin });
+    assert.equal(result.status, 2, `stop #${expected} should still block`);
+    assert.equal(readState(dir).stop_nudges, expected);
+    if (expected === 3) assert.match(result.stderr, /final automatic reminder/);
+  }
+
+  const fourth = run(["stop-hook"], { cwd: dir, input: stdin });
+  assert.equal(fourth.status, 0);
+  assert.equal(readState(dir).stop_nudges, 3);
+});

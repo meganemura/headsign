@@ -47,10 +47,11 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 
 ## Notes
 
-- headsign commands operate on the current directory's `.headsign/` only —
-  it never searches parent directories. Run `headsign`/let the Stop hook
-  fire from the directory that owns the workflow (the repo or git-worktree
-  root), not a subdirectory.
+- `headsign start`/`next`/`abort` operate on the current directory's
+  `.headsign/` only — run them from the directory that owns the workflow
+  (the repo or git-worktree root), not a subdirectory. The Stop hook is the
+  exception: it finds the run from any subdirectory up to the repo/worktree
+  root, so it still fires even if the session's cwd has drifted.
 - Exit codes are verdicts, not errors: 1 = RETRY, 2 = ESCALATE/ABORT. Read
   the text, don't treat non-zero as a tool failure. Exit 3 is different — a
   real usage/config error (unknown command, wrong directory, a workflow that
