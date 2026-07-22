@@ -87,6 +87,10 @@ limits:
   max_total_iterations: 20
 ```
 
+上の `run:` はいずれも例である。`bundle exec rspec` は、プロジェクトが実際に使うコマンド(`npm test`、`pytest`、`go test ./...` など)に置き換えること。チェックは exit code で判定される単なるシェルコマンドにすぎない。
+
+> **信頼について:** ワークフローの `run:` は、`headsign next` があなたのマシン上で実行するシェルコマンドである。`Makefile` のターゲットや npm の `postinstall` と同じ扱いになる。自分で書いていないリポジトリの `.headsign/workflow.yaml` は、その中の実行可能コードと同様に扱うこと。`headsign start` や `headsign next` を叩く前に中身を読み、信頼できないリポジトリでは headsign を実行しない。
+
 2. Claude にワークフローの開始を指示する。
    Claude は `headsign start` を実行してフェーズの作業を進め、答えが `COMPLETE` になるまで `headsign next` を尋ね続ける。
    `ESCALATE` が返ったときは、判断が人間に戻ってくる。

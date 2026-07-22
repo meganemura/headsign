@@ -7480,11 +7480,25 @@ function runGate(checks, cwd, env) {
       cwd,
       env: { ...process.env, ...env },
       timeout: timeoutSeconds * 1e3,
+      // Node's spawnSync default maxBuffer is 1MB; a verbose-but-passing check
+      // (e.g. a large test suite) can legitimately print more than that.
+      maxBuffer: 64 * 1024 * 1024,
       encoding: "utf8"
     });
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
-    if (result.error?.code === "ETIMEDOUT") {
+    const spawnError = result.error;
+    if (spawnError?.code === "ETIMEDOUT") {
       return { pass: false, check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
+    }
+    if (spawnError) {
+      return {
+        pass: false,
+        check,
+        run: c.run,
+        exitCode: -1,
+        outputTail: `headsign: could not run check '${check}' (${spawnError.code}) \u2014 see below
+${outputTail}`
+      };
     }
     if (result.status !== 0) return { pass: false, check, run: c.run, exitCode: result.status ?? -1, outputTail };
   }
@@ -7516,7 +7530,10 @@ function treeHash(cwd) {
   return tryOr(() => sha256([revParseHead(cwd), ...statusEntries(cwd), ...headsignEntries(cwd)].join("\n")), null);
 }
 function revParseHead(cwd) {
-  return tryOr(() => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(), "no-head");
+  return tryOr(
+    () => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(),
+    "no-head"
+  );
 }
 function statusEntries(cwd) {
   const lines = execFileSync("git", ["status", "--porcelain", "-uall"], { cwd, encoding: "utf8" }).split("\n").filter((l) => l.length > 0).sort();
@@ -7574,7 +7591,7 @@ function cachedRetry(workflow, state) {
 function checkIterationLimit(workflow, state) {
   const limit = workflow.limits?.max_total_iterations;
   if (limit === void 0 || state.total_iterations < limit) return null;
-  const reason = `max_total_iterations (${limit}) reached`;
+  const reason = `${state.phase}: max_total_iterations (${limit}) reached`;
   return { state: { ...state, status: "escalated", end_reason: reason }, outcome: { kind: "ESCALATE", reason } };
 }
 function terminalOutcome(state) {
@@ -7702,12 +7719,14 @@ function evaluate(cwd, stdinRaw) {
     const input = JSON.parse(stdinRaw);
     if (input.stop_hook_active) return { block: false };
     if (state.status !== "running") return { block: false };
-    const nudges = state.stop_nudges ?? 0;
+    const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
     if (nudges >= MAX_STOP_NUDGES) return { block: false };
-    writeState(cwd, { ...state, stop_nudges: nudges + 1 });
+    const nextNudges = nudges + 1;
+    writeState(cwd, { ...state, stop_nudges: nextNudges });
+    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder; if you are genuinely stuck, run `headsign abort <reason>` instead." : "";
     return {
       block: true,
-      message: `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.`
+      message: `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.${finalNotice}`
     };
   } catch {
     return { block: false };
@@ -7798,6 +7817,11 @@ function cmdNext() {
   if (!current) errorExit("no run in progress. Run `headsign start`.");
   if (current.status !== "running") printOutcome(terminalOutcome(current), current.workflow);
   const wf = loadWorkflowOrExit(current.workflow_path);
+  if (!wf.phases[current.phase]) {
+    errorExit(
+      `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
+    );
+  }
   const limitHit = checkIterationLimit(wf, current);
   if (limitHit) {
     writeState(cwd, limitHit.state);
@@ -7814,7 +7838,10 @@ function cmdNext() {
 function cmdAbort(args) {
   const cwd = process.cwd();
   const current = readState(cwd);
-  if (!current || current.status !== "running") errorExit("no run in progress to abort.");
+  if (!current) errorExit("no run in progress to abort.");
+  if (current.status !== "running") {
+    errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.`);
+  }
   const reason = args.join(" ");
   writeState(cwd, { ...current, status: "aborted", end_reason: reason || null });
   exitAfter(abort(reason), 2);

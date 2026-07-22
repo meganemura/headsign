@@ -96,6 +96,13 @@ function cmdNext(): void {
   if (current.status !== "running") printOutcome(engine.terminalOutcome(current), current.workflow);
 
   const wf = loadWorkflowOrExit(current.workflow_path);
+  if (!wf.phases[current.phase]) {
+    errorExit(
+      `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. ` +
+        `Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`,
+    );
+  }
+
   const limitHit = engine.checkIterationLimit(wf, current);
   if (limitHit) {
     state.writeState(cwd, limitHit.state);
@@ -115,7 +122,10 @@ function cmdNext(): void {
 function cmdAbort(args: string[]): void {
   const cwd = process.cwd();
   const current = state.readState(cwd);
-  if (!current || current.status !== "running") errorExit("no run in progress to abort.");
+  if (!current) errorExit("no run in progress to abort.");
+  if (current.status !== "running") {
+    errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.`);
+  }
 
   const reason = args.join(" ");
   state.writeState(cwd, { ...current, status: "aborted", end_reason: reason || null });

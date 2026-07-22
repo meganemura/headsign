@@ -99,6 +99,10 @@ limits:
   max_total_iterations: 20
 ```
 
+The `run:` commands above are examples. Replace `bundle exec rspec` with whatever your project actually uses (`npm test`, `pytest`, `go test ./...`, …); a check is just a shell command judged by its exit code.
+
+> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust.
+
 2. Ask Claude to start the workflow. It runs `headsign start`, works the
    phase, and keeps asking `headsign next` until the answer is `COMPLETE` —
    or `ESCALATE`, which means the decision comes back to you.

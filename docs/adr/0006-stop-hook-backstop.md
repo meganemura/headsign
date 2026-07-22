@@ -66,5 +66,6 @@ Claude as the reason to continue.
 - Guarantee holds even if Claude never reads SKILL.md.
 - A user who genuinely wants out mid-run has two clean exits: have Claude
   run `headsign abort <reason>`, or delete `.headsign/state.json`.
-- Acceptance scenario 7 ("hook never interferes with normal sessions") is
-  carried entirely by step 2.
+- "Hook never interferes with normal sessions" is carried entirely by step
+  2, and covered by `tests/acceptance.test.ts`'s test titled "stop-hook: a
+  directory that has never used headsign exits 0".

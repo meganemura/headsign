@@ -25,13 +25,21 @@ export function evaluate(cwd: string, stdinRaw: string): HookDecision {
     // Loop guard (ADR-0006): only `next`'s real gate evaluations reset stop_nudges. Three
     // consecutive nudges with no real evaluation between them means nudging isn't working —
     // fail open rather than risk an unstoppable session.
-    const nudges = state.stop_nudges ?? 0;
+    // ?? alone doesn't catch a non-null but wrong-type value (e.g. a corrupt/forged/legacy
+    // state.json with stop_nudges as a string): "x" + 1 would string-concatenate to "x1",
+    // which is always < 3, disabling the fail-open guard forever. Require an actual number.
+    const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
     if (nudges >= MAX_STOP_NUDGES) return { block: false };
 
-    writeState(cwd, { ...state, stop_nudges: nudges + 1 });
+    const nextNudges = nudges + 1;
+    writeState(cwd, { ...state, stop_nudges: nextNudges });
+    const finalNotice =
+      nextNudges === MAX_STOP_NUDGES
+        ? " This is the final automatic reminder; if you are genuinely stuck, run `headsign abort <reason>` instead."
+        : "";
     return {
       block: true,
-      message: `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.`,
+      message: `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.${finalNotice}`,
     };
   } catch {
     // Fail open: a corrupt state file or malformed hook payload must never trap the session.

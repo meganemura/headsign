@@ -23,6 +23,12 @@ function initRepo(): string {
   return dir;
 }
 
+function initRepoNoCommit(): string {
+  const dir = tmpdir();
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  return dir;
+}
+
 function writeWorkflow(dir: string, yaml: string): void {
   fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
   fs.writeFileSync(path.join(dir, ".headsign", "workflow.yaml"), yaml);
@@ -96,6 +102,44 @@ test("start refuses to clobber a running workflow", () => {
   assert.match(second.stderr, /^ERROR:/);
 });
 
+test("next in a commit-less git repo does not leak git's raw `fatal:` stderr", () => {
+  const dir = initRepoNoCommit();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const startResult = run(["start"], { cwd: dir });
+  assert.equal(startResult.status, 0);
+
+  const result = run(["next"], { cwd: dir });
+  assert.doesNotMatch(result.stderr, /fatal:/);
+});
+
+test("abort on an already-terminal (escalated) run names the actual status instead of claiming no run is in progress", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "exit 1"
+    on_pass: "$end"
+    on_fail: escalate
+`,
+  );
+  run(["start"], { cwd: dir });
+  const escalateResult = run(["next"], { cwd: dir });
+  assert.equal(escalateResult.status, 2);
+  assert.match(escalateResult.stdout, /^ESCALATE/);
+
+  const abortResult = run(["abort", "changed", "my", "mind"], { cwd: dir });
+  assert.equal(abortResult.status, 3);
+  assert.match(abortResult.stderr, /escalated/);
+});
+
 test("abort then next reprints ABORT idempotently", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
@@ -154,6 +198,39 @@ test("next with no run in progress errors with exit 3", () => {
   assert.match(result.stderr, /^ERROR:/);
 });
 
+test("next when the current phase was removed/renamed from workflow.yaml mid-run exits 3 with an actionable message, not a crash", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+  const advance = run(["next"], { cwd: dir });
+  assert.match(advance.stdout, /^ADVANCE verify\n/);
+  assert.equal(readState(dir).phase, "verify");
+
+  // Rewrite workflow.yaml to remove the "verify" phase the run is now sitting on.
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "test -f marker.txt"
+    on_pass: "$end"
+`,
+  );
+
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /verify/);
+  assert.match(result.stderr, /workflow\.yaml/);
+  assert.doesNotMatch(result.stderr, /Cannot read propert/);
+});
+
 test("validate prints OK for a valid workflow", () => {
   const dir = tmpdir();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
@@ -202,6 +279,31 @@ test("stop-hook: each block increments stop_nudges in state.json; the guard trip
   const fourth = run(["stop-hook"], { cwd: dir, input: "{}" });
   assert.equal(fourth.status, 0);
   assert.equal(readState(dir).stop_nudges, 3); // guard fires without incrementing further
+});
+
+test("stop-hook: a non-numeric stop_nudges in state.json is treated as 0 (not an infinite block), and the 3rd block warns it's the final automatic reminder", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const statePath = path.join(dir, ".headsign", "state.json");
+  fs.writeFileSync(statePath, JSON.stringify({ ...readState(dir), stop_nudges: "x" }));
+
+  const first = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(first.status, 2, "still blocks despite the corrupt starting value");
+  assert.equal(readState(dir).stop_nudges, 1);
+  assert.equal(typeof readState(dir).stop_nudges, "number", "the bad value is replaced with a clean number");
+
+  const second = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(second.status, 2);
+  assert.equal(readState(dir).stop_nudges, 2);
+
+  const third = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(third.status, 2);
+  assert.equal(readState(dir).stop_nudges, 3);
+  assert.match(third.stderr, /final automatic reminder/);
+
+  const fourth = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(fourth.status, 0, "fail-open reached despite the corrupt starting value");
 });
 
 test("stop-hook: a real `next` evaluation between stops resets stop_nudges", () => {

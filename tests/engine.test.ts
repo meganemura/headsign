@@ -156,8 +156,8 @@ test("checkIterationLimit escalates once total_iterations reaches the limit", ()
   const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
   const result = engine.checkIterationLimit(workflow, st("a", { total_iterations: 5 }));
   assert.equal(result?.state.status, "escalated");
-  assert.equal(result?.state.end_reason, "max_total_iterations (5) reached");
-  assert.deepEqual(result?.outcome, { kind: "ESCALATE", reason: "max_total_iterations (5) reached" });
+  assert.equal(result?.state.end_reason, "a: max_total_iterations (5) reached");
+  assert.deepEqual(result?.outcome, { kind: "ESCALATE", reason: "a: max_total_iterations (5) reached" });
 });
 
 test("checkIterationLimit is null below the limit or when unconfigured", () => {

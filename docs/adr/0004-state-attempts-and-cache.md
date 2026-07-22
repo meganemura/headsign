@@ -34,9 +34,13 @@ implement grants a fresh budget".
     "output_tail": "…"
   },
   "history": [ { "phase": "plan", "result": "pass", "at": "…ISO 8601…" } ],
-  "end_reason": null
+  "end_reason": null,
+  "stop_nudges": 0
 }
 ```
+
+`stop_nudges` belongs to the Stop hook's loop guard, not to attempts/cache
+semantics — its lifecycle is owned and explained by ADR-0006.
 
 `end_reason` stores why a run ended for the terminal states that carry a
 reason (`escalated`, `aborted`), so `next` can reprint the outcome

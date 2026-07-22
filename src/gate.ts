@@ -18,11 +18,24 @@ export function runGate(checks: Check[], cwd: string, env: Record<string, string
       cwd,
       env: { ...process.env, ...env },
       timeout: timeoutSeconds * 1000,
+      // Node's spawnSync default maxBuffer is 1MB; a verbose-but-passing check
+      // (e.g. a large test suite) can legitimately print more than that.
+      maxBuffer: 64 * 1024 * 1024,
       encoding: "utf8",
     });
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
-    if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") {
+    const spawnError = result.error as NodeJS.ErrnoException | undefined;
+    if (spawnError?.code === "ETIMEDOUT") {
       return { pass: false, check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
+    }
+    if (spawnError) {
+      // The runner itself couldn't execute/complete the check (e.g. ENOBUFS despite
+      // maxBuffer) — this is a headsign-level failure, not the check's own nonzero
+      // exit, and must be reported unambiguously as such, not as a RETRY-worthy fail.
+      return {
+        pass: false, check, run: c.run, exitCode: -1,
+        outputTail: `headsign: could not run check '${check}' (${spawnError.code}) — see below\n${outputTail}`,
+      };
     }
     if (result.status !== 0) return { pass: false, check, run: c.run, exitCode: result.status ?? -1, outputTail };
   }

@@ -53,6 +53,12 @@ test("empty output renders as (no output)", () => {
   if (!result.pass) assert.equal(result.outputTail, "(no output)");
 });
 
+test("large output from a passing check is not misreported as a failure", () => {
+  const run = `node -e "process.stdout.write('x'.repeat(2_000_000))" && exit 0`;
+  const result = gate.runGate([{ run }], tmpdir(), {});
+  assert.deepEqual(result, { pass: true });
+});
+
 test("timeout is reported as a failure with a timeout marker", () => {
   const result = gate.runGate([{ run: "sleep 5", timeout: 0.2 }], tmpdir(), {});
   assert.equal(result.pass, false);

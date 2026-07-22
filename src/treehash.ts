@@ -17,7 +17,10 @@ export function treeHash(cwd: string): string | null {
 
 function revParseHead(cwd: string): string {
   // A repo with no commits yet is still a valid, hashable state.
-  return tryOr(() => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(), "no-head");
+  return tryOr(
+    () => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(),
+    "no-head",
+  );
 }
 
 function statusEntries(cwd: string): string[] {

@@ -32,7 +32,10 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
    first-line token.** That one habit is the whole protocol.
 3. `RETRY` → the output shows exactly which check failed and its last output.
    Fix that, then run `headsign next` again. `ADVANCE` → follow the printed
-   instructions of the new phase.
+   instructions of the new phase. If `ADVANCE <phase>` is followed by a line
+   like `--- gate failed: ... → routed to <phase> ---`, the *previous*
+   phase's gate rejected the work and routed you here — read that line, it's
+   why you're back.
 4. **Never end the run on your own judgment while the answer is anything
    other than `COMPLETE`.** If you are genuinely stuck, record why with
    `headsign abort <reason>` and report to the user. `ESCALATE` means stop
@@ -51,3 +54,7 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
   attempt.
 - `headsign validate` checks `.headsign/workflow.yaml` statically — useful
   right after writing or editing a workflow.
+- If `headsign next` keeps printing `(unchanged)` even though you changed
+  something, the change was probably in a git-ignored file the tree-hash
+  doesn't watch (build outputs, coverage reports, …) — touch or save any
+  git-tracked file to force a fresh evaluation.

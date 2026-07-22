@@ -33,7 +33,7 @@ export function cachedRetry(workflow: Workflow, state: State): Outcome {
 export function checkIterationLimit(workflow: Workflow, state: State): { state: State; outcome: Outcome } | null {
   const limit = workflow.limits?.max_total_iterations;
   if (limit === undefined || state.total_iterations < limit) return null;
-  const reason = `max_total_iterations (${limit}) reached`;
+  const reason = `${state.phase}: max_total_iterations (${limit}) reached`;
   return { state: { ...state, status: "escalated", end_reason: reason }, outcome: { kind: "ESCALATE", reason } };
 }
 

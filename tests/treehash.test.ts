@@ -63,3 +63,12 @@ test("writing .headsign/state.json does not change the hash", () => {
 test("a non-git directory returns null", () => {
   assert.equal(treehash.treeHash(tmpdir("headsign-plain-")), null);
 });
+
+test("a repo with no commits yet still produces a hashable string (git rev-parse HEAD fails but is caught)", () => {
+  // Note: deliberately not using initRepo() here, which does an initial --allow-empty
+  // commit — this test needs a repo with genuinely zero commits.
+  const dir = tmpdir("headsign-nocommit-");
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  const hash = treehash.treeHash(dir);
+  assert.equal(typeof hash, "string");
+});
