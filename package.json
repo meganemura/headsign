@@ -1,0 +1,27 @@
+{
+  "name": "headsign",
+  "version": "0.1.0",
+  "description": "A tiny phase gate for coding agents. Ask it what's next; it runs deterministic checks and tells the loop where to go.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "headsign": "plugin/dist/headsign.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": "meganemura/headsign",
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=esm --outfile=plugin/dist/headsign.mjs --banner:js='#!/usr/bin/env node\nimport { createRequire } from \"node:module\";\nconst require = createRequire(import.meta.url);'",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "esbuild": "^0.28.1",
+    "@types/node": "^26.1.1"
+  }
+}
