@@ -101,7 +101,7 @@ limits:
 
 The `run:` commands above are examples. Replace `bundle exec rspec` with whatever your project actually uses (`npm test`, `pytest`, `go test ./...`, …); a check is just a shell command judged by its exit code.
 
-> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust.
+> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust. The same goes for `.headsign/state.json` and `.headsign/lock`: a cloned repository can contain a committed state file or lock, so a `.headsign/` you didn't create is untrusted input, just like the workflow.
 
 2. Ask Claude to start the workflow. It runs `headsign start`, works the
    phase, and keeps asking `headsign next` until the answer is `COMPLETE` —
@@ -162,8 +162,9 @@ Skills are instructions, not guarantees. A Stop hook reads
 `.headsign/state.json`; while a run is `running` it blocks the agent from
 stopping and points it back to `headsign next`. Escalated, aborted, and
 completed runs pass through — those are correct endings. The hook fails open
-(never traps a session) and caps itself at three consecutive nudges; details
-in [docs/adr/0006](docs/adr/0006-stop-hook-backstop.md).
+(never traps a session) and caps itself at three consecutive nudges with no
+real evaluation in between; details in
+[docs/adr/0006](docs/adr/0006-stop-hook-backstop.md).
 
 ## Non-goals
 

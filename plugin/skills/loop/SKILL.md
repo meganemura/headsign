@@ -52,10 +52,18 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
   fire from the directory that owns the workflow (the repo or git-worktree
   root), not a subdirectory.
 - Exit codes are verdicts, not errors: 1 = RETRY, 2 = ESCALATE/ABORT. Read
-  the text, don't treat non-zero as a tool failure.
+  the text, don't treat non-zero as a tool failure. Exit 3 is different — a
+  real usage/config error (unknown command, wrong directory, a workflow that
+  no longer defines the current phase, another `next` already running).
+  Fix the invocation, the directory, or the workflow file; don't loop-retry
+  on it.
 - `headsign next` is cheap and safe to call at any moment: if nothing changed
   in the working tree it reprints the last verdict without consuming an
   attempt.
+- If `headsign next` reports another `next` is already running, that's lock
+  contention — expected when work has been delegated to several subagents at
+  once. Wait briefly and retry once; if it persists and the named pid is
+  dead, remove `.headsign/lock`.
 - `headsign validate` checks `.headsign/workflow.yaml` statically — useful
   right after writing or editing a workflow.
 - If `headsign next` keeps printing `(unchanged)` even though you changed

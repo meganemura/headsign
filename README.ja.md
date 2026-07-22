@@ -89,7 +89,7 @@ limits:
 
 上の `run:` はいずれも例である。`bundle exec rspec` は、プロジェクトが実際に使うコマンド(`npm test`、`pytest`、`go test ./...` など)に置き換えること。チェックは exit code で判定される単なるシェルコマンドにすぎない。
 
-> **信頼について:** ワークフローの `run:` は、`headsign next` があなたのマシン上で実行するシェルコマンドである。`Makefile` のターゲットや npm の `postinstall` と同じ扱いになる。自分で書いていないリポジトリの `.headsign/workflow.yaml` は、その中の実行可能コードと同様に扱うこと。`headsign start` や `headsign next` を叩く前に中身を読み、信頼できないリポジトリでは headsign を実行しない。
+> **信頼について:** ワークフローの `run:` は、`headsign next` があなたのマシン上で実行するシェルコマンドである。`Makefile` のターゲットや npm の `postinstall` と同じ扱いになる。自分で書いていないリポジトリの `.headsign/workflow.yaml` は、その中の実行可能コードと同様に扱うこと。`headsign start` や `headsign next` を叩く前に中身を読み、信頼できないリポジトリでは headsign を実行しない。これは `.headsign/state.json` や `.headsign/lock` についても同様である。クローンしたリポジトリにはコミットされた state ファイルや lock が含まれている場合があるため、自分で作成していない `.headsign/` は、ワークフローと同じく信頼できない入力として扱うこと。
 
 2. Claude にワークフローの開始を指示する。
    Claude は `headsign start` を実行してフェーズの作業を進め、答えが `COMPLETE` になるまで `headsign next` を尋ね続ける。
@@ -124,7 +124,7 @@ headsign が解決するのはカレントディレクトリの `.headsign/` だ
 | `ESCALATE <reason>` | 2 | 人間の判断が必要 |
 | `ABORT <reason>` | 2 | 中断済み |
 
-exit 3 は設定エラーである。
+exit 3 は設定・使用方法エラーである。
 終了済みの run に対する `next` は冪等で、作業ツリーが無変更のときは前回の判定を再表示するだけなので、様子見の `next` で試行回数が減ることはない。
 
 ### ルーティング(workflow.yaml)

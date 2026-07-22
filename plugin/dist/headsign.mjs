@@ -7493,12 +7493,15 @@ function acquireLock(cwd) {
   } catch {
   }
   const second = tryCreate();
-  if (second) return second;
+  if (second) {
+    if (readLockPid(p) === process.pid) return { ok: true };
+    return { ok: false, pid: readLockPid(p) ?? -1 };
+  }
   return { ok: false, pid: readLockPid(p) ?? -1 };
 }
 function releaseLock(cwd) {
   try {
-    fs2.unlinkSync(lockPath(cwd));
+    if (readLockPid(lockPath(cwd)) === process.pid) fs2.unlinkSync(lockPath(cwd));
   } catch {
   }
 }
@@ -7907,7 +7910,16 @@ function cmdNext() {
   if (!lock.ok) {
     errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
   }
-  const outcome = evaluateNext(cwd, wf, current);
+  const fresh = readState(cwd);
+  if (!fresh) {
+    releaseLock(cwd);
+    errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
+  }
+  if (fresh.status !== "running") {
+    releaseLock(cwd);
+    printOutcome(terminalOutcome(fresh), fresh.workflow);
+  }
+  const outcome = evaluateNext(cwd, wf, fresh);
   releaseLock(cwd);
   printOutcome(outcome, wf.name);
 }

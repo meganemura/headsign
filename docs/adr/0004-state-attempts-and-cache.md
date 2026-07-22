@@ -145,6 +145,17 @@ excluded from the tree-hash the same way `state.json` is — it is
 headsign-internal and transient, not part of the working tree a gate
 observes.
 
+Holding the lock is only useful if the evaluation underneath it acts on
+current state, so `next` re-reads state after acquiring the lock and
+evaluates against that fresh read, not the snapshot it read before
+attempting to acquire — otherwise a process that acquired a freed lock late
+could silently overwrite another process's already-written attempt. The
+steal path also verifies ownership after its create (two processes can
+observe the same dead pid and both attempt to steal; only one's pid can be
+the one on disk afterward), and `releaseLock` only removes a lock this
+process still owns, so a stealer's fresh lock is never deleted out from
+under it by the process it stole from.
+
 ### start / abort details
 
 - `start` refuses to clobber a `running` state (exit 3; instruct to

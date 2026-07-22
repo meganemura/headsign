@@ -3,13 +3,27 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 
 const CLI = path.join(import.meta.dirname, "..", "src", "cli.ts");
 
 function run(args: string[], opts: { cwd: string; input?: string }): { stdout: string; stderr: string; status: number | null } {
   const result = spawnSync(process.execPath, [CLI, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "" });
   return { stdout: result.stdout, stderr: result.stderr, status: result.status };
+}
+
+// Like `run`, but non-blocking so multiple invocations can race each other concurrently
+// (used by the lock-contention regression test below).
+function runAsync(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; status: number | null }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [CLI, ...args], { cwd });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (status: number | null) => resolve({ stdout, stderr, status }));
+  });
 }
 
 function tmpdir(): string {
@@ -303,6 +317,70 @@ test("a normal next leaves no .headsign/lock behind", () => {
   run(["start"], { cwd: dir });
   run(["next"], { cwd: dir });
   assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false);
+});
+
+// Retries a blocked (`exit 3`, lock held by a live process) `next` after a short wait,
+// exactly as plugin/skills/loop/SKILL.md now tells a delegated subagent to do on lock
+// contention. A single un-retried attempt per process is not enough to exercise the
+// FIX-A race: the lock never waits, so whichever process's atomic lock-file create wins
+// holds it for the whole ~300ms gate, and every other process observes it as already
+// taken and exits immediately — none of them get a *second* look at the state, so a
+// stale-snapshot bug can never surface. Retrying is what gives later processes a fresh
+// pre-lock read close to when the lock actually frees, which is the condition FIX-A
+// closed (evaluate on a state snapshot read *before*, not after, acquiring the lock).
+async function nextRetryingOnLock(dir: string, maxAttempts: number): Promise<{ stdout: string; stderr: string; status: number | null }> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const r = await runAsync(["next"], dir);
+    if (r.status !== 3) return r;
+  }
+  throw new Error(`gave up waiting for the lock after ${maxAttempts} attempts`);
+}
+
+test("concurrency: several real `next` processes contending for the lock never lose an attempt/total_iterations increment (FIX-A/FIX-B regression)", async () => {
+  // Exercises the TOCTOU that FIX-A closed (cmdNext used to evaluate against a state
+  // snapshot read *before* acquiring the lock, so a process that acquired the
+  // now-free lock late could clobber another process's already-written attempt) and
+  // the steal-readback/owner-only-release hardening from FIX-B. A plain (non-git)
+  // tmpdir is used deliberately: it makes treehash.treeHash() return null, which
+  // disables the tree-hash RETRY cache entirely (ADR-0004) — otherwise a process that
+  // wins the lock after the tree-hash cache is already primed with a matching failure
+  // would exit 1 without touching attempts/total_iterations, which would break the
+  // invariant below for reasons unrelated to the lock.
+  //
+  // Verified by temporarily reverting FIX-A: without it, this test fails intermittently
+  // (attempts/total_iterations end up less than the number of processes that reported a
+  // real RETRY) because a late acquirer overwrites an earlier writer's increment; with
+  // FIX-A restored it is reliably green.
+  const dir = tmpdir();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "slow always-failing check"
+          run: "sleep 0.3; false"
+    on_pass: "$end"
+    max_attempts: 1000
+`,
+  );
+  run(["start"], { cwd: dir });
+
+  const PROCESS_COUNT = 5;
+  const results = await Promise.all(Array.from({ length: PROCESS_COUNT }, () => nextRetryingOnLock(dir, 40)));
+
+  // Every process retries past lock contention (exit 3) until it gets a real answer, so
+  // all of them should land on RETRY (exit 1) — the gate always fails.
+  for (const r of results) assert.equal(r.status, 1, `expected every process to eventually get a real RETRY, got status ${r.status}`);
+
+  const finalState = readState(dir);
+  assert.equal((finalState.attempts as Record<string, number>).build, PROCESS_COUNT, "every process's real evaluation must have counted, none lost to a stale overwrite");
+  assert.equal(finalState.total_iterations, PROCESS_COUNT, "no evaluation's total_iterations increment may be lost to a stale overwrite");
 });
 
 test("start ensures .headsign/.gitignore contains both state.json and lock, one entry per line", () => {

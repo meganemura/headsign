@@ -141,7 +141,23 @@ function cmdNext(): void {
     errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
   }
 
-  const outcome = evaluateNext(cwd, wf, current);
+  // Re-read state now that we hold the lock: the lock only serializes evaluation, it does
+  // not make `current` (read before we even attempted to acquire it) current. Another
+  // `next` can acquire, evaluate, write, and release entirely within the gap between our
+  // pre-lock read and our own acquisition (loadWorkflowOrExit's YAML parse widens that
+  // gap); acting on the stale `current` would silently overwrite that process's attempt
+  // increment and history entry, which defeats the lock's entire purpose.
+  const fresh = state.readState(cwd);
+  if (!fresh) {
+    state.releaseLock(cwd);
+    errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
+  }
+  if (fresh.status !== "running") {
+    state.releaseLock(cwd);
+    printOutcome(engine.terminalOutcome(fresh), fresh.workflow);
+  }
+
+  const outcome = evaluateNext(cwd, wf, fresh);
   state.releaseLock(cwd);
   printOutcome(outcome, wf.name);
 }

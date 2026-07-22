@@ -72,13 +72,21 @@ export function acquireLock(cwd: string): { ok: true } | { ok: false; pid: numbe
     // already gone — fall through to the retry below
   }
   const second = tryCreate();
-  if (second) return second;
+  if (second) {
+    // Two processes can both observe the same dead holder and both unlink+create; since
+    // pids are distinct, a read-back after the steal tells us whether we actually won or
+    // the other stealer's create landed last and clobbered ours.
+    if (readLockPid(p) === process.pid) return { ok: true };
+    return { ok: false, pid: readLockPid(p) ?? -1 };
+  }
   return { ok: false, pid: readLockPid(p) ?? -1 };
 }
 
 export function releaseLock(cwd: string): void {
   try {
-    fs.unlinkSync(lockPath(cwd));
+    // Only remove the lock if we're still its owner — a concurrent stealer may have
+    // already taken over the (previously dead) lock we think we hold.
+    if (readLockPid(lockPath(cwd)) === process.pid) fs.unlinkSync(lockPath(cwd));
   } catch {
     // nothing to release, or another process already cleaned it up
   }
