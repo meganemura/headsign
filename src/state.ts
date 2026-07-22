@@ -36,3 +36,70 @@ export function writeState(cwd: string, state: State): void {
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
   fs.renameSync(tmp, target);
 }
+
+export function lockPath(cwd: string): string {
+  return path.join(cwd, ".headsign", "lock");
+}
+
+// Serializes concurrent `headsign next` in the same .headsign/ (e.g. multiple subagents
+// delegated to at once): an exclusive create is atomic, so exactly one caller wins.
+export function acquireLock(cwd: string): { ok: true } | { ok: false; pid: number } {
+  fs.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
+  const p = lockPath(cwd);
+  const tryCreate = (): { ok: true } | null => {
+    try {
+      const fd = fs.openSync(p, "wx");
+      fs.writeSync(fd, String(process.pid));
+      fs.closeSync(fd);
+      return { ok: true };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      return null;
+    }
+  };
+
+  const first = tryCreate();
+  if (first) return first;
+
+  const holderPid = readLockPid(p);
+  if (holderPid !== null && isAlive(holderPid)) return { ok: false, pid: holderPid };
+
+  // A crashed holder must not wedge future runs forever: an unparseable or dead pid
+  // means the lock outlived its owner, so steal it and retry once.
+  try {
+    fs.unlinkSync(p);
+  } catch {
+    // already gone — fall through to the retry below
+  }
+  const second = tryCreate();
+  if (second) return second;
+  return { ok: false, pid: readLockPid(p) ?? -1 };
+}
+
+export function releaseLock(cwd: string): void {
+  try {
+    fs.unlinkSync(lockPath(cwd));
+  } catch {
+    // nothing to release, or another process already cleaned it up
+  }
+}
+
+function readLockPid(p: string): number | null {
+  try {
+    const n = Number.parseInt(fs.readFileSync(p, "utf8").trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM means a process with that pid exists but we can't signal it — still alive.
+    // ESRCH (or anything else) means no such process — treat as dead.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}

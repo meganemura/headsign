@@ -69,3 +69,15 @@ Claude as the reason to continue.
 - "Hook never interferes with normal sessions" is carried entirely by step
   2, and covered by `tests/acceptance.test.ts`'s test titled "stop-hook: a
   directory that has never used headsign exits 0".
+
+### Known limitation
+
+The hook is cwd-only, like the rest of headsign (see ADR-0004's resolution
+contract): it looks for `.headsign/state.json` in the session's current
+directory and never searches parent directories. If a session stops while
+cwd is a subdirectory that has no `.headsign/` of its own — even if an
+ancestor directory does — step 1 finds nothing and the hook exits 0; the
+backstop simply does not fire. This is the accepted cost of the cwd-only
+model, not a bug to be worked around with a walk-up search: run headsign
+(and let the session's cwd sit at) the workflow's own directory — the repo
+or git-worktree root — for the backstop to apply.

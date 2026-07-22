@@ -192,10 +192,129 @@ phases:
   assert.match(reprint.stdout, /^ESCALATE/);
 });
 
-test("next with no run in progress errors with exit 3", () => {
+test("next with no run in progress errors with exit 3 and explains the cwd-only contract", () => {
   const result = run(["next"], { cwd: tmpdir() });
   assert.equal(result.status, 3);
   assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /does not search parent directories/);
+  assert.match(result.stderr, /headsign start/);
+});
+
+test("abort with no run in progress errors with exit 3 and explains the cwd-only contract", () => {
+  const result = run(["abort"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /does not search parent directories/);
+});
+
+// --- nested project: cwd is a subdirectory of a larger git repo (L1 regression) ---
+
+test("nested project (cwd inside a larger git repo): fixing a gate-grepped file's content is picked up, not cached as (unchanged)", () => {
+  const outer = tmpdir();
+  execFileSync("git", ["init", "-q"], { cwd: outer });
+  execFileSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "-m", "init", "--allow-empty"], { cwd: outer });
+
+  const projectDir = path.join(outer, "sub");
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(path.join(projectDir, "notes.txt"), "clean\n");
+  execFileSync("git", ["add", "."], { cwd: outer });
+  execFileSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "-m", "add notes"], { cwd: outer });
+
+  writeWorkflow(
+    projectDir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "! grep -q TODO notes.txt"
+    on_pass: "$end"
+`,
+  );
+
+  const startResult = run(["start"], { cwd: projectDir });
+  assert.equal(startResult.status, 0);
+
+  fs.writeFileSync(path.join(projectDir, "notes.txt"), "TODO: fix this\n"); // dirty, status "M"
+  const first = run(["next"], { cwd: projectDir });
+  assert.equal(first.status, 1);
+  assert.match(first.stdout, /^RETRY 1 build\n/);
+
+  const second = run(["next"], { cwd: projectDir }); // unchanged -> cached
+  assert.equal(second.status, 1);
+  assert.match(second.stdout, /^RETRY 1 build \(unchanged\)\n/);
+
+  fs.writeFileSync(path.join(projectDir, "notes.txt"), "done, no more work\n"); // still "M", content fixed
+  const third = run(["next"], { cwd: projectDir });
+  assert.doesNotMatch(third.stdout, /\(unchanged\)/);
+  assert.match(third.stdout, /^COMPLETE\n/);
+  assert.equal(third.status, 0);
+});
+
+// --- concurrency lock on `next` (L3) ---
+
+test("next: a lock held by this (alive) process's own pid blocks with exit 3 mentioning the pid, and leaves attempts/total_iterations untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const before = readState(dir);
+
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), String(process.pid));
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, new RegExp(`pid ${process.pid}\\b`));
+
+  const after = readState(dir);
+  assert.deepEqual(after.attempts, before.attempts);
+  assert.equal(after.total_iterations, before.total_iterations);
+});
+
+test("next: a lock held by a definitely-dead pid is stolen and the run proceeds normally, leaving no lock file behind", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), "2147483647");
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /^RETRY 1 build\n/);
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false);
+});
+
+test("next: a lock file containing garbage (unparseable pid) is stolen and the run proceeds normally", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), "not-a-pid");
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /^RETRY 1 build\n/);
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false);
+});
+
+test("a normal next leaves no .headsign/lock behind", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir });
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false);
+});
+
+test("start ensures .headsign/.gitignore contains both state.json and lock, one entry per line", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const lines = fs
+    .readFileSync(path.join(dir, ".headsign", ".gitignore"), "utf8")
+    .split("\n")
+    .map((l) => l.trim());
+  assert.ok(lines.includes("state.json"));
+  assert.ok(lines.includes("lock"));
 });
 
 test("next when the current phase was removed/renamed from workflow.yaml mid-run exits 3 with an actionable message, not a crash", () => {

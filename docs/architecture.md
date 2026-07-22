@@ -45,11 +45,12 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at about 510 code lines (raw
-`wc -l` is higher, ~640, because of those comments). The 500 figure is a
-guideline, not a hard cap: per ADR-0001 it "is a design smell detector, not
-a hard compiler limit" — a number drifting well past it is a signal to look
-for design bloat, not a fact to fix by deleting lines.
+blank lines don't count). It currently sits at about 590 code lines (raw
+`wc -l` is higher, ~760, because of those comments), a bit over the target
+after the concurrency lock and the git-root tree-hash fix landed. The 500
+figure is a guideline, not a hard cap: per ADR-0001 it "is a design smell
+detector, not a hard compiler limit" — a number drifting past it is a signal
+to periodically check for design bloat, not a fact to fix by deleting lines.
 
 | Module | Responsibility | Must NOT know about |
 |---|---|---|

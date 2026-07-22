@@ -105,12 +105,52 @@ outside the repository and outside `.headsign/` (network, wall clock) can
 be cached stale. Such gates are outside headsign's model; touch any file to
 force re-evaluation.
 
+`git status --porcelain` reports paths relative to the git top-level, not
+cwd. `src/treehash.ts` resolves the top-level once (`git rev-parse
+--show-toplevel`, falling back to cwd if that fails) and joins status paths
+against it, so a nested project — `.headsign/` living in a subdirectory of a
+larger repo, headsign run from there — hashes the correct files instead of
+silently hashing nothing.
+
+### Resolution: cwd only, never parent directories
+
+headsign resolves `.headsign/` strictly in the current working directory.
+It never walks up to a parent directory looking for one — not in the CLI,
+not in the Stop hook. Rationale: this keeps git-worktree-based (or otherwise
+nested) parallel runs independent — each worktree gets its own `.headsign/`
+and one run can never accidentally pick up another's state by virtue of
+being invoked from a subdirectory. It also matches the thin, cwd-scoped
+model the rest of the tool follows (ADR-0001). The cost of this is a plain
+"no run in progress" if you invoke headsign from the wrong directory; `next`
+and `abort` say so explicitly and point at running it from the directory
+that owns the workflow (usually the repo or git-worktree root).
+
+### The `lock` file (serializing concurrent `next`)
+
+Delegating work to multiple subagents can produce two concurrent `headsign
+next` calls against the same `.headsign/`. Without serialization both could
+run the gate and both could bump `attempts`/`total_iterations`, corrupting
+the count. `next` holds `.headsign/lock` (its own pid written inside) for
+the duration of a real evaluation — phase-missing guard through
+`step()`/`writeState` — and releases it before printing the outcome. A
+second `next` that finds the lock held by a live pid errors out (exit 3)
+without touching state; it does not wait or retry.
+
+Stale locks self-heal: if the pid inside `lock` is not a live process
+(checked via `process.kill(pid, 0)`, treating `EPERM` as alive and anything
+else as dead — including an unparseable pid), the lock is stolen and the
+acquire retried once. A holder that crashed mid-evaluation therefore cannot
+wedge future runs. The lock is gitignored (`start` ensures this) and
+excluded from the tree-hash the same way `state.json` is — it is
+headsign-internal and transient, not part of the working tree a gate
+observes.
+
 ### start / abort details
 
 - `start` refuses to clobber a `running` state (exit 3; instruct to
   continue with `next` or `abort` first). Terminal states are overwritten.
-- `start` ensures `.headsign/.gitignore` ignores `state.json`, so run state
-  can never be committed by accident.
+- `start` ensures `.headsign/.gitignore` ignores `state.json` and `lock`, so
+  run state and the concurrency lock can never be committed by accident.
 - `abort` records the reason and sets `status: aborted` — a correct,
   human-directed ending, which the Stop hook lets pass.
 

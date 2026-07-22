@@ -62,13 +62,18 @@ function readFileOrEmpty(p: string | number): string {
   }
 }
 
-function ensureStateGitignored(cwd: string): void {
-  // headsign self-manages this entry so run state can never be committed by accident.
+function ensureHeadsignGitignored(cwd: string): void {
+  // headsign self-manages these entries so run state and the concurrency lock can
+  // never be committed by accident.
   const gitignorePath = path.join(cwd, ".headsign", ".gitignore");
-  const content = readFileOrEmpty(gitignorePath); // "" if no .gitignore yet
-  if (content.split("\n").some((l) => l.trim() === "state.json")) return;
-  const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-  fs.writeFileSync(gitignorePath, `${content}${sep}state.json\n`);
+  const original = readFileOrEmpty(gitignorePath); // "" if no .gitignore yet
+  let content = original;
+  for (const entry of ["state.json", "lock"]) {
+    if (content.split("\n").some((l) => l.trim() === entry)) continue;
+    const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+    content = `${content}${sep}${entry}\n`;
+  }
+  if (content !== original) fs.writeFileSync(gitignorePath, content);
 }
 
 function cmdStart(args: string[]): void {
@@ -85,18 +90,17 @@ function cmdStart(args: string[]): void {
     version: 1, workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_eval: null, history: [], end_reason: null, stop_nudges: 0,
   });
-  ensureStateGitignored(cwd);
+  ensureHeadsignGitignored(cwd);
   exitAfter(render.start(wf.entry, wf.phases[wf.entry].description), 0);
 }
 
-function cmdNext(): void {
-  const cwd = process.cwd();
-  const current = state.readState(cwd);
-  if (!current) errorExit("no run in progress. Run `headsign start`.");
-  if (current.status !== "running") printOutcome(engine.terminalOutcome(current), current.workflow);
-
-  const wf = loadWorkflowOrExit(current.workflow_path);
+// Runs the real evaluation (phase-missing guard, iteration limit, cache check, gate,
+// step/writeState) while cmdNext holds the lock. Returns the outcome instead of printing
+// it: printOutcome calls process.exit, and the lock must be released before that happens
+// (see releaseLock calls below and in cmdNext's caller).
+function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.State): engine.Outcome {
   if (!wf.phases[current.phase]) {
+    state.releaseLock(cwd);
     errorExit(
       `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. ` +
         `Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`,
@@ -106,23 +110,51 @@ function cmdNext(): void {
   const limitHit = engine.checkIterationLimit(wf, current);
   if (limitHit) {
     state.writeState(cwd, limitHit.state);
-    printOutcome(limitHit.outcome, wf.name);
+    return limitHit.outcome;
   }
 
   const hash = treehash.treeHash(cwd);
-  if (engine.shouldUseCache(current, hash)) printOutcome(engine.cachedRetry(wf, current), wf.name);
+  if (engine.shouldUseCache(current, hash)) return engine.cachedRetry(wf, current);
 
   const phase = wf.phases[current.phase];
   const gateResult = gate.runGate(phase.gate.checks, cwd, gate.coerceEnv(phase.env));
   const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, new Date().toISOString());
   state.writeState(cwd, nextState);
+  return outcome;
+}
+
+function cmdNext(): void {
+  const cwd = process.cwd();
+  const current = state.readState(cwd);
+  if (!current) {
+    errorExit(
+      "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories — " +
+        "run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.",
+    );
+  }
+  if (current.status !== "running") printOutcome(engine.terminalOutcome(current), current.workflow);
+
+  const wf = loadWorkflowOrExit(current.workflow_path);
+
+  const lock = state.acquireLock(cwd);
+  if (!lock.ok) {
+    errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
+  }
+
+  const outcome = evaluateNext(cwd, wf, current);
+  state.releaseLock(cwd);
   printOutcome(outcome, wf.name);
 }
 
 function cmdAbort(args: string[]): void {
   const cwd = process.cwd();
   const current = state.readState(cwd);
-  if (!current) errorExit("no run in progress to abort.");
+  if (!current) {
+    errorExit(
+      "no run in progress to abort here. headsign uses the .headsign/ directory in the current directory and does not search parent " +
+        "directories — run it from the directory that owns the workflow (usually the repo or git-worktree root).",
+    );
+  }
   if (current.status !== "running") {
     errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.`);
   }

@@ -29,9 +29,10 @@ that matters: the transition decision.
    it never produces it. This is the essential difference from
    marker-driven tools.
 3. **Lightness is a requirement, not a preference.** Core implementation
-   budget: 500 lines total for `src/`. Every feature proposal must answer
-   "does a thin harness need this?" — if the budget breaks, the design is
-   wrong.
+   budget: 500 lines total for `src/` — counting code only (comments and
+   blank lines excluded), since this repo's dense AI-friendly comments push
+   raw `wc -l` noticeably higher. Every feature proposal must answer "does a
+   thin harness need this?" — if the budget breaks, the design is wrong.
 4. **Thin Harness, Fat Skills.** Intelligence lives in SKILL.md (procedure)
    and gate commands (user-authored shell). The CLI is a state transition
    machine and nothing else.

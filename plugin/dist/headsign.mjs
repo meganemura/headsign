@@ -7467,6 +7467,57 @@ function writeState(cwd, state) {
   fs2.writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
   fs2.renameSync(tmp, target);
 }
+function lockPath(cwd) {
+  return path.join(cwd, ".headsign", "lock");
+}
+function acquireLock(cwd) {
+  fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
+  const p = lockPath(cwd);
+  const tryCreate = () => {
+    try {
+      const fd = fs2.openSync(p, "wx");
+      fs2.writeSync(fd, String(process.pid));
+      fs2.closeSync(fd);
+      return { ok: true };
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      return null;
+    }
+  };
+  const first = tryCreate();
+  if (first) return first;
+  const holderPid = readLockPid(p);
+  if (holderPid !== null && isAlive(holderPid)) return { ok: false, pid: holderPid };
+  try {
+    fs2.unlinkSync(p);
+  } catch {
+  }
+  const second = tryCreate();
+  if (second) return second;
+  return { ok: false, pid: readLockPid(p) ?? -1 };
+}
+function releaseLock(cwd) {
+  try {
+    fs2.unlinkSync(lockPath(cwd));
+  } catch {
+  }
+}
+function readLockPid(p) {
+  try {
+    const n = Number.parseInt(fs2.readFileSync(p, "utf8").trim(), 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
 
 // src/gate.ts
 import { spawnSync } from "node:child_process";
@@ -7527,7 +7578,11 @@ function treeHash(cwd) {
   } catch {
     return null;
   }
-  return tryOr(() => sha256([revParseHead(cwd), ...statusEntries(cwd), ...headsignEntries(cwd)].join("\n")), null);
+  const gitRoot = tryOr(
+    () => execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(),
+    cwd
+  );
+  return tryOr(() => sha256([revParseHead(cwd), ...statusEntries(cwd, gitRoot), ...headsignEntries(cwd)].join("\n")), null);
 }
 function revParseHead(cwd) {
   return tryOr(
@@ -7535,21 +7590,24 @@ function revParseHead(cwd) {
     "no-head"
   );
 }
-function statusEntries(cwd) {
+function statusEntries(cwd, gitRoot) {
+  const realCwd = tryOr(() => fs3.realpathSync(cwd), cwd);
+  const excluded = /* @__PURE__ */ new Set([path2.join(realCwd, ".headsign", "state.json"), path2.join(realCwd, ".headsign", "lock")]);
   const lines = execFileSync("git", ["status", "--porcelain", "-uall"], { cwd, encoding: "utf8" }).split("\n").filter((l) => l.length > 0).sort();
   const entries = [];
   for (const line of lines) {
     const arrow = line.indexOf(" -> ");
     const filePath = arrow >= 0 ? line.slice(arrow + 4) : line.slice(3);
-    if (filePath === ".headsign/state.json") continue;
+    const absPath = path2.join(gitRoot, filePath);
+    if (excluded.has(absPath)) continue;
     const deleted = line[0] === "D" || line[1] === "D";
-    entries.push(deleted ? line : `${line}:${hashFile(path2.join(cwd, filePath))}`);
+    entries.push(deleted ? line : `${line}:${hashFile(absPath)}`);
   }
   return entries;
 }
 function headsignEntries(cwd) {
   const dir = path2.join(cwd, ".headsign");
-  return listFiles(dir).filter((f) => path2.relative(dir, f) !== "state.json").sort().map((f) => `${path2.relative(cwd, f)}:${hashFile(f)}`);
+  return listFiles(dir).filter((f) => !["state.json", "lock"].includes(path2.relative(dir, f))).sort().map((f) => `${path2.relative(cwd, f)}:${hashFile(f)}`);
 }
 function listFiles(dir) {
   const entries = tryOr(() => fs3.readdirSync(dir, { withFileTypes: true }), []);
@@ -7779,13 +7837,17 @@ function readFileOrEmpty(p) {
     return "";
   }
 }
-function ensureStateGitignored(cwd) {
+function ensureHeadsignGitignored(cwd) {
   const gitignorePath = path3.join(cwd, ".headsign", ".gitignore");
-  const content = readFileOrEmpty(gitignorePath);
-  if (content.split("\n").some((l) => l.trim() === "state.json")) return;
-  const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-  fs4.writeFileSync(gitignorePath, `${content}${sep}state.json
-`);
+  const original = readFileOrEmpty(gitignorePath);
+  let content = original;
+  for (const entry of ["state.json", "lock"]) {
+    if (content.split("\n").some((l) => l.trim() === entry)) continue;
+    const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+    content = `${content}${sep}${entry}
+`;
+  }
+  if (content !== original) fs4.writeFileSync(gitignorePath, content);
 }
 function cmdStart(args) {
   const workflowPath = parseWorkflowFlag(args);
@@ -7808,16 +7870,12 @@ function cmdStart(args) {
     end_reason: null,
     stop_nudges: 0
   });
-  ensureStateGitignored(cwd);
+  ensureHeadsignGitignored(cwd);
   exitAfter(start(wf.entry, wf.phases[wf.entry].description), 0);
 }
-function cmdNext() {
-  const cwd = process.cwd();
-  const current = readState(cwd);
-  if (!current) errorExit("no run in progress. Run `headsign start`.");
-  if (current.status !== "running") printOutcome(terminalOutcome(current), current.workflow);
-  const wf = loadWorkflowOrExit(current.workflow_path);
+function evaluateNext(cwd, wf, current) {
   if (!wf.phases[current.phase]) {
+    releaseLock(cwd);
     errorExit(
       `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
     );
@@ -7825,20 +7883,42 @@ function cmdNext() {
   const limitHit = checkIterationLimit(wf, current);
   if (limitHit) {
     writeState(cwd, limitHit.state);
-    printOutcome(limitHit.outcome, wf.name);
+    return limitHit.outcome;
   }
   const hash = treeHash(cwd);
-  if (shouldUseCache(current, hash)) printOutcome(cachedRetry(wf, current), wf.name);
+  if (shouldUseCache(current, hash)) return cachedRetry(wf, current);
   const phase = wf.phases[current.phase];
   const gateResult = runGate(phase.gate.checks, cwd, coerceEnv(phase.env));
   const { state: nextState, outcome } = step(wf, current, gateResult, hash, (/* @__PURE__ */ new Date()).toISOString());
   writeState(cwd, nextState);
+  return outcome;
+}
+function cmdNext() {
+  const cwd = process.cwd();
+  const current = readState(cwd);
+  if (!current) {
+    errorExit(
+      "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`."
+    );
+  }
+  if (current.status !== "running") printOutcome(terminalOutcome(current), current.workflow);
+  const wf = loadWorkflowOrExit(current.workflow_path);
+  const lock = acquireLock(cwd);
+  if (!lock.ok) {
+    errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
+  }
+  const outcome = evaluateNext(cwd, wf, current);
+  releaseLock(cwd);
   printOutcome(outcome, wf.name);
 }
 function cmdAbort(args) {
   const cwd = process.cwd();
   const current = readState(cwd);
-  if (!current) errorExit("no run in progress to abort.");
+  if (!current) {
+    errorExit(
+      "no run in progress to abort here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root)."
+    );
+  }
   if (current.status !== "running") {
     errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.`);
   }

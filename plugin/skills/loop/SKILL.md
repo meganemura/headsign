@@ -47,6 +47,10 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 
 ## Notes
 
+- headsign commands operate on the current directory's `.headsign/` only —
+  it never searches parent directories. Run `headsign`/let the Stop hook
+  fire from the directory that owns the workflow (the repo or git-worktree
+  root), not a subdirectory.
 - Exit codes are verdicts, not errors: 1 = RETRY, 2 = ESCALATE/ABORT. Read
   the text, don't treat non-zero as a tool failure.
 - `headsign next` is cheap and safe to call at any moment: if nothing changed

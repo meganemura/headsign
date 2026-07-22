@@ -111,6 +111,10 @@ Run state lives in `.headsign/state.json` (auto-gitignored). Because all
 state is external, the loop survives context compaction: recovery is just
 `headsign next`.
 
+headsign resolves `.headsign/` in the current directory only — it never
+searches parent directories — so run it from the repo or git-worktree root;
+each worktree then keeps its own independent run.
+
 ## The contract
 
 Four commands; the agent routinely uses one:
