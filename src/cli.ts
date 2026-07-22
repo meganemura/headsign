@@ -1,0 +1,155 @@
+// Responsibility: argv parsing, command dispatch, printing, process exit code.
+// Must NOT know about: routing rules, the workflow YAML schema — delegates to engine.ts/workflow.ts.
+
+import fs from "node:fs";
+import path from "node:path";
+import * as workflowMod from "./workflow.ts";
+import * as state from "./state.ts";
+import * as gate from "./gate.ts";
+import * as treehash from "./treehash.ts";
+import * as engine from "./engine.ts";
+import * as render from "./render.ts";
+import * as stophook from "./stophook.ts";
+
+function stderrExit(text: string, code: number): never {
+  process.stderr.write(text);
+  return process.exit(code);
+}
+
+function errorExit(message: string): never {
+  return stderrExit(`ERROR: ${message}\n`, 3);
+}
+
+function parseWorkflowFlag(args: string[]): string {
+  const idx = args.indexOf("--workflow");
+  if (idx === -1) return ".headsign/workflow.yaml";
+  const value = args[idx + 1];
+  if (!value) errorExit("--workflow requires a path argument");
+  return value;
+}
+
+function loadWorkflowOrExit(workflowPath: string): workflowMod.Workflow {
+  const { workflow: wf, errors } = workflowMod.load(workflowPath);
+  if (!wf) stderrExit(render.validateFail(workflowPath, errors), 3);
+  return wf;
+}
+
+function printOutcome(outcome: engine.Outcome, workflowName: string): never {
+  switch (outcome.kind) {
+    case "ADVANCE":
+      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure), 0);
+    case "COMPLETE":
+      return exitAfter(render.complete(workflowName), 0);
+    case "RETRY":
+      return exitAfter(render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure, cached: outcome.cached }), 1);
+    case "ESCALATE":
+      return exitAfter(render.escalate(outcome.reason), 2);
+    case "ABORT":
+      return exitAfter(render.abort(outcome.reason), 2);
+  }
+}
+
+function exitAfter(text: string, code: number): never {
+  process.stdout.write(text);
+  return process.exit(code);
+}
+
+function readFileOrEmpty(p: string | number): string {
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function ensureStateGitignored(cwd: string): void {
+  // headsign self-manages this entry so run state can never be committed by accident.
+  const gitignorePath = path.join(cwd, ".headsign", ".gitignore");
+  const content = readFileOrEmpty(gitignorePath); // "" if no .gitignore yet
+  if (content.split("\n").some((l) => l.trim() === "state.json")) return;
+  const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  fs.writeFileSync(gitignorePath, `${content}${sep}state.json\n`);
+}
+
+function cmdStart(args: string[]): void {
+  const workflowPath = parseWorkflowFlag(args);
+  const wf = loadWorkflowOrExit(workflowPath);
+  const cwd = process.cwd();
+
+  const existing = state.readState(cwd);
+  if (existing && existing.status === "running") {
+    errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
+  }
+
+  state.writeState(cwd, {
+    version: 1, workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
+    attempts: {}, total_iterations: 0, last_eval: null, history: [], end_reason: null, stop_nudges: 0,
+  });
+  ensureStateGitignored(cwd);
+  exitAfter(render.start(wf.entry, wf.phases[wf.entry].description), 0);
+}
+
+function cmdNext(): void {
+  const cwd = process.cwd();
+  const current = state.readState(cwd);
+  if (!current) errorExit("no run in progress. Run `headsign start`.");
+  if (current.status !== "running") printOutcome(engine.terminalOutcome(current), current.workflow);
+
+  const wf = loadWorkflowOrExit(current.workflow_path);
+  const limitHit = engine.checkIterationLimit(wf, current);
+  if (limitHit) {
+    state.writeState(cwd, limitHit.state);
+    printOutcome(limitHit.outcome, wf.name);
+  }
+
+  const hash = treehash.treeHash(cwd);
+  if (engine.shouldUseCache(current, hash)) printOutcome(engine.cachedRetry(wf, current), wf.name);
+
+  const phase = wf.phases[current.phase];
+  const gateResult = gate.runGate(phase.gate.checks, cwd, gate.coerceEnv(phase.env));
+  const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, new Date().toISOString());
+  state.writeState(cwd, nextState);
+  printOutcome(outcome, wf.name);
+}
+
+function cmdAbort(args: string[]): void {
+  const cwd = process.cwd();
+  const current = state.readState(cwd);
+  if (!current || current.status !== "running") errorExit("no run in progress to abort.");
+
+  const reason = args.join(" ");
+  state.writeState(cwd, { ...current, status: "aborted", end_reason: reason || null });
+  exitAfter(render.abort(reason), 2);
+}
+
+function cmdValidate(args: string[]): void {
+  const workflowPath = parseWorkflowFlag(args);
+  const wf = loadWorkflowOrExit(workflowPath);
+  exitAfter(render.validateOk(wf.name, Object.keys(wf.phases).length), 0);
+}
+
+function cmdStopHook(): void {
+  const raw = readFileOrEmpty(0); // no stdin piped -> "", which evaluate() fails open on
+  const decision = stophook.evaluate(process.cwd(), raw);
+  if (decision.block) stderrExit(`${decision.message}\n`, 2);
+  process.exit(0);
+}
+
+function main(): void {
+  const [command, ...rest] = process.argv.slice(2);
+  switch (command) {
+    case "start": return cmdStart(rest);
+    case "next": return cmdNext();
+    case "abort": return cmdAbort(rest);
+    case "validate": return cmdValidate(rest);
+    case "stop-hook": return cmdStopHook();
+    default: errorExit(`unknown command '${command ?? ""}'. Usage: headsign <start|next|abort|validate>`);
+  }
+}
+
+try {
+  main();
+} catch (err) {
+  process.stderr.write(`ERROR: ${(err as Error).message}\n`);
+  process.exit(3);
+}
