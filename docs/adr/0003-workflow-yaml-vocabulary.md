@@ -73,6 +73,18 @@ No dedicated feature. `checks: [{run: "test -f .headsign/approved"}]` plus
 escalation covers it; a dedicated `type: approval` is deferred to v2 if
 real usage demands it.
 
+### `description` choreographs; the gate enforces
+
+`description` is free-form text handed to the agent verbatim as the phase's
+instruction (printed on START/ADVANCE). It may name a skill to use or a
+subagent to spawn — a workflow choreographs skills and subagent work into a
+gated sequence. But it is advisory: headsign never parses it and never forces
+the agent to follow it. The only enforced thing is the gate — the checks'
+exit codes decide whether the phase passes. To require that a skill actually
+ran, gate its output rather than trusting that the instruction was followed.
+This keeps the split clean: the `description` (and the skills it names) is the
+"fat skills" half; the CLI only runs the checks.
+
 ## Consequences
 
 - Anyone who reads GitHub Actions can read a headsign workflow.

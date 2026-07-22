@@ -118,16 +118,31 @@ The one exception is the Stop hook, which walks up to find the run's
 `.headsign/` (bounded by the worktree root) so the backstop still fires when
 the session stopped in a subdirectory.
 
+## Instructions vs. the gate
+
+A phase's `description` is where you write what the agent should do in that
+phase — including "use the `/foo` skill" or "have a read-only reviewer
+subagent check it"; headsign hands it to Claude verbatim. A workflow
+*choreographs* skills and subagent work into a gated sequence — it doesn't
+*orchestrate* them, and it never forces which skill the agent uses. Only the
+gate is enforced: the checks' exit codes are the sole thing that verifies the
+result. To require a skill's use, gate its output (e.g. `grep` the file that
+skill produces).
+
 ## The contract
 
 Four commands; the agent routinely uses one:
 
 | Command | Role |
 |---|---|
-| `headsign start [--workflow path]` | initialize state, print the entry phase's instructions |
+| `headsign start [name] [--workflow path]` | initialize state, print the entry phase's instructions |
 | `headsign next` | **the only question.** Run the current gate, transition, answer |
 | `headsign abort [reason]` | record a human-directed stop |
-| `headsign validate [--workflow path]` | static check of the workflow file |
+| `headsign validate [name] [--workflow path]` | static check of the workflow file |
+
+Multiple workflows can live as separate files under `.headsign/` (one
+workflow per file); pick one with `headsign start <name>` (→
+`.headsign/<name>.yaml`), or pass `--workflow <path>` for an explicit path.
 
 `next` answers with a machine-readable first line, then instructions:
 

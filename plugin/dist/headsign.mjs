@@ -7816,12 +7816,27 @@ function errorExit(message) {
   return stderrExit(`ERROR: ${message}
 `, 3);
 }
-function parseWorkflowFlag(args) {
-  const idx = args.indexOf("--workflow");
-  if (idx === -1) return ".headsign/workflow.yaml";
-  const value = args[idx + 1];
-  if (!value) errorExit("--workflow requires a path argument");
-  return value;
+function resolveWorkflowPath(args) {
+  const flagIdx = args.indexOf("--workflow");
+  let flagValue;
+  const consumed = /* @__PURE__ */ new Set();
+  if (flagIdx !== -1) {
+    flagValue = args[flagIdx + 1];
+    if (!flagValue) errorExit("--workflow requires a path argument");
+    consumed.add(flagIdx);
+    consumed.add(flagIdx + 1);
+  }
+  const positional = args.find((_, i) => !consumed.has(i));
+  if (positional !== void 0 && flagValue !== void 0) {
+    errorExit("use either a workflow name or --workflow <path>, not both");
+  }
+  if (flagValue !== void 0) return flagValue;
+  if (positional === void 0) return ".headsign/workflow.yaml";
+  if (positional.includes("/")) {
+    errorExit(`workflow name '${positional}' cannot contain '/'; use --workflow <path> to name an explicit path`);
+  }
+  const filename = positional.endsWith(".yaml") || positional.endsWith(".yml") ? positional : `${positional}.yaml`;
+  return `.headsign/${filename}`;
 }
 function loadWorkflowOrExit(workflowPath) {
   const { workflow: wf, errors } = load(workflowPath);
@@ -7866,7 +7881,7 @@ function ensureHeadsignGitignored(cwd) {
   if (content !== original) fs5.writeFileSync(gitignorePath, content);
 }
 function cmdStart(args) {
-  const workflowPath = parseWorkflowFlag(args);
+  const workflowPath = resolveWorkflowPath(args);
   const wf = loadWorkflowOrExit(workflowPath);
   const cwd = process.cwd();
   const existing = readState(cwd);
@@ -7952,7 +7967,7 @@ function cmdAbort(args) {
   exitAfter(abort(reason), 2);
 }
 function cmdValidate(args) {
-  const workflowPath = parseWorkflowFlag(args);
+  const workflowPath = resolveWorkflowPath(args);
   const wf = loadWorkflowOrExit(workflowPath);
   exitAfter(validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }

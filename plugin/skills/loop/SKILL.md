@@ -47,6 +47,10 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 
 ## Notes
 
+- A phase's printed instruction may direct you to use a specific skill or
+  spawn a subagent — do what it says. It choreographs your work; it doesn't
+  judge it. Whether the phase passes is decided only by the gate's checks:
+  the work is yours, the verdict is the checks'.
 - `headsign start`/`next`/`abort` operate on the current directory's
   `.headsign/` only — run them from the directory that owns the workflow
   (the repo or git-worktree root), not a subdirectory. The Stop hook is the

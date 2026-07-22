@@ -48,6 +48,11 @@ function writeWorkflow(dir: string, yaml: string): void {
   fs.writeFileSync(path.join(dir, ".headsign", "workflow.yaml"), yaml);
 }
 
+function writeNamedWorkflow(dir: string, filename: string, yaml: string): void {
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".headsign", filename), yaml);
+}
+
 function readState(dir: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8"));
 }
@@ -442,6 +447,77 @@ test("validate prints INVALID to stderr for a broken workflow", () => {
   const result = run(["validate", "--workflow", ".headsign/workflow.yaml"], { cwd: dir });
   assert.equal(result.status, 3);
   assert.match(result.stderr, /^INVALID:/);
+});
+
+// --- workflow name resolution: `start <name>` / `validate <name>` (bare positional -> .headsign/<name>.yaml) ---
+
+test("start <name> resolves .headsign/<name>.yaml, stores that workflow_path, and a subsequent next runs it", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  const startResult = run(["start", "feature"], { cwd: dir });
+  assert.equal(startResult.status, 0);
+  assert.match(startResult.stdout, /^START build\n/);
+  assert.equal(readState(dir).workflow_path, ".headsign/feature.yaml");
+
+  const retryResult = run(["next"], { cwd: dir });
+  assert.equal(retryResult.status, 1);
+  assert.match(retryResult.stdout, /^RETRY 1 build\n/);
+});
+
+test("start <name.yaml> resolves the same file without doubling the extension", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  const result = run(["start", "feature.yaml"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.equal(readState(dir).workflow_path, ".headsign/feature.yaml");
+});
+
+test("start with no name still defaults to .headsign/workflow.yaml", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const result = run(["start"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.equal(readState(dir).workflow_path, ".headsign/workflow.yaml");
+});
+
+test("start --workflow <path> still works and wins", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "custom.yaml", TWO_PHASE_WORKFLOW);
+  const result = run(["start", "--workflow", ".headsign/custom.yaml"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.equal(readState(dir).workflow_path, ".headsign/custom.yaml");
+});
+
+test("start <name> --workflow <path> together errors (exit 3): use one or the other", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  const result = run(["start", "feature", "--workflow", ".headsign/feature.yaml"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /workflow name or --workflow/);
+});
+
+test("start <name> containing a path separator errors (exit 3), pointing at --workflow instead", () => {
+  const dir = initRepo();
+  const result = run(["start", "foo/bar"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /--workflow/);
+});
+
+test("start <name> for a nonexistent workflow errors (exit 3) and names the resolved path", () => {
+  const dir = initRepo();
+  const result = run(["start", "missing"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /\.headsign\/missing\.yaml/);
+});
+
+test("validate <name> validates .headsign/<name>.yaml", () => {
+  const dir = tmpdir();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  const result = run(["validate", "feature"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^OK: workflow 'demo'/);
 });
 
 // --- stop hook (ADR-0006) ---

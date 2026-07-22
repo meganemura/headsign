@@ -16,10 +16,13 @@ ways it can go wrong after compaction.
 
 | Command | Role |
 |---|---|
-| `headsign start [--workflow path]` | initialize state, show the entry phase's instructions |
+| `headsign start [name] [--workflow path]` | initialize state, show the entry phase's instructions |
 | `headsign next` | **the only question.** Run the current gate, transition, answer |
 | `headsign abort [reason]` | record a human-directed stop |
-| `headsign validate` | static check of workflow.yaml |
+| `headsign validate [name] [--workflow path]` | static check of workflow.yaml |
+
+A bare `<name>` resolves to `.headsign/<name>.yaml`; `--workflow <path>`
+still takes an explicit path, and the two are mutually exclusive.
 
 `next` is the only command that transitions state. RETRY output doubles as
 the remaining-work list (the failing check and its output tail), which is

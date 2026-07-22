@@ -20,12 +20,33 @@ function errorExit(message: string): never {
   return stderrExit(`ERROR: ${message}\n`, 3);
 }
 
-function parseWorkflowFlag(args: string[]): string {
-  const idx = args.indexOf("--workflow");
-  if (idx === -1) return ".headsign/workflow.yaml";
-  const value = args[idx + 1];
-  if (!value) errorExit("--workflow requires a path argument");
-  return value;
+// Resolves the workflow path for `start`/`validate` per the precedence:
+// --workflow <path> wins if given; else a bare positional <name> resolves to
+// .headsign/<name>.yaml (appending .yaml unless the name already ends in
+// .yaml/.yml); else the default .headsign/workflow.yaml. `abort`'s args (a
+// free-text reason) never go through this.
+function resolveWorkflowPath(args: string[]): string {
+  const flagIdx = args.indexOf("--workflow");
+  let flagValue: string | undefined;
+  const consumed = new Set<number>();
+  if (flagIdx !== -1) {
+    flagValue = args[flagIdx + 1];
+    if (!flagValue) errorExit("--workflow requires a path argument");
+    consumed.add(flagIdx);
+    consumed.add(flagIdx + 1);
+  }
+  const positional = args.find((_, i) => !consumed.has(i));
+
+  if (positional !== undefined && flagValue !== undefined) {
+    errorExit("use either a workflow name or --workflow <path>, not both");
+  }
+  if (flagValue !== undefined) return flagValue;
+  if (positional === undefined) return ".headsign/workflow.yaml";
+  if (positional.includes("/")) {
+    errorExit(`workflow name '${positional}' cannot contain '/'; use --workflow <path> to name an explicit path`);
+  }
+  const filename = positional.endsWith(".yaml") || positional.endsWith(".yml") ? positional : `${positional}.yaml`;
+  return `.headsign/${filename}`;
 }
 
 function loadWorkflowOrExit(workflowPath: string): workflowMod.Workflow {
@@ -77,7 +98,7 @@ function ensureHeadsignGitignored(cwd: string): void {
 }
 
 function cmdStart(args: string[]): void {
-  const workflowPath = parseWorkflowFlag(args);
+  const workflowPath = resolveWorkflowPath(args);
   const wf = loadWorkflowOrExit(workflowPath);
   const cwd = process.cwd();
 
@@ -181,7 +202,7 @@ function cmdAbort(args: string[]): void {
 }
 
 function cmdValidate(args: string[]): void {
-  const workflowPath = parseWorkflowFlag(args);
+  const workflowPath = resolveWorkflowPath(args);
   const wf = loadWorkflowOrExit(workflowPath);
   exitAfter(render.validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
