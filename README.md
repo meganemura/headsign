@@ -111,9 +111,12 @@ Run state lives in `.headsign/state.json` (auto-gitignored). Because all
 state is external, the loop survives context compaction: recovery is just
 `headsign next`.
 
-headsign resolves `.headsign/` in the current directory only — it never
-searches parent directories — so run it from the repo or git-worktree root;
-each worktree then keeps its own independent run.
+`headsign start`, `next`, and `abort` resolve `.headsign/` in the current
+directory only — they never search parent directories — so run them from the
+repo or git-worktree root; each worktree then keeps its own independent run.
+The one exception is the Stop hook, which walks up to find the run's
+`.headsign/` (bounded by the worktree root) so the backstop still fires when
+the session stopped in a subdirectory.
 
 ## The contract
 
