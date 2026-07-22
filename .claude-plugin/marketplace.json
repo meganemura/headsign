@@ -1,0 +1,12 @@
+{
+  "name": "headsign",
+  "description": "Headsign — a tiny phase gate for coding agents. Claude Code drives, headsign holds the state.",
+  "owner": { "name": "meganemura" },
+  "plugins": [
+    {
+      "name": "headsign",
+      "source": "./plugin",
+      "description": "A tiny phase gate for coding agents. Ask it what's next; it runs deterministic checks and tells the loop where to go."
+    }
+  ]
+}

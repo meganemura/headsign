@@ -1,0 +1,10 @@
+{
+  "name": "headsign",
+  "version": "0.1.0",
+  "description": "A tiny phase gate for coding agents: deterministic checks decide ADVANCE / RETRY / COMPLETE / ESCALATE. Claude drives, headsign holds the state.",
+  "author": { "name": "meganemura", "url": "https://github.com/meganemura" },
+  "homepage": "https://github.com/meganemura/headsign",
+  "repository": "https://github.com/meganemura/headsign",
+  "license": "MIT",
+  "keywords": ["workflow", "phase-gate", "agent", "harness", "claude-code"]
+}
