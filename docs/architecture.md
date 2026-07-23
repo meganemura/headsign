@@ -30,7 +30,7 @@ run `headsign next` and obey the first-line token.**
 ```
 plugin/                          # what gets distributed (Claude Code plugin)
   .claude-plugin/plugin.json
-  skills/loop/SKILL.md           # the discipline taught to Claude
+  skills/workflow/SKILL.md       # the discipline taught to Claude
   hooks/hooks.json               # one Stop hook (the backstop)
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)

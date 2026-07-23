@@ -49,7 +49,7 @@ Fix the failure above, then run `headsign next` again.
 ```
 
 プラグインには三つが同梱される。
-バンドル済み CLI(npm install もビルドも不要)、規律を教える `loop` スキル、そしてワークフロー途中の勝手な終了を押し返す Stop hook である。
+バンドル済み CLI(npm install もビルドも不要)、規律を教える `workflow` スキル、そしてワークフロー途中の勝手な終了を押し返す Stop hook である。
 
 ## クイックスタート
 

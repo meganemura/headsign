@@ -1,5 +1,5 @@
 ---
-name: loop
+name: workflow
 description: >-
   Drive a headsign phase-gate workflow. Use when the repository contains
   .headsign/workflow.yaml and the user asks to start, continue, or resume a
@@ -8,7 +8,7 @@ description: >-
   .headsign directory.
 ---
 
-# headsign loop
+# headsign workflow
 
 headsign is a phase gate: you do the work, deterministic shell checks decide
 the phase transitions. You never judge for yourself whether a phase is done —

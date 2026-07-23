@@ -48,7 +48,7 @@ Fix the failure above, then run `headsign next` again.
 ```
 
 The plugin ships three things: the bundled CLI (no npm install, no build), a
-`loop` skill teaching the discipline, and a Stop hook that keeps the agent
+`workflow` skill teaching the discipline, and a Stop hook that keeps the agent
 from silently quitting mid-workflow.
 
 ## Quick start
