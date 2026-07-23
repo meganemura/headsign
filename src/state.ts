@@ -10,11 +10,10 @@ export interface LastEval {
   phase: string; result: "fail"; tree_hash: string | null;
   check: string; run: string; exit_code: number | "timeout"; output_tail: string; timeout_seconds?: number;
 }
-interface HistoryEntry { phase: string; result: "pass" | "fail"; at: string }
 export interface State {
-  version: number; workflow: string; workflow_path: string; status: Status; phase: string;
+  workflow: string; workflow_path: string; status: Status; phase: string;
   attempts: Record<string, number>; total_iterations: number; last_eval: LastEval | null;
-  history: HistoryEntry[]; end_reason: string | null; stop_nudges: number;
+  end_reason: string | null; stop_nudges: number;
 }
 
 export function statePath(cwd: string): string {

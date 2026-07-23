@@ -50,10 +50,8 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 
 ## Notes
 
-- A phase's printed instruction may direct you to use a specific skill or
-  spawn a subagent — do what it says. It choreographs your work; it doesn't
-  judge it. Whether the phase passes is decided only by the gate's checks:
-  the work is yours, the verdict is the checks'.
+- A phase's printed instruction may tell you to use a specific skill or
+  spawn a subagent — do what it says.
 - `headsign start`/`next`/`abort` operate on the current directory's
   `.headsign/` only — run them from the directory that owns the workflow
   (the repo or git-worktree root), not a subdirectory. The Stop hook is the
@@ -68,12 +66,8 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 - `headsign next` is cheap and safe to call at any moment: if nothing changed
   in the working tree it reprints the last verdict without consuming an
   attempt.
-- If `headsign next` reports another `next` is already running, that's lock
-  contention — expected when work has been delegated to several subagents at
-  once. Wait briefly and retry once; if it persists and the named pid is
-  dead, remove `.headsign/lock`.
-- `headsign validate` checks `.headsign/workflow.yaml` statically — useful
-  right after writing or editing a workflow.
+- Lock contention from parallel subagents is normal — wait briefly and
+  retry once; the error message itself carries the recovery.
 - If `headsign next` keeps printing `(unchanged)` even though you changed
   something, the change was probably in a git-ignored file the tree-hash
   doesn't watch (build outputs, coverage reports, …) — touch or save any

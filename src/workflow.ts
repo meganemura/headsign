@@ -100,6 +100,12 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
     errors.push(`phase '${name}': on_fail '${String(p.on_fail)}' is not a valid route`);
   }
   if (p.max_attempts !== undefined && !isPosInt(p.max_attempts)) errors.push(`phase '${name}': max_attempts must be a positive integer`);
+  // engine.ts step() checks max_attempts exhaustion before on_fail, but on_fail
+  // 'escalate'/'abort' ends the run on the very first failure — attempts never
+  // gets a chance to reach max_attempts, so one of the two settings is always dead.
+  if (p.max_attempts !== undefined && (p.on_fail === "escalate" || p.on_fail === "abort")) {
+    errors.push(`phase '${name}': max_attempts has no effect when on_fail is '${p.on_fail}' — the first failure already ends the run; remove one of them`);
+  }
   if (p.on_exhausted !== undefined && (typeof p.on_exhausted !== "string" || !ON_EXHAUSTED_TOKENS.has(p.on_exhausted))) {
     errors.push(`phase '${name}': on_exhausted must be 'escalate' or 'abort'`);
   }

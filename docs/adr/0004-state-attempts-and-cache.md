@@ -17,7 +17,6 @@ implement grants a fresh budget".
 
 ```json
 {
-  "version": 1,
   "workflow": "feature-dev",
   "workflow_path": ".headsign/workflow.yaml",
   "status": "running",
@@ -33,7 +32,6 @@ implement grants a fresh budget".
     "exit_code": 1,
     "output_tail": "…"
   },
-  "history": [ { "phase": "plan", "result": "pass", "at": "…ISO 8601…" } ],
   "end_reason": null,
   "stop_nudges": 0
 }
@@ -182,3 +180,8 @@ under it by the process it stole from.
   this ADR is the reference for the actual shape.
 - The cache makes `next` safe to call compulsively, which is exactly the
   discipline the skill teaches.
+- `history` and `version` were removed from state.json: nothing ever read
+  them back, so they were write-only bookkeeping (and `history` was the
+  only reason `step()` needed a clock at all). If an audit log is wanted
+  later, design it together with its reader rather than writing it on
+  spec.

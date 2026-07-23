@@ -116,8 +116,8 @@ function cmdStart(args: string[]): void {
   }
 
   state.writeState(cwd, {
-    version: 1, workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
-    attempts: {}, total_iterations: 0, last_eval: null, history: [], end_reason: null, stop_nudges: 0,
+    workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
+    attempts: {}, total_iterations: 0, last_eval: null, end_reason: null, stop_nudges: 0,
   });
   ensureHeadsignGitignored(cwd);
   // Every run starts with a clean scratch dir: artifacts from a previous run (verdicts,
@@ -153,7 +153,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
 
   const phase = wf.phases[current.phase];
   const gateResult = gate.runGate(phase.gate.checks, cwd, phase.env);
-  const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, new Date().toISOString());
+  const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash);
   if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);
   return outcome;
@@ -182,7 +182,7 @@ function cmdNext(): void {
   // `next` can acquire, evaluate, write, and release entirely within the gap between our
   // pre-lock read and our own acquisition (loadWorkflowOrExit's YAML parse widens that
   // gap); acting on the stale `current` would silently overwrite that process's attempt
-  // increment and history entry, which defeats the lock's entire purpose.
+  // increment, which defeats the lock's entire purpose.
   const fresh = state.readState(cwd);
   if (!fresh) {
     state.releaseLock(cwd);

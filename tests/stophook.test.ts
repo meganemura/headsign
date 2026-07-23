@@ -12,7 +12,6 @@ function tmpdir(): string {
 
 function runningState(overrides: Partial<state.State> = {}): state.State {
   return {
-    version: 1,
     workflow: "demo",
     workflow_path: ".headsign/workflow.yaml",
     status: "running",
@@ -20,7 +19,6 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     attempts: {},
     total_iterations: 0,
     last_eval: null,
-    history: [],
     end_reason: null,
     stop_nudges: 0,
     ...overrides,

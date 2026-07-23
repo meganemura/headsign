@@ -12,7 +12,6 @@ function tmpdir(): string {
 test("round-trips through write/read", () => {
   const dir = tmpdir();
   const s: state.State = {
-    version: 1,
     workflow: "demo",
     workflow_path: ".headsign/workflow.yaml",
     status: "running",
@@ -20,7 +19,6 @@ test("round-trips through write/read", () => {
     attempts: { plan: 1 },
     total_iterations: 3,
     last_eval: null,
-    history: [{ phase: "plan", result: "fail", at: "t1" }],
     end_reason: null,
     stop_nudges: 1,
   };
@@ -81,7 +79,6 @@ test("releaseLock on an absent lock file is a silent no-op", () => {
 test("atomic write leaves valid JSON and no leftover temp files", () => {
   const dir = tmpdir();
   const s: state.State = {
-    version: 1,
     workflow: "demo",
     workflow_path: ".headsign/workflow.yaml",
     status: "running",
@@ -89,7 +86,6 @@ test("atomic write leaves valid JSON and no leftover temp files", () => {
     attempts: {},
     total_iterations: 0,
     last_eval: null,
-    history: [],
     end_reason: null,
     stop_nudges: 0,
   };

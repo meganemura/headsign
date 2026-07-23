@@ -83,6 +83,20 @@ test("non-positive max_attempts is rejected", () => {
   assert.ok(workflow.validate(doc).some((e) => e.includes("max_attempts")));
 });
 
+test("max_attempts with on_fail: escalate is rejected as dead config", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.on_fail = "escalate";
+  phases(doc).plan.max_attempts = 3;
+  assert.ok(workflow.validate(doc).some((e) => e.includes("max_attempts") && e.includes("on_fail")));
+});
+
+test("max_attempts with on_fail: abort is rejected as dead config", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.on_fail = "abort";
+  phases(doc).plan.max_attempts = 3;
+  assert.ok(workflow.validate(doc).some((e) => e.includes("max_attempts") && e.includes("on_fail")));
+});
+
 test("load() reports an error for a missing/unparseable file", () => {
   const { workflow: wf, errors } = workflow.load("/nonexistent/path/workflow.yaml");
   assert.equal(wf, null);

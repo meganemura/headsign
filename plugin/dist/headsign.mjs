@@ -7442,6 +7442,9 @@ function validatePhase(name, p, names, errors) {
     errors.push(`phase '${name}': on_fail '${String(p.on_fail)}' is not a valid route`);
   }
   if (p.max_attempts !== void 0 && !isPosInt(p.max_attempts)) errors.push(`phase '${name}': max_attempts must be a positive integer`);
+  if (p.max_attempts !== void 0 && (p.on_fail === "escalate" || p.on_fail === "abort")) {
+    errors.push(`phase '${name}': max_attempts has no effect when on_fail is '${p.on_fail}' \u2014 the first failure already ends the run; remove one of them`);
+  }
   if (p.on_exhausted !== void 0 && (typeof p.on_exhausted !== "string" || !ON_EXHAUSTED_TOKENS.has(p.on_exhausted))) {
     errors.push(`phase '${name}': on_exhausted must be 'escalate' or 'abort'`);
   }
@@ -7667,14 +7670,13 @@ function terminalOutcome(state) {
   if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
   return { kind: "ABORT", reason: state.end_reason ?? "" };
 }
-function step(workflow, state, gateResult, treeHash2, nowIso) {
+function step(workflow, state, gateResult, treeHash2) {
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
-  const next = { ...state, attempts: { ...state.attempts }, history: [...state.history] };
+  const next = { ...state, attempts: { ...state.attempts } };
   next.total_iterations += 1;
   next.stop_nudges = 0;
   if (gateResult.pass) {
-    next.history.push({ phase: phaseName, result: "pass", at: nowIso });
     delete next.attempts[phaseName];
     next.last_eval = null;
     if (phase.on_pass === "$end") {
@@ -7684,7 +7686,6 @@ function step(workflow, state, gateResult, treeHash2, nowIso) {
     next.phase = phase.on_pass;
     return { state: next, outcome: { kind: "ADVANCE", phase: next.phase, description: workflow.phases[next.phase].description } };
   }
-  next.history.push({ phase: phaseName, result: "fail", at: nowIso });
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
   const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
   const failure = { check, run, exitCode, outputTail, timeoutSeconds };
@@ -7905,7 +7906,6 @@ function cmdStart(args) {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
   writeState(cwd, {
-    version: 1,
     workflow: wf.name,
     workflow_path: workflowPath,
     status: "running",
@@ -7913,7 +7913,6 @@ function cmdStart(args) {
     attempts: {},
     total_iterations: 0,
     last_eval: null,
-    history: [],
     end_reason: null,
     stop_nudges: 0
   });
@@ -7940,7 +7939,7 @@ function evaluateNext(cwd, wf, current) {
   if (shouldUseCache(current, hash)) return cachedRetry(wf, current);
   const phase = wf.phases[current.phase];
   const gateResult = runGate(phase.gate.checks, cwd, phase.env);
-  const { state: nextState, outcome } = step(wf, current, gateResult, hash, (/* @__PURE__ */ new Date()).toISOString());
+  const { state: nextState, outcome } = step(wf, current, gateResult, hash);
   if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);
   return outcome;

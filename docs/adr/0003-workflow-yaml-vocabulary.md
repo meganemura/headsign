@@ -66,7 +66,9 @@ limits:                 # optional
 `headsign validate` enforces: version/name/entry present, entry exists,
 every routing target names a defined phase or an allowed token, checks
 non-empty with `run` strings, timeouts positive, phases reachable from
-entry.
+entry, and `max_attempts` not paired with `on_fail: escalate`/`abort` (the
+first failure would already end the run, so `max_attempts` could never be
+reached).
 
 ### Human gates in v1
 

@@ -43,17 +43,18 @@ export function terminalOutcome(state: State): Outcome {
   return { kind: "ABORT", reason: state.end_reason ?? "" };
 }
 
-export function step(workflow: Workflow, state: State, gateResult: GateResult, treeHash: string | null, nowIso: string): { state: State; outcome: Outcome } {
+// step() is fully deterministic: same (workflow, state, gateResult, treeHash) always
+// yields the same output — no clock, no randomness.
+export function step(workflow: Workflow, state: State, gateResult: GateResult, treeHash: string | null): { state: State; outcome: Outcome } {
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
-  const next: State = { ...state, attempts: { ...state.attempts }, history: [...state.history] };
+  const next: State = { ...state, attempts: { ...state.attempts } };
   next.total_iterations += 1;
   // step() runs only on a real gate evaluation, which is exactly the event that
   // should clear the Stop hook's loop guard (ADR-0006) — reset it unconditionally here.
   next.stop_nudges = 0;
 
   if (gateResult.pass) {
-    next.history.push({ phase: phaseName, result: "pass", at: nowIso });
     delete next.attempts[phaseName];
     next.last_eval = null;
     if (phase.on_pass === "$end") {
@@ -64,7 +65,6 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, t
     return { state: next, outcome: { kind: "ADVANCE", phase: next.phase, description: workflow.phases[next.phase].description } };
   }
 
-  next.history.push({ phase: phaseName, result: "fail", at: nowIso });
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
   // Destructure rather than reuse gateResult as-is: it also carries `pass: false`,
   // which must not leak into the outcome's public FailureInfo shape.
