@@ -225,8 +225,7 @@ probing never costs an attempt.
 Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
 `/bin/sh -c` (first failure stops the gate); phases may set `env:`.
 Deliberately absent: `needs:`, `if:`, `${{ }}`, matrices, triggers — routing
-is decided by pass/fail and nothing else. See
-[docs/adr/0003](docs/adr/0003-workflow-yaml-vocabulary.md).
+is decided by pass/fail and nothing else.
 
 ### The backstop
 
@@ -235,15 +234,13 @@ Skills are instructions, not guarantees. A Stop hook reads
 stopping and points it back to `headsign next`. Escalated, aborted, and
 completed runs pass through — those are correct endings. The hook fails open
 (never traps a session) and caps itself at three consecutive nudges with no
-real evaluation in between; details in
-[docs/adr/0006](docs/adr/0006-stop-hook-backstop.md).
+real evaluation in between.
 
 ## Non-goals
 
 No DAGs or parallel phases, no worktree isolation, no provider abstraction,
 no personas, no template/expression language, no MCP server, no TUI. If the
-harness needs to be clever, the cleverness is in the wrong place — see
-[docs/adr/0001](docs/adr/0001-thin-harness.md).
+harness needs to be clever, the cleverness is in the wrong place.
 
 ## Development
 
@@ -255,7 +252,8 @@ npm run build     # esbuild → plugin/dist/headsign.mjs (committed artifact)
 ```
 
 Node ≥ 20 to run; Node ≥ 22.6 to develop (tests run TypeScript natively).
-Design decisions live in [docs/](docs/architecture.md).
+The design is documented in [docs/architecture.md](docs/architecture.md),
+with the rationale for each decision in [docs/adr/](docs/adr/README.md).
 
 ## License
 

@@ -225,7 +225,6 @@ exit 3 は設定または使用方法のエラーである。
 フェーズには `env:` を設定できる。
 `needs:` や `if:`、`${{ }}`、matrix、トリガーは意図的に持たない。
 ルーティングを決めるのはゲートの pass / fail だけである。
-詳細は [docs/adr/0003](docs/adr/0003-workflow-yaml-vocabulary.md) にある。
 
 ### バックストップ
 
@@ -233,13 +232,11 @@ exit 3 は設定または使用方法のエラーである。
 そこで Stop hook が `.headsign/state.json` を読み、run が `running` の間はエージェントの終了をブロックして `headsign next` に差し戻す。
 completed、escalated、aborted は正しい終わり方なので、そのまま通す。
 hook は fail-open で(セッションを閉じ込めることはない)、実評価を挟まない差し戻しが連続 3 回に達したらそこでやめる。
-詳細は [docs/adr/0006](docs/adr/0006-stop-hook-backstop.md) にある。
 
 ## 作らないもの
 
 DAG や並列フェーズ、worktree 隔離、プロバイダ抽象化、ペルソナ、テンプレートや式言語、MCP サーバー、TUI は作らない。
 ハーネス側に賢さが必要になったら、それは賢さの置き場所が間違っている。
-[docs/adr/0001](docs/adr/0001-thin-harness.md) を参照。
 
 ## 開発
 
@@ -251,7 +248,7 @@ npm run build     # esbuild → plugin/dist/headsign.mjs(コミットする成�
 ```
 
 実行には Node 20 以上、開発には Node 22.6 以上が必要である(テストが TypeScript をそのまま実行するため)。
-設計判断は [docs/](docs/architecture.md) にまとめてある。
+設計は [docs/architecture.md](docs/architecture.md) に、各判断の背景は [docs/adr/](docs/adr/README.md) にまとめてある。
 
 ## ライセンス
 
