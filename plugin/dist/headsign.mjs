@@ -7535,7 +7535,8 @@ function isAlive(pid) {
 import { spawnSync } from "node:child_process";
 var DEFAULT_TIMEOUT_SECONDS = 120;
 var OUTPUT_TAIL_LIMIT = 4e3;
-function runGate(checks, cwd, env) {
+function runGate(checks, cwd, phaseEnv) {
+  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
   for (const c of checks) {
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const check = c.name ?? c.run;
@@ -7566,9 +7567,6 @@ ${outputTail}`
     if (result.status !== 0) return { pass: false, check, run: c.run, exitCode: result.status ?? -1, outputTail };
   }
   return { pass: true };
-}
-function coerceEnv(env) {
-  return env ? Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)])) : {};
 }
 function buildTail(stdout, stderr) {
   const combined = stdout + stderr;
@@ -7941,7 +7939,7 @@ function evaluateNext(cwd, wf, current) {
   const hash = treeHash(cwd);
   if (shouldUseCache(current, hash)) return cachedRetry(wf, current);
   const phase = wf.phases[current.phase];
-  const gateResult = runGate(phase.gate.checks, cwd, coerceEnv(phase.env));
+  const gateResult = runGate(phase.gate.checks, cwd, phase.env);
   const { state: nextState, outcome } = step(wf, current, gateResult, hash, (/* @__PURE__ */ new Date()).toISOString());
   if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);

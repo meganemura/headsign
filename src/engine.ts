@@ -6,7 +6,7 @@ import type { Workflow } from "./workflow.ts";
 import type { State, LastEval } from "./state.ts";
 import type { GateResult, CheckFailure } from "./gate.ts";
 
-export type FailureInfo = CheckFailure;
+type FailureInfo = CheckFailure;
 
 export type Outcome =
   | { kind: "ADVANCE"; phase: string; description: string; failure?: FailureInfo & { routedTo: string } }

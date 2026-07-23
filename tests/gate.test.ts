@@ -37,6 +37,11 @@ test("phase env reaches the check", () => {
   assert.equal(result.pass, true);
 });
 
+test("non-string phase env values are coerced to their string form", () => {
+  const result = gate.runGate([{ run: 'test "$COUNT" = "3" && test "$FLAG" = "true"' }], tmpdir(), { COUNT: 3, FLAG: true });
+  assert.equal(result.pass, true);
+});
+
 test("output tail is truncated at 4000 chars with a marker", () => {
   const run = `node -e "process.stdout.write('x'.repeat(5000))" && exit 1`;
   const result = gate.runGate([{ run }], tmpdir(), {});

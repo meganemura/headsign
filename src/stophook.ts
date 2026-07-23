@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readState, writeState, statePath } from "./state.ts";
 
-export interface HookDecision {
+interface HookDecision {
   block: boolean;
   message?: string;
 }

@@ -10,7 +10,8 @@ export type GateResult = { pass: true } | ({ pass: false } & CheckFailure);
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const OUTPUT_TAIL_LIMIT = 4000;
 
-export function runGate(checks: Check[], cwd: string, env: Record<string, string>): GateResult {
+export function runGate(checks: Check[], cwd: string, phaseEnv: Record<string, unknown> | undefined): GateResult {
+  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
   for (const c of checks) {
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const check = c.name ?? c.run;
@@ -40,10 +41,6 @@ export function runGate(checks: Check[], cwd: string, env: Record<string, string
     if (result.status !== 0) return { pass: false, check, run: c.run, exitCode: result.status ?? -1, outputTail };
   }
   return { pass: true };
-}
-
-export function coerceEnv(env: Record<string, unknown> | undefined): Record<string, string> {
-  return env ? Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)])) : {};
 }
 
 function buildTail(stdout: string, stderr: string): string {

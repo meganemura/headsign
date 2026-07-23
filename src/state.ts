@@ -4,13 +4,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type Status = "running" | "complete" | "escalated" | "aborted";
+type Status = "running" | "complete" | "escalated" | "aborted";
 
 export interface LastEval {
   phase: string; result: "fail"; tree_hash: string | null;
   check: string; run: string; exit_code: number | "timeout"; output_tail: string; timeout_seconds?: number;
 }
-export interface HistoryEntry { phase: string; result: "pass" | "fail"; at: string }
+interface HistoryEntry { phase: string; result: "pass" | "fail"; at: string }
 export interface State {
   version: number; workflow: string; workflow_path: string; status: Status; phase: string;
   attempts: Record<string, number>; total_iterations: number; last_eval: LastEval | null;

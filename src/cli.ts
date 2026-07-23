@@ -152,7 +152,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   if (engine.shouldUseCache(current, hash)) return engine.cachedRetry(wf, current);
 
   const phase = wf.phases[current.phase];
-  const gateResult = gate.runGate(phase.gate.checks, cwd, gate.coerceEnv(phase.env));
+  const gateResult = gate.runGate(phase.gate.checks, cwd, phase.env);
   const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, new Date().toISOString());
   if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);

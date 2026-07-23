@@ -45,8 +45,8 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at about 600 code lines (raw
-`wc -l` is higher, ~780, because of those comments), a bit over the target
+blank lines don't count). It currently sits at about 650 code lines (raw
+`wc -l` is higher, ~860, because of those comments), a bit over the target
 after the concurrency lock and the git-root tree-hash fix landed. The 500
 figure is a guideline, not a hard cap: per ADR-0001 it "is a design smell
 detector, not a hard compiler limit" — a number drifting past it is a signal
@@ -62,6 +62,11 @@ to periodically check for design bloat, not a fact to fix by deleting lines.
 | `src/engine.ts` | the transition function: (workflow, state, gate result) → (new state, outcome). The ONLY place routing rules live | child_process, printing |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/stophook.ts` | Stop hook: stdin JSON → allow/block | workflow.yaml, gates |
+
+`render.ts` owns the entire outcome contract (the START/ADVANCE/RETRY/COMPLETE/ESCALATE/ABORT
+strings and `validate`'s output); `cli.ts`'s `ERROR:` messages (exit code 3, for usage/config
+problems like bad argv or a workflow that fails to load) are a separate, deliberately
+unceremonious channel, not part of that contract.
 
 ## Data flow of `headsign next`
 
