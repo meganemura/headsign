@@ -92,6 +92,12 @@ lives outside the current `.git` root — cwd has been `cd`'d past the repo
 boundary, or the run's `.headsign/` genuinely lives elsewhere — the hook
 still won't find it and exits 0.
 
+Equally by design, the walk only ever goes up: if the session's cwd sits
+*above* the run's directory — a monorepo root, with the run's `.headsign/`
+in a package below — walk-up never descends to it, so the hook finds no run
+and exits 0. Keep the session in the directory that owns the workflow, or
+below it, for the backstop to fire.
+
 This walk-up is hook-only. `next`, `start`, and `abort` remain strictly
 cwd-only, exactly as ADR-0004 describes; they still error with "no run in
 progress here" if invoked from the wrong directory.

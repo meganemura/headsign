@@ -102,7 +102,7 @@ limits:
 
 The `run:` commands above are examples. Replace `bundle exec rspec` with whatever your project actually uses (`npm test`, `pytest`, `go test ./...`, …); a check is just a shell command judged by its exit code.
 
-> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust. The same goes for `.headsign/state.json` and `.headsign/lock`: a cloned repository can contain a committed state file or lock, so a `.headsign/` you didn't create is untrusted input, just like the workflow.
+> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust. The same goes for `.headsign/state.json` and `.headsign/lock`: a cloned repository can contain a committed state file or lock, so a `.headsign/` you didn't create is untrusted input, just like the workflow. The same holds on a team: a change to `.headsign/` arrives on a teammate's PR and runs automatically in your loop, so weigh it as heavily as a change to CI configuration.
 
 2. Ask Claude to start the workflow. It runs `headsign start`, works the
    phase, and keeps asking `headsign next` until the answer is `COMPLETE` —
@@ -117,7 +117,9 @@ directory only — they never search parent directories — so run them from the
 repo or git-worktree root; each worktree then keeps its own independent run.
 The one exception is the Stop hook, which walks up to find the run's
 `.headsign/` (bounded by the worktree root) so the backstop still fires when
-the session stopped in a subdirectory.
+the session stopped in a subdirectory. That walk only goes up, though, so from
+a directory above the run — a monorepo root, say — the hook won't find it and
+stays silent; keep the session at the workflow's directory or below.
 
 ## Instructions vs. the gate
 
@@ -140,7 +142,9 @@ what a review gate is for, which is why the Quick start workflow above
 carries both. Work a shell command can't judge — a design call, a UX
 decision — needs either slicing into units a check can verify, or a
 review-style soft gate to carry it. Size your phases to what the gate can
-actually check, not to how the work naturally breaks down.
+actually check, not to how the work naturally breaks down. And a review phase
+is the agent's own review discipline, not a substitute for a human reviewing
+the resulting PR.
 
 ## How a run flows
 
@@ -243,8 +247,13 @@ Skills are instructions, not guarantees. A Stop hook reads
 stopping and points it back to `headsign next`. Escalated, aborted, and
 completed runs pass through — those are correct endings. The hook fails open
 (never traps a session) and caps itself at three consecutive nudges with no
-real evaluation in between. A human who wants to leave mid-run still has a
-clean exit: `headsign abort <reason>` records why and lets the session stop.
+real evaluation in between. Pausing and ending are different exits. To break
+for the day, leave the run `running` and just stop — after those three nudges
+the hook lets the session end, and tomorrow `headsign next` picks the run back
+up from the same phase.
+`headsign abort <reason>` is the other exit: it ends the run for good, not a
+pause — the run can't be resumed, and a fresh `headsign start` begins again
+from the entry phase.
 
 ## Non-goals
 

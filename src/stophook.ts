@@ -59,10 +59,15 @@ export function evaluate(cwd: string, stdinRaw: string): HookDecision {
 
     const nextNudges = nudges + 1;
     writeState(runDir, { ...state, stop_nudges: nextNudges });
-    // Every nudge names `headsign abort` as the clean way out — not only the final one —
-    // so a human who wants to stop mid-run never has to hunt for how.
-    const abortHint = " To stop this run instead, run `headsign abort <reason>`.";
-    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
+    // Every nudge names `headsign abort` as the deliberate way to end the run for good —
+    // not only the final one — so a human who wants to stop never has to hunt for how.
+    const abortHint = " To end this run for good, run `headsign abort <reason>`.";
+    // The pause hint rides only on the final notice: earlier nudges must keep pushing
+    // `headsign next`, not dilute it with "you can also just walk away".
+    const finalNotice =
+      nextNudges === MAX_STOP_NUDGES
+        ? " This is the final automatic reminder. Stopping now just pauses the run — `headsign next` will resume it later."
+        : "";
     // `next`/`abort` stay strictly cwd-only (ADR-0004), so when the run was found via
     // walk-up (runDir !== startDir) the agent must be told where to cd first — cwd-only
     // `next` will not find the run from startDir itself.

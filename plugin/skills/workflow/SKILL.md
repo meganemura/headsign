@@ -40,7 +40,10 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to
    the user; that's the legitimate exit either way, not just a last resort.
-   `ESCALATE` means stop working and ask the user for direction.
+   To *pause* rather than end — stepping away to resume later — just stop with
+   the run left `running`; `headsign next` picks it up again, while `headsign
+   abort` ends the run for good. `ESCALATE` means stop working and ask the
+   user for direction.
 5. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then

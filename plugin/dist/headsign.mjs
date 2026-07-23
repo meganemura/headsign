@@ -7807,8 +7807,8 @@ function evaluate(cwd, stdinRaw) {
     if (nudges >= MAX_STOP_NUDGES) return { block: false };
     const nextNudges = nudges + 1;
     writeState(runDir, { ...state, stop_nudges: nextNudges });
-    const abortHint = " To stop this run instead, run `headsign abort <reason>`.";
-    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
+    const abortHint = " To end this run for good, run `headsign abort <reason>`.";
+    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder. Stopping now just pauses the run \u2014 `headsign next` will resume it later." : "";
     const message = (runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + finalNotice + abortHint;
     return { block: true, message };
   } catch {

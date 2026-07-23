@@ -70,16 +70,19 @@ test("nudge lifecycle: 1 -> 2 -> 3 with final-reminder only on the 3rd, then 4th
   assert.equal(first.block, true);
   assert.equal(state.readState(dir)?.stop_nudges, 1);
   assert.ok(!first.message?.includes("final automatic reminder"));
+  assert.ok(!first.message?.includes("pauses the run"));
 
   const second = stophook.evaluate(dir, stdin);
   assert.equal(second.block, true);
   assert.equal(state.readState(dir)?.stop_nudges, 2);
   assert.ok(!second.message?.includes("final automatic reminder"));
+  assert.ok(!second.message?.includes("pauses the run"));
 
   const third = stophook.evaluate(dir, stdin);
   assert.equal(third.block, true);
   assert.equal(state.readState(dir)?.stop_nudges, 3);
   assert.ok(third.message?.includes("final automatic reminder"));
+  assert.ok(third.message?.includes("Stopping now just pauses the run"));
 
   const fourth = stophook.evaluate(dir, stdin);
   assert.deepEqual(fourth, { block: false });
