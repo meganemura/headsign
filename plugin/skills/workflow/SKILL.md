@@ -37,13 +37,16 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
    phase's gate rejected the work and routed you here — read that line, it's
    why you're back.
 4. **Never end the run on your own judgment while the answer is anything
-   other than `COMPLETE`.** If you are genuinely stuck, record why with
-   `headsign abort <reason>` and report to the user. `ESCALATE` means stop
-   working and ask the user for direction.
-5. If the current phase's gate reads `.headsign/verdict` (a review phase),
-   spawn a reviewer subagent restricted to read-only tools (Read/Grep/Glob)
-   and have it write exactly `APPROVED` or `REJECTED` to `.headsign/verdict`,
-   then run `headsign next`.
+   other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
+   stop mid-run — record why with `headsign abort <reason>` and report to
+   the user; that's the legitimate exit either way, not just a last resort.
+   `ESCALATE` means stop working and ask the user for direction.
+5. If the current phase's gate reads a verdict file (a review phase), spawn
+   a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
+   have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then
+   *you* write that reported verdict, verbatim, to the verdict file and run
+   `headsign next` — the reviewer stays unable to touch code or the
+   verdict, so the judgment and the work stay separated.
 
 ## Notes
 

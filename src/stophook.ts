@@ -59,17 +59,18 @@ export function evaluate(cwd: string, stdinRaw: string): HookDecision {
 
     const nextNudges = nudges + 1;
     writeState(runDir, { ...state, stop_nudges: nextNudges });
-    const finalNotice =
-      nextNudges === MAX_STOP_NUDGES
-        ? " This is the final automatic reminder; if you are genuinely stuck, run `headsign abort <reason>` instead."
-        : "";
+    // Every nudge names `headsign abort` as the clean way out — not only the final one —
+    // so a human who wants to stop mid-run never has to hunt for how.
+    const abortHint = " To stop this run instead, run `headsign abort <reason>`.";
+    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
     // `next`/`abort` stay strictly cwd-only (ADR-0004), so when the run was found via
     // walk-up (runDir !== startDir) the agent must be told where to cd first — cwd-only
     // `next` will not find the run from startDir itself.
     const message =
-      runDir === startDir
-        ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.${finalNotice}`
-        : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.${finalNotice}`;
+      (runDir === startDir
+        ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.`
+        : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) +
+      finalNotice + abortHint;
     return { block: true, message };
   } catch {
     // Fail open: a corrupt state file or malformed hook payload must never trap the session.

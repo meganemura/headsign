@@ -89,7 +89,7 @@ function ensureHeadsignGitignored(cwd: string): void {
   const gitignorePath = path.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath); // "" if no .gitignore yet
   let content = original;
-  for (const entry of ["state.json", "lock"]) {
+  for (const entry of ["state.json", "lock", "tmp/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
     const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
     content = `${content}${sep}${entry}\n`;
@@ -120,6 +120,11 @@ function cmdStart(args: string[]): void {
     attempts: {}, total_iterations: 0, last_eval: null, history: [], end_reason: null, stop_nudges: 0,
   });
   ensureHeadsignGitignored(cwd);
+  // Every run starts with a clean scratch dir: artifacts from a previous run (verdicts,
+  // tickets, notes) must not leak into this one.
+  const tmpDir = path.join(cwd, ".headsign", "tmp");
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.mkdirSync(tmpDir, { recursive: true });
   clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   exitAfter(render.start(wf.entry, wf.phases[wf.entry].description), 0);
 }

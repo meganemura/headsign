@@ -47,7 +47,7 @@ entry: plan             # required, must name a phase
 phases:                 # required, at least one
   plan:
     description: …      # required; shown to Claude on START/ADVANCE
-    clear: [.headsign/verdict]  # optional; deleted each time this phase is entered
+    clear: [.headsign/tmp/verdict]  # optional; deleted each time this phase is entered
     env: {K: V}         # optional; merged over process env for checks
     gate:               # required
       checks:           # required, non-empty
@@ -86,16 +86,19 @@ ran, gate its output rather than trusting that the instruction was followed.
 This keeps the split clean: the `description` (and the skills it names) is the
 "fat skills" half; the CLI only runs the checks.
 
-A check that reads an agent-produced artifact, like a review verdict file,
-can go stale across loop-backs in a review-implement cycle: `on_fail:
-implement` sends the run back to fix things, but the old verdict is still
-sitting on disk when `review` is entered again, and a leftover `APPROVED`
-would let the gate pass without a fresh review ever happening. Listing that
-artifact under the phase's `clear:` fixes this — headsign deletes it every
-time the phase is entered, so the check has nothing to read until the agent
-produces it fresh for the current pass. It also keeps a later soft-gate →
-hard-gate migration clean: swap the check's `run:` for something stronger,
-and just drop `clear` if the artifact is no longer needed.
+A check that reads an agent-produced artifact, like a review verdict file at
+`.headsign/tmp/verdict`, can go stale across loop-backs in a
+review-implement cycle: `on_fail: implement` sends the run back to fix
+things, but the old verdict is still sitting on disk when `review` is
+entered again, and a leftover `APPROVED` would let the gate pass without a
+fresh review ever happening. Listing that artifact under the phase's
+`clear:` fixes this — headsign deletes it every time the phase is entered,
+so the check has nothing to read until the agent produces it fresh for the
+current pass. It also keeps a later soft-gate → hard-gate migration clean:
+swap the check's `run:` for something stronger, and just drop `clear` if
+the artifact is no longer needed. `.headsign/tmp/` is itself emptied and
+auto-gitignored at `start`, so it's the natural place for this kind of
+transient, run-scoped artifact.
 
 ## Consequences
 

@@ -85,13 +85,13 @@ phases:
 
   review:
     description: >
-      reviewer サブエージェント(読み取り専用ツールのみ)に、
-      .headsign/verdict へ APPROVED または REJECTED を書かせる。
-    clear: [.headsign/verdict]
+      読み取り専用の reviewer サブエージェントに APPROVED か REJECTED かを
+      報告させ、その判定を自分の手で .headsign/tmp/verdict に書く。
+    clear: [.headsign/tmp/verdict]
     gate:
       checks:
         - name: review approved
-          run: "grep -qx APPROVED .headsign/verdict"
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
     on_pass: $end
     on_fail: implement     # 差し戻しループ
     max_attempts: 3        # 3 回却下されたら人間にエスカレート
@@ -131,9 +131,15 @@ limits:
 ワークフローは、スキルやサブエージェントの仕事をゲート付きの順番に並べる緩い段取りであって、どのスキルを使うかまでは縛らない。
 実際に効くのはゲートのほうで、チェックの exit code だけが結果を確かめる。
 あるスキルの使用を必須にしたいなら、その成果物を確かめるゲートを書く(たとえば、そのスキルが生むファイルを `grep` する)。
-レビューのような soft gate のフェーズでは、reviewer が書く判定ファイル(`.headsign/verdict` など)を、そのフェーズの `clear:` に挙げておくとよい。
+レビューのような soft gate のフェーズでは、判定ファイル(`.headsign/tmp/verdict` など)を、そのフェーズの `clear:` に挙げておくとよい。
 前回の判定が残っていると、今回の判定と取り違えられてしまう。
-headsign がフェーズ進入のたびにそれを削除するので、reviewer は毎回新しく書き直すことになる。
+headsign がフェーズ進入のたびにそれを削除するので、読み取り専用の reviewer が判定を報告したあと、Claude がそのつど新しく書き直すことになる。
+
+フェーズの意味は、そのゲートがシェルで確かめられる範囲までしかない。
+テストのゲートが証明するのは「何も壊れていない」ことであって、「機能が完成した」ことではない。
+「完成したか」を判断するのはレビューのゲートの役目であり、上のクイックスタートのワークフローが両方を備えているのはそのためである。
+シェルでは判断できない仕事、設計判断や UX の判断は、チェックで確かめられる単位に切り分けるか、レビューのような soft gate に委ねる必要がある。
+フェーズの粒度は、仕事の自然な区切りではなく、ゲートが実際に確かめられる範囲に合わせること。
 
 ## 実行の流れ
 
@@ -166,15 +172,15 @@ sequenceDiagram
     C->>H: headsign next
     H->>S: bundle exec rspec
     S-->>H: exit 0
-    H-->>C: ADVANCE review(.headsign/verdict を clear)
-    Note over C: 読み取り専用の reviewer サブエージェントが<br/>.headsign/verdict に REJECTED を書く
+    H-->>C: ADVANCE review(.headsign/tmp/verdict を clear)
+    Note over C: 読み取り専用の reviewer が REJECTED と報告し、<br/>Claude が .headsign/tmp/verdict に書く
     C->>H: headsign next
-    H->>S: grep -qx APPROVED .headsign/verdict
+    H->>S: grep -qx APPROVED .headsign/tmp/verdict
     S-->>H: exit 1(REJECTED)
     H-->>C: ADVANCE implement(gate failed → 差し戻し)
-    Note over C: 手直し。implement が再度パスし、<br/>ADVANCE review で verdict を再び clear、<br/>今度は reviewer が APPROVED を書く
+    Note over C: 手直し。implement が再度パスし、<br/>ADVANCE review で verdict を再び clear、<br/>今度は reviewer が APPROVED と報告し、Claude が書く
     C->>H: headsign next
-    H->>S: grep -qx APPROVED .headsign/verdict
+    H->>S: grep -qx APPROVED .headsign/tmp/verdict
     S-->>H: exit 0
     H-->>C: COMPLETE
 ```
@@ -232,6 +238,8 @@ exit 3 は設定または使用方法のエラーである。
 そこで Stop hook が `.headsign/state.json` を読み、run が `running` の間はエージェントの終了をブロックして `headsign next` に差し戻す。
 completed、escalated、aborted は正しい終わり方なので、そのまま通す。
 hook は fail-open で(セッションを閉じ込めることはない)、実評価を挟まない差し戻しが連続 3 回に達したらそこでやめる。
+run を途中で抜けたい人間にも、明確な出口がある。
+`headsign abort <reason>` が理由を記録し、セッションを止めさせる。
 
 ## 作らないもの
 

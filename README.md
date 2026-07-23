@@ -85,13 +85,13 @@ phases:
 
   review:
     description: >
-      Have a reviewer subagent (read-only tools) write APPROVED or REJECTED
-      to .headsign/verdict.
-    clear: [.headsign/verdict]
+      Have a read-only reviewer subagent report APPROVED or REJECTED, then
+      write that verdict yourself to .headsign/tmp/verdict.
+    clear: [.headsign/tmp/verdict]
     gate:
       checks:
         - name: review approved
-          run: "grep -qx APPROVED .headsign/verdict"
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
     on_pass: $end
     on_fail: implement     # rejection loops back
     max_attempts: 3        # three rejections → escalate to the human
@@ -128,10 +128,19 @@ subagent check it"; headsign hands it to Claude verbatim. A workflow
 *orchestrate* them, and it never forces which skill the agent uses. Only the
 gate is enforced: the checks' exit codes are the sole thing that verifies the
 result. To require a skill's use, gate its output (e.g. `grep` the file that
-skill produces). A review/soft-gate phase should list its verdict file under
-that phase's `clear:` so a verdict left over from a previous pass can't be
-mistaken for the current one — headsign deletes it on entry, and the
-reviewer writes a fresh one.
+skill produces). A review/soft-gate phase should list its verdict file (e.g.
+`.headsign/tmp/verdict`) under that phase's `clear:` so a verdict left over
+from a previous pass can't be mistaken for the current one — headsign
+deletes it on entry, and Claude writes a fresh one after the read-only
+reviewer subagent reports its verdict.
+
+A phase is only as meaningful as what its gate can check in shell. A test
+gate proves nothing broke, not that the feature is done — judging "done" is
+what a review gate is for, which is why the Quick start workflow above
+carries both. Work a shell command can't judge — a design call, a UX
+decision — needs either slicing into units a check can verify, or a
+review-style soft gate to carry it. Size your phases to what the gate can
+actually check, not to how the work naturally breaks down.
 
 ## How a run flows
 
@@ -166,15 +175,15 @@ sequenceDiagram
     C->>H: headsign next
     H->>S: bundle exec rspec
     S-->>H: exit 0
-    H-->>C: ADVANCE review (clears .headsign/verdict)
-    Note over C: read-only reviewer subagent<br/>writes REJECTED to .headsign/verdict
+    H-->>C: ADVANCE review (clears .headsign/tmp/verdict)
+    Note over C: read-only reviewer reports REJECTED;<br/>Claude writes it to .headsign/tmp/verdict
     C->>H: headsign next
-    H->>S: grep -qx APPROVED .headsign/verdict
+    H->>S: grep -qx APPROVED .headsign/tmp/verdict
     S-->>H: exit 1 (REJECTED)
     H-->>C: ADVANCE implement (gate failed → routed back)
-    Note over C: reworks; implement re-passes and<br/>ADVANCE review clears the verdict again;<br/>reviewer now writes APPROVED
+    Note over C: reworks; implement re-passes and<br/>ADVANCE review clears the verdict again;<br/>reviewer now reports APPROVED, Claude writes it
     C->>H: headsign next
-    H->>S: grep -qx APPROVED .headsign/verdict
+    H->>S: grep -qx APPROVED .headsign/tmp/verdict
     S-->>H: exit 0
     H-->>C: COMPLETE
 ```
@@ -234,7 +243,8 @@ Skills are instructions, not guarantees. A Stop hook reads
 stopping and points it back to `headsign next`. Escalated, aborted, and
 completed runs pass through — those are correct endings. The hook fails open
 (never traps a session) and caps itself at three consecutive nudges with no
-real evaluation in between.
+real evaluation in between. A human who wants to leave mid-run still has a
+clean exit: `headsign abort <reason>` records why and lets the session stop.
 
 ## Non-goals
 

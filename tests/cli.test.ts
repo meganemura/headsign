@@ -388,7 +388,7 @@ phases:
   assert.equal(finalState.total_iterations, PROCESS_COUNT, "no evaluation's total_iterations increment may be lost to a stale overwrite");
 });
 
-test("start ensures .headsign/.gitignore contains both state.json and lock, one entry per line", () => {
+test("start ensures .headsign/.gitignore contains state.json, lock, and tmp/, one entry per line", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
@@ -398,6 +398,37 @@ test("start ensures .headsign/.gitignore contains both state.json and lock, one 
     .map((l) => l.trim());
   assert.ok(lines.includes("state.json"));
   assert.ok(lines.includes("lock"));
+  assert.ok(lines.includes("tmp/"));
+});
+
+// --- .headsign/tmp/: run-scoped scratch directory (F1) ---
+
+test("start creates .headsign/tmp/ and empties any pre-existing contents from a previous run", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const tmpDir = path.join(dir, ".headsign", "tmp");
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.writeFileSync(path.join(tmpDir, "leftover.txt"), "from a previous run\n");
+
+  const result = run(["start"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.equal(fs.existsSync(tmpDir), true);
+  assert.deepEqual(fs.readdirSync(tmpDir), []);
+});
+
+test("a file written under .headsign/tmp/ changes the tree hash, so next re-evaluates instead of reprinting a cached (unchanged) RETRY", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const first = run(["next"], { cwd: dir });
+  assert.match(first.stdout, /^RETRY 1 build\n/);
+
+  fs.writeFileSync(path.join(dir, ".headsign", "tmp", "note.txt"), "hi\n");
+  const second = run(["next"], { cwd: dir });
+  assert.equal(second.status, 1);
+  assert.doesNotMatch(second.stdout, /\(unchanged\)/);
+  assert.match(second.stdout, /^RETRY 2 build\n/); // a real (counted) evaluation, not a cache hit
 });
 
 test("next when the current phase was removed/renamed from workflow.yaml mid-run exits 3 with an actionable message, not a crash", () => {

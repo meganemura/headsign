@@ -7808,8 +7808,9 @@ function evaluate(cwd, stdinRaw) {
     if (nudges >= MAX_STOP_NUDGES) return { block: false };
     const nextNudges = nudges + 1;
     writeState(runDir, { ...state, stop_nudges: nextNudges });
-    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder; if you are genuinely stuck, run `headsign abort <reason>` instead." : "";
-    const message = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.${finalNotice}` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.${finalNotice}`;
+    const abortHint = " To stop this run instead, run `headsign abort <reason>`.";
+    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
+    const message = (runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + finalNotice + abortHint;
     return { block: true, message };
   } catch {
     return { block: false };
@@ -7881,7 +7882,7 @@ function ensureHeadsignGitignored(cwd) {
   const gitignorePath = path4.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath);
   let content = original;
-  for (const entry of ["state.json", "lock"]) {
+  for (const entry of ["state.json", "lock", "tmp/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
     const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
     content = `${content}${sep}${entry}
@@ -7919,6 +7920,9 @@ function cmdStart(args) {
     stop_nudges: 0
   });
   ensureHeadsignGitignored(cwd);
+  const tmpDir = path4.join(cwd, ".headsign", "tmp");
+  fs5.rmSync(tmpDir, { recursive: true, force: true });
+  fs5.mkdirSync(tmpDir, { recursive: true });
   clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   exitAfter(start(wf.entry, wf.phases[wf.entry].description), 0);
 }

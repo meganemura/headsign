@@ -164,8 +164,15 @@ under it by the process it stole from.
 
 - `start` refuses to clobber a `running` state (exit 3; instruct to
   continue with `next` or `abort` first). Terminal states are overwritten.
-- `start` ensures `.headsign/.gitignore` ignores `state.json` and `lock`, so
-  run state and the concurrency lock can never be committed by accident.
+- `start` ensures `.headsign/.gitignore` ignores `state.json`, `lock`, and
+  `tmp/`, so run state, the concurrency lock, and scratch artifacts can never
+  be committed by accident.
+- `start` also empties and recreates `.headsign/tmp/`, a run-scoped scratch
+  directory for transient artifacts (review verdicts, tickets, notes) so
+  nothing from a previous run leaks into this one. Unlike `state.json` and
+  `lock`, it is not excluded from the tree-hash: gates legitimately read
+  files there, so a write under `.headsign/tmp/` must keep invalidating the
+  cache the same way any other `.headsign/` artifact does.
 - `abort` records the reason and sets `status: aborted` — a correct,
   human-directed ending, which the Stop hook lets pass.
 
