@@ -176,12 +176,12 @@ sequenceDiagram
     H->>S: bundle exec rspec
     S-->>H: exit 0
     H-->>C: ADVANCE review (clears .headsign/tmp/verdict)
-    Note over C: read-only reviewer reports REJECTED;<br/>Claude writes it to .headsign/tmp/verdict
+    Note over C: read-only reviewer reports REJECTED.<br/>Claude writes it to .headsign/tmp/verdict
     C->>H: headsign next
     H->>S: grep -qx APPROVED .headsign/tmp/verdict
     S-->>H: exit 1 (REJECTED)
     H-->>C: ADVANCE implement (gate failed → routed back)
-    Note over C: reworks; implement re-passes and<br/>ADVANCE review clears the verdict again;<br/>reviewer now reports APPROVED, Claude writes it
+    Note over C: reworks. implement re-passes and<br/>ADVANCE review clears the verdict again.<br/>reviewer now reports APPROVED, Claude writes it
     C->>H: headsign next
     H->>S: grep -qx APPROVED .headsign/tmp/verdict
     S-->>H: exit 0
