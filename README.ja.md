@@ -51,6 +51,14 @@ Fix the failure above, then run `headsign next` again.
 プラグインには三つが同梱される。
 バンドル済み CLI(npm install もビルドも不要)、規律を教える `workflow` スキル、そしてワークフロー途中の勝手な終了を押し返す Stop hook である。
 
+### プラグインなしで使う
+
+headsign の機能(ゲート判定・state・PENDING・ロック・ログ)は、すべて CLI 単体で揃っており、プラグインへの依存はない。
+まだ npm に公開していないため、当面はこのリポジトリを `git clone` して `node plugin/dist/headsign.mjs` を実行することになる。
+公開後は `npx headsign` で済むようになる。
+Claude Code も必須ではなく、CLI はどのエージェントからでも、あるいは手作業でターミナルから直接使える。
+プラグインが CLI に足すのは二つだけで、`workflow` スキルと Stop hook backstop である。
+
 ## クイックスタート
 
 1. ワークフロー定義をリポジトリにコミットする:

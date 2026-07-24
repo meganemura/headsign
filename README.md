@@ -51,6 +51,16 @@ The plugin ships three things: the bundled CLI (no npm install, no build), a
 `workflow` skill teaching the discipline, and a Stop hook that keeps the agent
 from silently quitting mid-workflow.
 
+### Using without the plugin
+
+The CLI alone provides all of headsign's functionality — gate judgment,
+state, `PENDING`, locking, logging — none of it depends on the plugin.
+It isn't published on npm yet, so for now that means `git clone` this
+repository and run `node plugin/dist/headsign.mjs`; once it's published,
+that becomes `npx headsign`. Claude Code isn't required either: the CLI
+works from any agent, or by hand at a terminal. The plugin adds only two
+things on top of the CLI: the `workflow` skill and the Stop hook backstop.
+
 ## Quick start
 
 1. Commit a workflow to your repository:
