@@ -45,9 +45,12 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at about 650 code lines (raw
-`wc -l` is higher, ~860, because of those comments), a bit over the target
-after the concurrency lock and the git-root tree-hash fix landed. The 500
+blank lines don't count). It currently sits at about 770 code lines (raw
+`wc -l` is higher, ~1060, because of those comments), well past the target
+after the concurrency lock, the git-root tree-hash fix, ready:/PENDING, and
+the transition log landed — each individually justified, but the drift is
+exactly what ADR-0001 says to watch: the next feature proposal should face
+the "does a thin harness need this?" question with extra suspicion. The 500
 figure is a guideline, not a hard cap: per ADR-0001 it "is a design smell
 detector, not a hard compiler limit" — a number drifting past it is a signal
 to periodically check for design bloat, not a fact to fix by deleting lines.
