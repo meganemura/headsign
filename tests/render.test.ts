@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as render from "../src/render.ts";
+import type { State } from "../src/state.ts";
 
 test("start", () => {
   const actual = render.start("plan", "Plan the work.");
@@ -17,6 +18,31 @@ test("advance without a failure has no gate-failed line", () => {
 test("advance with a failure includes the gate-failed/routed-to line", () => {
   const actual = render.advance("build", "Build it.", { check: "lint", run: "npm run lint", exitCode: 1, routedTo: "build" });
   const expected = `ADVANCE build\n--- gate failed: lint (npm run lint, exit 1) → routed to build ---\n--- phase: build ---\nBuild it.\n`;
+  assert.equal(actual, expected);
+});
+
+// --- cleared: artifact-clear announcement (start/advance) ---
+
+test("start with cleared artifacts lists one --- cleared: --- line per path, right after the token line", () => {
+  const actual = render.start("plan", "Plan the work.", ["docs/spec.md", ".headsign/tmp/verdict"]);
+  const expected = `START plan\n--- cleared: docs/spec.md ---\n--- cleared: .headsign/tmp/verdict ---\n--- phase: plan ---\nPlan the work.\n`;
+  assert.equal(actual, expected);
+});
+
+test("start with an empty (or omitted) cleared array has no cleared lines", () => {
+  assert.equal(render.start("plan", "Plan the work.", []), `START plan\n--- phase: plan ---\nPlan the work.\n`);
+  assert.equal(render.start("plan", "Plan the work.", []), render.start("plan", "Plan the work."));
+});
+
+test("advance with cleared artifacts: cleared lines land after the token line and before the gate-failed line", () => {
+  const actual = render.advance("build", "Build it.", { check: "lint", run: "npm run lint", exitCode: 1, routedTo: "build" }, ["artifact.txt"]);
+  const expected = `ADVANCE build\n--- cleared: artifact.txt ---\n--- gate failed: lint (npm run lint, exit 1) → routed to build ---\n--- phase: build ---\nBuild it.\n`;
+  assert.equal(actual, expected);
+});
+
+test("advance with cleared artifacts and no failure", () => {
+  const actual = render.advance("build", "Build it.", undefined, ["artifact.txt", "other.txt"]);
+  const expected = `ADVANCE build\n--- cleared: artifact.txt ---\n--- cleared: other.txt ---\n--- phase: build ---\nBuild it.\n`;
   assert.equal(actual, expected);
 });
 
@@ -115,4 +141,89 @@ test("validateFail lists each error as a bullet line after the header", () => {
   const actual = render.validateFail(".headsign/workflow.yaml", ["entry phase 'x' not defined", "phase 'y': circular on_fail"]);
   const expected = `INVALID: .headsign/workflow.yaml\n- entry phase 'x' not defined\n- phase 'y': circular on_fail\n`;
   assert.equal(actual, expected);
+});
+
+// --- pending: the ready-probe token ---
+
+test("pending", () => {
+  const actual = render.pending("review", "Have a reviewer subagent report a verdict.", "test -f .headsign/tmp/verdict");
+  const expected =
+    `PENDING review\n` +
+    `--- not ready yet — no attempt counted (readiness: test -f .headsign/tmp/verdict) ---\n` +
+    `--- phase: review ---\nHave a reviewer subagent report a verdict.\n` +
+    "This is not a failure. Do the work above so the gate can run, then run `headsign next` again.\n";
+  assert.equal(actual, expected);
+});
+
+// --- logLine: .headsign/log line formatting ---
+
+function baseState(overrides: Partial<State> = {}): State {
+  return {
+    workflow: "demo",
+    workflow_path: ".headsign/workflow.yaml",
+    status: "running",
+    phase: "build",
+    attempts: {},
+    total_iterations: 0,
+    last_eval: null,
+    end_reason: null,
+    stop_nudges: 0,
+    ...overrides,
+  };
+}
+
+test("logLine: start", () => {
+  const line = render.logLine("2026-07-23T00:00:00.000Z", { kind: "START", workflow: "demo" }, baseState({ phase: "plan" }));
+  assert.equal(line, `2026-07-23T00:00:00.000Z start plan a=0 i=0 workflow=demo\n`);
+});
+
+test("logLine: retry", () => {
+  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 1, maxAttempts: 3, failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x" }, cached: false };
+  const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
+  assert.equal(line, `ts retry build a=1 i=1 check="tests" exit=1\n`);
+});
+
+test("logLine: retry with a timeout exit code", () => {
+  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 2, failure: { check: "tests", run: "npm test", exitCode: "timeout" as const, outputTail: "x", timeoutSeconds: 5 }, cached: false };
+  const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 2 }, total_iterations: 4 }));
+  assert.equal(line, `ts retry build a=2 i=4 check="tests" exit=timeout\n`);
+});
+
+test("logLine: pass advance", () => {
+  const outcome = { kind: "ADVANCE" as const, phase: "review", description: "Review." };
+  const line = render.logLine("ts", outcome, baseState({ phase: "review", total_iterations: 2 }), "implement");
+  assert.equal(line, `ts advance review a=0 i=2 from=implement\n`);
+});
+
+test("logLine: fail-routed advance names both the origin phase and the failing check", () => {
+  const outcome = {
+    kind: "ADVANCE" as const,
+    phase: "implement",
+    description: "Implement.",
+    failure: { check: "review approved", run: "grep -qx APPROVED verdict", exitCode: 1, outputTail: "x", routedTo: "implement" },
+  };
+  const line = render.logLine("ts", outcome, baseState({ phase: "implement", attempts: { review: 1 }, total_iterations: 3 }), "review");
+  assert.equal(line, `ts advance implement a=0 i=3 from=review routed-fail check="review approved" exit=1\n`);
+});
+
+test("logLine: complete", () => {
+  const line = render.logLine("ts", { kind: "COMPLETE" }, baseState({ phase: "review", total_iterations: 5 }));
+  assert.equal(line, `ts complete review a=0 i=5\n`);
+});
+
+test("logLine: escalate", () => {
+  const outcome = { kind: "ESCALATE" as const, reason: "build: max_attempts (3) exhausted" };
+  const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 3 }, total_iterations: 3 }));
+  assert.equal(line, `ts escalate build a=3 i=3 reason="build: max_attempts (3) exhausted"\n`);
+});
+
+test("logLine: abort", () => {
+  const outcome = { kind: "ABORT" as const, reason: "changed my mind" };
+  const line = render.logLine("ts", outcome, baseState({ phase: "build", total_iterations: 2 }));
+  assert.equal(line, `ts abort build a=0 i=2 reason="changed my mind"\n`);
+});
+
+test("logLine: PENDING is never a valid event to log (defensive — cli.ts must never call this)", () => {
+  const outcome = { kind: "PENDING" as const, phase: "review", ready: "test -f verdict" };
+  assert.throws(() => render.logLine("ts", outcome, baseState({ phase: "review" })));
 });

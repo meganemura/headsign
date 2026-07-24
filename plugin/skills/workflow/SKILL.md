@@ -60,12 +60,14 @@ node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
   (the repo or git-worktree root), not a subdirectory. The Stop hook is the
   exception: it finds the run from any subdirectory up to the repo/worktree
   root, so it still fires even if the session's cwd has drifted.
-- Exit codes are verdicts, not errors: 1 = RETRY, 2 = ESCALATE/ABORT. Read
-  the text, don't treat non-zero as a tool failure. Exit 3 is different — a
-  real usage/config error (unknown command, wrong directory, a workflow that
-  no longer defines the current phase, another `next` already running).
-  Fix the invocation, the directory, or the workflow file; don't loop-retry
-  on it.
+- Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
+  Read the text, don't treat non-zero as a tool failure. PENDING = the gate
+  can't be evaluated yet — not a failure. Produce the artifact it's waiting
+  on (e.g. the reviewer's verdict file), then run `headsign next` again;
+  don't retry-loop on it. Exit 3 is different — a real usage/config error
+  (unknown command, wrong directory, a workflow that no longer defines the
+  current phase, another `next` already running). Fix the invocation, the
+  directory, or the workflow file; don't loop-retry on it.
 - `headsign next` is cheap and safe to call at any moment: if nothing changed
   in the working tree it reprints the last verdict without consuming an
   attempt.

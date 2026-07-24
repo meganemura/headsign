@@ -76,6 +76,28 @@ test("releaseLock on an absent lock file is a silent no-op", () => {
   assert.doesNotThrow(() => state.releaseLock(dir));
 });
 
+// --- .headsign/log I/O ---
+
+test("initLog creates an empty log file", () => {
+  const dir = tmpdir();
+  state.initLog(dir);
+  assert.equal(fs.readFileSync(state.logPath(dir), "utf8"), "");
+});
+
+test("initLog truncates an existing log file", () => {
+  const dir = tmpdir();
+  state.appendLog(dir, "leftover from a previous run\n");
+  state.initLog(dir);
+  assert.equal(fs.readFileSync(state.logPath(dir), "utf8"), "");
+});
+
+test("appendLog appends without truncating, creating the file and .headsign/ if needed", () => {
+  const dir = tmpdir();
+  state.appendLog(dir, "line 1\n");
+  state.appendLog(dir, "line 2\n");
+  assert.equal(fs.readFileSync(state.logPath(dir), "utf8"), "line 1\nline 2\n");
+});
+
 test("atomic write leaves valid JSON and no leftover temp files", () => {
   const dir = tmpdir();
   const s: state.State = {

@@ -88,6 +88,7 @@ phases:
       Have a read-only reviewer subagent report APPROVED or REJECTED, then
       write that verdict yourself to .headsign/tmp/verdict.
     clear: [.headsign/tmp/verdict]
+    ready: "test -f .headsign/tmp/verdict"
     gate:
       checks:
         - name: review approved
@@ -217,6 +218,7 @@ workflow per file); pick one with `headsign start <name>` (→
 |---|---|---|
 | `ADVANCE <phase>` | 0 | gate passed (or fail-routed) — new phase instructions follow |
 | `RETRY n[/max] <phase>` | 1 | gate failed — failing check + output tail follow |
+| `PENDING <phase>` | 1 | the gate can't be judged yet (`ready:`) — attempt not counted; do the work, then `next` again |
 | `COMPLETE` | 0 | terminus |
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
@@ -240,6 +242,19 @@ Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
 Deliberately absent: `needs:`, `if:`, `${{ }}`, matrices, triggers — routing
 is decided by pass/fail and nothing else.
 
+### Async review (when review takes a while)
+
+A review phase's gate often depends on something slower than the loop
+itself — a reviewer subagent still reading the diff, a human glancing at a
+PR. Calling `next` before that verdict exists would, without `ready:`,
+burn a counted attempt on a gate that had nothing to judge yet — and since
+that phase's verdict file is also listed under `clear:` (recommended
+above), a verdict that lands a moment later could be discarded by that
+same early call's next re-entry, silently losing a real review. Give the
+phase a `ready:` probe (e.g. `test -f .headsign/tmp/verdict`) and an early
+`next` answers `PENDING` instead: no attempt spent, `clear:` not run,
+verdict left intact for the `next` that actually finds it.
+
 ### The backstop
 
 Skills are instructions, not guarantees. A Stop hook reads
@@ -253,7 +268,15 @@ the hook lets the session end, and tomorrow `headsign next` picks the run back
 up from the same phase.
 `headsign abort <reason>` is the other exit: it ends the run for good, not a
 pause — the run can't be resumed, and a fresh `headsign start` begins again
-from the entry phase.
+from the entry phase, replaying every phase's gate from scratch. Keeping
+that replay cheap is a design requirement on the workflow, not something
+headsign does for you: write early phases' gates as fast, idempotent
+checks (does a file exist, does lint pass) rather than ones with real
+side effects or long unrepeatable work, and a fresh start after an abort
+costs almost nothing. A workflow whose early gates are slow or non-idempotent
+makes its own re-runs expensive — that's the workflow author's cost to
+manage, by writing cheap gates, not a cost headsign can absorb on its
+behalf.
 
 ## Non-goals
 

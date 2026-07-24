@@ -1,4 +1,6 @@
 // Responsibility: read/write .headsign/state.json; owns the run-state shape (ADR-0004).
+// Also owns I/O for .headsign/log (a sibling, run-scoped transition log; see ADR-0004) —
+// line formatting itself lives in render.ts's logLine, not here.
 // Must NOT know about: routing rules, the workflow YAML schema.
 
 import fs from "node:fs";
@@ -38,6 +40,22 @@ export function writeState(cwd: string, state: State): void {
 
 export function lockPath(cwd: string): string {
   return path.join(cwd, ".headsign", "lock");
+}
+
+export function logPath(cwd: string): string {
+  return path.join(cwd, ".headsign", "log");
+}
+
+// Truncates (or creates) the run-transition log. Called once, by `start`, so each run's
+// log begins empty — call sites and exact line format are owned by render.ts/cli.ts.
+export function initLog(cwd: string): void {
+  fs.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
+  fs.writeFileSync(logPath(cwd), "");
+}
+
+export function appendLog(cwd: string, line: string): void {
+  fs.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
+  fs.appendFileSync(logPath(cwd), line);
 }
 
 // Serializes concurrent `headsign next` in the same .headsign/ (e.g. multiple subagents

@@ -57,6 +57,11 @@ function readState(dir: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8"));
 }
 
+function readLog(dir: string): string[] {
+  const raw = fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8");
+  return raw.split("\n").filter((l) => l.length > 0);
+}
+
 const TWO_PHASE_WORKFLOW = `
 version: 1
 name: demo
@@ -388,7 +393,7 @@ phases:
   assert.equal(finalState.total_iterations, PROCESS_COUNT, "no evaluation's total_iterations increment may be lost to a stale overwrite");
 });
 
-test("start ensures .headsign/.gitignore contains state.json, lock, and tmp/, one entry per line", () => {
+test("start ensures .headsign/.gitignore contains state.json, lock, log, and tmp/, one entry per line", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
@@ -398,6 +403,7 @@ test("start ensures .headsign/.gitignore contains state.json, lock, and tmp/, on
     .map((l) => l.trim());
   assert.ok(lines.includes("state.json"));
   assert.ok(lines.includes("lock"));
+  assert.ok(lines.includes("log"));
   assert.ok(lines.includes("tmp/"));
 });
 
@@ -663,6 +669,98 @@ phases:
   assert.equal(fs.existsSync(path.join(dir, "artifact.txt")), true, "a retry within the same phase must not re-run that phase's clear");
 });
 
+test("clear announcement: a non-empty cleared file on ADVANCE is announced right after the token line, before the phase block", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: review
+  review:
+    description: "Review."
+    clear: [.headsign/verdict]
+    gate:
+      checks:
+        - run: "grep -qx APPROVED .headsign/verdict"
+    on_pass: "$end"
+`,
+  );
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".headsign", "verdict"), "REJECTED\n");
+  run(["start"], { cwd: dir });
+
+  const advanceResult = run(["next"], { cwd: dir });
+  assert.equal(advanceResult.status, 0);
+  assert.equal(advanceResult.stdout, `ADVANCE review\n--- cleared: .headsign/verdict ---\n--- phase: review ---\nReview.\n`);
+});
+
+test("clear announcement: an absent or empty cleared file is not announced", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: review
+  review:
+    description: "Review."
+    clear: [.headsign/verdict, .headsign/empty]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".headsign", "empty"), ""); // exists but zero-size -> not announced
+  run(["start"], { cwd: dir });
+
+  const advanceResult = run(["next"], { cwd: dir });
+  assert.equal(advanceResult.status, 0);
+  assert.equal(advanceResult.stdout, `ADVANCE review\n--- phase: review ---\nReview.\n`);
+});
+
+test("clear announcement on start: the entry phase's non-empty cleared file is announced right after START <phase>", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: [.headsign/scratch]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".headsign", "scratch"), "leftover\n");
+
+  const result = run(["start"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `START build\n--- cleared: .headsign/scratch ---\n--- phase: build ---\nBuild.\n`);
+});
+
 test("validate rejects a phase's clear entry that is an absolute path", () => {
   const dir = tmpdir();
   writeWorkflow(
@@ -709,6 +807,213 @@ phases:
   assert.equal(result.status, 3);
   assert.match(result.stderr, /INVALID/);
   assert.match(result.stderr, /clear/);
+});
+
+// --- ready: / PENDING ---
+
+const READY_REVIEW_WORKFLOW = `
+version: 1
+name: demo
+entry: review
+phases:
+  review:
+    description: "Review."
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: "$end"
+`;
+
+test("ready non-zero: next prints PENDING <phase> as the first line, exits 1, and leaves state.json byte-identical (no write at all)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const beforeBytes = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /^PENDING review\n/);
+  assert.match(result.stdout, /not ready yet — no attempt counted/);
+
+  const afterBytes = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  assert.deepEqual(afterBytes, beforeBytes, "the PENDING path must not call writeState at all");
+});
+
+test("after PENDING, writing the verdict artifact makes the probe pass and next proceeds to a real (counted) evaluation", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const pendingResult = run(["next"], { cwd: dir });
+  assert.match(pendingResult.stdout, /^PENDING review\n/);
+
+  fs.writeFileSync(path.join(dir, ".headsign", "tmp", "verdict"), "REJECTED\n");
+  const evaluated = run(["next"], { cwd: dir });
+  assert.equal(evaluated.status, 1);
+  assert.match(evaluated.stdout, /^RETRY 1 review\n/);
+  assert.equal((readState(dir).attempts as Record<string, number>).review, 1);
+
+  fs.writeFileSync(path.join(dir, ".headsign", "tmp", "verdict"), "APPROVED\n");
+  const completeResult = run(["next"], { cwd: dir });
+  assert.equal(completeResult.status, 0);
+  assert.match(completeResult.stdout, /^COMPLETE\n/);
+});
+
+test("PENDING never routes via on_fail, even when the phase declares one — it always prints PENDING <phase> for the current phase", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: review
+phases:
+  review:
+    description: "Review."
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: "$end"
+    on_fail: implement
+  implement:
+    description: "Implement."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: review
+`,
+  );
+  run(["start"], { cwd: dir });
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, `PENDING review\n--- not ready yet — no attempt counted (readiness: test -f .headsign/tmp/verdict) ---\n--- phase: review ---\nReview.\nThis is not a failure. Do the work above so the gate can run, then run \`headsign next\` again.\n`);
+});
+
+test("PENDING does not reset stop_nudges — it never runs step(), so the loop guard is untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["stop-hook"], { cwd: dir, input: "{}" });
+  run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(readState(dir).stop_nudges, 2);
+
+  const result = run(["next"], { cwd: dir });
+  assert.match(result.stdout, /^PENDING review\n/);
+  assert.equal(readState(dir).stop_nudges, 2);
+});
+
+// --- .headsign/log ---
+
+test("log: start truncates/creates the log with exactly one start line naming the workflow", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ start build a=0 i=0 workflow=demo$/);
+});
+
+test("log: a second start truncates the previous run's log rather than appending to it", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["abort", "done"], { cwd: dir });
+  assert.ok(readLog(dir).length >= 2);
+
+  run(["start"], { cwd: dir });
+  assert.equal(readLog(dir).length, 1);
+});
+
+test("log: retry/advance/complete append one line each; a cached (unchanged) re-display appends nothing", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  assert.equal(readLog(dir).length, 1); // start
+
+  run(["next"], { cwd: dir }); // real RETRY
+  assert.equal(readLog(dir).length, 2);
+
+  run(["next"], { cwd: dir }); // unchanged tree -> cached RETRY, no new line
+  assert.equal(readLog(dir).length, 2);
+
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+  run(["next"], { cwd: dir }); // real ADVANCE
+  assert.equal(readLog(dir).length, 3);
+
+  run(["next"], { cwd: dir }); // real COMPLETE
+  assert.equal(readLog(dir).length, 4);
+
+  const lines = readLog(dir);
+  assert.match(lines[1], /^\S+ retry build a=1 i=1 check="/);
+  assert.match(lines[2], /^\S+ advance verify a=0 i=2 from=build$/);
+  assert.match(lines[3], /^\S+ complete verify a=0 i=3$/);
+});
+
+test("log: complete re-display (idempotent next after COMPLETE) appends nothing", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+  run(["next"], { cwd: dir });
+  run(["next"], { cwd: dir }); // COMPLETE
+  const lengthAfterComplete = readLog(dir).length;
+
+  run(["next"], { cwd: dir }); // idempotent re-display
+  assert.equal(readLog(dir).length, lengthAfterComplete);
+});
+
+test("log: abort appends one line", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const before = readLog(dir).length;
+  run(["abort", "changed", "my", "mind"], { cwd: dir });
+  const lines = readLog(dir);
+  assert.equal(lines.length, before + 1);
+  assert.match(lines[lines.length - 1], /^\S+ abort build a=0 i=0 reason="changed my mind"$/);
+});
+
+test("log: PENDING appends nothing", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const before = readLog(dir).length;
+  run(["next"], { cwd: dir }); // PENDING
+  assert.equal(readLog(dir).length, before);
+});
+
+test("log: an escalate via max_total_iterations appends one escalate line", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+limits:
+  max_total_iterations: 1
+`,
+  );
+  run(["start"], { cwd: dir });
+  const first = run(["next"], { cwd: dir }); // real RETRY, total_iterations -> 1
+  assert.equal(first.status, 1);
+  const before = readLog(dir).length;
+
+  const result = run(["next"], { cwd: dir }); // total_iterations(1) >= limit(1) -> ESCALATE, checked before the gate
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /^ESCALATE/);
+  const lines = readLog(dir);
+  assert.equal(lines.length, before + 1);
+  assert.match(lines[lines.length - 1], /^\S+ escalate build a=1 i=1 reason="/);
 });
 
 // --- stop hook (ADR-0006) ---

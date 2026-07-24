@@ -7435,6 +7435,9 @@ function validatePhase(name, p, names, errors) {
     }
   }
   if (p.env !== void 0 && !isMap(p.env)) errors.push(`phase '${name}': env must be a mapping`);
+  if (p.ready !== void 0 && (typeof p.ready !== "string" || !p.ready)) {
+    errors.push(`phase '${name}': ready must be a non-empty shell string`);
+  }
   if (typeof p.on_pass !== "string" || !p.on_pass) errors.push(`phase '${name}': on_pass is required`);
   else if (p.on_pass === "retry") errors.push(`phase '${name}': on_pass cannot be 'retry'`);
   else if (p.on_pass !== "$end" && !names.has(p.on_pass)) errors.push(`phase '${name}': on_pass '${p.on_pass}' does not name a defined phase`);
@@ -7481,6 +7484,17 @@ function writeState(cwd, state) {
 }
 function lockPath(cwd) {
   return path.join(cwd, ".headsign", "lock");
+}
+function logPath(cwd) {
+  return path.join(cwd, ".headsign", "log");
+}
+function initLog(cwd) {
+  fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
+  fs2.writeFileSync(logPath(cwd), "");
+}
+function appendLog(cwd, line) {
+  fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
+  fs2.appendFileSync(logPath(cwd), line);
 }
 function acquireLock(cwd) {
   fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
@@ -7571,6 +7585,17 @@ ${outputTail}`
   }
   return { pass: true };
 }
+function isReady(sh, cwd, env) {
+  const envVars = env ? Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)])) : {};
+  const result = spawnSync("/bin/sh", ["-c", sh], {
+    cwd,
+    env: { ...process.env, ...envVars },
+    timeout: DEFAULT_TIMEOUT_SECONDS * 1e3,
+    stdio: "ignore"
+  });
+  if (result.error) return true;
+  return result.status === 0;
+}
 function buildTail(stdout, stderr) {
   const combined = stdout + stderr;
   const truncated = combined.length > OUTPUT_TAIL_LIMIT;
@@ -7605,7 +7630,11 @@ function revParseHead(cwd) {
 }
 function statusEntries(cwd, gitRoot) {
   const realCwd = tryOr(() => fs3.realpathSync(cwd), cwd);
-  const excluded = /* @__PURE__ */ new Set([path2.join(realCwd, ".headsign", "state.json"), path2.join(realCwd, ".headsign", "lock")]);
+  const excluded = /* @__PURE__ */ new Set([
+    path2.join(realCwd, ".headsign", "state.json"),
+    path2.join(realCwd, ".headsign", "lock"),
+    path2.join(realCwd, ".headsign", "log")
+  ]);
   const lines = execFileSync("git", ["status", "--porcelain", "-uall"], { cwd, encoding: "utf8" }).split("\n").filter((l) => l.length > 0).sort();
   const entries = [];
   for (const line of lines) {
@@ -7620,7 +7649,7 @@ function statusEntries(cwd, gitRoot) {
 }
 function headsignEntries(cwd) {
   const dir = path2.join(cwd, ".headsign");
-  return listFiles(dir).filter((f) => !["state.json", "lock"].includes(path2.relative(dir, f))).sort().map((f) => `${path2.relative(cwd, f)}:${hashFile(f)}`);
+  return listFiles(dir).filter((f) => !["state.json", "lock", "log"].includes(path2.relative(dir, f))).sort().map((f) => `${path2.relative(cwd, f)}:${hashFile(f)}`);
 }
 function listFiles(dir) {
   const entries = tryOr(() => fs3.readdirSync(dir, { withFileTypes: true }), []);
@@ -7727,18 +7756,30 @@ function step(workflow, state, gateResult, treeHash2) {
 }
 
 // src/render.ts
-function start(phase, description) {
+function start(phase, description, cleared) {
   return `START ${phase}
---- phase: ${phase} ---
+${clearedBlock(cleared)}--- phase: ${phase} ---
 ${description}
 `;
 }
-function advance(phase, description, failure) {
+function advance(phase, description, failure, cleared) {
   const failedLine = failure ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds)}) \u2192 routed to ${failure.routedTo} ---
 ` : "";
   return `ADVANCE ${phase}
-${failedLine}--- phase: ${phase} ---
+${clearedBlock(cleared)}${failedLine}--- phase: ${phase} ---
 ${description}
+`;
+}
+function clearedBlock(cleared) {
+  return (cleared ?? []).map((p) => `--- cleared: ${p} ---
+`).join("");
+}
+function pending(phase, description, ready) {
+  return `PENDING ${phase}
+--- not ready yet \u2014 no attempt counted (readiness: ${ready}) ---
+--- phase: ${phase} ---
+${description}
+This is not a failure. Do the work above so the gate can run, then run \`headsign next\` again.
 `;
 }
 function retry(o) {
@@ -7777,6 +7818,51 @@ ${errors.map((e) => `- ${e}
 }
 function clause(run, exitCode, timeoutSeconds) {
   return exitCode === "timeout" ? `${run}, timed out after ${timeoutSeconds}s` : `${run}, exit ${exitCode}`;
+}
+function logLine(ts, event, state, prevPhase) {
+  const phase = state.phase;
+  const a = state.attempts[phase] ?? 0;
+  const i = state.total_iterations;
+  const head = `${ts} ${eventName(event)} ${phase} a=${a} i=${i}`;
+  const detail = logDetail(event, prevPhase);
+  return detail ? `${head} ${detail}
+` : `${head}
+`;
+}
+function eventName(event) {
+  switch (event.kind) {
+    case "START":
+      return "start";
+    case "ADVANCE":
+      return "advance";
+    case "COMPLETE":
+      return "complete";
+    case "RETRY":
+      return "retry";
+    case "ESCALATE":
+      return "escalate";
+    case "ABORT":
+      return "abort";
+    case "PENDING":
+      throw new Error("logLine: PENDING is never logged");
+  }
+}
+function logDetail(event, prevPhase) {
+  switch (event.kind) {
+    case "START":
+      return `workflow=${event.workflow}`;
+    case "RETRY":
+      return `check="${event.failure.check}" exit=${event.failure.exitCode}`;
+    case "ADVANCE":
+      return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}` : `from=${prevPhase}`;
+    case "ESCALATE":
+    case "ABORT":
+      return `reason="${event.reason}"`;
+    case "COMPLETE":
+      return "";
+    case "PENDING":
+      throw new Error("logLine: PENDING is never logged");
+  }
 }
 
 // src/stophook.ts
@@ -7852,10 +7938,10 @@ function loadWorkflowOrExit(workflowPath) {
   if (!wf) stderrExit(validateFail(workflowPath, errors), 3);
   return wf;
 }
-function printOutcome(outcome, workflowName) {
+function printOutcome(outcome, workflowName, ctx) {
   switch (outcome.kind) {
     case "ADVANCE":
-      return exitAfter(advance(outcome.phase, outcome.description, outcome.failure), 0);
+      return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared), 0);
     case "COMPLETE":
       return exitAfter(complete(workflowName), 0);
     case "RETRY":
@@ -7864,6 +7950,8 @@ function printOutcome(outcome, workflowName) {
       return exitAfter(escalate(outcome.reason), 2);
     case "ABORT":
       return exitAfter(abort(outcome.reason), 2);
+    case "PENDING":
+      return exitAfter(pending(outcome.phase, ctx.wf.phases[outcome.phase].description, outcome.ready), 1);
   }
 }
 function exitAfter(text, code) {
@@ -7881,7 +7969,7 @@ function ensureHeadsignGitignored(cwd) {
   const gitignorePath = path4.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath);
   let content = original;
-  for (const entry of ["state.json", "lock", "tmp/"]) {
+  for (const entry of ["state.json", "lock", "log", "tmp/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
     const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
     content = `${content}${sep}${entry}
@@ -7890,12 +7978,22 @@ function ensureHeadsignGitignored(cwd) {
   if (content !== original) fs5.writeFileSync(gitignorePath, content);
 }
 function clearPhaseArtifacts(cwd, phase) {
+  const cleared = [];
   for (const rel of phase.clear ?? []) {
+    const full = path4.join(cwd, rel);
+    let removedNonEmptyFile = false;
     try {
-      fs5.rmSync(path4.join(cwd, rel), { force: true });
+      const st = fs5.statSync(full);
+      removedNonEmptyFile = st.isFile() && st.size > 0;
     } catch {
     }
+    try {
+      fs5.rmSync(full, { force: true });
+    } catch {
+    }
+    if (removedNonEmptyFile) cleared.push(rel);
   }
+  return cleared;
 }
 function cmdStart(args) {
   const workflowPath = resolveWorkflowPath(args);
@@ -7905,7 +8003,7 @@ function cmdStart(args) {
   if (existing && existing.status === "running") {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
-  writeState(cwd, {
+  const freshState = {
     workflow: wf.name,
     workflow_path: workflowPath,
     status: "running",
@@ -7915,13 +8013,16 @@ function cmdStart(args) {
     last_eval: null,
     end_reason: null,
     stop_nudges: 0
-  });
+  };
+  writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
+  initLog(cwd);
+  appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), { kind: "START", workflow: wf.name }, freshState));
   const tmpDir = path4.join(cwd, ".headsign", "tmp");
   fs5.rmSync(tmpDir, { recursive: true, force: true });
   fs5.mkdirSync(tmpDir, { recursive: true });
-  clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  exitAfter(start(wf.entry, wf.phases[wf.entry].description), 0);
+  const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+  exitAfter(start(wf.entry, wf.phases[wf.entry].description, cleared), 0);
 }
 function evaluateNext(cwd, wf, current) {
   if (!wf.phases[current.phase]) {
@@ -7933,16 +8034,22 @@ function evaluateNext(cwd, wf, current) {
   const limitHit = checkIterationLimit(wf, current);
   if (limitHit) {
     writeState(cwd, limitHit.state);
-    return limitHit.outcome;
+    appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), limitHit.outcome, limitHit.state));
+    return { outcome: limitHit.outcome };
   }
   const hash = treeHash(cwd);
-  if (shouldUseCache(current, hash)) return cachedRetry(wf, current);
+  if (shouldUseCache(current, hash)) return { outcome: cachedRetry(wf, current) };
   const phase = wf.phases[current.phase];
+  if (phase.ready !== void 0 && !isReady(phase.ready, cwd, phase.env)) {
+    return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
+  }
   const gateResult = runGate(phase.gate.checks, cwd, phase.env);
   const { state: nextState, outcome } = step(wf, current, gateResult, hash);
-  if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
+  let cleared;
+  if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);
-  return outcome;
+  appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), outcome, nextState, current.phase));
+  return { outcome, cleared };
 }
 function cmdNext() {
   const cwd = process.cwd();
@@ -7967,9 +8074,9 @@ function cmdNext() {
     releaseLock(cwd);
     printOutcome(terminalOutcome(fresh), fresh.workflow);
   }
-  const outcome = evaluateNext(cwd, wf, fresh);
+  const { outcome, cleared } = evaluateNext(cwd, wf, fresh);
   releaseLock(cwd);
-  printOutcome(outcome, wf.name);
+  printOutcome(outcome, wf.name, { wf, cleared });
 }
 function cmdAbort(args) {
   const cwd = process.cwd();
@@ -7983,7 +8090,9 @@ function cmdAbort(args) {
     errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.`);
   }
   const reason = args.join(" ");
-  writeState(cwd, { ...current, status: "aborted", end_reason: reason || null });
+  const nextState = { ...current, status: "aborted", end_reason: reason || null };
+  writeState(cwd, nextState);
+  appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), { kind: "ABORT", reason }, nextState));
   exitAfter(abort(reason), 2);
 }
 function cmdValidate(args) {

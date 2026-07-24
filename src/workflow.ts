@@ -14,6 +14,7 @@ export interface Phase {
   on_fail?: string;
   max_attempts?: number;
   on_exhausted?: string;
+  ready?: string;
 }
 export interface Workflow { version: number; name: string; entry: string; phases: Record<string, Phase>; limits?: { max_total_iterations?: number } }
 
@@ -91,6 +92,12 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
   }
 
   if (p.env !== undefined && !isMap(p.env)) errors.push(`phase '${name}': env must be a mapping`);
+
+  // `ready` is a readiness probe, not a routing field: it never adds a graph edge, so it
+  // takes no part in the `unreachable()` walk below.
+  if (p.ready !== undefined && (typeof p.ready !== "string" || !p.ready)) {
+    errors.push(`phase '${name}': ready must be a non-empty shell string`);
+  }
 
   if (typeof p.on_pass !== "string" || !p.on_pass) errors.push(`phase '${name}': on_pass is required`);
   else if (p.on_pass === "retry") errors.push(`phase '${name}': on_pass cannot be 'retry'`);

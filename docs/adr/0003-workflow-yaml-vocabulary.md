@@ -34,6 +34,17 @@ order, plus an explicit refusal list.
 - matrix — no.
 - takt/jdi vocabulary (persona, provider, movement) — different layer.
 - Conductor's Jinja2 templating — same reason as expressions.
+- **Gate indirection** — a pattern where the agent writes its own judge
+  script at run time (e.g. `.headsign/tmp/gate.sh`) and the workflow's gate
+  calls that script rather than checking something fixed. This makes the
+  same agent author both the code under test and the judgment of it,
+  losing the separation a gate exists to provide — a gate an agent can
+  rewrite is not a gate, it's a suggestion the agent can also grade. Two
+  correct alternatives cover the real need: (a) split the work into its
+  own phase or workflow with a fixed, reviewed gate, rather than trying to
+  make one gate cover every case; or (b) commit a stable judgment script
+  and reference it from `workflow.yaml` — once it's committed, it goes
+  through the same review as any other code, not around it.
 
 CI-likeness is for reading familiarity only, never for semantics.
 
@@ -59,6 +70,15 @@ phases:                 # required, at least one
     max_attempts: 3     # optional; absent = unlimited
     on_exhausted: escalate  # optional: escalate(default) | abort
 
+  review:
+    description: …
+    ready: "test -f .headsign/tmp/verdict"  # optional; PENDING (not a failure,
+                                             # not counted) while this fails
+    gate:
+      checks:
+        - run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: $end
+
 limits:                 # optional
   max_total_iterations: 20  # optional; global runaway backstop
 ```
@@ -66,9 +86,13 @@ limits:                 # optional
 `headsign validate` enforces: version/name/entry present, entry exists,
 every routing target names a defined phase or an allowed token, checks
 non-empty with `run` strings, timeouts positive, phases reachable from
-entry, and `max_attempts` not paired with `on_fail: escalate`/`abort` (the
+entry, `max_attempts` not paired with `on_fail: escalate`/`abort` (the
 first failure would already end the run, so `max_attempts` could never be
-reached).
+reached), and `ready`, when present, is a non-empty shell string. `ready`
+adds no routing edge and takes no part in the reachability check — it
+gates whether the phase's own gate runs at all, it never sends the run
+anywhere (see ADR-0002's transition table for its place in evaluation
+order, attempts/state semantics, and why the fifth token was worth it).
 
 ### Human gates in v1
 

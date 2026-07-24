@@ -39,7 +39,11 @@ function statusEntries(cwd: string, gitRoot: string): string[] {
   // form. Resolve cwd the same way so the exclusion check below reliably compares two
   // paths to the same file instead of two different spellings of it.
   const realCwd = tryOr(() => fs.realpathSync(cwd), cwd);
-  const excluded = new Set([path.join(realCwd, ".headsign", "state.json"), path.join(realCwd, ".headsign", "lock")]);
+  const excluded = new Set([
+    path.join(realCwd, ".headsign", "state.json"),
+    path.join(realCwd, ".headsign", "lock"),
+    path.join(realCwd, ".headsign", "log"),
+  ]);
   const lines = execFileSync("git", ["status", "--porcelain", "-uall"], { cwd, encoding: "utf8" })
     .split("\n")
     .filter((l) => l.length > 0)
@@ -61,11 +65,12 @@ function statusEntries(cwd: string, gitRoot: string): string[] {
 
 function headsignEntries(cwd: string): string[] {
   // .headsign/ is typically gitignored, yet gates legitimately read/write files there
-  // (verdict, approved); state.json and lock are excluded because headsign itself
-  // rewrites/holds them.
+  // (verdict, approved); state.json, lock, and log are excluded because headsign itself
+  // rewrites/holds them (log: appended on every real evaluation, which would otherwise
+  // make the cache self-invalidating the same way state.json would).
   const dir = path.join(cwd, ".headsign");
   return listFiles(dir)
-    .filter((f) => !["state.json", "lock"].includes(path.relative(dir, f)))
+    .filter((f) => !["state.json", "lock", "log"].includes(path.relative(dir, f)))
     .sort()
     .map((f) => `${path.relative(cwd, f)}:${hashFile(f)}`);
 }

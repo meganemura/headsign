@@ -158,13 +158,53 @@ the one on disk afterward), and `releaseLock` only removes a lock this
 process still owns, so a stealer's fresh lock is never deleted out from
 under it by the process it stole from.
 
+### `.headsign/log` (the run-scoped transition log)
+
+A sibling of `state.json` and `lock`: `.headsign/log` records every real
+transition of a run as one line per event, in order — which phase was
+visited, how many times it failed, and why the run ended, so a devlog
+written after the fact no longer has to be reconstructed from the
+conversation. `start` truncates it: a run scopes its own log, and a
+previous run's history must not bleed into a new one. Every other write is
+an append.
+
+All I/O for this file lives in `state.ts` (`initLog`/`appendLog`); its line
+format lives in `render.ts` (`logLine`), pure text formatting with no I/O
+of its own; `cli.ts` captures the timestamp (`new Date().toISOString()`)
+and is the only caller of either — the same clock-and-I/O-stays-in-cli.ts
+split this ADR already keeps engine.ts out of.
+
+Four call sites, one line each: `start` (truncate, then a `start` line),
+`next`'s iteration-limit branch (an `escalate` line), `next`'s real
+evaluation after `step()` (a `retry` / `advance` / `complete` / `escalate`
+/ `abort` line, matching the outcome), and `abort` (an `abort` line). A
+cached (tree-unchanged) RETRY re-display, a terminal-state re-display, and
+a PENDING answer (ADR-0002) are deliberately silent — none of the three is
+a transition, and logging one would make the log say something happened
+when nothing did.
+
+Line format: `<ISO-ts> <event> <phase> a=<attempts[phase] ?? 0>
+i=<total_iterations> <detail>`, where `<detail>` supplies whatever the
+event needs beyond those shared fields — the workflow name for `start`,
+the failing check for `retry`, the origin phase for an `advance`, the
+reason for `escalate`/`abort`.
+
+Excluded from the tree-hash cache (`treehash.ts`'s `headsignEntries`
+filter and `statusEntries`'s exclusion set) for the same reason
+`state.json` is: headsign itself appends to it on every real evaluation,
+so leaving it in would make the cache self-invalidating the moment an
+entry got appended to invalidate against. Excluded from
+`.headsign/.gitignore` alongside `state.json`, `lock`, and `tmp/` for the
+same reason those are — it is run-scoped, headsign-internal bookkeeping,
+not a workflow artifact a team would want tracked.
+
 ### start / abort details
 
 - `start` refuses to clobber a `running` state (exit 3; instruct to
   continue with `next` or `abort` first). Terminal states are overwritten.
-- `start` ensures `.headsign/.gitignore` ignores `state.json`, `lock`, and
-  `tmp/`, so run state, the concurrency lock, and scratch artifacts can never
-  be committed by accident.
+- `start` ensures `.headsign/.gitignore` ignores `state.json`, `lock`,
+  `log`, and `tmp/`, so run state, the concurrency lock, the transition
+  log, and scratch artifacts can never be committed by accident.
 - `start` also empties and recreates `.headsign/tmp/`, a run-scoped scratch
   directory for transient artifacts (review verdicts, tickets, notes) so
   nothing from a previous run leaks into this one. Unlike `state.json` and
@@ -184,4 +224,9 @@ under it by the process it stole from.
   them back, so they were write-only bookkeeping (and `history` was the
   only reason `step()` needed a clock at all). If an audit log is wanted
   later, design it together with its reader rather than writing it on
-  spec.
+  spec. `.headsign/log` (above) is that log, reintroduced later once a
+  reader actually existed — a devlog written after a run ends, previously
+  reconstructed from the conversation — and designed together with that
+  reader rather than sitting write-only the way `history` did. This is
+  consistent with, not a reversal of, the removal above: the objection was
+  never to a log, it was to writing one before anything read it.

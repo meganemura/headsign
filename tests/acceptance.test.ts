@@ -243,3 +243,44 @@ test("stop-hook: a directory that has never used headsign exits 0", () => {
   const result = run(["stop-hook"], { cwd: tmpdir(), input: "{}" });
   assert.equal(result.status, 0);
 });
+
+// --- 7 (pending-and-log): ready:/PENDING and .headsign/log, through the shipped bundle ---
+
+test("ready:/PENDING: an early next is PENDING (not counted, no state write) until the probe passes, and .headsign/log records only real transitions", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: review-async
+entry: review
+phases:
+  review:
+    description: "Review."
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir });
+  const logAfterStart = fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8").trim().split("\n");
+  assert.equal(logAfterStart.length, 1);
+  assert.match(logAfterStart[0], /start review a=0 i=0 workflow=review-async$/);
+
+  const beforeBytes = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const pending = run(["next"], { cwd: dir });
+  assert.equal(pending.status, 1);
+  assert.match(pending.stdout, /^PENDING review\n/);
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "state.json")), beforeBytes, "PENDING must not write state.json");
+  assert.equal(fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8").trim().split("\n").length, 1, "PENDING must not append to the log");
+
+  writeFile(dir, ".headsign/tmp/verdict", "APPROVED\n");
+  const completeResult = run(["next"], { cwd: dir });
+  assert.equal(completeResult.status, 0);
+  assert.match(completeResult.stdout, /^COMPLETE\n/);
+  const finalLog = fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8").trim().split("\n");
+  assert.equal(finalLog.length, 2);
+  assert.match(finalLog[1], /complete review a=0 i=1$/);
+});

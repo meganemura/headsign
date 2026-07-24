@@ -13,7 +13,11 @@ export type Outcome =
   | { kind: "COMPLETE" }
   | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; cached: boolean }
   | { kind: "ESCALATE"; reason: string }
-  | { kind: "ABORT"; reason: string };
+  | { kind: "ABORT"; reason: string }
+  // Constructed only in cli.ts (the `ready` probe, short-circuited before the gate runs —
+  // same treatment as the phase-missing guard). step() never produces this: it stays pure
+  // and clock-free, with no I/O and no shell probe of its own.
+  | { kind: "PENDING"; phase: string; ready: string };
 
 export function shouldUseCache(state: State, treeHash: string | null): boolean {
   const le = state.last_eval;

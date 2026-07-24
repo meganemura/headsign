@@ -72,3 +72,33 @@ test("timeout is reported as a failure with a timeout marker", () => {
     assert.equal(result.timeoutSeconds, 0.2);
   }
 });
+
+// --- isReady: the `ready:` readiness probe ---
+
+test("isReady: exit 0 means ready", () => {
+  assert.equal(gate.isReady("true", tmpdir(), undefined), true);
+});
+
+test("isReady: nonzero exit means not ready", () => {
+  assert.equal(gate.isReady("false", tmpdir(), undefined), false);
+});
+
+test("isReady: runs in the given cwd, like runGate", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "marker"), "");
+  assert.equal(gate.isReady("test -f marker", dir, undefined), true);
+  assert.equal(gate.isReady("test -f nope", dir, undefined), false);
+});
+
+test("isReady: phase env reaches the probe, coerced to strings like runGate", () => {
+  assert.equal(gate.isReady('test "$FOO" = "bar"', tmpdir(), { FOO: "bar" }), true);
+  assert.equal(gate.isReady('test "$COUNT" = "3"', tmpdir(), { COUNT: 3 }), true);
+});
+
+test("isReady: fails open (true) on a spawn error rather than stalling the run behind a broken probe", () => {
+  // A nonexistent cwd makes spawnSync fail to launch /bin/sh at all (result.error set),
+  // as distinct from the shell running and exiting nonzero — use a command that would
+  // report "not ready" if it ever ran, so a false pass can't hide a broken fail-open path.
+  const brokenCwd = path.join(tmpdir(), "does-not-exist");
+  assert.equal(gate.isReady("false", brokenCwd, undefined), true);
+});

@@ -42,6 +42,7 @@ so prose language is cosmetic).
 START <phase>       exit 0   (from `headsign start`)
 ADVANCE <phase>     exit 0
 RETRY <n>[/<max>] <phase>   exit 1
+PENDING <phase>     exit 1   (not ready yet — no attempt counted; see below)
 COMPLETE            exit 0
 ESCALATE <reason>   exit 2
 ABORT <reason>      exit 2
@@ -61,6 +62,7 @@ Evaluated on `headsign next` for the current phase P:
 
 | Event | Route field | Allowed values | Effect |
 |---|---|---|---|
+| `ready:` probe fails (phase declares `ready`) | `ready` (optional) | non-empty shell string | PENDING (see below) |
 | gate passes | `on_pass` (required) | phase name, `$end` | ADVANCE to phase / COMPLETE |
 | gate fails, attempts < max | `on_fail` (default `retry`) | `retry`, phase name, `$end`, `escalate`, `abort` | RETRY / ADVANCE(with failure note) / COMPLETE / ESCALATE / ABORT |
 | gate fails, attempts ≥ `max_attempts` | `on_exhausted` (default `escalate`) | `escalate`, `abort` | ESCALATE / ABORT |
@@ -70,14 +72,32 @@ Notes:
 
 - A fail-routed phase transition (e.g. review rejected → back to implement)
   emits **ADVANCE** with a "gate failed → routed to X" note. Claude only
-  needs to know where to go; four tokens stay four.
+  needs to know where to go; that keeps a routing effect from costing a
+  token of its own.
 - `max_attempts` absent means unlimited per-phase retries;
   `limits.max_total_iterations` is the global runaway backstop.
 - Checks run in order and stop at the first failure; its `name` (or `run`
   text) plus a stdout/stderr tail become the RETRY message.
+- The `ready:` probe is evaluated after the tree-hash cache check and
+  before the gate — never inside it, and never inside `step()`. It is
+  itself uncached and uncounted: no `attempts`/`total_iterations` change,
+  `last_eval` and `stop_nudges` are untouched, and `state.json` is not
+  written at all on this path. A phase with no `ready:` behaves exactly as
+  before this ADR's revision — always "ready", straight to the gate.
 
 ## Consequences
 
 - The skill can teach one rule: obey the first-line token.
-- Adding a fifth token or a fifth command requires revisiting this ADR —
-  which is the intended friction.
+- A sixth token or a fifth command still requires revisiting this ADR — the
+  friction is deliberate, and PENDING is the one time so far it was worth
+  paying. Real usage (a second round of field feedback, reviewed against
+  the run logs and cross-checked with a persona-based design review) found
+  the four-token vocabulary had no way to say "no verdict exists yet"
+  without reusing RETRY — and RETRY meaning both "no verdict" and "verdict:
+  fail" was close to a lie. An async review phase's `next`, called early,
+  would burn a counted attempt for work nobody had judged, and a `clear:`
+  on the phase's own re-entry could then discard a verdict that arrived a
+  moment later. That is a real, distinct failure mode from a rejected
+  gate, and conflating the two under one token was the bug — not a
+  simplification worth keeping. Paying this ADR's friction once, on
+  purpose, was cheaper than leaving that lie in the contract.

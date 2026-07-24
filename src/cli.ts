@@ -55,10 +55,15 @@ function loadWorkflowOrExit(workflowPath: string): workflowMod.Workflow {
   return wf;
 }
 
-function printOutcome(outcome: engine.Outcome, workflowName: string): never {
+// `ctx` carries what the Outcome type itself deliberately doesn't (per-call-site render
+// extras, not routing state): the loaded workflow (to resolve a PENDING phase's
+// description) and the ADVANCE path's cleared-artifact list. Only cmdNext's real
+// evaluateNext() call has both available and can produce ADVANCE/PENDING; the two
+// terminal-reprint call sites only ever pass COMPLETE/ESCALATE/ABORT, which don't need it.
+function printOutcome(outcome: engine.Outcome, workflowName: string, ctx?: { wf: workflowMod.Workflow; cleared?: string[] }): never {
   switch (outcome.kind) {
     case "ADVANCE":
-      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure), 0);
+      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared), 0);
     case "COMPLETE":
       return exitAfter(render.complete(workflowName), 0);
     case "RETRY":
@@ -67,6 +72,10 @@ function printOutcome(outcome: engine.Outcome, workflowName: string): never {
       return exitAfter(render.escalate(outcome.reason), 2);
     case "ABORT":
       return exitAfter(render.abort(outcome.reason), 2);
+    case "PENDING":
+      // ctx.wf is guaranteed here: PENDING is only ever constructed inside evaluateNext,
+      // itself only called from cmdNext after wf is loaded and threaded into ctx below.
+      return exitAfter(render.pending(outcome.phase, ctx!.wf.phases[outcome.phase].description, outcome.ready), 1);
   }
 }
 
@@ -89,7 +98,7 @@ function ensureHeadsignGitignored(cwd: string): void {
   const gitignorePath = path.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath); // "" if no .gitignore yet
   let content = original;
-  for (const entry of ["state.json", "lock", "tmp/"]) {
+  for (const entry of ["state.json", "lock", "log", "tmp/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
     const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
     content = `${content}${sep}${entry}\n`;
@@ -97,12 +106,28 @@ function ensureHeadsignGitignored(cwd: string): void {
   if (content !== original) fs.writeFileSync(gitignorePath, content);
 }
 
-function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): void {
+// Returns the relative paths (as written in `clear:`) of files that actually existed and
+// were non-empty before deletion — i.e. the ones whose removal is worth announcing to the
+// agent, so a silently-vanished artifact from a previous pass doesn't go unnoticed for a
+// whole extra cycle. Directories are never reported here (see the EISDIR note below: they
+// were never actually removed either).
+function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): string[] {
+  const cleared: string[] = [];
   for (const rel of phase.clear ?? []) {
+    const full = path.join(cwd, rel);
+    let removedNonEmptyFile = false;
+    try {
+      const st = fs.statSync(full);
+      removedNonEmptyFile = st.isFile() && st.size > 0;
+    } catch {
+      // ENOENT: nothing there to clear, nothing to announce.
+    }
     // Best-effort: force suppresses ENOENT; a directory (EISDIR) or any other
     // error is ignored so a bad `clear` entry never wedges a transition.
-    try { fs.rmSync(path.join(cwd, rel), { force: true }); } catch { /* best effort */ }
+    try { fs.rmSync(full, { force: true }); } catch { /* best effort */ }
+    if (removedNonEmptyFile) cleared.push(rel);
   }
+  return cleared;
 }
 
 function cmdStart(args: string[]): void {
@@ -115,25 +140,31 @@ function cmdStart(args: string[]): void {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
 
-  state.writeState(cwd, {
+  const freshState: state.State = {
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_eval: null, end_reason: null, stop_nudges: 0,
-  });
+  };
+  state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
+  // The log is run-scoped: truncate/create it fresh so a previous run's history never
+  // bleeds into this one, then record the run's first transition.
+  state.initLog(cwd);
+  state.appendLog(cwd, render.logLine(new Date().toISOString(), { kind: "START", workflow: wf.name }, freshState));
   // Every run starts with a clean scratch dir: artifacts from a previous run (verdicts,
   // tickets, notes) must not leak into this one.
   const tmpDir = path.join(cwd, ".headsign", "tmp");
   fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.mkdirSync(tmpDir, { recursive: true });
-  clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  exitAfter(render.start(wf.entry, wf.phases[wf.entry].description), 0);
+  const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+  exitAfter(render.start(wf.entry, wf.phases[wf.entry].description, cleared), 0);
 }
 
-// Runs the real evaluation (phase-missing guard, iteration limit, cache check, gate,
-// step/writeState) while cmdNext holds the lock. Returns the outcome instead of printing
-// it: printOutcome calls process.exit, and the lock must be released before that happens
-// (see releaseLock calls below and in cmdNext's caller).
-function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.State): engine.Outcome {
+// Runs the real evaluation (phase-missing guard, iteration limit, cache check, ready
+// probe, gate, step/writeState) while cmdNext holds the lock. Returns the outcome instead
+// of printing it: printOutcome calls process.exit, and the lock must be released before
+// that happens (see releaseLock calls below and in cmdNext's caller). `cleared` is only
+// ever set alongside an ADVANCE outcome.
+function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.State): { outcome: engine.Outcome; cleared?: string[] } {
   if (!wf.phases[current.phase]) {
     state.releaseLock(cwd);
     errorExit(
@@ -145,18 +176,31 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   const limitHit = engine.checkIterationLimit(wf, current);
   if (limitHit) {
     state.writeState(cwd, limitHit.state);
-    return limitHit.outcome;
+    state.appendLog(cwd, render.logLine(new Date().toISOString(), limitHit.outcome, limitHit.state));
+    return { outcome: limitHit.outcome };
   }
 
   const hash = treehash.treeHash(cwd);
-  if (engine.shouldUseCache(current, hash)) return engine.cachedRetry(wf, current);
+  if (engine.shouldUseCache(current, hash)) return { outcome: engine.cachedRetry(wf, current) };
 
   const phase = wf.phases[current.phase];
+  // Ready probe: after the cache check, before the gate. The two are structurally
+  // exclusive — shouldUseCache only ever fires on a previously FAILED, cached verdict
+  // (last_eval), and no verdict can exist yet for a phase that was never ready to judge
+  // in the first place. Not ready -> PENDING without touching state.json at all (no
+  // writeState on this path): "stay put, don't count it" — the cell the transition table
+  // was missing.
+  if (phase.ready !== undefined && !gate.isReady(phase.ready, cwd, phase.env)) {
+    return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
+  }
+
   const gateResult = gate.runGate(phase.gate.checks, cwd, phase.env);
   const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash);
-  if (outcome.kind === "ADVANCE") clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
+  let cleared: string[] | undefined;
+  if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);
-  return outcome;
+  state.appendLog(cwd, render.logLine(new Date().toISOString(), outcome, nextState, current.phase));
+  return { outcome, cleared };
 }
 
 function cmdNext(): void {
@@ -193,9 +237,9 @@ function cmdNext(): void {
     printOutcome(engine.terminalOutcome(fresh), fresh.workflow);
   }
 
-  const outcome = evaluateNext(cwd, wf, fresh);
+  const { outcome, cleared } = evaluateNext(cwd, wf, fresh);
   state.releaseLock(cwd);
-  printOutcome(outcome, wf.name);
+  printOutcome(outcome, wf.name, { wf, cleared });
 }
 
 function cmdAbort(args: string[]): void {
@@ -212,7 +256,9 @@ function cmdAbort(args: string[]): void {
   }
 
   const reason = args.join(" ");
-  state.writeState(cwd, { ...current, status: "aborted", end_reason: reason || null });
+  const nextState: state.State = { ...current, status: "aborted", end_reason: reason || null };
+  state.writeState(cwd, nextState);
+  state.appendLog(cwd, render.logLine(new Date().toISOString(), { kind: "ABORT", reason }, nextState));
   exitAfter(render.abort(reason), 2);
 }
 

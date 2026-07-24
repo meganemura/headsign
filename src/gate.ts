@@ -43,6 +43,24 @@ export function runGate(checks: Check[], cwd: string, phaseEnv: Record<string, u
   return { pass: true };
 }
 
+// Readiness probe for a phase's optional `ready:` field, mirroring runGate's spawnSync
+// pattern (same shell, cwd, env-merge). exitCode 0 -> ready (the real gate should be
+// evaluated); nonzero -> not ready (PENDING, no attempt counted).
+export function isReady(sh: string, cwd: string, env: Record<string, unknown> | undefined): boolean {
+  const envVars = env ? Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)])) : {};
+  const result = spawnSync("/bin/sh", ["-c", sh], {
+    cwd,
+    env: { ...process.env, ...envVars },
+    timeout: DEFAULT_TIMEOUT_SECONDS * 1000,
+    stdio: "ignore",
+  });
+  // Fail toward evaluating on a spawn error (bad cwd, timeout, ...): a broken probe
+  // must not silently stall the run behind PENDING forever — running the real gate and
+  // producing an actual verdict is the safer failure mode.
+  if (result.error) return true;
+  return result.status === 0;
+}
+
 function buildTail(stdout: string, stderr: string): string {
   const combined = stdout + stderr;
   const truncated = combined.length > OUTPUT_TAIL_LIMIT;

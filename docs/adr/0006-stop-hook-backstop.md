@@ -47,6 +47,11 @@ unstoppable session) on an undocumented field, headsign owns its guard:
 - `headsign next` resets it to 0 whenever it **really evaluates** a gate
   (a cached "tree unchanged" reprint does not reset — no work happened).
   `headsign start` initializes it to 0.
+- A PENDING answer (ADR-0002) does not reset it either — a `ready:` probe
+  that hasn't passed yet is not an evaluation, and treating it as one would
+  let a review that never returns a verdict still rack up three nudges and
+  reach the hook's fail-open, silently giving up the one guarantee this
+  ADR exists to provide.
 - The hook refuses to block once `stop_nudges` reaches 3.
 
 Effect: as long as Claude responds to nudges by actually working, the

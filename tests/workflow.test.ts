@@ -102,3 +102,30 @@ test("load() reports an error for a missing/unparseable file", () => {
   assert.equal(wf, null);
   assert.ok(errors.length > 0);
 });
+
+// --- ready: readiness probe field ---
+
+test("a valid non-empty ready string passes validation", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.ready = "test -f .headsign/tmp/verdict";
+  assert.deepEqual(workflow.validate(doc), []);
+});
+
+test("an empty ready string is rejected with the exact message", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.ready = "";
+  assert.deepEqual(workflow.validate(doc), ["phase 'plan': ready must be a non-empty shell string"]);
+});
+
+test("a non-string ready is rejected with the exact message", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.ready = 123;
+  assert.deepEqual(workflow.validate(doc), ["phase 'plan': ready must be a non-empty shell string"]);
+});
+
+test("ready does not add a reachability edge: a phase reachable only via on_pass/on_fail still validates with ready set", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.ready = "test -f .headsign/tmp/verdict";
+  phases(doc).build.ready = "true";
+  assert.deepEqual(workflow.validate(doc), []);
+});

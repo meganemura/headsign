@@ -68,6 +68,23 @@ test("writing .headsign/lock does not change the hash", () => {
   assert.equal(treehash.treeHash(dir), h1);
 });
 
+test("writing .headsign/log does not change the hash", () => {
+  const dir = initRepo();
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  const h1 = treehash.treeHash(dir);
+  fs.writeFileSync(path.join(dir, ".headsign", "log"), "2026-07-23T00:00:00.000Z start build a=0 i=0 workflow=demo\n");
+  assert.equal(treehash.treeHash(dir), h1);
+});
+
+test("appending more lines to an already-excluded .headsign/log still does not change the hash", () => {
+  const dir = initRepo();
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  fs.writeFileSync(path.join(dir, ".headsign", "log"), "line 1\n");
+  const h1 = treehash.treeHash(dir);
+  fs.appendFileSync(path.join(dir, ".headsign", "log"), "line 2\n");
+  assert.equal(treehash.treeHash(dir), h1);
+});
+
 test("nested project (cwd inside a larger git repo): tree-hash changes when a tracked file's CONTENT changes, not just its status line", () => {
   // Regression test: `git status --porcelain` paths are relative to the git top-level,
   // not cwd. Before the fix, joining those paths against cwd (here, the subdirectory)
