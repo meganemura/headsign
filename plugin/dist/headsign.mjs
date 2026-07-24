@@ -8107,8 +8107,25 @@ function cmdStopHook() {
 `, 2);
   process.exit(0);
 }
+var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
+
+Usage:
+  headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml)
+  headsign next                                 run the current gate and answer with a verdict
+  headsign abort [reason]                       end the run for good (records why)
+  headsign validate [name] [--workflow <path>]  statically check a workflow file
+
+\`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
+Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
+3 usage or configuration error.
+
+Guide and workflow reference: https://github.com/meganemura/headsign
+`;
 function main() {
   const [command, ...rest] = process.argv.slice(2);
+  if (command === void 0 || command === "-h" || command === "--help") {
+    return exitAfter(HELP_TEXT, 0);
+  }
   switch (command) {
     case "start":
       return cmdStart(rest);
@@ -8121,7 +8138,7 @@ function main() {
     case "stop-hook":
       return cmdStopHook();
     default:
-      errorExit(`unknown command '${command ?? ""}'. Usage: headsign <start|next|abort|validate>`);
+      errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }
 }
 try {

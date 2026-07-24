@@ -486,6 +486,37 @@ test("validate prints INVALID to stderr for a broken workflow", () => {
   assert.match(result.stderr, /^INVALID:/);
 });
 
+// --- help: -h / --help / no args print usage and exit 0 (human convenience, ADR-0002) ---
+
+test("-h prints usage to stdout and exits 0", () => {
+  const result = run(["-h"], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Usage:/);
+  assert.match(result.stdout, /headsign start/);
+});
+
+test("--help prints usage to stdout and exits 0", () => {
+  const result = run(["--help"], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Usage:/);
+  assert.match(result.stdout, /headsign start/);
+});
+
+test("no arguments prints usage to stdout and exits 0 (no error on stderr)", () => {
+  const result = run([], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Usage:/);
+  assert.match(result.stdout, /headsign start/);
+  assert.equal(result.stderr, "");
+});
+
+test("an unknown command errors to stderr (exit 3) and points at --help", () => {
+  const result = run(["bogus"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /unknown command/);
+  assert.match(result.stderr, /--help/);
+});
+
 // --- workflow name resolution: `start <name>` / `validate <name>` (bare positional -> .headsign/<name>.yaml) ---
 
 test("start <name> resolves .headsign/<name>.yaml, stores that workflow_path, and a subsequent next runs it", () => {

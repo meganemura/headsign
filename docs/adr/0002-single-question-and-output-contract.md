@@ -30,7 +30,9 @@ why no `status` command exists.
 
 (A hidden `stop-hook` subcommand exists for the plugin's Stop hook — it is
 plumbing invoked by Claude Code itself, not part of the agent-facing
-surface. See ADR-0006.)
+surface. See ADR-0006. Likewise `-h`/`--help`/no-args print usage and exit
+0 — a human convenience outside the agent-facing contract; the four commands
+stay four.)
 
 ### Output contract
 

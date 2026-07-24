@@ -275,15 +275,35 @@ function cmdStopHook(): void {
   process.exit(0);
 }
 
+// Human convenience only — outside the agent-facing contract (ADR-0002). The hidden
+// stop-hook subcommand is deliberately omitted; the four commands are the whole surface.
+const HELP_TEXT = `headsign — a tiny phase gate for coding agents
+
+Usage:
+  headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml)
+  headsign next                                 run the current gate and answer with a verdict
+  headsign abort [reason]                       end the run for good (records why)
+  headsign validate [name] [--workflow <path>]  statically check a workflow file
+
+\`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
+Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
+3 usage or configuration error.
+
+Guide and workflow reference: https://github.com/meganemura/headsign
+`;
+
 function main(): void {
   const [command, ...rest] = process.argv.slice(2);
+  if (command === undefined || command === "-h" || command === "--help") {
+    return exitAfter(HELP_TEXT, 0);
+  }
   switch (command) {
     case "start": return cmdStart(rest);
     case "next": return cmdNext();
     case "abort": return cmdAbort(rest);
     case "validate": return cmdValidate(rest);
     case "stop-hook": return cmdStopHook();
-    default: errorExit(`unknown command '${command ?? ""}'. Usage: headsign <start|next|abort|validate>`);
+    default: errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }
 }
 
