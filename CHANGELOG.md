@@ -45,10 +45,10 @@ changes), and a patch bump means fixes only.
   session has always had: while a run is `running`, the agent recorded as
   its driver is pushed back to `headsign next` at the end of its own turn
   instead of stopping silently. Agents that aren't the driver pass through
-  untouched, unless they are the first to name themselves under an armed `claim`
-  marker — that is how a claim gets sealed. The plugin registers it
-  automatically; the plugin-free
-  `settings.json` snippet in the README now shows both hooks.
+  untouched, unless they are the first to name themselves under an armed
+  `claim` marker — that is how a claim gets sealed. The plugin registers it
+  automatically; the plugin-free `settings.json` snippet in the README now
+  shows both hooks.
 - A triage example workflow (`example.headsign/triage.yaml`): headsign's own
   feedback-intake loop, which judges exactly one ticket per run. It doubles
   as a worked example of two patterns — a run-local completion marker as the
@@ -79,8 +79,8 @@ changes), and a patch bump means fixes only.
   certainty can end a turn instead: an ordinary nudge back to `headsign
   next` proves ownership, since `SubagentStop` sends one only on a positive
   match (a `Claim confirmed` reply is a different thing — the adoption gate
-  seats whoever stops first under an armed marker). Ending quietly proves
-  nothing: never having claimed, an exhausted nudge cap, a consumed pause
+  seats whoever names itself first under an armed marker). Ending quietly
+  proves nothing: never having claimed, an exhausted nudge cap, a consumed pause
   note, and `HEADSIGN_OBSERVER` all end turns quietly too. See
   [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 - No-argument `headsign validate` now defaults to the current run's own

@@ -423,8 +423,7 @@ shows someone is still steering: a real evaluation, a consumed note, or a
 sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
 `.headsign/log`, and every stop after that passes silently. That cap is a
 safety net for a stuck or silently departed agent, not the normal way to
-pause — the note
-above is. To spot an unattended stall from the outside: `headsign status`
+pause — the note above is. To spot an unattended stall from the outside: `headsign status`
 (read-only, safe to run from any session — see
 [Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
 `.headsign/log`'s tail shows `stalled` (equivalently, `stop_nudges >= 5`) —

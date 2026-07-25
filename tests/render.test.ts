@@ -133,7 +133,7 @@ test("abort with an empty reason falls back to '(no reason given)'", () => {
 
 // --- claim: the driver-adoption handshake (ADR-0009, re-homed onto SubagentStop by ADR-0010) ---
 
-test("claim: first line is the CLAIM token, and the body explains the two-beat handshake and re-claim self-repair", () => {
+test("claim: first line is the CLAIM token, and the body explains the two-beat handshake and the re-claim advice", () => {
   const actual = render.claim();
   const expected =
     "CLAIM armed\n" +
@@ -146,7 +146,7 @@ test("claim: first line is the CLAIM token, and the body explains the two-beat h
   assert.equal(actual, expected);
   assert.match(actual, /^CLAIM /);
   // The re-claim advice must never promise the retry lands: the adoption gate seats
-  // whoever stops first under an armed marker, so a re-claim is a fresh entry into the
+  // whoever names itself first under an armed marker, so a re-claim is a fresh entry into the
   // same race (ADR-0010's named weakness), not a correction that is guaranteed to stick.
   assert.doesNotMatch(actual, /always wins/);
 });

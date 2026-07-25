@@ -119,8 +119,7 @@ export function statusRunning(o: {
   // gate, which seats whoever names itself first under an armed marker: it reports a seat
   // taken, not a seat that was already the reader's). That test does not generalize to this
   // line's other cases — Stop nudges every session on a run that stamped no identifier —
-  // which is exactly why this line reports the range it can
-  // prove instead of a name.
+  // which is exactly why this line reports the range it can prove instead of a name.
   driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
