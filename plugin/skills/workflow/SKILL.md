@@ -88,10 +88,12 @@ plugin or `npm install` the package. Do not guess at other paths.
   spawn a subagent — do what it says.
 - `headsign start`/`next`/`abort`/`status`/`claim` operate on the current
   directory's `.headsign/` only — run them from the directory that owns the
-  workflow (the repo or git-worktree root), not a subdirectory. The Stop
-  hook is the exception: it finds the run from any subdirectory up to the
-  repo/worktree root, so it still fires even if the session's cwd has
-  drifted.
+  workflow (the repo or git-worktree root), not a subdirectory. Each git
+  worktree is therefore its own independent run: its state lives in that
+  worktree's `.headsign/`, and a run in another worktree of the same
+  repository neither shares it nor sees it. The Stop hook is the exception:
+  it finds the run from any subdirectory up to the repo/worktree root, so it
+  still fires even if the session's cwd has drifted.
 - Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
   Read the text, don't treat non-zero as a tool failure. PENDING = the gate
   can't be evaluated yet — not a failure. Produce the artifact it's waiting

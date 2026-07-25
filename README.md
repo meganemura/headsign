@@ -190,6 +190,15 @@ the session stopped in a subdirectory. That walk only goes up, though, so from
 a directory above the run — a monorepo root, say — the hook won't find it and
 stays silent; keep the session at the workflow's directory or below.
 
+**One worktree, one run** is the whole of headsign's worktree support, and it
+holds by construction: a linked worktree's `state.json`, lock, and log all
+live in that worktree's own `.headsign/`, and headsign writes nothing under
+the shared `.git` directory — so two worktrees of the same repository can each
+drive a loop, at their own phase, without either one disturbing the other.
+Anything past that is out of scope: worktrees never share run state, and
+headsign neither coordinates the runs in them nor aggregates them into one
+view. A run belongs to the directory it was started in.
+
 ## Instructions vs. the gate
 
 A phase's `description` is where you write what the agent should do in that
@@ -530,8 +539,11 @@ Read this before adopting — the boundaries are the design.
 - **It doesn't orchestrate.** One active phase per run: no DAGs, no
   parallel phases, no worktree management, no provider abstraction, no
   personas, no template/expression language, no MCP server, no TUI, no
-  cross-run dashboard. If the harness needs to be clever, the cleverness is
-  in the wrong place.
+  cross-run dashboard. Not *managing* worktrees isn't the same as not
+  working in one, though: a run started in a worktree stays entirely its
+  own — one worktree, one independent run (see
+  [Quick start](#quick-start)). If the harness needs to be clever, the
+  cleverness is in the wrong place.
 - **It doesn't run on native Windows.** Checks execute via `/bin/sh`
   (POSIX); WSL works fine.
 

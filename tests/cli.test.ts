@@ -1998,6 +1998,69 @@ phases:
   assert.equal(fs.existsSync(gateMarker), false, "status must never execute the gate");
 });
 
+// --- git worktrees: 1 worktree = 1 independent run (cwd-only state, ADR-0004) ---
+
+test("worktree: 1 worktree = 1 independent run — a linked worktree drives start -> RETRY -> fix -> COMPLETE entirely in its own .headsign, leaving the main checkout's run untouched", () => {
+  const base = tmpdir();
+  const main = path.join(base, "main");
+  fs.mkdirSync(main);
+  execFileSync("git", ["init", "-q"], { cwd: main });
+  execFileSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "-m", "init", "--allow-empty"], { cwd: main });
+
+  // The main checkout carries a run of its own, so "independent" is asserted against a
+  // live neighbor rather than against an empty directory.
+  writeWorkflow(main, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: main });
+  const mainStateBefore = fs.readFileSync(path.join(main, ".headsign", "state.json"));
+  const mainLogBefore = fs.readFileSync(path.join(main, ".headsign", "log"));
+
+  const wt = path.join(base, "wt");
+  execFileSync("git", ["worktree", "add", "-b", "wt-branch", wt], { cwd: main });
+  assert.ok(fs.statSync(path.join(wt, ".git")).isFile(), "linked worktree's .git must be a file, not a directory");
+
+  // A live lock in the main checkout must not block the worktree: locks are per-.headsign,
+  // and the test runner's own pid is alive, so a shared lock path would refuse `next`.
+  fs.writeFileSync(path.join(main, ".headsign", "lock"), String(process.pid));
+
+  writeWorkflow(wt, TWO_PHASE_WORKFLOW);
+  const started = run(["start"], { cwd: wt });
+  assert.equal(started.status, 0);
+  assert.match(started.stdout, /^START build\n/);
+
+  const retry = run(["next"], { cwd: wt });
+  assert.equal(retry.status, 1);
+  assert.match(retry.stdout, /^RETRY 1 build\n/);
+
+  fs.writeFileSync(path.join(wt, "marker.txt"), "");
+  const advance = run(["next"], { cwd: wt });
+  assert.equal(advance.status, 0);
+  assert.match(advance.stdout, /^ADVANCE verify\n/);
+
+  const complete = run(["next"], { cwd: wt });
+  assert.equal(complete.status, 0);
+  assert.match(complete.stdout, /^COMPLETE\n/);
+
+  // The worktree's run state lives in the worktree's own .headsign, and nowhere else.
+  assert.equal(readState(wt).status, "complete");
+  assert.ok(readLog(wt).length > 0);
+  assert.equal(fs.existsSync(path.join(wt, ".headsign", "lock")), false, "the worktree's lock is released in its own .headsign");
+  assert.equal(fs.existsSync(path.join(main, ".git", ".headsign")), false, "nothing may be written under the shared .git");
+  assert.equal(fs.existsSync(path.join(main, ".git", "worktrees", "wt", ".headsign")), false, "nothing may be written under the shared .git");
+
+  // The main checkout's run is byte-for-byte untouched, and its lock still belongs to it.
+  assert.deepEqual(fs.readFileSync(path.join(main, ".headsign", "state.json")), mainStateBefore);
+  assert.deepEqual(fs.readFileSync(path.join(main, ".headsign", "log")), mainLogBefore);
+  assert.equal(readState(main).status, "running");
+  assert.equal(readState(main).phase, "build");
+  assert.equal(fs.readFileSync(path.join(main, ".headsign", "lock"), "utf8"), String(process.pid));
+
+  // …and the main checkout can still be driven afterwards, from its own state.
+  fs.unlinkSync(path.join(main, ".headsign", "lock"));
+  const mainRetry = run(["next"], { cwd: main });
+  assert.equal(mainRetry.status, 1);
+  assert.match(mainRetry.stdout, /^RETRY 1 build\n/, "the main run advances on its own attempt counter, unaffected by the worktree's completed run");
+});
+
 // --- help: status is documented among the command surface ---
 
 test("--help lists the status command and its RUNNING/COMPLETE/ESCALATED/ABORTED vocabulary", () => {
