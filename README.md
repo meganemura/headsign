@@ -616,8 +616,8 @@ re-arms the marker, and that agent is now a real contender for it, because
 its own turn end is guaranteed to fire the event that seals. It is still a
 contender and not a winner — another delegated agent naming itself first
 can take this marker too — so re-claim until the confirmation names the
-agent you meant. The full
-mechanism, the measurements behind it, and the race that remains are in
+agent you meant. The full mechanism, the measurements behind it, and the
+race that remains are in
 [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 
 ### Environment variables

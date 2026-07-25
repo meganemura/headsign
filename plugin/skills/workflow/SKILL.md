@@ -59,23 +59,22 @@ plugin or `npm install` the package. Do not guess at other paths.
    turn end always fires the event that seals. Another agent naming itself
    first can take this marker too, so re-claim until the confirmation names
    the agent you meant. A session driving a run on its own does not need
-   `claim` at all —
-   ordinary `next` stamping already works there. Skipping the claim fails
-   silently rather than loudly: a plain `next` from you stamps the spawning
-   session, so every later nudge goes to *it* while your own turns end
-   unheld. And if you need to check whether you are the driver, don't read
-   it off `headsign status` — as a delegated agent, the reliable signal is
-   the hook itself: if your turn ends are being pushed back to `headsign
-   next`, this run is yours to drive. Read which message you got: an
-   ordinary nudge fires only on a positive match, but `Claim confirmed …`
-   means an armed marker just seated you — if you did not run `headsign
-   claim`, you have taken a seat another agent was asking for, so say so
-   and let it claim again. The test only works in this direction and only
-   for delegated agents: ending quietly proves nothing (not having claimed,
-   an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all end
-   turns quietly), and a plain session gets nudged on a run that stamped no
-   identifier at all. A probe is not free either: one that comes back as an
-   ordinary nudge spends one from the cap, one that passes while your own
+   `claim` at all — ordinary `next` stamping already works there. Skipping
+   the claim fails silently rather than loudly: a plain `next` from you
+   stamps the spawning session, so every later nudge goes to *it* while
+   your own turns end unheld. And if you need to check whether you are the
+   driver, don't read it off `headsign status` — as a delegated agent, the
+   reliable signal is the hook itself: if your turn ends are being pushed
+   back to `headsign next`, this run is yours to drive. Read which message
+   you got: an ordinary nudge fires only on a positive match, but `Claim
+   confirmed …` means an armed marker just seated you — if you did not run
+   `headsign claim`, you have taken a seat another agent was asking for, so
+   say so and let it claim again. The test only works in this direction and
+   only for delegated agents: ending quietly proves nothing (not having
+   claimed, an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all
+   end turns quietly), and a plain session gets nudged on a run that stamped
+   no identifier at all. A probe is not free either: one that comes back as
+   an ordinary nudge spends one from the cap, one that passes while your own
    pause note is armed consumes the note, and one that lands under another
    agent's armed marker consumes that marker. Probe deliberately, not by
    habit.

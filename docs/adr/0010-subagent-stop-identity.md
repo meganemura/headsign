@@ -359,9 +359,11 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   boundary of what the comparison establishes rather than the stronger
   claim it cannot support.
 - Having a hook write a whoami-style breadcrumb file — so a caller could
-  read back which agent it is — was considered and rejected. For the only
-  question that actually gets asked, *am I the driver of this run*, the
-  nudge already answers it exactly, and a breadcrumb would buy that same
-  answer at the price of another piece of state to write, keep fresh,
-  invalidate, and clean up, in a project whose first rule is that a thin
-  harness stores only what it needs to decide with (ADR-0001).
+  read back which agent it is — was considered and rejected. For the
+  direction that matters, *am I the driver of this run*, the nudge already
+  answers first-hand; a breadcrumb would add only the negative half — a
+  quiet turn end still would not distinguish "not the driver" from the
+  several other reasons a turn ends quietly — at the price of another
+  piece of state to write, keep fresh, invalidate, and clean up, in a
+  project whose first rule is that a thin harness stores only what it
+  needs to decide with (ADR-0001).
