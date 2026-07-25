@@ -53,8 +53,8 @@ Fix the failure above, then run `headsign next` again.
 
 ### プラグインなしで使う
 
-プラグインは Claude Code 向けの包み紙にすぎない。
-道具の本体は CLI で、ゲート判定・state・`PENDING`・ロック・ログはすべてそこにあり、どのエージェントからでも、手作業でターミナルからでも使える。
+プラグインは、headsign を Claude Code 向けに包んだ配布形態の一つにすぎない。
+道具の本体は CLI で、ゲート判定、state、`PENDING`、ロック、ログはすべてそこにあり、どのエージェントからでも、手作業でターミナルからでも使える。
 プラグインが上乗せするのは `workflow` スキルと Stop hook backstop の二つだけで、どちらにもプラグインなしの代替がある。
 
 **CLI をインストールする。** バンドルはコミット済みなのでビルドは不要である:
@@ -65,16 +65,21 @@ npx headsign --help
 ```
 
 **エージェントに規律を教える。** スキルの実体はただの指示文であって、仕掛けではない。
-Cursor でも自作ハーネスでも `CLAUDE.md` でも、次の一則でほぼ足りる:
+Cursor でも自作ハーネスでも `CLAUDE.md` でも、次のルール一つでほぼ足りる:
 
 > `npx headsign next` を実行し、答えの 1 行目に従うこと。`COMPLETE` 以外で run を終えないこと。意図的に止めるときは `npx headsign abort <reason>` を実行すること。
 
-規律の全文は [plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md) にあり、必要な部分をエージェントのルールに写せばよい。
-GitHub CLI で単体スキルとして入れることもできる(`gh skill install meganemura/headsign workflow`。`gh` の preview 機能で、どのエージェントに入れるかを選べる)。
-Claude Code なら `.claude/skills/` にプロジェクトスキルとして写す手もある。
+規律の全文は [plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md) にある。
+必要な部分をエージェントのルールに写してもよいし、GitHub CLI で単体スキルとしてインストールしてもよい(`gh` の preview 機能で、どのエージェントに入れるかを選べる):
+
+```
+gh skill install meganemura/headsign workflow
+```
+
+Claude Code なら `.claude/skills/` にプロジェクトスキルとして置く手もある。
 これらの方法で得たスキルはプラグインの外で動くため同梱 CLI を見つけられないが、上記のとおりパッケージをインストールしておけば `npx headsign` にフォールバックする。
 
-**任意: プラグインなしの backstop。** Stop hook を `.claude/settings.json` に自分で配線する:
+**任意: プラグインなしの backstop。** 次の設定を `.claude/settings.json` に書き足す:
 
 ```json
 { "hooks": { "Stop": [ { "hooks": [
