@@ -1,5 +1,6 @@
 ---
 name: workflow
+license: MIT
 description: >-
   Drive a headsign phase-gate workflow. Use when the repository contains
   .headsign/workflow.yaml and the user asks to start, continue, or resume a
