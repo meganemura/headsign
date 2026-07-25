@@ -142,8 +142,8 @@ Notes:
   overlaps neither revisit before it — not "no verdict exists yet"
   (PENDING) and not "observe without asking" (status), but "a session
   cannot discover its own identity from inside itself; only a
-  stop-boundary hook, at the moment it fires, can answer that." `claim` buys that distinction
-  without touching the token contract above at all, the same way `status`
-  didn't: it is one more command that isn't `next`'s kind of command,
-  arming a signal for the hook to consume rather than asking a question
-  itself.
+  stop-boundary hook, at the moment it fires, can answer that." `claim`
+  buys that distinction without touching the token contract above at
+  all, the same way `status` didn't: it is one more command that isn't
+  `next`'s kind of command, arming a signal for the hook to consume
+  rather than asking a question itself.

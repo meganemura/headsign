@@ -53,7 +53,7 @@ test("round-trips a non-null driver_session", () => {
   assert.deepEqual(state.readState(dir), s);
 });
 
-test("round-trips a driver_source of \"claim\" (ADR-0009's claim handshake)", () => {
+test("round-trips a driver_source of \"claim\" (the claim handshake, ADR-0009/0010)", () => {
   const dir = tmpdir();
   const s: state.State = {
     workflow: "demo",
@@ -65,7 +65,7 @@ test("round-trips a driver_source of \"claim\" (ADR-0009's claim handshake)", ()
     last_eval: null,
     end_reason: null,
     stop_nudges: 0,
-    driver_session: "session-claimed",
+    driver_session: "agent-claimed",
     driver_source: "claim",
   };
   state.writeState(dir, s);
