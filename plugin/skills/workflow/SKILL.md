@@ -54,11 +54,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    and phase. **Do not run `headsign next` before you have seen that
    confirmation.** If some other agent got adopted by mistake (it ended a
    turn while your marker was armed and could name itself), run `headsign
-   claim` again from the agent that should be driving: a new claim re-arms the marker, and that
-   agent is a real contender for it because its own turn end always fires
-   the event that seals. Another agent naming itself first can take this
-   marker too, so re-claim until the confirmation names the agent you
-   meant. A session driving a run on its own does not need `claim` at all —
+   claim` again from the agent that should be driving: a new claim re-arms
+   the marker, and that agent is a real contender for it because its own
+   turn end always fires the event that seals. Another agent naming itself
+   first can take this marker too, so re-claim until the confirmation names
+   the agent you meant. A session driving a run on its own does not need
+   `claim` at all —
    ordinary `next` stamping already works there. Skipping the claim fails
    silently rather than loudly: a plain `next` from you stamps the spawning
    session, so every later nudge goes to *it* while your own turns end
@@ -73,8 +74,11 @@ plugin or `npm install` the package. Do not guess at other paths.
    for delegated agents: ending quietly proves nothing (not having claimed,
    an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all end
    turns quietly), and a plain session gets nudged on a run that stamped no
-   identifier at all. A probe that comes back as an ordinary nudge spends
-   one from the cap — so probe deliberately, not by habit.
+   identifier at all. A probe is not free either: one that comes back as an
+   ordinary nudge spends one from the cap, one that passes while your own
+   pause note is armed consumes the note, and one that lands under another
+   agent's armed marker consumes that marker. Probe deliberately, not by
+   habit.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
 4. **Whenever you are unsure what to do, think a phase's work is finished, or

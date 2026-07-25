@@ -179,9 +179,9 @@ everyone else's.
 The adoption gate (step 7) is the deliberate exception, and the only one:
 it holds whoever first names itself under an armed marker, without
 consulting the stamped driver, because that is the sole moment a
-delegated agent can be named at all. That exception is what the race below is about, and any
-statement of this rule has to carry it — "an unrelated agent is never
-held" is false while a marker is armed.
+delegated agent can be named at all. That exception is what the race
+below is about, and any statement of this rule has to carry it — "an
+unrelated agent is never held" is false while a marker is armed.
 
 Getting this wrong would be worse than the bug being fixed. A hook that
 held the turn of any agent that happened to stop would turn headsign from
@@ -331,11 +331,10 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   *message*, not merely the fact of being held: the adoption gate also
   holds, and it holds whoever first names itself under an armed marker
   without consulting the stamped driver at all, so a `Claim confirmed`
-  reply to an
-  agent that never ran `headsign claim` reports a seat taken, not a seat
-  owned. Documentation offering this test has to say which reply counts. No
-  command can offer the equivalent, because facts 2–4 are about what the
-  CLI is able to read at all.
+  reply to an agent that never ran `headsign claim` reports a seat taken,
+  not a seat owned. Documentation offering this test has to say which
+  reply counts. No command can offer the equivalent, because facts 2–4
+  are about what the CLI is able to read at all.
 
   The test is one-directional, and does not extend to `Stop`. A quiet turn
   end proves nothing: the nudge cap may have tripped, a pause note may have
