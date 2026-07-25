@@ -224,8 +224,8 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     // consumed, so this can't wedge a run permanently.
 
     // Owner check — the safety rule for everything below this line: block ONLY when the
-    // recorded driver is the agent that just stopped. Anything reaching here passes through
-    // untouched, so an unrelated subagent (a reviewer, a searcher, a worker with no headsign
+    // recorded driver is the agent that just stopped. Anything else reaching here passes
+    // through untouched, so an unrelated subagent (a reviewer, a searcher, a worker with no headsign
     // role at all) is never trapped by a run it isn't driving. The adoption gate above is
     // the one place that can hold an agent this check would have released — it seats whoever
     // stops first under an armed marker, deliberately, because no other signal can name a

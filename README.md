@@ -421,8 +421,8 @@ Stopping *without* a note is pushed back — the hook fails open (never
 traps a session) after 5 consecutive nudges with nothing in between that
 shows someone is still steering: a real evaluation, a consumed note, or a
 sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
-`.headsign/log`,
-and every stop after that passes silently. That cap is a safety net for a
+`.headsign/log`, and every stop after that passes silently. That cap is a
+safety net for a
 stuck or silently departed agent, not the normal way to pause — the note
 above is. To spot an unattended stall from the outside: `headsign status`
 (read-only, safe to run from any session — see
@@ -524,12 +524,14 @@ exactly why `headsign claim` exists.
 **If you are a delegated agent, end your turn and watch what happens: being
 pushed back to `headsign next` means this run is yours to drive.**
 `SubagentStop` holds an agent when it matches the stamped driver, and
-otherwise only to seal a claim — so read *which* message you got. The
-ordinary nudge names the phase and tells you to run `headsign next`; that
-one confirms you already drive the run. `Claim confirmed: this agent now
-drives …` means something else entirely: an armed marker just seated
-*you*, possibly one another agent armed for itself. If you get that
-message without having run `headsign claim`, you have taken a seat
+otherwise only to seal a claim — so read *which* message you got, and read
+its opening words, because that is the only part that differs. Both name
+the workflow and phase and both tell you to run `headsign next`. A message
+opening `headsign workflow '…' is still running` is the ordinary nudge, and
+it confirms you already drive the run. One opening `Claim confirmed:` means
+something else entirely: an armed marker just seated *you*, possibly one
+another agent armed for itself. If you get that message without having run
+`headsign claim`, you have taken a seat
 someone else was asking for — say so, and let them claim again.
 
 The implication runs one way only. Ending quietly does *not* prove the
@@ -609,10 +611,12 @@ something else entirely, stops normally.
 
 This is a handshake, not a lock: if some *other* delegated agent happens
 to end a turn while the marker is armed, it gets adopted instead. Run
-`headsign claim` again from the right one — a new claim always wins, and
-this time it lands, because that agent's own turn end is guaranteed to
-fire the event that seals. The full mechanism, the measurements behind
-it, and the race that remains are in
+`headsign claim` again from the right one: a new claim re-arms the marker,
+and that agent is now a real contender for it, because its own turn end is
+guaranteed to fire the event that seals. It is still a contender and not a
+winner — another delegated agent stopping first can take this marker too —
+so re-claim until the confirmation names the agent you meant. The full
+mechanism, the measurements behind it, and the race that remains are in
 [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 
 ### Environment variables

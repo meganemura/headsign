@@ -340,9 +340,10 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   out on identifier grounds only when both identifiers resolve and disagree,
   so on a run with no stamped identifier it nudges every session in the
   directory (Decision 3's asymmetry, and ADR-0008's fail-open rule): being
-  held there means the run is running, not that the holder owns it. Documentation that offers this test must carry the
-  delegated-agent scope with it; stated bare, it is the same kind of
-  overclaim as the `status` line this ADR's follow-up corrected.
+  held there means the run is running, not that the holder owns it.
+  Documentation that offers this test must carry the delegated-agent scope
+  with it; stated bare, it is the same kind of overclaim as the `status`
+  line this ADR's follow-up corrected.
 - `headsign status`'s `driver:` line inherits that limit and is worded to
   admit it. While `driver_source` is `"env"`, the line is a comparison of
   environment-resolved session identifiers, and a delegated agent resolves

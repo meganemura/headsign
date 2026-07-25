@@ -68,8 +68,9 @@ export function claim(): string {
     "Now end your turn. Sealing happens on this agent's own turn end, which is the only\n" +
     "moment headsign can learn which delegated agent you are. The hook confirms it in its\n" +
     "message; do not run `headsign next` before you see that confirmation.\n" +
-    "If the wrong agent gets adopted, run `headsign claim` again from the right one — a new\n" +
-    "claim always wins.\n"
+    "If the wrong agent gets adopted, run `headsign claim` again from the right one: that\n" +
+    "re-arms the marker, though another agent stopping first can take it again. Re-claim\n" +
+    "until the confirmation names the agent you meant.\n"
   );
 }
 
@@ -115,7 +116,8 @@ export function statusRunning(o: {
   // two apart and must not claim to. Certainty is available to a *delegated agent* only, and
   // not from here: SubagentStop sends an ordinary nudge only on a positive match, so an agent
   // that ends a turn and gets one is the driver (a `Claim confirmed` reply is the adoption
-  // gate, which seats whoever stops first under an armed marker, and proves nothing). That
+  // gate, which seats whoever stops first under an armed marker: it reports a seat taken,
+  // not a seat that was already the reader's). That
   // test does not generalize to this line's other cases — Stop nudges every session on a run
   // that stamped no identifier — which is exactly why this line reports the range it can
   // prove instead of a name.

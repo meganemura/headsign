@@ -54,9 +54,11 @@ plugin or `npm install` the package. Do not guess at other paths.
    and phase. **Do not run `headsign next` before you have seen that
    confirmation.** If some other agent got adopted by mistake (it ended a
    turn while your marker was armed), run `headsign claim` again from the
-   agent that should be driving: a new claim always wins, and this time it
-   lands, because that agent's own turn end always fires the event that
-   seals. A session driving a run on its own does not need `claim` at all —
+   agent that should be driving: a new claim re-arms the marker, and that
+   agent is a real contender for it because its own turn end always fires
+   the event that seals. Another agent stopping first can take this marker
+   too, so re-claim until the confirmation names the agent you meant. A
+   session driving a run on its own does not need `claim` at all —
    ordinary `next` stamping already works there. Skipping the claim fails
    silently rather than loudly: a plain `next` from you stamps the spawning
    session, so every later nudge goes to *it* while your own turns end

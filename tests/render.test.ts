@@ -140,10 +140,15 @@ test("claim: first line is the CLAIM token, and the body explains the two-beat h
     "Now end your turn. Sealing happens on this agent's own turn end, which is the only\n" +
     "moment headsign can learn which delegated agent you are. The hook confirms it in its\n" +
     "message; do not run `headsign next` before you see that confirmation.\n" +
-    "If the wrong agent gets adopted, run `headsign claim` again from the right one — a new\n" +
-    "claim always wins.\n";
+    "If the wrong agent gets adopted, run `headsign claim` again from the right one: that\n" +
+    "re-arms the marker, though another agent stopping first can take it again. Re-claim\n" +
+    "until the confirmation names the agent you meant.\n";
   assert.equal(actual, expected);
   assert.match(actual, /^CLAIM /);
+  // The re-claim advice must never promise the retry lands: the adoption gate seats
+  // whoever stops first under an armed marker, so a re-claim is a fresh entry into the
+  // same race (ADR-0010's named weakness), not a correction that is guaranteed to stick.
+  assert.doesNotMatch(actual, /always wins/);
 });
 
 test("claim: the text names the sealing moment as this agent's own turn end and tells the caller to wait for the confirmation before `next`", () => {
