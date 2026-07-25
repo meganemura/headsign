@@ -131,18 +131,28 @@ test("abort with an empty reason falls back to '(no reason given)'", () => {
   assert.equal(actual, expected);
 });
 
-// --- claim: the driver-adoption handshake (ADR-0009) ---
+// --- claim: the driver-adoption handshake (ADR-0009, re-homed onto SubagentStop by ADR-0010) ---
 
 test("claim: first line is the CLAIM token, and the body explains the two-beat handshake and re-claim self-repair", () => {
   const actual = render.claim();
   const expected =
     "CLAIM armed\n" +
-    "Now end your turn. The next session to stop seals the claim: the Stop hook\n" +
-    "records that session as this run's driver and confirms it in its message.\n" +
-    "If another session happens to stop first and gets adopted by mistake, run\n" +
-    "`headsign claim` again from the right session — a new claim always wins.\n";
+    "Now end your turn. Sealing happens on this agent's own turn end, which is the only\n" +
+    "moment headsign can learn which delegated agent you are. The hook confirms it in its\n" +
+    "message; do not run `headsign next` before you see that confirmation.\n" +
+    "If the wrong agent gets adopted, run `headsign claim` again from the right one — a new\n" +
+    "claim always wins.\n";
   assert.equal(actual, expected);
   assert.match(actual, /^CLAIM /);
+});
+
+test("claim: the text names the sealing moment as this agent's own turn end and tells the caller to wait for the confirmation before `next`", () => {
+  const actual = render.claim();
+  assert.match(actual, /this agent's own turn end/);
+  assert.match(actual, /do not run `headsign next` before you see that confirmation/);
+  // The pre-ADR-0010 promise ("whoever stops next gets it") must be gone: it described the
+  // exact mis-adoption this revision removes.
+  assert.doesNotMatch(actual, /next session to stop/);
 });
 
 test("validateOk", () => {
@@ -221,7 +231,7 @@ test("statusRunning: a timeout last failure renders the timed-out clause, same a
 });
 
 test("statusRunning: driver values are printed verbatim as one of the four fixed strings, never a session id", () => {
-  for (const driver of ["this session", "another session", "unknown", "claimed"] as const) {
+  for (const driver of ["this session", "another session", "unknown", "a delegated agent"] as const) {
     const actual = render.statusRunning({ phase: "build", attempt: 0, attemptUnknown: false, workflowName: "demo", driver });
     assert.match(actual, new RegExp(`driver: ${driver}\\n$`));
   }

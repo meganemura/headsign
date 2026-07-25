@@ -32,14 +32,21 @@ changes), and a patch bump means fixes only.
   code never overlaps `next`'s: 0 whenever state is readable (including
   `ESCALATED`/`ABORTED`), 3 only when there's no run to read.
 - `HEADSIGN_OBSERVER`: set on a session that should never be nudged by the
-  Stop hook, regardless of driver ownership — the manual opt-out for
-  environments where no session identifier resolves.
-- `headsign claim`: arms a one-shot marker so the *next* Stop hook firing
-  that can resolve a session id adopts that session as the run's driver and
-  confirms it in its block message — the reliable way to hand off who
-  drives a run in environments (e.g. Claude Code's agent-teams feature)
-  where a session's own Bash environment can't be trusted to know its own
-  session id. See [ADR-0009](docs/adr/0009-claim-handshake.md).
+  stop-boundary hooks, regardless of driver ownership — the manual opt-out
+  for environments where no session identifier resolves.
+- `headsign claim`: arms a one-shot marker that the claiming agent's own
+  turn end seals — headsign records that agent as the run's driver and
+  confirms it in the hook's message — the reliable way to hand a run to a
+  delegated agent (a teammate under Claude Code's agent-teams feature, or a
+  subagent), whose own environment cannot tell it apart from the session
+  that spawned it. See [ADR-0009](docs/adr/0009-claim-handshake.md) and
+  [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
+- A `SubagentStop` hook, giving a delegated agent the same backstop a
+  session has always had: while a run is `running`, the agent recorded as
+  its driver is pushed back to `headsign next` at the end of its own turn
+  instead of stopping silently. Agents that aren't the driver pass through
+  untouched. The plugin registers it automatically; the plugin-free
+  `settings.json` snippet in the README now shows both hooks.
 - A triage example workflow (`example.headsign/triage.yaml`): headsign's own
   feedback-intake loop, which judges exactly one ticket per run. It doubles
   as a worked example of two patterns — a run-local completion marker as the
@@ -57,11 +64,11 @@ changes), and a patch bump means fixes only.
   ownership before the exit-note gate, so a bystander's stop can no longer
   consume the shared nudge-cap insurance or a driver's pause note — see
   [ADR-0008](docs/adr/0008-multi-session-ownership.md).
-- `headsign status`'s `driver:` line now shows `claimed` (instead of
-  guessing this-session/another-session) once a run's driver was seated via
-  `headsign claim` — the CLI has no reliable way to make that guess in the
-  same environments `claim` exists to handle, so it reports the fact it
-  does know instead.
+- `headsign status`'s `driver:` line now shows `a delegated agent` (instead
+  of guessing this-session/another-session) once a run's driver was seated
+  via `headsign claim` — what's stored then isn't a session identifier at
+  all, and the CLI has no reliable way to tell whether that agent is the
+  caller, so it reports the fact it does know instead.
 - No-argument `headsign validate` now defaults to the current run's own
   `workflow_path` (from `.headsign/state.json`, whatever its status)
   whenever a run exists, falling back to the plain `.headsign/workflow.yaml`
@@ -76,6 +83,25 @@ changes), and a patch bump means fixes only.
   `headsign.feedbackDir` prerequisite, one ticket per run and why batching
   defeats the point, and the rule that nothing identifying a feedback source
   may enter this public repository.
+
+### Fixed
+
+- `headsign claim` handed the run to the wrong driver whenever it was
+  claimed by a delegated agent. A delegated agent's turn end fires no `Stop`
+  hook at all, so the armed marker sat until some *session* stopped —
+  typically the one that had just delegated the work — and that session was
+  recorded as driver instead; re-claiming converged on the same wrong result
+  rather than correcting it. Sealing now happens on the claiming agent's own
+  turn end via the `SubagentStop` hook, which identifies that agent
+  specifically, and `Stop` no longer reads the claim marker at all — so a
+  session can no longer take a seat meant for an agent. See
+  [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
+- If you have been running the development version through a live patch: a
+  run claimed *before* this change carries a driver stamp of the old kind,
+  which neither hook now matches — nothing misfires, but that run's stop
+  backstop is off (no stop is nudged). Run `headsign claim` again from the
+  agent that should be driving, or start a fresh run with `headsign start`,
+  to restore it. Runs claimed after this change need nothing.
 
 ## [0.1.0] - 2026-07-25
 

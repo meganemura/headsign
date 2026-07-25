@@ -306,10 +306,11 @@ function cmdAbort(args: string[]): void {
   exitAfter(render.abort(reason), 2);
 }
 
-// Arms the driver-adoption marker (ADR-0009's claim handshake) — cwd-only, like next/
-// abort/status. Deliberately writes nothing to state.json: the CLI process itself can
-// never learn the session-granular identifier (only the Stop hook's stdin can), so
-// `claim` can only ask the hook to do the actual adoption on this session's next stop.
+// Arms the driver-adoption marker (the claim handshake, ADR-0009 as re-homed by ADR-0010) —
+// cwd-only, like next/abort/status. Deliberately writes nothing to state.json: the CLI
+// process itself can never learn who is running it at agent granularity (only the
+// SubagentStop hook's stdin carries an agent id), so `claim` can only ask that hook to do
+// the actual adoption when this agent's own turn ends.
 function cmdClaim(): void {
   const cwd = process.cwd();
   const current = state.readState(cwd);
@@ -368,14 +369,15 @@ function cmdStatus(): void {
   // only whether it matches the recorded driver, and legacy-tolerant the same way the
   // Stop hook's own owner check is (non-string driver_session -> null).
   //
-  // driver_source === "claim" (ADR-0009) skips the match/mismatch judgment entirely: the
-  // whole reason claim exists is that the CLI can never resolve its own session-granular
-  // id (only the Stop hook's stdin can) — a teammate whose Bash env shows the lead's id
-  // would otherwise always misjudge "this session"/"another session" here. Reporting the
-  // plain fact that adoption happened is honest about what the CLI can and can't know.
-  let driver: "this session" | "another session" | "unknown" | "claimed";
+  // driver_source === "claim" (ADR-0010) skips the match/mismatch judgment entirely: the
+  // recorded driver is then an *agent* id, and the CLI can't resolve one at all (only the
+  // SubagentStop hook's stdin carries it) — a delegated agent whose Bash env shows the
+  // enclosing session's id would otherwise always misjudge "this session"/"another session"
+  // here. Naming the fact ("a delegated agent" drives this run, whether or not that's the
+  // reader) is honest about what the CLI can and can't know.
+  let driver: "this session" | "another session" | "unknown" | "a delegated agent";
   if (current.driver_source === "claim") {
-    driver = "claimed";
+    driver = "a delegated agent";
   } else {
     const mySid = session.resolveSessionId(process.env);
     const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
@@ -403,8 +405,18 @@ function cmdStopHook(): void {
   process.exit(0);
 }
 
-// Human convenience only — outside the agent-facing contract (ADR-0002). The hidden
-// stop-hook subcommand is deliberately omitted; these six commands are the whole surface.
+// The SubagentStop counterpart (ADR-0010) — same shape as cmdStopHook, different event and
+// different identifier space: this one is answered from the stdin `agent_id`, and it is the
+// only path that can seal a claim.
+function cmdSubagentStopHook(): void {
+  const raw = readFileOrEmpty(0); // no stdin piped -> "", which evaluateSubagent() fails open on
+  const decision = stophook.evaluateSubagent(process.cwd(), raw, localIso(new Date()), process.env);
+  if (decision.block) stderrExit(`${decision.message}\n`, 2);
+  process.exit(0);
+}
+
+// Human convenience only — outside the agent-facing contract (ADR-0002). The two hidden
+// hook subcommands are deliberately omitted; these six commands are the whole surface.
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
@@ -413,7 +425,7 @@ Usage:
   headsign abort [reason]                       end the run for good (records why)
   headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
-  headsign claim                                claim driver ownership for this session (see docs)
+  headsign claim                                claim driver ownership for this delegated agent (see docs)
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -440,6 +452,7 @@ function main(): void {
     case "validate": return cmdValidate(rest);
     case "claim": return cmdClaim();
     case "stop-hook": return cmdStopHook();
+    case "subagent-stop-hook": return cmdSubagentStopHook();
     default: errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }
 }

@@ -58,17 +58,18 @@ export function abort(reason: string): string {
   return `ABORT ${reason || "(no reason given)"}\nWorkflow aborted. Report to the user.\n`;
 }
 
-// --- claim: the driver-adoption handshake (ADR-0009) ---
+// --- claim: the driver-adoption handshake (ADR-0009, re-homed onto SubagentStop by ADR-0010) ---
 // Deliberately fixed, argument-free text: `claim` itself never judges or varies its
 // output by workflow/phase (ADR-0002's "the only judging command is `next`" still holds —
-// this just arms a marker for the Stop hook to act on).
+// this just arms a marker for the SubagentStop hook to act on).
 export function claim(): string {
   return (
     "CLAIM armed\n" +
-    "Now end your turn. The next session to stop seals the claim: the Stop hook\n" +
-    "records that session as this run's driver and confirms it in its message.\n" +
-    "If another session happens to stop first and gets adopted by mistake, run\n" +
-    "`headsign claim` again from the right session — a new claim always wins.\n"
+    "Now end your turn. Sealing happens on this agent's own turn end, which is the only\n" +
+    "moment headsign can learn which delegated agent you are. The hook confirms it in its\n" +
+    "message; do not run `headsign next` before you see that confirmation.\n" +
+    "If the wrong agent gets adopted, run `headsign claim` again from the right one — a new\n" +
+    "claim always wins.\n"
   );
 }
 
@@ -103,11 +104,11 @@ export function statusRunning(o: {
   // last_eval left over from a since-departed phase must never be shown as if it were
   // about now.
   lastFailure?: (Failure & { outputTail: string }) | null;
-  // "claimed" (ADR-0009) is distinct from the other three: it's not a match/mismatch/
-  // unknown judgment against *this* status-invoking session's own id (which the CLI can't
-  // even resolve reliably in a claim scenario — see cmdStatus) but a plain factual report
-  // that the run's driver was set via the claim handshake.
-  driver: "this session" | "another session" | "unknown" | "claimed";
+  // "a delegated agent" (ADR-0010) is distinct from the other three: it's not a match/
+  // mismatch/unknown judgment against *this* status-invoking session's own id (the recorded
+  // driver is an agent id, which the CLI can't resolve at all — see cmdStatus) but a plain
+  // factual report of who the claim handshake put in the driver seat.
+  driver: "this session" | "another session" | "unknown" | "a delegated agent";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure
@@ -135,8 +136,8 @@ export type LogEvent =
   | Outcome
   | { kind: "PAUSED"; note: string }
   | { kind: "STALLED" }
-  // The claim handshake's adoption event (ADR-0009) — a third hook-boundary exception
-  // alongside PAUSED/STALLED. Deliberately detail-free: the session id that was just
+  // The claim handshake's adoption event (ADR-0009/0010) — a third hook-boundary exception
+  // alongside PAUSED/STALLED. Deliberately detail-free: the identifier that was just
   // adopted must never be written to the log (see logDetail below).
   | { kind: "CLAIMED" };
 
@@ -204,6 +205,8 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
     case "CLAIMED":
       // No detail — the whole point of the claimed event is to record *that* an adoption
       // happened, never *who* was adopted (that stays in state.json only, per ADR-0009).
+      // ADR-0010 changed which identifier that is (an agent id, not a session id); it did
+      // not change the rule that it never reaches the log.
       return "";
     case "COMPLETE":
       // No detail form is specified for `complete` in the spec's enumeration (start /

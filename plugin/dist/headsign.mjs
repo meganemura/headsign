@@ -7808,7 +7808,7 @@ Workflow aborted. Report to the user.
 `;
 }
 function claim() {
-  return "CLAIM armed\nNow end your turn. The next session to stop seals the claim: the Stop hook\nrecords that session as this run's driver and confirms it in its message.\nIf another session happens to stop first and gets adopted by mistake, run\n`headsign claim` again from the right session \u2014 a new claim always wins.\n";
+  return "CLAIM armed\nNow end your turn. Sealing happens on this agent's own turn end, which is the only\nmoment headsign can learn which delegated agent you are. The hook confirms it in its\nmessage; do not run `headsign next` before you see that confirmation.\nIf the wrong agent gets adopted, run `headsign claim` again from the right one \u2014 a new\nclaim always wins.\n";
 }
 function validateOk(name, phaseCount) {
   return `OK: workflow '${name}' (${phaseCount} phases)
@@ -7934,6 +7934,34 @@ function findRunDir(startDir) {
     dir = parent;
   }
 }
+function pauseAndAbortHint(runDir, startDir) {
+  const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
+  return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+}
+function noteGateThenNudge(runDir, startDir, state, nowIso) {
+  const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
+  if (fs4.existsSync(notePath)) {
+    const noteRaw = fs4.readFileSync(notePath, "utf8");
+    const trimmedNote = noteRaw.trim();
+    if (trimmedNote.length > 0) {
+      const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
+      fs4.rmSync(notePath, { force: true });
+      const pausedState = { ...state, stop_nudges: 0 };
+      writeState(runDir, pausedState);
+      appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
+      return { block: false };
+    }
+  }
+  const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
+  if (nudges >= MAX_STOP_NUDGES) return { block: false };
+  const nextNudges = nudges + 1;
+  const nudgedState = { ...state, stop_nudges: nextNudges };
+  writeState(runDir, nudgedState);
+  if (nextNudges === MAX_STOP_NUDGES) appendLog(runDir, logLine(nowIso, { kind: "STALLED" }, nudgedState));
+  const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
+  const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
+  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) };
+}
 function evaluate(cwd, stdinRaw, nowIso, env) {
   if (isObserver(env)) return { block: false };
   try {
@@ -7945,46 +7973,39 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
-    const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
-    const pauseAndAbortHint = ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
-    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
-    if (fs4.existsSync(claimPath)) {
-      const claimSid = resolveHookSessionId(input, env);
-      if (claimSid !== null) {
-        fs4.rmSync(claimPath, { force: true });
-        const adoptedState = { ...state, driver_session: claimSid, driver_source: "claim", stop_nudges: 0 };
-        writeState(runDir, adoptedState);
-        appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
-        const adoptionMessage = `Claim confirmed: this session now drives workflow '${state.workflow}' (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` + pauseAndAbortHint;
-        return { block: true, message: adoptionMessage };
-      }
-    }
+    if (state.driver_source === "claim") return { block: false };
     const hookSid = resolveHookSessionId(input, env);
     const driver = typeof state.driver_session === "string" && state.driver_session.length > 0 ? state.driver_session : null;
     if (hookSid !== null && driver !== null && hookSid !== driver) return { block: false };
-    const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
-    if (fs4.existsSync(notePath)) {
-      const noteRaw = fs4.readFileSync(notePath, "utf8");
-      const trimmedNote = noteRaw.trim();
-      if (trimmedNote.length > 0) {
-        const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-        fs4.rmSync(notePath, { force: true });
-        const pausedState = { ...state, stop_nudges: 0 };
-        writeState(runDir, pausedState);
-        appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
-        return { block: false };
-      }
+    return noteGateThenNudge(runDir, startDir, state, nowIso);
+  } catch {
+    return { block: false };
+  }
+}
+function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
+  if (isObserver(env)) return { block: false };
+  try {
+    const input = JSON.parse(stdinRaw);
+    if (input.stop_hook_active) return { block: false };
+    const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
+    const runDir = findRunDir(startDir);
+    if (!runDir) return { block: false };
+    const state = readState(runDir);
+    if (!state) return { block: false };
+    if (state.status !== "running") return { block: false };
+    const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
+    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
+    if (fs4.existsSync(claimPath) && agentId !== null) {
+      fs4.rmSync(claimPath, { force: true });
+      const adoptedState = { ...state, driver_session: agentId, driver_source: "claim", stop_nudges: 0 };
+      writeState(runDir, adoptedState);
+      appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
+      const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` + pauseAndAbortHint(runDir, startDir);
+      return { block: true, message: adoptionMessage };
     }
-    const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
-    if (nudges >= MAX_STOP_NUDGES) return { block: false };
-    const nextNudges = nudges + 1;
-    const nudgedState = { ...state, stop_nudges: nextNudges };
-    writeState(runDir, nudgedState);
-    if (nextNudges === MAX_STOP_NUDGES) appendLog(runDir, logLine(nowIso, { kind: "STALLED" }, nudgedState));
-    const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
-    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-    const message = verdictSentence + finalNotice + pauseAndAbortHint;
-    return { block: true, message };
+    if (state.driver_source !== "claim") return { block: false };
+    if (agentId === null || state.driver_session !== agentId) return { block: false };
+    return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
     return { block: false };
   }
@@ -8231,7 +8252,7 @@ function cmdStatus() {
   const lastFailure = lastEval !== null && lastEval.phase === current.phase ? { check: lastEval.check, run: lastEval.run, exitCode: lastEval.exit_code, timeoutSeconds: lastEval.timeout_seconds, outputTail: lastEval.output_tail } : null;
   let driver;
   if (current.driver_source === "claim") {
-    driver = "claimed";
+    driver = "a delegated agent";
   } else {
     const mySid = resolveSessionId(process.env);
     const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
@@ -8257,6 +8278,13 @@ function cmdStopHook() {
 `, 2);
   process.exit(0);
 }
+function cmdSubagentStopHook() {
+  const raw = readFileOrEmpty(0);
+  const decision = evaluateSubagent(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()), process.env);
+  if (decision.block) stderrExit(`${decision.message}
+`, 2);
+  process.exit(0);
+}
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
 
 Usage:
@@ -8265,7 +8293,7 @@ Usage:
   headsign abort [reason]                       end the run for good (records why)
   headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
-  headsign claim                                claim driver ownership for this session (see docs)
+  headsign claim                                claim driver ownership for this delegated agent (see docs)
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -8298,6 +8326,8 @@ function main() {
       return cmdClaim();
     case "stop-hook":
       return cmdStopHook();
+    case "subagent-stop-hook":
+      return cmdSubagentStopHook();
     default:
       errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }

@@ -43,18 +43,21 @@ plugin or `npm install` the package. Do not guess at other paths.
    answer can burn a retry or advance a phase nobody asked you to touch.
    Want to know what's happening without touching anything? Run `headsign
    status` — it's read-only, and safe to call at any time.
-2. **If a teammate entrusted you with driving a run, claim it first — don't
-   just start calling `next`.** Inside Claude Code's agent-teams feature,
-   your own session can't reliably tell its own session id apart from the
-   lead's, so `next`'s ordinary auto-stamp can silently mark the *wrong*
-   session as driver. Instead: run `headsign claim`, then end your turn.
-   The Stop hook — which does know the real session id — adopts you as
-   driver on that stop and confirms it in its message. Once that
-   confirmation arrives, drive the run with `headsign next` as usual; do
-   not call `next` before you've seen it. If a different session happens to
-   get adopted by mistake (another session stopped first), run `headsign
-   claim` again from the right session — a fresh claim always wins, and it
-   self-repairs the mis-adoption on that session's next stop.
+2. **If you are a delegated agent and were entrusted with driving a run,
+   claim it first — don't just start calling `next`.** This applies when
+   you are a teammate (Claude Code's agent-teams feature) or a subagent:
+   you share the spawning session's process and environment, so your own
+   `next` calls stamp *that session* as the driver, not you. Instead: run
+   `headsign claim`, then end your turn. The seal happens at your own turn
+   end — that is the only moment headsign can learn which delegated agent
+   you are — and the hook confirms it in its message, naming the workflow
+   and phase. **Do not run `headsign next` before you have seen that
+   confirmation.** If some other agent got adopted by mistake (it ended a
+   turn while your marker was armed), run `headsign claim` again from the
+   agent that should be driving: a new claim always wins, and this time it
+   lands, because that agent's own turn end always fires the event that
+   seals. A session driving a run on its own does not need `claim` at all —
+   ordinary `next` stamping already works there.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
 4. **Whenever you are unsure what to do, think a phase's work is finished, or
@@ -72,9 +75,9 @@ plugin or `npm install` the package. Do not guess at other paths.
    the user; that's a legitimate exit, but it's permanent: the run cannot be
    resumed. To *pause* rather than end — stepping away to resume later —
    write one line explaining why to `.headsign/tmp/stop-note` and stop
-   again: the Stop hook passes immediately, and `headsign next` picks the
-   run back up later from the same phase. `ESCALATE` means stop working and
-   ask the user for direction.
+   again: the stop-boundary hook passes immediately, and `headsign next`
+   picks the run back up later from the same phase. `ESCALATE` means stop
+   working and ask the user for direction.
 7. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then

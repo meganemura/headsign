@@ -364,7 +364,7 @@ test("a blank stdin session_id (whitespace only) is treated as absent, falling b
   assert.deepEqual(decision, { block: false });
 });
 
-// --- adoption gate: the claim handshake (ADR-0009) ---
+// --- Stop and the claim marker: the regression ADR-0010 exists to prevent ---
 
 function writeClaimMarker(dir: string): void {
   const tmpDir = path.join(dir, ".headsign", "tmp");
@@ -376,21 +376,88 @@ function claimMarkerPath(dir: string): string {
   return path.join(dir, ".headsign", "tmp", "claim");
 }
 
-test("adoption: a claim marker with a stdin session_id adopts — driver_session/driver_source/stop_nudges stamped, marker consumed, one claimed log line, block=true with the adoption message", () => {
+test("Stop: a claim marker is neither adopted nor consumed — the marker survives untouched and the driver is not stamped", () => {
   const dir = tmpdir();
-  state.writeState(dir, runningState({ workflow: "demo", phase: "build", driver_session: "old-driver", driver_source: "env", stop_nudges: 3 }));
+  state.writeState(dir, runningState({ driver_session: "session-alpha", driver_source: "env", stop_nudges: 0 }));
   writeClaimMarker(dir);
 
-  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "claimer-1" }), NOW, NO_ENV);
+  // Under ADR-0009 this stop would have sealed session-alpha as the driver, stealing the
+  // seat a delegated agent had just asked for. ADR-0010: Stop must not look at the marker.
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-alpha" }), NOW, NO_ENV);
+  assert.equal(decision.block, true, "falls through to the ordinary nudge flow for this run's own session driver");
+
+  assert.ok(fs.existsSync(claimMarkerPath(dir)), "the claim marker must survive a Stop untouched — only SubagentStop may consume it");
+  const after = state.readState(dir);
+  assert.equal(after?.driver_session, "session-alpha", "no adoption: the driver is unchanged");
+  assert.equal(after?.driver_source, "env");
+  assert.equal(after?.stop_nudges, 1, "the ordinary loop-guard nudge still applies");
+  assert.equal(readLog(dir).filter((l) => l.includes(" claimed ")).length, 0, "Stop must never log a claimed line");
+});
+
+test("Stop: a claim marker on a run with no driver at all is still ignored (no adoption of an unowned run)", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: null, driver_source: null }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-alpha" }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.ok(fs.existsSync(claimMarkerPath(dir)));
+  const after = state.readState(dir);
+  assert.equal(after?.driver_session, null);
+  assert.equal(after?.driver_source, null);
+});
+
+test("Stop: driver_source \"claim\" always passes through — no state write, whatever session_id the stop carries", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 2 }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  // Even a session_id that happens to equal the recorded agent id must not block: the two
+  // are different identifier spaces, and Stop can never be the claimed agent's own turn end.
+  for (const sid of ["session-alpha", "agent-alpha"]) {
+    const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: sid }), NOW, NO_ENV);
+    assert.deepEqual(decision, { block: false }, `session_id ${sid} must pass through on a claim-driven run`);
+  }
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "a claim-driven run must not be written by any Stop");
+});
+
+test("Stop: driver_source \"claim\" passes through ahead of the stop-note gate — a session's stop must not consume the claimed agent's note", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim" }));
+  writeNote(dir, "the delegated agent is stepping away");
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "agent-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.ok(fs.existsSync(path.join(dir, ".headsign", "tmp", "stop-note")), "the note must remain for the claimed agent's own SubagentStop");
+  assert.equal(readLog(dir).length, 0);
+});
+
+// --- SubagentStop: sealing and backstopping a delegated agent (ADR-0010) ---
+
+function subagentStdin(o: { dir?: string; agentId?: string; stopHookActive?: boolean }): string {
+  const payload: Record<string, unknown> = {};
+  if (o.dir !== undefined) payload.cwd = o.dir;
+  if (o.agentId !== undefined) payload.agent_id = o.agentId;
+  if (o.stopHookActive !== undefined) payload.stop_hook_active = o.stopHookActive;
+  return JSON.stringify(payload);
+}
+
+test("SubagentStop adoption: a claim marker plus an agent_id seals that agent — driver_session/driver_source/stop_nudges stamped, marker consumed, one claimed log line, block=true with the confirmation", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build", driver_session: "session-alpha", driver_source: "env", stop_nudges: 3 }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
   assert.equal(decision.block, true);
   assert.ok(decision.message);
-  assert.match(decision.message, /^Claim confirmed: this session now drives workflow 'demo' \(phase: build\)\./);
+  assert.match(decision.message, /^Claim confirmed: this agent now drives workflow 'demo' \(phase: build\)\./);
   assert.match(decision.message, /headsign next`/);
   assert.match(decision.message, /headsign abort/);
-  assert.doesNotMatch(decision.message, /claimer-1/, "the adopted session id must never appear in the hook's own message");
+  assert.match(decision.message, /\.headsign\/tmp\/stop-note/);
+  assert.doesNotMatch(decision.message, /agent-alpha/, "the adopted agent id must never appear in the hook's own message");
 
   const after = state.readState(dir);
-  assert.equal(after?.driver_session, "claimer-1");
+  assert.equal(after?.driver_session, "agent-alpha");
   assert.equal(after?.driver_source, "claim");
   assert.equal(after?.stop_nudges, 0);
 
@@ -399,66 +466,267 @@ test("adoption: a claim marker with a stdin session_id adopts — driver_session
   const lines = readLog(dir);
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^\S+ claimed build a=0 i=0$/);
-  assert.doesNotMatch(lines[0], /claimer-1/, "the log line must never carry the adopted session id");
+  assert.doesNotMatch(lines[0], /agent-alpha/, "the log line must never carry the adopted agent id");
 });
 
-test("adoption: a claim marker with an env HEADSIGN_SESSION_ID (no stdin session_id) also adopts", () => {
+test("SubagentStop adoption: a surrounding agent_id is trimmed before it is sealed", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState());
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "  agent-alpha  " }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.equal(state.readState(dir)?.driver_session, "agent-alpha");
+});
+
+test("SubagentStop adoption: a claim marker with no agent_id leaves the marker in place and changes nothing", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "session-alpha", driver_source: "env", stop_nudges: 1 }));
+  writeClaimMarker(dir);
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false }, "an unnameable subagent stop on a session-driven run just passes through");
+  assert.ok(fs.existsSync(claimMarkerPath(dir)), "the marker waits for a later, identifiable subagent stop");
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "no adoption, no nudge, no state write");
+  assert.equal(readLog(dir).length, 0);
+});
+
+test("SubagentStop adoption: a blank (whitespace-only) agent_id counts as no agent_id", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "session-alpha", driver_source: "env" }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "   " }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.ok(fs.existsSync(claimMarkerPath(dir)));
+  assert.equal(state.readState(dir)?.driver_source, "env");
+});
+
+test("SubagentStop adoption: env session identifiers are never used as a fallback for agent_id — only the payload can name an agent", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ driver_session: null, driver_source: null }));
   writeClaimMarker(dir);
 
-  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, { HEADSIGN_SESSION_ID: "claimer-env" });
-  assert.equal(decision.block, true);
-  assert.equal(state.readState(dir)?.driver_session, "claimer-env");
-  assert.equal(state.readState(dir)?.driver_source, "claim");
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir }), NOW, { HEADSIGN_SESSION_ID: "session-alpha" });
+  assert.deepEqual(decision, { block: false });
+  assert.ok(fs.existsSync(claimMarkerPath(dir)), "an env session id must not seal a claim");
+  assert.equal(state.readState(dir)?.driver_session, null);
 });
 
-test("adoption: a claim marker with no session identifier resolvable anywhere leaves the marker in place and falls through to the existing (fail-open) flow", () => {
+test("SubagentStop adoption gate runs BEFORE the owner comparison: an agent that mismatches the old driver is adopted, not passed through as a bystander", () => {
   const dir = tmpdir();
-  state.writeState(dir, runningState({ driver_session: "old-driver", driver_source: "env", stop_nudges: 0 }));
+  state.writeState(dir, runningState({ driver_session: "agent-beta", driver_source: "claim" }));
   writeClaimMarker(dir);
 
-  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
-  assert.equal(decision.block, true, "falls through to the ordinary nudge flow, still blocking");
-  assert.ok(fs.existsSync(claimMarkerPath(dir)), "an unidentifiable stop must leave the marker for a later, identifiable stop");
-
-  const after = state.readState(dir);
-  assert.equal(after?.driver_session, "old-driver", "no adoption happened — driver must be untouched");
-  assert.equal(after?.driver_source, "env");
-  assert.equal(after?.stop_nudges, 1, "the ordinary loop-guard nudge still applies");
-  assert.equal(readLog(dir).filter((l) => l.includes(" claimed ")).length, 0, "no claimed log line without a resolvable identifier");
-});
-
-test("adoption gate runs BEFORE the owner comparison: a claiming session that mismatches the old driver is adopted, not passed through as a bystander", () => {
-  const dir = tmpdir();
-  state.writeState(dir, runningState({ driver_session: "old-driver", driver_source: "env" }));
-  writeClaimMarker(dir);
-
-  // Without the adoption gate running first, this session_id would mismatch driver_session
-  // and the owner check would silently pass it through (block: false, no state write).
-  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "mismatched-claimer" }), NOW, NO_ENV);
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
   assert.equal(decision.block, true, "adopted, not passed through as a mismatched bystander");
   const after = state.readState(dir);
-  assert.equal(after?.driver_session, "mismatched-claimer");
+  assert.equal(after?.driver_session, "agent-alpha");
   assert.equal(after?.driver_source, "claim");
 });
 
-test("adoption: re-claim re-adopts — a second claim marker overrides a previous (possibly mistaken) adoption", () => {
+test("SubagentStop adoption: re-claim re-adopts — the right agent's own turn end always wins over a previous mistaken adoption", () => {
   const dir = tmpdir();
-  state.writeState(dir, runningState({ driver_session: "old-driver", driver_source: "env" }));
+  state.writeState(dir, runningState({ driver_session: "session-alpha", driver_source: "env" }));
   writeClaimMarker(dir);
 
-  const first = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "wrong-adoptee" }), NOW, NO_ENV);
+  const first = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-beta" }), NOW, NO_ENV);
   assert.equal(first.block, true);
-  assert.equal(state.readState(dir)?.driver_session, "wrong-adoptee");
+  assert.equal(state.readState(dir)?.driver_session, "agent-beta");
 
-  // The right session re-claims: a fresh marker, a fresh stop.
   writeClaimMarker(dir);
-  const second = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "right-adoptee" }), NOW, NO_ENV);
+  const second = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
   assert.equal(second.block, true);
   const after = state.readState(dir);
-  assert.equal(after?.driver_session, "right-adoptee", "the new claim always wins");
+  assert.equal(after?.driver_session, "agent-alpha", "a new claim always wins");
   assert.equal(after?.driver_source, "claim");
-
   assert.equal(readLog(dir).filter((l) => l.includes(" claimed ")).length, 2, "each successful adoption logs its own claimed line");
+});
+
+test("SubagentStop owner check: the recorded claim driver's own turn end blocks and increments stop_nudges", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build", driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 0 }));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.match(decision.message ?? "", /headsign workflow 'demo' is still running \(phase: build\)\./);
+  assert.match(decision.message ?? "", /headsign next`/);
+  assert.match(decision.message ?? "", /headsign abort/);
+  assert.equal(state.readState(dir)?.stop_nudges, 1);
+});
+
+test("SubagentStop owner check: a different agent's turn end passes through — no state write, no output", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 2 }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-beta" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "an unrelated subagent's stop must not write state.json at all");
+});
+
+test("SubagentStop owner check: a session-driven run (driver_source \"env\") passes through — a subagent under it is not the driver", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "session-alpha", driver_source: "env", stop_nudges: 2 }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
+});
+
+test("SubagentStop owner check: an unclaimed run (driver_source null) passes through too", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: null, driver_source: null, stop_nudges: 0 }));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.equal(state.readState(dir)?.stop_nudges, 0);
+});
+
+test("SubagentStop owner check: a claim-driven run whose subagent stop carries no agent_id passes through untouched — only a positive match may block", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 0 }));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir }), NOW, NO_ENV);
+  assert.equal(decision.block, false);
+  assert.equal(state.readState(dir)?.stop_nudges, 0, "a stop that cannot name itself must never be nudged into someone else's run");
+});
+
+test("SubagentStop: a non-empty stop-note pauses instead of blocking — note deleted, stop_nudges reset, one paused log line", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 3 }));
+  writeNote(dir, "handing back to the human\nsecond line ignored");
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.ok(!fs.existsSync(path.join(dir, ".headsign", "tmp", "stop-note")), "note must be consumed (deleted)");
+  assert.equal(state.readState(dir)?.stop_nudges, 0);
+
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="handing back to the human"$/);
+});
+
+test("SubagentStop: an unrelated agent's stop must not consume the driving agent's stop-note", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim" }));
+  writeNote(dir, "the driving agent is stepping away");
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-beta" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.ok(fs.existsSync(path.join(dir, ".headsign", "tmp", "stop-note")));
+  assert.equal(readLog(dir).length, 0);
+});
+
+test("SubagentStop: HEADSIGN_OBSERVER set -> unconditional pass-through, even ahead of malformed stdin", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 2 }));
+
+  const parsed = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, { HEADSIGN_OBSERVER: "1" });
+  assert.deepEqual(parsed, { block: false });
+  const garbage = stophook.evaluateSubagent(dir, "not json{{{", NOW, { HEADSIGN_OBSERVER: "1" });
+  assert.deepEqual(garbage, { block: false });
+  assert.equal(state.readState(dir)?.stop_nudges, 2, "observer pass-through must not touch state");
+});
+
+test("SubagentStop: stop_hook_active true short-circuits even for the driving agent, and does not increment stop_nudges", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 0 }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha", stopHookActive: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.equal(state.readState(dir)?.stop_nudges, 0);
+  assert.ok(fs.existsSync(claimMarkerPath(dir)), "an already-unblocked stop must not seal a claim either");
+});
+
+for (const status of ["complete", "escalated", "aborted"] as const) {
+  test(`SubagentStop: status '${status}' -> pass-through, and no adoption even with a claim marker armed`, () => {
+    const dir = tmpdir();
+    state.writeState(dir, runningState({ status, driver_source: "claim", driver_session: "agent-alpha", end_reason: status === "complete" ? null : "some reason" }));
+    writeClaimMarker(dir);
+
+    const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
+    assert.deepEqual(decision, { block: false });
+    assert.ok(fs.existsSync(claimMarkerPath(dir)));
+  });
+}
+
+test("SubagentStop: no run reachable from here -> pass-through", () => {
+  const dir = tmpdir();
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+});
+
+test("SubagentStop: garbage stdin fails open regardless of state at cwd", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim" }));
+  const decision = stophook.evaluateSubagent(dir, "not json{{{", NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+});
+
+test("SubagentStop: nudge lifecycle 1 -> 5 with the final reminder only on the 5th, one stalled line, then pass-through", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 0 }));
+  const stdin = subagentStdin({ dir, agentId: "agent-alpha" });
+
+  for (let expected = 1; expected <= 4; expected++) {
+    const result = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
+    assert.equal(result.block, true, `nudge #${expected} should block`);
+    assert.equal(state.readState(dir)?.stop_nudges, expected);
+    assert.ok(!result.message?.includes("final automatic reminder"), `nudge #${expected} must not carry the final notice`);
+  }
+
+  const fifth = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
+  assert.equal(fifth.block, true);
+  assert.ok(fifth.message?.includes("final automatic reminder"));
+  let lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ stalled build a=0 i=0 nudges=5$/);
+
+  const sixth = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
+  assert.deepEqual(sixth, { block: false });
+  const seventh = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
+  assert.deepEqual(seventh, { block: false });
+  lines = readLog(dir);
+  assert.equal(lines.length, 1, "stalled must not be repeated");
+  assert.equal(state.readState(dir)?.stop_nudges, 5);
+});
+
+test("SubagentStop: walk-up finds the run at the .git-bounded root, and both the adoption and nudge messages carry the cd instruction and the runDir-prefixed note path", () => {
+  const root = tmpdir();
+  fs.mkdirSync(path.join(root, ".git"));
+  state.writeState(root, runningState({ workflow: "demo", phase: "build" }));
+  writeClaimMarker(root);
+  const deepSubdir = path.join(root, "a", "b", "c");
+  fs.mkdirSync(deepSubdir, { recursive: true });
+
+  const adopted = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.equal(adopted.block, true);
+  assert.ok(adopted.message?.includes(`${root}/.headsign/tmp/stop-note`));
+  assert.equal(state.readState(root)?.driver_session, "agent-alpha");
+
+  const nudged = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.equal(nudged.block, true);
+  assert.ok(nudged.message?.includes(root));
+  assert.ok(nudged.message?.includes("cd there"));
+  assert.ok(nudged.message?.includes(`${root}/.headsign/tmp/stop-note`));
+  assert.equal(state.readState(root)?.stop_nudges, 1);
+});
+
+test("SubagentStop: walk-up boundary — a .git FILE stops the walk before reaching a running state further up", () => {
+  const root = tmpdir();
+  fs.mkdirSync(path.join(root, ".git"));
+  state.writeState(root, runningState({ driver_session: "agent-alpha", driver_source: "claim", stop_nudges: 0 }));
+  const boundaryDir = path.join(root, "a");
+  fs.mkdirSync(boundaryDir, { recursive: true });
+  fs.writeFileSync(path.join(boundaryDir, ".git"), "gitdir: /elsewhere");
+  const deepSubdir = path.join(boundaryDir, "b", "c");
+  fs.mkdirSync(deepSubdir, { recursive: true });
+
+  const decision = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.equal(state.readState(root)?.stop_nudges, 0);
 });

@@ -1625,7 +1625,7 @@ test("stop-hook: a missing identifier on either side falls back to the legacy nu
   assert.equal(readState(dir2).stop_nudges, 1);
 });
 
-// --- claim: the driver-adoption handshake (ADR-0009) ---
+// --- claim: the driver-adoption handshake (ADR-0009, re-homed onto SubagentStop by ADR-0010) ---
 
 function claimMarkerPath(dir: string): string {
   return path.join(dir, ".headsign", "tmp", "claim");
@@ -1679,20 +1679,20 @@ test("claim: a re-run (e.g. after a mistaken adoption) harmlessly re-arms the ma
   assert.equal(fs.existsSync(claimMarkerPath(dir)), true);
 });
 
-test("claim + stop-hook end-to-end: the next stop (any session) seals the claim, blocking with the adoption message", () => {
+test("claim + subagent-stop-hook end-to-end: the claiming agent's own turn end seals the claim, blocking with the confirmation message", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
-  run(["start"], { cwd: dir, env: sessionEnv("original-driver") });
+  run(["start"], { cwd: dir, env: sessionEnv("session-alpha") });
   run(["claim"], { cwd: dir });
 
-  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "claimer-1" }), env: NO_SESSION_ENV });
+  const result = run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /^Claim confirmed: this session now drives workflow 'demo' \(phase: build\)\./);
+  assert.match(result.stderr, /^Claim confirmed: this agent now drives workflow 'demo' \(phase: build\)\./);
   assert.match(result.stderr, /headsign next`/);
   assert.match(result.stderr, /headsign abort/);
 
   const after = readState(dir);
-  assert.equal(after.driver_session, "claimer-1");
+  assert.equal(after.driver_session, "agent-alpha");
   assert.equal(after.driver_source, "claim");
   assert.equal(after.stop_nudges, 0);
   assert.equal(fs.existsSync(claimMarkerPath(dir)), false);
@@ -1701,21 +1701,58 @@ test("claim + stop-hook end-to-end: the next stop (any session) seals the claim,
   assert.equal(lines.filter((l) => l.includes(" claimed ")).length, 1);
 });
 
+test("claim + stop-hook end-to-end: an enclosing session's stop does NOT seal the claim — the marker survives for the claiming agent's own turn end", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("session-alpha") });
+  run(["claim"], { cwd: dir });
+
+  // The regression ADR-0010 exists to prevent: under ADR-0009 this stop stole the driver
+  // seat that a delegated agent had just asked for, simply by stopping first.
+  const stolen = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "session-alpha" }), env: NO_SESSION_ENV });
+  assert.equal(stolen.status, 2, "the session is still nudged as this run's own env-stamped driver");
+  assert.doesNotMatch(stolen.stderr, /Claim confirmed/);
+  assert.equal(readState(dir).driver_session, "session-alpha");
+  assert.equal(readState(dir).driver_source, "env");
+  assert.equal(fs.existsSync(claimMarkerPath(dir)), true, "the marker must still be armed");
+
+  // ...and the claiming agent then gets it, as asked.
+  const sealed = run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
+  assert.equal(sealed.status, 2);
+  assert.match(sealed.stderr, /^Claim confirmed/);
+  assert.equal(readState(dir).driver_session, "agent-alpha");
+  assert.equal(readState(dir).driver_source, "claim");
+});
+
 test("stickiness: once adopted via claim, next's ordinary env-derived auto-stamp does not overwrite the driver", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
-  run(["start"], { cwd: dir, env: sessionEnv("original-driver") });
+  run(["start"], { cwd: dir, env: sessionEnv("session-alpha") });
   run(["claim"], { cwd: dir });
-  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "claimer-1" }), env: NO_SESSION_ENV });
-  assert.equal(readState(dir).driver_session, "claimer-1");
+  run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
+  assert.equal(readState(dir).driver_session, "agent-alpha");
   assert.equal(readState(dir).driver_source, "claim");
 
   // A completely different session id calls `next` — under the old (pre-claim) stamping
   // rule this would silently overwrite the driver; claim's stickiness must prevent that.
-  run(["next"], { cwd: dir, env: sessionEnv("some-other-session") });
+  run(["next"], { cwd: dir, env: sessionEnv("session-beta") });
   const after = readState(dir);
-  assert.equal(after.driver_session, "claimer-1", "the claimed driver must survive an unrelated session's next");
+  assert.equal(after.driver_session, "agent-alpha", "the claimed driver must survive an unrelated session's next");
   assert.equal(after.driver_source, "claim");
+});
+
+test("a claim-driven run never blocks an enclosing session's stop again: driver_source \"claim\" passes stop-hook through untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("session-alpha") });
+  run(["claim"], { cwd: dir });
+  run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
+  const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "session-alpha" }), env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "state.json")), before);
 });
 
 test("stickiness only applies to driver_source \"claim\": an ordinary env-stamped driver is still overwritten by the next positive identifier", () => {
@@ -1730,37 +1767,76 @@ test("stickiness only applies to driver_source \"claim\": an ordinary env-stampe
   assert.equal(after.driver_source, "env");
 });
 
-test("re-claim re-adopts: a second claim from the right session overrides a previous mistaken adoption", () => {
+test("re-claim re-adopts: a second claim, sealed by the right agent's turn end, overrides a previous mistaken adoption", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir, env: NO_SESSION_ENV });
 
   run(["claim"], { cwd: dir });
-  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "wrong-session" }), env: NO_SESSION_ENV });
-  assert.equal(readState(dir).driver_session, "wrong-session");
+  run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-beta" }), env: NO_SESSION_ENV });
+  assert.equal(readState(dir).driver_session, "agent-beta");
 
-  // The right session notices the mistake and re-claims.
+  // The right agent notices the mistake and re-claims. Unlike ADR-0009's version of this
+  // handshake, the retry converges on the right answer: that agent's own turn end always
+  // fires SubagentStop.
   run(["claim"], { cwd: dir });
-  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "right-session" }), env: NO_SESSION_ENV });
+  const result = run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
   assert.equal(result.status, 2);
   const after = readState(dir);
-  assert.equal(after.driver_session, "right-session", "a new claim always wins");
+  assert.equal(after.driver_session, "agent-alpha", "a new claim always wins");
   assert.equal(after.driver_source, "claim");
 });
 
-test("status: driver_source \"claim\" reports driver: claimed, not this/another session", () => {
+test("subagent-stop-hook: reads stdin and exits 0 when the stopping agent is not this run's driver", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
-  run(["start"], { cwd: dir, env: sessionEnv("original-driver") });
-  run(["claim"], { cwd: dir });
-  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "claimer-1" }), env: NO_SESSION_ENV });
+  run(["start"], { cwd: dir, env: sessionEnv("session-alpha") });
 
-  // Even when the status-invoking session's own env id happens to equal the claimed
-  // driver, "claimed" is reported — the CLI must not fall back to this/another judgment.
-  const result = run(["status"], { cwd: dir, env: sessionEnv("claimer-1") });
+  // A session-driven run: an unrelated subagent stopping under it must never be trapped.
+  const result = run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /driver: claimed\n$/);
-  assert.doesNotMatch(result.stdout, /claimer-1/);
+  assert.equal(result.stderr, "");
+  assert.equal(readState(dir).stop_nudges, 0);
+});
+
+test("subagent-stop-hook: the driving agent's own turn end exits 2 with the nudge on stderr and increments stop_nudges", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["claim"], { cwd: dir });
+  run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
+
+  const result = run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /headsign workflow 'demo' is still running \(phase: build\)\./);
+  assert.equal(readState(dir).stop_nudges, 1);
+});
+
+test("subagent-stop-hook: no run here, and no stdin at all, exit 0 (fail open)", () => {
+  const noRun = run(["subagent-stop-hook"], { cwd: tmpdir(), input: JSON.stringify({ agent_id: "agent-alpha" }) });
+  assert.equal(noRun.status, 0);
+
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const noStdin = run(["subagent-stop-hook"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(noStdin.status, 0);
+});
+
+test("status: driver_source \"claim\" reports driver: a delegated agent, not this/another session", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("session-alpha") });
+  run(["claim"], { cwd: dir });
+  run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
+
+  // Even when the status-invoking session's own env id happens to equal the recorded
+  // driver, the delegated-agent phrasing is reported — the CLI can't resolve an agent id,
+  // so it must not fall back to a this/another judgment it has no basis for.
+  const result = run(["status"], { cwd: dir, env: sessionEnv("agent-alpha") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /driver: a delegated agent\n$/);
+  assert.doesNotMatch(result.stdout, /agent-alpha/);
 });
 
 test("--help lists the claim command and its validate line describes the new default (current run's workflow, then .headsign/workflow.yaml)", () => {
@@ -1768,6 +1844,11 @@ test("--help lists the claim command and its validate line describes the new def
   assert.equal(result.status, 0);
   assert.match(result.stdout, /headsign claim/);
   assert.match(result.stdout, /defaults to the current run's workflow, then \.headsign\/workflow\.yaml/);
+});
+
+test("--help keeps both hook subcommands hidden: they are wiring for Claude Code, not part of the six-command surface", () => {
+  const result = run(["--help"], { cwd: tmpdir() });
+  assert.doesNotMatch(result.stdout, /stop-hook/);
 });
 
 test("src/cli.ts no longer describes the command surface as \"five commands\" now that claim makes six", () => {
