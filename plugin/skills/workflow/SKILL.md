@@ -21,13 +21,14 @@ below means:
 node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 ```
 
-(If a `headsign` binary is already on PATH, that works too.)
+(If the package is installed via npm, `npx headsign` — or a PATH-installed
+`headsign` — works too.)
 
-If the bundled path above does not exist, this file is a stray copy running
-outside its plugin (e.g. copied into `~/.claude/skills/`) — the bundle only
-ships with the plugin. Use `headsign` from PATH if available; otherwise stop
-and tell the user to install the plugin instead of the copied skill. Do not
-guess at other paths.
+If the bundled path above does not exist, this file is a copy running
+outside its plugin (e.g. placed in `.claude/skills/`) — the bundle only
+ships with the plugin. Use `npx headsign` or a PATH-installed `headsign`
+if available; otherwise stop and tell the user to either install the
+plugin or `npm install` the package. Do not guess at other paths.
 
 ## The discipline
 

@@ -53,13 +53,42 @@ from silently quitting mid-workflow.
 
 ### Using without the plugin
 
-The CLI alone provides all of headsign's functionality — gate judgment,
-state, `PENDING`, locking, logging — none of it depends on the plugin.
-It isn't published on npm yet, so for now that means `git clone` this
-repository and run `node plugin/dist/headsign.mjs`; once it's published,
-that becomes `npx headsign`. Claude Code isn't required either: the CLI
-works from any agent, or by hand at a terminal. The plugin adds only two
-things on top of the CLI: the `workflow` skill and the Stop hook backstop.
+The plugin is a convenience wrapper for Claude Code. The CLI is the tool:
+gate judgment, state, `PENDING`, locking, logging all live in it, and it
+works from any agent — or by hand at a terminal. The plugin adds exactly
+two things on top: the `workflow` skill and the Stop hook backstop. Both
+have plugin-free equivalents below.
+
+**Install the CLI.** The bundle is committed, so there is nothing to build:
+
+```
+npm install -D github:meganemura/headsign   # not on npm yet; later: npm install -D headsign
+npx headsign --help
+```
+
+**Teach your agent the discipline.** The skill is plain instructions, not
+machinery. For Cursor, a custom harness, or a `CLAUDE.md`, this one rule
+carries most of it:
+
+> Run `npx headsign next` and obey the first line of the answer. Never end
+> the run on anything but `COMPLETE`; to stop deliberately, run
+> `npx headsign abort <reason>`.
+
+The full discipline is in
+[plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md) — copy
+what you need into your agent's rules. Claude Code users can also copy it
+into `.claude/skills/` as a project skill; a copied skill can't find the
+plugin's bundled CLI, so install the package as above and it falls back to
+`npx headsign`.
+
+**Optional: the backstop without the plugin.** Wire the Stop hook yourself
+in `.claude/settings.json`:
+
+```json
+{ "hooks": { "Stop": [ { "hooks": [
+  { "type": "command", "command": "npx", "args": ["headsign", "stop-hook"] }
+] } ] } }
+```
 
 ## Quick start
 
