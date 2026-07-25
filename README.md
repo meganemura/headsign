@@ -1,6 +1,6 @@
 # headsign
 
-[日本語](README.ja.md)
+[日本語](README.ja.md) · [npm](https://www.npmjs.com/package/headsign)
 
 > A headsign is the destination display on the front of a train. This one is
 > for agent loops: each iteration, the agent asks where it's bound; headsign

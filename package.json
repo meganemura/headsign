@@ -10,8 +10,16 @@
   "engines": {
     "node": ">=20"
   },
-  "repository": "meganemura/headsign",
-  "files": ["plugin/", "README.md", "README.ja.md", "CHANGELOG.md"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meganemura/headsign.git"
+  },
+  "files": [
+    "plugin/",
+    "README.md",
+    "README.ja.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=esm --outfile=plugin/dist/headsign.mjs --banner:js='#!/usr/bin/env node\nimport { createRequire } from \"node:module\";\nconst require = createRequire(import.meta.url);'",
     "test": "node --test tests/*.test.ts",

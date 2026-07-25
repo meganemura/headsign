@@ -1,6 +1,6 @@
 # headsign
 
-[English](README.md)
+[English](README.md) · [npm](https://www.npmjs.com/package/headsign)
 
 > 方向幕(ヘッドサイン)は、列車の前面に掲げられる行先表示である。
 > これはエージェントループのための方向幕だ。周回のたびにエージェントが行き先を尋ね、headsign がゲートを実行して答える。進むか、やり直すか、終点か。

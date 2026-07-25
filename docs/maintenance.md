@@ -65,10 +65,12 @@ patch = fixes only.
    for every channel, which is only trustworthy if it cannot move.
 5. Create the GitHub Release for the tag; its body is the transcription of
    the `CHANGELOG.md` section.
-6. `gh skill publish --tag vX.Y.Z` — validates the skill against the Agent
-   Skills spec and keeps the `agent-skills` topic in place. It reuses the
-   same tag; if it balks at the existing release, ensuring the topic is
-   present is the part that matters for `gh skill search`.
+6. `gh skill` needs no per-release step. It cannot attach to an existing
+   tag (`gh skill publish` insists on creating the tag itself), and what
+   discovery actually keys on — the `agent-skills` topic — is a one-time
+   repository setting (already in place; publish added it on 2026-07-25).
+   Run `gh skill publish --dry-run` before releasing as a free validation
+   of the skill layout, and nothing else.
 7. `npm publish` from the tagged, CI-green checkout — `prepublishOnly`
    forces typecheck+test+build; the `files` whitelist ships only `plugin/`,
    the READMEs, and the CHANGELOG. Sanity-check with `npm pack --dry-run`
