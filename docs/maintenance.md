@@ -121,10 +121,10 @@ releasing the change (see the distribution map above).
 for a change that "isn't taking".**
 
 - **`dist/headsign.mjs` (the hook and CLI) takes effect immediately, even
-  in a session that's already running.** The Stop hook is invoked fresh on
-  every single firing and re-reads the bundle off disk each time, so a
-  patched `dist/headsign.mjs` changes the very next Stop-hook firing in any
-  open session — no restart needed.
+  in a session that's already running.** The stop-boundary hooks are invoked
+  fresh on every single firing and re-read the bundle off disk each time, so
+  a patched `dist/headsign.mjs` changes the very next `Stop` or
+  `SubagentStop` firing in any open session — no restart needed.
 - **`skills/workflow/SKILL.md` only takes effect in new sessions.** Skill
   text is loaded once, at session start, and stays fixed in that session's
   context for its whole lifetime; a session already running keeps whatever

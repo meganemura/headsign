@@ -60,10 +60,10 @@ consolidating the first two instead. Recount with:
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
 ```
 
-The 500
-figure is a guideline, not a hard cap: per ADR-0001 it "is a design smell
-detector, not a hard compiler limit" — a number drifting past it is a signal
-to periodically check for design bloat, not a fact to fix by deleting lines.
+The 500 figure is a guideline, not a hard cap: per ADR-0001 it "is a design
+smell detector, not a hard compiler limit" — a number drifting past it is a
+signal to periodically check for design bloat, not a fact to fix by deleting
+lines.
 
 | Module | Responsibility | Must NOT know about |
 |---|---|---|

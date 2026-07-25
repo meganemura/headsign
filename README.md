@@ -68,8 +68,8 @@ keep the agent from silently quitting mid-workflow.
 The plugin is just one way headsign ships, packaged for Claude Code. The
 tool itself is the CLI: gate judgment, state, `PENDING`, locking, logging
 all live in it, and it works from any agent — or by hand at a terminal. The plugin adds exactly
-two things on top: the `workflow` skill and the Stop hook backstop. Both
-have plugin-free equivalents below.
+two things on top: the `workflow` skill and the stop-boundary hook
+backstop. Both have plugin-free equivalents below.
 
 **Install the CLI.** The bundle is committed, so there is nothing to build:
 
@@ -194,9 +194,9 @@ state is external, the loop survives context compaction: recovery is just
 `headsign start`, `next`, and `abort` resolve `.headsign/` in the current
 directory only — they never search parent directories — so run them from the
 repo or git-worktree root; each worktree then keeps its own independent run.
-The one exception is the Stop hook, which walks up to find the run's
+The exceptions are the stop-boundary hooks, which walk up to find the run's
 `.headsign/` (bounded by the worktree root) so the backstop still fires when
-the session stopped in a subdirectory. That walk only goes up, though, so from
+the turn ended in a subdirectory. That walk only goes up, though, so from
 a directory above the run — a monorepo root, say — the hook won't find it and
 stays silent; keep the session at the workflow's directory or below.
 
@@ -285,8 +285,9 @@ sequenceDiagram
 ```
 
 Every arrow from headsign is driven by a shell exit code, never the LLM's
-own say-so. The Stop hook (not shown) is the backstop: if Claude tries to
-stop while the run is `running`, it's pointed back to `headsign next`.
+own say-so. The stop-boundary hooks (not shown) are the backstop: if the
+run's driver tries to stop while the run is `running`, it's pointed back to
+`headsign next`.
 
 ## The contract
 
@@ -368,9 +369,18 @@ there is always detected, never mistaken for "nothing changed".
 Skills are instructions, not guarantees. Two stop-boundary hooks read
 `.headsign/state.json`; while a run is `running`, whichever one fires for
 the run's **driver** blocks that turn from ending and points it back to
-`headsign next`. Everyone else stops freely: a session that isn't driving,
-and any delegated agent that isn't either, pass straight through. Escalated,
-aborted, and completed runs pass through too — those are correct endings.
+`headsign next`. A turn that can be *shown* not to be the driver's — its
+identifier resolves and disagrees with the stamped one — passes straight
+through instead. Escalated, aborted, and completed runs pass through too;
+those are correct endings.
+
+The two hooks resolve the "can't tell" case in opposite directions, on
+purpose. If no identifier is available at either end, `Stop` still nudges:
+a session stopping in the run's own directory is probably its driver, and
+missing the real one is worse than one stray reminder. `SubagentStop`
+passes instead, because most delegated agents stopping nearby are
+reviewers and workers with no role in the run at all, and holding one of
+those hostage is worse than a missed reminder.
 
 Two hooks, because a driver can be either kind of turn loop: `Stop` fires
 when a session's turn ends, `SubagentStop` when a delegated agent's does.
