@@ -12,6 +12,7 @@ record the reasoning each choice rests on.
 | [0004](0004-state-attempts-and-cache.md) | `state.json` shape, per-phase attempts, the tree-hash cache, cwd-only resolution, and the concurrency lock |
 | [0005](0005-distribution-and-toolchain.md) | TypeScript + esbuild single-file bundle, and the minimal-dependency policy |
 | [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — the pause-note exit gate, the nudge counter demoted to insurance, fail-open, and the subdirectory walk-up |
+| [0007](0007-verdict-authorship.md) | Verdict authorship — the gate-hardness scale (hard/semi/soft), why soft gates stay soft, and how to move the pen out of the worker's hand |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

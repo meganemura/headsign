@@ -2,15 +2,21 @@
 
 [日本語](README.ja.md) · [npm](https://www.npmjs.com/package/headsign)
 
+[![npm version](https://img.shields.io/npm/v/headsign)](https://www.npmjs.com/package/headsign)
+[![CI](https://github.com/meganemura/headsign/actions/workflows/ci.yml/badge.svg)](https://github.com/meganemura/headsign/actions/workflows/ci.yml)
+
 > A headsign is the destination display on the front of a train. This one is
 > for agent loops: each iteration, the agent asks where it's bound; headsign
 > runs the gates and answers — proceed, retry, or terminus.
 
 **headsign is a tiny phase gate for coding agents.** Claude Code drives the
 work and keeps the conversation; headsign holds the workflow state and decides
-phase transitions. The verdict is always deterministic — shell commands and
-their exit codes — the LLM never participates in the judgment, it only reads
-it.
+phase transitions. Transitions are always deterministic — shell exit codes
+and the routing you wrote, never the LLM's say-so. One honest caveat comes
+with that: what a check *reads* can still be LLM-authored (a review verdict,
+say) — that boundary is named, not hidden, in
+[What headsign is not](#what-headsign-is-not) and
+[ADR-0007](docs/adr/0007-verdict-authorship.md).
 
 The whole discipline an agent needs fits in one sentence: **when in doubt, run
 `headsign next` and obey the first line of the answer.**
@@ -31,8 +37,9 @@ Fix the failure above, then run `headsign next` again.
   The CLI is a state machine — no long-running process; each invocation reads
   state, judges, writes state, exits.
 - **Deterministic transitions.** Tools that let the LLM signal "phase done" in
-  its own output can't guarantee the one decision that matters. Here a phase
-  advances only when its checks exit 0.
+  its own output can't guarantee the one decision that matters. Here the
+  checks' exit codes decide pass/fail and your routing decides the move — an
+  agent cannot talk its way through a failing gate.
 - **One question.** No `status`, no `gate`, no dashboard. `next` both judges
   and, on failure, prints the remaining-work list — the failing check and its
   output.
@@ -99,6 +106,15 @@ find its bundled CLI, so install the package as above and it falls back to
 ```
 
 ## Quick start
+
+In a hurry? Grab a ready-made workflow and adapt its `run:` commands:
+
+```
+mkdir -p .headsign && curl -fsSL -o .headsign/workflow.yaml \
+  https://raw.githubusercontent.com/meganemura/headsign/main/example.headsign/tdd-feature.yaml
+```
+
+Or write one from scratch — it is one YAML file:
 
 1. Commit a workflow to your repository:
 
@@ -182,7 +198,11 @@ skill produces). A review/soft-gate phase should list its verdict file (e.g.
 `.headsign/tmp/verdict`) under that phase's `clear:` so a verdict left over
 from a previous pass can't be mistaken for the current one — headsign
 deletes it on entry, and Claude writes a fresh one after the read-only
-reviewer subagent reports its verdict.
+reviewer subagent reports its verdict. And when the judgment itself must
+live outside the working agent's hands, make the check the judge — e.g.
+`claude -p '… Reply exactly APPROVED or REJECTED.' | grep -qx APPROVED`
+keeps the transition deterministic while the pen changes hands; trade-offs
+in [ADR-0007](docs/adr/0007-verdict-authorship.md).
 
 A phase is only as meaningful as what its gate can check in shell. A test
 gate proves nothing broke, not that the feature is done — judging "done" is
@@ -344,11 +364,78 @@ above is. To spot an unattended stall from the outside: if `status` is
 `stop_nudges >= 5`), the agent has walked away without a note — re-drive
 the run with `headsign next`.
 
-## Non-goals
+## What headsign is not
 
-No DAGs or parallel phases, no worktree isolation, no provider abstraction,
-no personas, no template/expression language, no MCP server, no TUI. If the
-harness needs to be clever, the cleverness is in the wrong place.
+Read this before adopting — the boundaries are the design.
+
+- **It doesn't verify quality by itself.** A gate proves whatever its check
+  proves. Test gates are hard: their outcome cannot be authored. Review
+  gates are soft: the verdict file is written by an LLM, and headsign
+  guarantees the *transition* is deterministic, not that the verdict is
+  wise. The hardness scale — and how to take the pen out of the working
+  agent's hand when it matters — is
+  [ADR-0007](docs/adr/0007-verdict-authorship.md).
+- **It doesn't force anyone to use it.** Nothing makes an agent or a
+  teammate run `headsign start`, and skipping the tool leaves no trace.
+  Making the loop a habit is convention work headsign cannot do for you.
+- **It doesn't orchestrate.** One active phase per run: no DAGs, no
+  parallel phases, no worktree management, no provider abstraction, no
+  personas, no template/expression language, no MCP server, no TUI, no
+  cross-run dashboard. If the harness needs to be clever, the cleverness is
+  in the wrong place.
+- **It doesn't run on native Windows.** Checks execute via `/bin/sh`
+  (POSIX); WSL works fine.
+
+What it does hold, it holds mechanically: transitions and attempt accounting
+an agent cannot sweet-talk, run state that survives compaction, a backstop
+that makes quitting silently impossible without leaving a trace, and probing
+that never costs an attempt.
+
+### Where it sits among neighbors
+
+- **takt** — an outer orchestrator: it runs agents (worktree parallelism,
+  personas), so the agent is the subordinate. headsign is the exact
+  inverse: the agent drives and consults the gate. takt's weight is also
+  where this project started — headsign exists for the days that weight
+  isn't wanted.
+- **ralph-style loops** (re-prompting until done) — complementary, not
+  competing: headsign works as the stop condition and phase memory *inside*
+  such a loop. The runner just re-invokes the agent until `state.json` goes
+  terminal.
+- **Curated skill packs** (Superpowers and kin) — those ship fixed
+  best-practice workflows; headsign ships the gate machinery, and you bring
+  the workflow (or start from [example.headsign/](example.headsign/)).
+
+### Should you adopt it? Let your agent decide
+
+headsign pays off only where "done" can be checked mechanically. Measure
+your own repository — paste this into your coding agent (read-only,
+changes nothing):
+
+```text
+Assess (read-only) whether this repository would benefit from a phase gate
+for agent work — a tool that only lets a work phase advance when shell
+checks pass.
+1. Inventory the mechanical signals: which commands here can prove work
+   state (test suite, typecheck, lint, build)? Note roughly how long the
+   main one takes.
+2. From recent merged PRs (skip deps/chore), reconstruct the typical unit
+   of work: does it decompose into 2-5 phases, each with a checkable
+   outcome (tests green, artifact exists), plus judgments no shell can
+   make (review)?
+3. Look for the failure this tool exists for: work declared finished that
+   was not — red CI on first push, fixup commits, reverts.
+4. Report: the signal inventory with runtimes; whether work decomposes
+   into gateable phases; roughly how often "done" was not; and a
+   High/Medium/Low fit with a 3-line rationale.
+```
+
+**High** (checkable signals exist, and "done" has lied before) → adopt;
+start from an example workflow. **Medium** → adopt for one recurring kind
+of work first. **Low** (no runnable checks) → don't: without mechanical
+signals there is nothing for gates to hold — build those first. Either
+way, the signal inventory the agent hands back is the first draft of your
+gates.
 
 ## Development
 
