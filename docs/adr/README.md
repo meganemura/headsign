@@ -11,7 +11,7 @@ record the reasoning each choice rests on.
 | [0003](0003-workflow-yaml-vocabulary.md) | The `workflow.yaml` vocabulary (what's borrowed from CI, what's refused), plus `clear:` and why `description` is advisory |
 | [0004](0004-state-attempts-and-cache.md) | `state.json` shape, per-phase attempts, the tree-hash cache, cwd-only resolution, and the concurrency lock |
 | [0005](0005-distribution-and-toolchain.md) | TypeScript + esbuild single-file bundle, and the minimal-dependency policy |
-| [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — block while running, fail open, the self-owned nudge guard, and the subdirectory walk-up |
+| [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — the pause-note exit gate, the nudge counter demoted to insurance, fail-open, and the subdirectory walk-up |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

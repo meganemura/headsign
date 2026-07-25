@@ -71,16 +71,20 @@ function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: numb
 }
 
 // What a `.headsign/log` line can be about: every real transition cli.ts logs, plus the
-// synthetic `start` event (which isn't an engine.Outcome — `start` never runs step()).
-// The type is the full engine.Outcome (PENDING included) rather than a narrower Exclude<>,
-// because engine.step()'s declared return type still carries PENDING even though it never
-// actually produces one — narrowing here would just force an unsafe cast at the one real
-// call site. PENDING has no line format (see logDetail): cli.ts never calls this on the
-// PENDING path (probes aren't transitions), so it's unreachable in practice, not by type.
-export type LogEvent = { kind: "START"; workflow: string } | Outcome;
+// synthetic `start` event (which isn't an engine.Outcome — `start` never runs step()), plus
+// the two Stop-boundary events (ADR-0004's explicit exception to "transitions only"; owned
+// and appended by stophook.ts, not cli.ts — see ADR-0006). The type is the full
+// engine.Outcome (PENDING included) rather than a narrower Exclude<>, because
+// engine.step()'s declared return type still carries PENDING even though it never actually
+// produces one — narrowing here would just force an unsafe cast at the one real call site.
+// PENDING has no line format (see logDetail): cli.ts never calls this on the PENDING path
+// (probes aren't transitions), so it's unreachable in practice, not by type.
+export type LogEvent = { kind: "START"; workflow: string } | Outcome | { kind: "PAUSED"; note: string } | { kind: "STALLED" };
 
-// Pure formatting of one .headsign/log line (state.ts's appendLog/initLog own the I/O;
-// cli.ts captures `ts` via its local `localIso(new Date())` helper and is the only caller).
+// Pure formatting of one .headsign/log line (state.ts's appendLog/initLog own the I/O).
+// `ts` always originates from cli.ts's local `localIso(new Date())` helper — the one place
+// headsign reads the clock (ADR-0006) — even when the caller is stophook.ts, which never
+// calls `new Date()` itself and instead receives `ts` as `evaluate`'s `nowIso` argument.
 // `state` is the resulting state of this transition — the same object passed to state.writeState —
 // so `a=`/`i=`/`<phase>` always match what's on disk after this event. `prevPhase` is the
 // one piece of context that state doesn't carry after the fact (an ADVANCE's `state.phase`
@@ -108,6 +112,10 @@ function eventName(event: LogEvent): string {
       return "escalate";
     case "ABORT":
       return "abort";
+    case "PAUSED":
+      return "paused";
+    case "STALLED":
+      return "stalled";
     case "PENDING":
       // Unreachable: no cli.ts call site ever logs a PENDING outcome. Kept only so this
       // switch stays exhaustive against the full engine.Outcome type.
@@ -128,6 +136,10 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
     case "ESCALATE":
     case "ABORT":
       return `reason="${event.reason}"`;
+    case "PAUSED":
+      return `note="${event.note}"`;
+    case "STALLED":
+      return "nudges=5";
     case "COMPLETE":
       // No detail form is specified for `complete` in the spec's enumeration (start /
       // retry / fail-route advance / pass advance / escalate+abort) despite it being

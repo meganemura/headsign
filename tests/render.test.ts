@@ -227,3 +227,20 @@ test("logLine: PENDING is never a valid event to log (defensive — cli.ts must 
   const outcome = { kind: "PENDING" as const, phase: "review", ready: "test -f verdict" };
   assert.throws(() => render.logLine("ts", outcome, baseState({ phase: "review" })));
 });
+
+// --- logLine: the two Stop-boundary events (ADR-0006 revision; stophook.ts is the caller) ---
+
+test("logLine: paused carries the note's first line", () => {
+  const line = render.logLine("ts", { kind: "PAUSED", note: "stepping away for lunch" }, baseState({ phase: "build" }));
+  assert.equal(line, `ts paused build a=0 i=0 note="stepping away for lunch"\n`);
+});
+
+test("logLine: paused reflects the resulting state's attempts/iterations", () => {
+  const line = render.logLine("ts", { kind: "PAUSED", note: "brb" }, baseState({ phase: "review", attempts: { review: 2 }, total_iterations: 6 }));
+  assert.equal(line, `ts paused review a=2 i=6 note="brb"\n`);
+});
+
+test("logLine: stalled names the fixed nudges=5 cap", () => {
+  const line = render.logLine("ts", { kind: "STALLED" }, baseState({ phase: "build", total_iterations: 5 }));
+  assert.equal(line, `ts stalled build a=0 i=5 nudges=5\n`);
+});

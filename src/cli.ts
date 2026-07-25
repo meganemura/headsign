@@ -285,7 +285,7 @@ function cmdValidate(args: string[]): void {
 
 function cmdStopHook(): void {
   const raw = readFileOrEmpty(0); // no stdin piped -> "", which evaluate() fails open on
-  const decision = stophook.evaluate(process.cwd(), raw);
+  const decision = stophook.evaluate(process.cwd(), raw, localIso(new Date()));
   if (decision.block) stderrExit(`${decision.message}\n`, 2);
   process.exit(0);
 }

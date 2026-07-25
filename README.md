@@ -303,30 +303,46 @@ above), a verdict that lands a moment later could be discarded by that
 same early call's next re-entry, silently losing a real review. Give the
 phase a `ready:` probe (e.g. `test -f .headsign/tmp/verdict`) and an early
 `next` answers `PENDING` instead: no attempt spent, `clear:` not run,
-verdict left intact for the `next` that actually finds it.
+verdict left intact for the `next` that actually finds it. Everything
+under `.headsign/` — including `tmp/`, where the verdict file lives — is
+watched by the tree-hash regardless of `.gitignore`, so a verdict written
+there is always detected, never mistaken for "nothing changed".
 
 ### The backstop
 
 Skills are instructions, not guarantees. A Stop hook reads
 `.headsign/state.json`; while a run is `running` it blocks the agent from
 stopping and points it back to `headsign next`. Escalated, aborted, and
-completed runs pass through — those are correct endings. The hook fails open
-(never traps a session) and caps itself at three consecutive nudges with no
-real evaluation in between. Pausing and ending are different exits. To break
-for the day, leave the run `running` and just stop — after those three nudges
-the hook lets the session end, and tomorrow `headsign next` picks the run back
-up from the same phase.
-`headsign abort <reason>` is the other exit: it ends the run for good, not a
-pause — the run can't be resumed, and a fresh `headsign start` begins again
-from the entry phase, replaying every phase's gate from scratch. Keeping
-that replay cheap is a design requirement on the workflow, not something
-headsign does for you: write early phases' gates as fast, idempotent
-checks (does a file exist, does lint pass) rather than ones with real
-side effects or long unrepeatable work, and a fresh start after an abort
-costs almost nothing. A workflow whose early gates are slow or non-idempotent
-makes its own re-runs expensive — that's the workflow author's cost to
-manage, by writing cheap gates, not a cost headsign can absorb on its
-behalf.
+completed runs pass through — those are correct endings.
+
+**To pause deliberately**, write one line explaining why to
+`.headsign/tmp/stop-note` and stop again: the hook passes immediately, no
+nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
+has a record. The note is consumed (deleted) the moment it's read, and the
+working tree returns to exactly what it was before — net zero — so the
+cache stays intact: tomorrow, `headsign next` resumes from the same phase
+and, if nothing else changed, reprints the cached verdict rather than
+burning an attempt. `headsign abort <reason>` is the other exit, and it is
+permanent, not a pause: the run can't be resumed, and a fresh `headsign
+start` begins again from the entry phase, replaying every phase's gate
+from scratch. Keeping that replay cheap is a design requirement on the
+workflow, not something headsign does for you: write early phases' gates
+as fast, idempotent checks (does a file exist, does lint pass) rather than
+ones with real side effects or long unrepeatable work, and a fresh start
+after an abort costs almost nothing. A workflow whose early gates are slow
+or non-idempotent makes its own re-runs expensive — that's the workflow
+author's cost to manage, by writing cheap gates, not a cost headsign can
+absorb on its behalf.
+
+Stopping *without* a note is pushed back — the hook fails open (never
+traps a session) after 5 consecutive nudges with no real evaluation and no
+note in between; the 5th nudge leaves a `stalled` line in `.headsign/log`,
+and every stop after that passes silently. That cap is a safety net for a
+stuck or silently departed agent, not the normal way to pause — the note
+above is. To spot an unattended stall from the outside: if `status` is
+`"running"` and the log's tail shows `stalled` (equivalently,
+`stop_nudges >= 5`), the agent has walked away without a note — re-drive
+the run with `headsign next`.
 
 ## Non-goals
 

@@ -47,11 +47,12 @@ plugin or `npm install` the package. Do not guess at other paths.
 4. **Never end the run on your own judgment while the answer is anything
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to
-   the user; that's the legitimate exit either way, not just a last resort.
-   To *pause* rather than end — stepping away to resume later — just stop with
-   the run left `running`; `headsign next` picks it up again, while `headsign
-   abort` ends the run for good. `ESCALATE` means stop working and ask the
-   user for direction.
+   the user; that's a legitimate exit, but it's permanent: the run cannot be
+   resumed. To *pause* rather than end — stepping away to resume later —
+   write one line explaining why to `.headsign/tmp/stop-note` and stop
+   again: the Stop hook passes immediately, and `headsign next` picks the
+   run back up later from the same phase. `ESCALATE` means stop working and
+   ask the user for direction.
 5. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then
@@ -82,6 +83,10 @@ plugin or `npm install` the package. Do not guess at other paths.
 - Lock contention from parallel subagents is normal — wait briefly and
   retry once; the error message itself carries the recovery.
 - If `headsign next` keeps printing `(unchanged)` even though you changed
-  something, the change was probably in a git-ignored file the tree-hash
-  doesn't watch (build outputs, coverage reports, …) — touch or save any
-  git-tracked file to force a fresh evaluation.
+  something, the change was probably in a git-ignored file *outside*
+  `.headsign/` that the tree-hash doesn't watch (build outputs, coverage
+  reports, …) — everything under `.headsign/` (including `tmp/`) is always
+  watched regardless of `.gitignore`. Touch or save any git-tracked file to
+  force a fresh evaluation, but that forces re-*judgment*, not a free
+  retry: if the gate still fails after the touch, it's a real, counted
+  attempt.

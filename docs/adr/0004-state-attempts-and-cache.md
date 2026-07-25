@@ -170,18 +170,33 @@ an append.
 
 All I/O for this file lives in `state.ts` (`initLog`/`appendLog`); its line
 format lives in `render.ts` (`logLine`), pure text formatting with no I/O
-of its own; `cli.ts` captures the timestamp (`localIso(new Date())`) and
-is the only caller of either — the same clock-and-I/O-stays-in-cli.ts
-split this ADR already keeps engine.ts out of.
+of its own; `cli.ts` captures the timestamp (`localIso(new Date())`) —
+still the one place headsign reads the clock — and passes it down to
+whichever caller needs it. `cli.ts` itself is the direct caller for every
+transition below; `stophook.ts` is the other caller (paused/stalled,
+below), and it never calls `new Date()` itself — `cmdStopHook` captures
+`localIso(new Date())` and hands it to `evaluate` as an argument, the same
+clock-stays-in-cli.ts split this ADR already keeps engine.ts out of.
 
-Four call sites, one line each: `start` (truncate, then a `start` line),
-`next`'s iteration-limit branch (an `escalate` line), `next`'s real
-evaluation after `step()` (a `retry` / `advance` / `complete` / `escalate`
-/ `abort` line, matching the outcome), and `abort` (an `abort` line). A
-cached (tree-unchanged) RETRY re-display, a terminal-state re-display, and
-a PENDING answer (ADR-0002) are deliberately silent — none of the three is
-a transition, and logging one would make the log say something happened
-when nothing did.
+Four call sites, one line each, for real *transitions*: `start` (truncate,
+then a `start` line), `next`'s iteration-limit branch (an `escalate`
+line), `next`'s real evaluation after `step()` (a `retry` / `advance` /
+`complete` / `escalate` / `abort` line, matching the outcome), and `abort`
+(an `abort` line). A cached (tree-unchanged) RETRY re-display, a
+terminal-state re-display, and a PENDING answer (ADR-0002) are
+deliberately silent — none of the three is a transition, and logging one
+would make the log say something happened when nothing did.
+
+**Explicit exception — the two Stop-boundary events** (added by the
+exit-note-gate revision of ADR-0006): `paused` and `stalled` are not
+`step()` transitions, but the log records them anyway, because they are
+the only trace a human-initiated pause or a stuck/departed-agent stall
+otherwise leaves behind. `stophook.ts` appends `paused` when a non-empty
+`.headsign/tmp/stop-note` is consumed, and `stalled` once, the moment
+`stop_nudges` reaches its cap — never on the 1st-through-4th nudge, and
+never again on the pass-throughs after the cap trips, so this exception
+stays narrow rather than reopening "log everything the hook does" (see
+ADR-0006 for the full design).
 
 Line format: `<ISO-ts> <event> <phase> a=<attempts[phase] ?? 0>
 i=<total_iterations> <detail>`, where `<ISO-ts>` is local time with UTC
@@ -190,7 +205,8 @@ writing a run report in the user's own timezone, and a numeric offset keeps
 the line unambiguous without forcing a mental UTC conversion — and
 `<detail>` supplies whatever the event needs beyond those shared fields —
 the workflow name for `start`, the failing check for `retry`, the origin
-phase for an `advance`, the reason for `escalate`/`abort`.
+phase for an `advance`, the reason for `escalate`/`abort`, the note's
+first line for `paused`, and the fixed `nudges=5` for `stalled`.
 
 Excluded from the tree-hash cache (`treehash.ts`'s `headsignEntries`
 filter and `statusEntries`'s exclusion set) for the same reason
@@ -209,11 +225,13 @@ not a workflow artifact a team would want tracked.
   `log`, and `tmp/`, so run state, the concurrency lock, the transition
   log, and scratch artifacts can never be committed by accident.
 - `start` also empties and recreates `.headsign/tmp/`, a run-scoped scratch
-  directory for transient artifacts (review verdicts, tickets, notes) so
-  nothing from a previous run leaks into this one. Unlike `state.json` and
-  `lock`, it is not excluded from the tree-hash: gates legitimately read
-  files there, so a write under `.headsign/tmp/` must keep invalidating the
-  cache the same way any other `.headsign/` artifact does.
+  directory for transient artifacts (review verdicts, tickets, notes, and
+  — as of the exit-note-gate revision — the Stop hook's `stop-note`; see
+  ADR-0006) so nothing from a previous run leaks into this one. Unlike
+  `state.json` and `lock`, it is not excluded from the tree-hash: gates
+  legitimately read files there, so a write under `.headsign/tmp/` must
+  keep invalidating the cache the same way any other `.headsign/` artifact
+  does.
 - `abort` records the reason and sets `status: aborted` — a correct,
   human-directed ending, which the Stop hook lets pass.
 

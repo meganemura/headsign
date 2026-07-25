@@ -1079,25 +1079,26 @@ test("stop-hook: running -> exit 2 with stderr mentioning `headsign next`", () =
   assert.match(result.stderr, /headsign next/);
 });
 
-test("stop-hook: each block increments stop_nudges in state.json; the guard trips on the 4th consecutive stop", () => {
+test("stop-hook: each block increments stop_nudges in state.json; the guard trips on the 6th consecutive stop", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
   assert.equal(readState(dir).stop_nudges, 0);
 
-  for (let expected = 1; expected <= 3; expected++) {
+  for (let expected = 1; expected <= 5; expected++) {
     const result = run(["stop-hook"], { cwd: dir, input: "{}" });
     assert.equal(result.status, 2, `stop #${expected} should still block`);
     assert.equal(readState(dir).stop_nudges, expected);
   }
 
-  // A 4th consecutive stop, with no real `next` evaluation in between, trips the loop guard.
-  const fourth = run(["stop-hook"], { cwd: dir, input: "{}" });
-  assert.equal(fourth.status, 0);
-  assert.equal(readState(dir).stop_nudges, 3); // guard fires without incrementing further
+  // A 6th consecutive stop, with no real `next` evaluation (and no stop-note) in between,
+  // trips the loop guard.
+  const sixth = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(sixth.status, 0);
+  assert.equal(readState(dir).stop_nudges, 5); // guard fires without incrementing further
 });
 
-test("stop-hook: a non-numeric stop_nudges in state.json is treated as 0 (not an infinite block), and the 3rd block warns it's the final automatic reminder", () => {
+test("stop-hook: a non-numeric stop_nudges in state.json is treated as 0 (not an infinite block), and the 5th block warns it's the final automatic reminder", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
@@ -1109,17 +1110,19 @@ test("stop-hook: a non-numeric stop_nudges in state.json is treated as 0 (not an
   assert.equal(readState(dir).stop_nudges, 1);
   assert.equal(typeof readState(dir).stop_nudges, "number", "the bad value is replaced with a clean number");
 
-  const second = run(["stop-hook"], { cwd: dir, input: "{}" });
-  assert.equal(second.status, 2);
-  assert.equal(readState(dir).stop_nudges, 2);
+  for (let expected = 2; expected <= 4; expected++) {
+    const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+    assert.equal(result.status, 2);
+    assert.equal(readState(dir).stop_nudges, expected);
+  }
 
-  const third = run(["stop-hook"], { cwd: dir, input: "{}" });
-  assert.equal(third.status, 2);
-  assert.equal(readState(dir).stop_nudges, 3);
-  assert.match(third.stderr, /final automatic reminder/);
+  const fifth = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(fifth.status, 2);
+  assert.equal(readState(dir).stop_nudges, 5);
+  assert.match(fifth.stderr, /final automatic reminder/);
 
-  const fourth = run(["stop-hook"], { cwd: dir, input: "{}" });
-  assert.equal(fourth.status, 0, "fail-open reached despite the corrupt starting value");
+  const sixth = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(sixth.status, 0, "fail-open reached despite the corrupt starting value");
 });
 
 test("stop-hook: a real `next` evaluation between stops resets stop_nudges", () => {
@@ -1171,6 +1174,76 @@ test("stop-hook: corrupt state.json fails open (exit 0)", () => {
   fs.writeFileSync(path.join(dir, ".headsign", "state.json"), "{not valid json");
   const result = run(["stop-hook"], { cwd: dir, input: "{}" });
   assert.equal(result.status, 0);
+});
+
+// --- stop hook: exit-note gate (ADR-0006 revision) ---
+
+function stopNotePath(dir: string): string {
+  return path.join(dir, ".headsign", "tmp", "stop-note");
+}
+
+function writeStopNote(dir: string, content: string): void {
+  fs.mkdirSync(path.join(dir, ".headsign", "tmp"), { recursive: true });
+  fs.writeFileSync(stopNotePath(dir), content);
+}
+
+test("stop-hook: a non-empty stop-note pauses — exit 0, note deleted, stop_nudges reset, one paused log line with the note's first line", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["stop-hook"], { cwd: dir, input: "{}" });
+  run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(readState(dir).stop_nudges, 2);
+
+  writeStopNote(dir, "stepping away, resume tomorrow");
+  const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(result.status, 0);
+  assert.ok(!fs.existsSync(stopNotePath(dir)), "note must be consumed (deleted)");
+  assert.equal(readState(dir).stop_nudges, 0);
+
+  const lines = readLog(dir);
+  const pausedLines = lines.filter((l) => l.includes(" paused "));
+  assert.equal(pausedLines.length, 1);
+  assert.match(pausedLines[0], /paused build a=0 i=0 note="stepping away, resume tomorrow"/);
+});
+
+test("stop-hook: a whitespace-only stop-note is treated as absent — still blocks", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  writeStopNote(dir, "   \n\t\n  ");
+
+  const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(result.status, 2);
+  assert.equal(readState(dir).stop_nudges, 1);
+  assert.equal(readLog(dir).filter((l) => l.includes(" paused ")).length, 0);
+});
+
+test("stop-hook: no stop-note -> blocks, and the message names both the stop-note instructions and the abort escape hatch", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /\.headsign\/tmp\/stop-note/);
+  assert.match(result.stderr, /headsign abort/);
+});
+
+test("stop-hook: the 5th nudge appends exactly one stalled log line; later stops do not repeat it", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  for (let i = 1; i <= 5; i++) run(["stop-hook"], { cwd: dir, input: "{}" });
+  let stalledLines = readLog(dir).filter((l) => l.includes(" stalled "));
+  assert.equal(stalledLines.length, 1);
+  assert.match(stalledLines[0], /stalled build a=0 i=0 nudges=5/);
+
+  run(["stop-hook"], { cwd: dir, input: "{}" });
+  run(["stop-hook"], { cwd: dir, input: "{}" });
+  stalledLines = readLog(dir).filter((l) => l.includes(" stalled "));
+  assert.equal(stalledLines.length, 1, "stalled must not be repeated on later stops");
 });
 
 // --- stop hook: bounded walk-up (fs-only, bounded by the enclosing git worktree/repo root) ---
@@ -1258,7 +1331,7 @@ test("stop-hook: stop_hook_active true with a walked-up cwd allows and does not 
   assert.equal(readState(dir).stop_nudges, 0);
 });
 
-test("stop-hook: the 3-nudge cap and final-reminder text still work when the run is found via walk-up", () => {
+test("stop-hook: the 5-nudge cap and final-reminder text still work when the run is found via walk-up", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
@@ -1267,14 +1340,43 @@ test("stop-hook: the 3-nudge cap and final-reminder text still work when the run
   fs.mkdirSync(sub, { recursive: true });
   const stdin = JSON.stringify({ cwd: sub });
 
-  for (let expected = 1; expected <= 3; expected++) {
+  for (let expected = 1; expected <= 5; expected++) {
     const result = run(["stop-hook"], { cwd: dir, input: stdin });
     assert.equal(result.status, 2, `stop #${expected} should still block`);
     assert.equal(readState(dir).stop_nudges, expected);
-    if (expected === 3) assert.match(result.stderr, /final automatic reminder/);
+    if (expected === 5) assert.match(result.stderr, /final automatic reminder/);
   }
 
-  const fourth = run(["stop-hook"], { cwd: dir, input: stdin });
-  assert.equal(fourth.status, 0);
-  assert.equal(readState(dir).stop_nudges, 3);
+  const sixth = run(["stop-hook"], { cwd: dir, input: stdin });
+  assert.equal(sixth.status, 0);
+  assert.equal(readState(dir).stop_nudges, 5);
+});
+
+test("stop-hook: walk-up-found run — note consumption and paused logging operate on runDir, and the blocked message shows the runDir-prefixed note path", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const sub = path.join(dir, "deep", "sub");
+  fs.mkdirSync(sub, { recursive: true });
+  const stdin = JSON.stringify({ cwd: sub });
+
+  // Without a note, the block message must name the runDir-prefixed note path.
+  const blocked = run(["stop-hook"], { cwd: dir, input: stdin });
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, new RegExp(`${dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/\\.headsign/tmp/stop-note`));
+  assert.match(blocked.stderr, /headsign abort/);
+  assert.equal(readState(dir).stop_nudges, 1);
+
+  const noteDir = path.join(dir, ".headsign", "tmp");
+  fs.mkdirSync(noteDir, { recursive: true });
+  fs.writeFileSync(path.join(noteDir, "stop-note"), "pausing from a subdirectory session");
+
+  const paused = run(["stop-hook"], { cwd: dir, input: stdin });
+  assert.equal(paused.status, 0);
+  assert.ok(!fs.existsSync(path.join(noteDir, "stop-note")), "note must be consumed on runDir");
+  assert.equal(readState(dir).stop_nudges, 0);
+
+  const lines = readLog(dir);
+  assert.match(lines[lines.length - 1], /paused build a=0 i=0 note="pausing from a subdirectory session"/);
 });

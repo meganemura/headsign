@@ -7843,6 +7843,10 @@ function eventName(event) {
       return "escalate";
     case "ABORT":
       return "abort";
+    case "PAUSED":
+      return "paused";
+    case "STALLED":
+      return "stalled";
     case "PENDING":
       throw new Error("logLine: PENDING is never logged");
   }
@@ -7858,6 +7862,10 @@ function logDetail(event, prevPhase) {
     case "ESCALATE":
     case "ABORT":
       return `reason="${event.reason}"`;
+    case "PAUSED":
+      return `note="${event.note}"`;
+    case "STALLED":
+      return "nudges=5";
     case "COMPLETE":
       return "";
     case "PENDING":
@@ -7868,7 +7876,7 @@ function logDetail(event, prevPhase) {
 // src/stophook.ts
 import fs4 from "node:fs";
 import path3 from "node:path";
-var MAX_STOP_NUDGES = 3;
+var MAX_STOP_NUDGES = 5;
 function findRunDir(startDir) {
   let dir = startDir;
   for (; ; ) {
@@ -7879,7 +7887,7 @@ function findRunDir(startDir) {
     dir = parent;
   }
 }
-function evaluate(cwd, stdinRaw) {
+function evaluate(cwd, stdinRaw, nowIso) {
   try {
     const input = JSON.parse(stdinRaw);
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
@@ -7889,13 +7897,30 @@ function evaluate(cwd, stdinRaw) {
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
+    const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
+    if (fs4.existsSync(notePath)) {
+      const noteRaw = fs4.readFileSync(notePath, "utf8");
+      const trimmedNote = noteRaw.trim();
+      if (trimmedNote.length > 0) {
+        const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
+        fs4.rmSync(notePath, { force: true });
+        const pausedState = { ...state, stop_nudges: 0 };
+        writeState(runDir, pausedState);
+        appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
+        return { block: false };
+      }
+    }
     const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
     if (nudges >= MAX_STOP_NUDGES) return { block: false };
     const nextNudges = nudges + 1;
-    writeState(runDir, { ...state, stop_nudges: nextNudges });
-    const abortHint = " To end this run for good, run `headsign abort <reason>`.";
-    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder. Stopping now just pauses the run \u2014 `headsign next` will resume it later." : "";
-    const message = (runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + finalNotice + abortHint;
+    const nudgedState = { ...state, stop_nudges: nextNudges };
+    writeState(runDir, nudgedState);
+    if (nextNudges === MAX_STOP_NUDGES) appendLog(runDir, logLine(nowIso, { kind: "STALLED" }, nudgedState));
+    const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
+    const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
+    const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
+    const pauseAndAbortHint = ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+    const message = verdictSentence + finalNotice + pauseAndAbortHint;
     return { block: true, message };
   } catch {
     return { block: false };
@@ -8112,7 +8137,7 @@ function cmdValidate(args) {
 }
 function cmdStopHook() {
   const raw = readFileOrEmpty(0);
-  const decision = evaluate(process.cwd(), raw);
+  const decision = evaluate(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()));
   if (decision.block) stderrExit(`${decision.message}
 `, 2);
   process.exit(0);
