@@ -108,7 +108,14 @@ export function statusRunning(o: {
   // mismatch/unknown judgment against *this* status-invoking session's own id (the recorded
   // driver is an agent id, which the CLI can't resolve at all — see cmdStatus) but a plain
   // factual report of who the claim handshake put in the driver seat.
-  driver: "this session" | "another session" | "unknown" | "a delegated agent";
+  //
+  // The match case says "this session, or an agent it delegated to" rather than the shorter
+  // "this session" because that is the whole of what an env-id match guarantees: a delegated
+  // agent inherits the enclosing session's env identifier, so this comparison cannot tell the
+  // two apart and must not claim to. The only way to know for certain who drives a run is to
+  // ask the stop-boundary hook — it blocks only the recorded driver, so being nudged is the
+  // answer, and the driver line never is.
+  driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure

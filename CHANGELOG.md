@@ -69,6 +69,13 @@ changes), and a patch bump means fixes only.
   via `headsign claim` — what's stored then isn't a session identifier at
   all, and the CLI has no reliable way to tell whether that agent is the
   caller, so it reports the fact it does know instead.
+- `headsign status`'s `driver:` line now states exactly what an
+  environment-based match establishes and no more: it reads `this session,
+  or an agent it delegated to` where it used to read `this session`. A
+  delegated agent resolves the identifier of the session that spawned it,
+  so the comparison cannot separate the two; the reliable check of who is
+  driving remains the stop-boundary hook, which nudges only the recorded
+  driver. See [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 - No-argument `headsign validate` now defaults to the current run's own
   `workflow_path` (from `.headsign/state.json`, whatever its status)
   whenever a run exists, falling back to the plain `.headsign/workflow.yaml`

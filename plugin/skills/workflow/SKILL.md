@@ -57,7 +57,13 @@ plugin or `npm install` the package. Do not guess at other paths.
    agent that should be driving: a new claim always wins, and this time it
    lands, because that agent's own turn end always fires the event that
    seals. A session driving a run on its own does not need `claim` at all —
-   ordinary `next` stamping already works there.
+   ordinary `next` stamping already works there. Skipping the claim fails
+   silently rather than loudly: a plain `next` from you stamps the spawning
+   session, so every later nudge goes to *it* while your own turns end
+   unheld. And if you need to check whether you are the driver, don't read
+   it off `headsign status` — the reliable signal is the hook itself: if
+   your turn ends are being pushed back to `headsign next`, this run is
+   yours to drive.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
 4. **Whenever you are unsure what to do, think a phase's work is finished, or

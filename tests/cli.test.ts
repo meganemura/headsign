@@ -1973,8 +1973,10 @@ test("status: driver line reflects match/mismatch/unknown against driver_session
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir, env: sessionEnv("session-mine") });
 
+  // A match only narrows the reader down to this session *or* an agent it delegated to
+  // (delegated agents inherit the enclosing session's env id), so the line says exactly that.
   const same = run(["status"], { cwd: dir, env: sessionEnv("session-mine") });
-  assert.match(same.stdout, /driver: this session\n$/);
+  assert.match(same.stdout, /driver: this session, or an agent it delegated to\n$/);
   assert.doesNotMatch(same.stdout, /session-mine/);
 
   const other = run(["status"], { cwd: dir, env: sessionEnv("session-theirs") });

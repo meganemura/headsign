@@ -184,9 +184,9 @@ test("pending", () => {
 test("statusRunning: max_attempts defined -> n/max, no last-failure block", () => {
   const actual = render.statusRunning({
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
-    workflowName: "demo", lastFailure: null, driver: "this session",
+    workflowName: "demo", lastFailure: null, driver: "this session, or an agent it delegated to",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: this session\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: this session, or an agent it delegated to\n`;
   assert.equal(actual, expected);
 });
 
@@ -213,9 +213,9 @@ test("statusRunning: a last-failure block lands between the workflow line and th
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
     workflowName: "demo",
     lastFailure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "some output" },
-    driver: "this session",
+    driver: "this session, or an agent it delegated to",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, exit 1) ---\nsome output\ndriver: this session\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, exit 1) ---\nsome output\ndriver: this session, or an agent it delegated to\n`;
   assert.equal(actual, expected);
 });
 
@@ -224,17 +224,30 @@ test("statusRunning: a timeout last failure renders the timed-out clause, same a
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
     workflowName: "demo",
     lastFailure: { check: "tests", run: "npm test", exitCode: "timeout", timeoutSeconds: 5, outputTail: "some output" },
-    driver: "this session",
+    driver: "this session, or an agent it delegated to",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, timed out after 5s) ---\nsome output\ndriver: this session\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, timed out after 5s) ---\nsome output\ndriver: this session, or an agent it delegated to\n`;
   assert.equal(actual, expected);
 });
 
 test("statusRunning: driver values are printed verbatim as one of the four fixed strings, never a session id", () => {
-  for (const driver of ["this session", "another session", "unknown", "a delegated agent"] as const) {
+  for (const driver of ["this session, or an agent it delegated to", "another session", "unknown", "a delegated agent"] as const) {
     const actual = render.statusRunning({ phase: "build", attempt: 0, attemptUnknown: false, workflowName: "demo", driver });
     assert.match(actual, new RegExp(`driver: ${driver}\\n$`));
   }
+});
+
+// The env-match wording is load-bearing, not cosmetic: a delegated agent inherits the
+// enclosing session's env identifier, so the match case can only narrow the driver down to
+// "this session or something it delegated to". Pinned verbatim so it can't quietly shrink
+// back to a claim the comparison doesn't support.
+test("statusRunning: the env-match driver line names the delegation ambiguity instead of asserting this session alone", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo", lastFailure: null, driver: "this session, or an agent it delegated to",
+  });
+  assert.equal(actual, `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: this session, or an agent it delegated to\n`);
+  assert.doesNotMatch(actual, /driver: this session\n/);
 });
 
 test("statusTerminal: complete has no reason line", () => {

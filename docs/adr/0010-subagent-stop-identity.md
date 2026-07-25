@@ -311,3 +311,27 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   is unchanged, including its empty detail field (ADR-0004). What the
   hidden `driver_session` value *is* changed; what any artifact looks like
   did not.
+- **The reliable test of "am I this run's driver" is the nudge itself.**
+  Both stop-boundary evaluations block only the recorded driver and pass
+  every other stop through untouched (Decisions 1 and 3), so a turn end
+  that gets pushed back to `headsign next` is first-hand, positive proof of
+  ownership — delivered by the one party that can tell the actors apart,
+  at the one moment it can. No command can offer the equivalent, because
+  facts 2–4 are about what the CLI is able to read at all.
+- `headsign status`'s `driver:` line inherits that limit and is worded to
+  admit it. While `driver_source` is `"env"`, the line is a comparison of
+  environment-resolved session identifiers, and a delegated agent resolves
+  the identifier of the session that spawned it (fact 2) — so a match
+  narrows the driver to *that session or an agent it delegated to* and can
+  go no further. Reported field experience was a delegated agent reading
+  the older wording, `this session`, as confirmation that it held the run
+  when the stamp in fact belonged to its parent. The line now states the
+  boundary of what the comparison establishes rather than the stronger
+  claim it cannot support.
+- Having a hook write a whoami-style breadcrumb file — so a caller could
+  read back which agent it is — was considered and rejected. For the only
+  question that actually gets asked, *am I the driver of this run*, the
+  nudge already answers it exactly, and a breadcrumb would buy that same
+  answer at the price of another piece of state to write, keep fresh,
+  invalidate, and clean up, in a project whose first rule is that a thin
+  harness stores only what it needs to decide with (ADR-0001).

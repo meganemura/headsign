@@ -8256,7 +8256,7 @@ function cmdStatus() {
   } else {
     const mySid = resolveSessionId(process.env);
     const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
-    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session, or an agent it delegated to" : "another session";
   }
   exitAfter(
     statusRunning({

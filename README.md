@@ -480,7 +480,7 @@ workflow: feature-dev
 --- last failure: unit tests (bundle exec rspec, exit 1) ---
 Failures:
   1) Billing::Invoice#total ...
-driver: this session
+driver: this session, or an agent it delegated to
 ```
 
 ```
@@ -500,15 +500,27 @@ The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
 capitalized like `next`'s tokens, but it's a *report*, not a verdict:
 `status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
 judges anything. The `driver:` line (shown only while `RUNNING`) reads
-`this session` when your own resolved identifier matches the stamped
-driver, `another session` when both resolve but disagree, and `unknown`
-whenever either side can't be resolved. After a `headsign claim` handoff
-(below), it instead reads `driver: a delegated agent` — `status`
-deliberately does not guess this-session-or-another for a claimed run,
-because what's stored then isn't a session identifier at all, and the
-same resolution gap that makes `claim` necessary in the first place is
-exactly what stops the CLI from telling whether that agent is the caller.
+`this session, or an agent it delegated to` when your own resolved
+identifier matches the stamped driver, `another session` when both resolve
+but disagree, and `unknown` whenever either side can't be resolved. After a
+`headsign claim` handoff (below), it instead reads `driver: a delegated
+agent` — `status` deliberately does not guess this-session-or-another for a
+claimed run, because what's stored then isn't a session identifier at all,
+and the same resolution gap that makes `claim` necessary in the first place
+is exactly what stops the CLI from telling whether that agent is the caller.
 The line states the fact it has, and nothing more.
+
+That first reading is wordy on purpose. A delegated agent shares its
+spawning session's identifier, so a match narrows the driver down to *that
+session or any agent under it* and stops there — it cannot tell one of them
+from another. **The only reliable way to learn whether *you* are the driver
+is to end your turn and see whether the stop-boundary hook pushes you back
+to `headsign next`.** That hook blocks the recorded driver and lets every
+other stop through untouched, so being nudged is itself the answer: if you
+are held, this run is yours to drive; if your turns end quietly while the
+run is `RUNNING`, it isn't. `status` compares identifiers the environment
+hands it, and no such identifier separates a session from what it
+delegated to — that gap is exactly why `headsign claim` exists.
 
 Exit code follows a deliberately different contract from `next`'s: `status`
 exits 0 whenever `.headsign/state.json` could be read at all — an
@@ -527,6 +539,15 @@ outright (same pid, same environment) and carries no identifier of its
 own anywhere its Bash tool can reach, so its `headsign next` calls stamp
 the *spawning session's* identifier. Simply asking it to drive the run
 therefore records the wrong driver, quietly.
+
+The damage from skipping the claim is not just a misleading field. Once a
+delegated agent's plain `headsign next` has stamped the spawning session,
+every nudge that run produces goes to *that* session — which is typically
+sitting idle, waiting on the delegation — while the agent actually doing
+the work ends its turns unheld. The backstop stays armed and points at the
+wrong party, and nothing in either one's output says so. So when you hand a
+run to a delegated agent, that agent's first headsign command is `headsign
+claim`, never `headsign next`.
 
 `headsign claim` fixes that by letting a hook do the stamping, because
 Claude Code tells the hook what the agent's own environment cannot. Two

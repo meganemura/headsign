@@ -377,13 +377,18 @@ function cmdStatus(): void {
   // enclosing session's id would otherwise always misjudge "this session"/"another session"
   // here. Naming the fact ("a delegated agent" drives this run, whether or not that's the
   // reader) is honest about what the CLI can and can't know.
-  let driver: "this session" | "another session" | "unknown" | "a delegated agent";
+  //
+  // Same honesty on the env path: a match only proves the reader is this session *or an agent
+  // it delegated to*, since a delegated agent inherits the enclosing session's env identifier
+  // and nothing here can separate the two. The certain answer lives with the stop-boundary
+  // hook, which blocks only the recorded driver — being nudged is what proves you drive.
+  let driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
   if (current.driver_source === "claim") {
     driver = "a delegated agent";
   } else {
     const mySid = session.resolveSessionId(process.env);
     const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
-    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session, or an agent it delegated to" : "another session";
   }
 
   exitAfter(
