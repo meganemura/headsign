@@ -15,8 +15,8 @@ headsign is a phase gate: you do the work, deterministic shell checks decide
 the phase transitions. You never judge for yourself whether a phase is done —
 the gate does.
 
-The CLI is bundled with this plugin; no install is needed. `headsign <cmd>`
-below means:
+When this skill runs inside its Claude Code plugin, the CLI is bundled with
+it and no install is needed. `headsign <cmd>` below means:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>

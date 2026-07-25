@@ -76,10 +76,12 @@ carries most of it:
 
 The full discipline is in
 [plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md) — copy
-what you need into your agent's rules. Claude Code users can also copy it
-into `.claude/skills/` as a project skill; a copied skill can't find the
-plugin's bundled CLI, so install the package as above and it falls back to
-`npx headsign`.
+what you need into your agent's rules, or install it as a standalone skill
+with the GitHub CLI (`gh skill install meganemura/headsign workflow`, a
+preview `gh` feature). Claude Code users can also copy it into
+`.claude/skills/` as a project skill. A skill obtained any of these ways
+runs outside the plugin and can't find its bundled CLI, so install the
+package as above and it falls back to `npx headsign`.
 
 **Optional: the backstop without the plugin.** Wire the Stop hook yourself
 in `.claude/settings.json`:
