@@ -84,9 +84,9 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   // stop-note (a stuck loop, or an agent that has silently departed). stop_nudges is reset
   // by anything that proves someone is still steering the run: `next`'s real gate
   // evaluations, the exit-note gate just above, and the adoption gate in evaluateSubagent.
-  // Five consecutive nudges with none of those in between means nudging isn't working —
-  // fail open rather than risk
-  // an unstoppable session. N=5 is an arbitrary safety value, not a load-bearing constant.
+  // Five consecutive nudges with none of those in between means nudging isn't working — fail
+  // open rather than risk an unstoppable session. N=5 is an arbitrary safety value, not a
+  // load-bearing constant.
   // ?? alone doesn't catch a non-null but wrong-type value (e.g. a corrupt/forged/legacy
   // state.json with stop_nudges as a string): "x" + 1 would string-concatenate to "x1",
   // which is always < 5, disabling the fail-open guard forever. Require an actual number.

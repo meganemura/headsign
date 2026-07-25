@@ -117,8 +117,8 @@ find its bundled CLI, so install the package as above and it falls back to
 
 `Stop` covers the session itself; `SubagentStop` covers an agent the
 session delegated the run to (see [Multiple sessions](#multiple-sessions)).
-Register just the first if you never delegate a run — the second is
-inert unless a delegated agent is driving.
+Register just the first if you never delegate a run: with no `headsign
+claim` in play, the second never acts.
 
 ## Quick start
 
@@ -418,8 +418,10 @@ author's cost to manage, by writing cheap gates, not a cost headsign can
 absorb on its behalf.
 
 Stopping *without* a note is pushed back — the hook fails open (never
-traps a session) after 5 consecutive nudges with no real evaluation and no
-note in between; the 5th nudge leaves a `stalled` line in `.headsign/log`,
+traps a session) after 5 consecutive nudges with nothing in between that
+shows someone is still steering: a real evaluation, a consumed note, or a
+sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
+`.headsign/log`,
 and every stop after that passes silently. That cap is a safety net for a
 stuck or silently departed agent, not the normal way to pause — the note
 above is. To spot an unattended stall from the outside: `headsign status`
@@ -532,16 +534,14 @@ someone else was asking for — say so, and let them claim again.
 
 The implication runs one way only. Ending quietly does *not* prove the
 reverse. You may never have claimed, in which case the hook passes you
-before it ever looks at who you are; the nudge cap may have run out (the
-fifth held turn with no evaluation and no note in between still holds you,
-logs `stalled`, and lets every stop after it through); a pause note may
-have been consumed; or `HEADSIGN_OBSERVER` may be set. And a probe is not
-free. An ordinary nudge back spends one off that cap; a probe that passes
-while your own pause note is armed consumes the note instead; and a probe
-that lands while *someone else's* claim marker is armed destroys that
-marker by consuming it — that is the `Claim confirmed` case above, and the
-other agent has to claim again. Spend the probe deliberately rather than
-habitually.
+before it ever looks at who you are; the nudge cap may have run out (see
+[the backstop](#the-backstop)); a pause note may have been consumed; or
+`HEADSIGN_OBSERVER` may be set. And a probe is not free. An ordinary nudge
+back spends one off that cap; a probe that passes while your own pause note
+is armed consumes the note instead; and a probe that lands while *someone
+else's* claim marker is armed consumes the marker — that is the `Claim
+confirmed` case above, and the other agent has to claim again. Spend the
+probe deliberately rather than habitually.
 
 For a *session*, the same test is weaker. The owner check only rules a stop
 out on identifier grounds when both identifiers resolve and disagree, so on
