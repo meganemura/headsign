@@ -323,11 +323,11 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   end proves nothing: the nudge cap may have tripped, a pause note may have
   been consumed, or `HEADSIGN_OBSERVER` may be set — and a delegated agent
   that never claimed is passed by `driver_source !== "claim"` before its
-  identity is ever considered. `Stop`, meanwhile, passes only a stop it can
-  positively rule out, so on a run with no stamped identifier it nudges
-  every session in the directory (Decision 3's asymmetry, and ADR-0008's
-  fail-open rule): being held there means the run is running, not that the
-  holder owns it. Documentation that offers this test must carry the
+  identity is ever considered. `Stop`'s owner check, meanwhile, rules a stop
+  out on identifier grounds only when both identifiers resolve and disagree,
+  so on a run with no stamped identifier it nudges every session in the
+  directory (Decision 3's asymmetry, and ADR-0008's fail-open rule): being
+  held there means the run is running, not that the holder owns it. Documentation that offers this test must carry the
   delegated-agent scope with it; stated bare, it is the same kind of
   overclaim as the `status` line this ADR's follow-up corrected.
 - `headsign status`'s `driver:` line inherits that limit and is worded to

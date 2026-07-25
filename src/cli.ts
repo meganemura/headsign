@@ -380,8 +380,10 @@ function cmdStatus(): void {
   //
   // Same honesty on the env path: a match only proves the reader is this session *or an agent
   // it delegated to*, since a delegated agent inherits the enclosing session's env identifier
-  // and nothing here can separate the two. The certain answer lives with the stop-boundary
-  // hook, which blocks only the recorded driver — being nudged is what proves you drive.
+  // and nothing here can separate the two. No wording here can do better: the one test that
+  // proves ownership belongs to SubagentStop (it holds an agent only on a positive match), and
+  // it is available to delegated agents alone — Stop nudges every session on a run whose
+  // identifier was never stamped, so being held there proves nothing about who drives.
   let driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
   if (current.driver_source === "claim") {
     driver = "a delegated agent";

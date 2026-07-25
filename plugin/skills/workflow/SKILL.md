@@ -64,10 +64,11 @@ plugin or `npm install` the package. Do not guess at other paths.
    it off `headsign status` — as a delegated agent, the reliable signal is
    the hook itself: if your turn ends are being pushed back to `headsign
    next`, this run is yours to drive. That only works in this direction and
-   only for delegated agents: ending quietly proves nothing (the nudge cap,
-   a pause note, or `HEADSIGN_OBSERVER` all end turns quietly), and a plain
-   session gets nudged on a run that stamped no identifier at all. Each
-   check also spends one nudge from the cap, so probe deliberately.
+   only for delegated agents: ending quietly proves nothing (not having
+   claimed, an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all
+   end turns quietly), and a plain session gets nudged on a run that stamped
+   no identifier at all. Only a probe that comes back held spends a nudge
+   from the cap — so probe deliberately, not by habit.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
 4. **Whenever you are unsure what to do, think a phase's work is finished, or

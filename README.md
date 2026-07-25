@@ -521,16 +521,18 @@ exactly why `headsign claim` exists.
 pushed back to `headsign next` proves this run is yours to drive.**
 `SubagentStop` holds an agent only on a positive match with the stamped
 driver, so a delegated agent that gets held is the driver, full stop. The
-implication runs one way only. Ending quietly does *not* prove the reverse:
-the nudge cap may have been reached (five held turns with no evaluation
-between them, after which the hook falls open and logs `stalled`), a pause
-note may have been consumed, or `HEADSIGN_OBSERVER` may be set. And each
-check costs one nudge from that cap, so it is a probe to spend
-deliberately, not a habit.
+implication runs one way only. Ending quietly does *not* prove the reverse.
+You may never have claimed, in which case the hook passes you before it
+ever looks at who you are; the nudge cap may have run out (the fifth held
+turn with no evaluation and no note in between still holds you, logs
+`stalled`, and lets every stop after it through); a pause note may have
+been consumed; or `HEADSIGN_OBSERVER` may be set. Only a probe that comes
+back held costs anything — one nudge off that cap — but that is the answer
+you were hoping for, so spend it deliberately rather than habitually.
 
-For a *session*, the same test is weaker. `Stop` only passes a stop it can
-positively rule out — both identifiers resolved and disagreeing — so on a
-run where no identifier was ever stamped, every session in the directory is
+For a *session*, the same test is weaker. The owner check only rules a stop
+out on identifier grounds when both identifiers resolve and disagree, so on
+a run where none was ever stamped, every session in the directory is
 nudged, driver or not. Being held there says the run is running, not that
 you own it.
 

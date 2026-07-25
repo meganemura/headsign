@@ -112,9 +112,11 @@ export function statusRunning(o: {
   // The match case says "this session, or an agent it delegated to" rather than the shorter
   // "this session" because that is the whole of what an env-id match guarantees: a delegated
   // agent inherits the enclosing session's env identifier, so this comparison cannot tell the
-  // two apart and must not claim to. The only way to know for certain who drives a run is to
-  // ask the stop-boundary hook — it blocks only the recorded driver, so being nudged is the
-  // answer, and the driver line never is.
+  // two apart and must not claim to. Certainty is available to a *delegated agent* only, and
+  // not from here: SubagentStop holds an agent only on a positive match, so an agent that
+  // ends a turn and gets pushed back is the driver. That test does not generalize to this
+  // line's other cases — Stop nudges every session on a run that stamped no identifier —
+  // which is exactly why this line reports the range it can prove instead of a name.
   driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;

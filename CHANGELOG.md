@@ -76,8 +76,9 @@ changes), and a patch bump means fixes only.
   so the comparison cannot separate the two. A delegated agent that wants
   certainty can end a turn instead: `SubagentStop` holds an agent only on a
   positive match, so being pushed back to `headsign next` proves ownership
-  (ending quietly proves nothing — the nudge cap, a pause note, or
-  `HEADSIGN_OBSERVER` all end turns quietly too). See
+  (ending quietly proves nothing — never having claimed, an exhausted nudge
+  cap, a consumed pause note, and `HEADSIGN_OBSERVER` all end turns quietly
+  too). See
   [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 - No-argument `headsign validate` now defaults to the current run's own
   `workflow_path` (from `.headsign/state.json`, whatever its status)
