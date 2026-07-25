@@ -80,8 +80,8 @@ function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: numb
 export type LogEvent = { kind: "START"; workflow: string } | Outcome;
 
 // Pure formatting of one .headsign/log line (state.ts's appendLog/initLog own the I/O;
-// cli.ts captures `ts` via `new Date().toISOString()` and is the only caller). `state` is
-// the resulting state of this transition — the same object passed to state.writeState —
+// cli.ts captures `ts` via its local `localIso(new Date())` helper and is the only caller).
+// `state` is the resulting state of this transition — the same object passed to state.writeState —
 // so `a=`/`i=`/`<phase>` always match what's on disk after this event. `prevPhase` is the
 // one piece of context that state doesn't carry after the fact (an ADVANCE's `state.phase`
 // is already the destination): it feeds the `from=` clause and is otherwise unused.

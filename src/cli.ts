@@ -11,6 +11,21 @@ import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
 
+// Local-time ISO 8601 with a numeric UTC offset, second precision, no milliseconds — e.g.
+// "2026-07-24T23:00:17+09:00". The log's reader is a human or agent writing a run report in
+// the user's own timezone, and a numeric offset keeps the line unambiguous and
+// machine-parseable without forcing a mental UTC conversion.
+function localIso(d: Date): string {
+  const pad = (n: number, width = 2) => String(n).padStart(width, "0");
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const offsetMinutes = -d.getTimezoneOffset(); // getTimezoneOffset is UTC-minus-local, so negate for local-minus-UTC
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  const offset = `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  return `${date}T${time}${offset}`;
+}
+
 function stderrExit(text: string, code: number): never {
   process.stderr.write(text);
   return process.exit(code);
@@ -149,7 +164,7 @@ function cmdStart(args: string[]): void {
   // The log is run-scoped: truncate/create it fresh so a previous run's history never
   // bleeds into this one, then record the run's first transition.
   state.initLog(cwd);
-  state.appendLog(cwd, render.logLine(new Date().toISOString(), { kind: "START", workflow: wf.name }, freshState));
+  state.appendLog(cwd, render.logLine(localIso(new Date()), { kind: "START", workflow: wf.name }, freshState));
   // Every run starts with a clean scratch dir: artifacts from a previous run (verdicts,
   // tickets, notes) must not leak into this one.
   const tmpDir = path.join(cwd, ".headsign", "tmp");
@@ -176,7 +191,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   const limitHit = engine.checkIterationLimit(wf, current);
   if (limitHit) {
     state.writeState(cwd, limitHit.state);
-    state.appendLog(cwd, render.logLine(new Date().toISOString(), limitHit.outcome, limitHit.state));
+    state.appendLog(cwd, render.logLine(localIso(new Date()), limitHit.outcome, limitHit.state));
     return { outcome: limitHit.outcome };
   }
 
@@ -199,7 +214,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   let cleared: string[] | undefined;
   if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);
-  state.appendLog(cwd, render.logLine(new Date().toISOString(), outcome, nextState, current.phase));
+  state.appendLog(cwd, render.logLine(localIso(new Date()), outcome, nextState, current.phase));
   return { outcome, cleared };
 }
 
@@ -258,7 +273,7 @@ function cmdAbort(args: string[]): void {
   const reason = args.join(" ");
   const nextState: state.State = { ...current, status: "aborted", end_reason: reason || null };
   state.writeState(cwd, nextState);
-  state.appendLog(cwd, render.logLine(new Date().toISOString(), { kind: "ABORT", reason }, nextState));
+  state.appendLog(cwd, render.logLine(localIso(new Date()), { kind: "ABORT", reason }, nextState));
   exitAfter(render.abort(reason), 2);
 }
 

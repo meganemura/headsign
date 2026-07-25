@@ -7903,6 +7903,16 @@ function evaluate(cwd, stdinRaw) {
 }
 
 // src/cli.ts
+function localIso(d) {
+  const pad = (n, width = 2) => String(n).padStart(width, "0");
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const offsetMinutes = -d.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  const offset = `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+  return `${date}T${time}${offset}`;
+}
 function stderrExit(text, code) {
   process.stderr.write(text);
   return process.exit(code);
@@ -8017,7 +8027,7 @@ function cmdStart(args) {
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
   initLog(cwd);
-  appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), { kind: "START", workflow: wf.name }, freshState));
+  appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "START", workflow: wf.name }, freshState));
   const tmpDir = path4.join(cwd, ".headsign", "tmp");
   fs5.rmSync(tmpDir, { recursive: true, force: true });
   fs5.mkdirSync(tmpDir, { recursive: true });
@@ -8034,7 +8044,7 @@ function evaluateNext(cwd, wf, current) {
   const limitHit = checkIterationLimit(wf, current);
   if (limitHit) {
     writeState(cwd, limitHit.state);
-    appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), limitHit.outcome, limitHit.state));
+    appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), limitHit.outcome, limitHit.state));
     return { outcome: limitHit.outcome };
   }
   const hash = treeHash(cwd);
@@ -8048,7 +8058,7 @@ function evaluateNext(cwd, wf, current) {
   let cleared;
   if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);
-  appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), outcome, nextState, current.phase));
+  appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), outcome, nextState, current.phase));
   return { outcome, cleared };
 }
 function cmdNext() {
@@ -8092,7 +8102,7 @@ function cmdAbort(args) {
   const reason = args.join(" ");
   const nextState = { ...current, status: "aborted", end_reason: reason || null };
   writeState(cwd, nextState);
-  appendLog(cwd, logLine((/* @__PURE__ */ new Date()).toISOString(), { kind: "ABORT", reason }, nextState));
+  appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "ABORT", reason }, nextState));
   exitAfter(abort(reason), 2);
 }
 function cmdValidate(args) {

@@ -7,8 +7,8 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 
 const CLI = path.join(import.meta.dirname, "..", "src", "cli.ts");
 
-function run(args: string[], opts: { cwd: string; input?: string }): { stdout: string; stderr: string; status: number | null } {
-  const result = spawnSync(process.execPath, [CLI, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "" });
+function run(args: string[], opts: { cwd: string; input?: string; env?: NodeJS.ProcessEnv }): { stdout: string; stderr: string; status: number | null } {
+  const result = spawnSync(process.execPath, [CLI, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "", env: opts.env ?? process.env });
   return { stdout: result.stdout, stderr: result.stderr, status: result.status };
 }
 
@@ -944,6 +944,22 @@ test("log: start truncates/creates the log with exactly one start line naming th
   const lines = readLog(dir);
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^\S+ start build a=0 i=0 workflow=demo$/);
+});
+
+test("log: timestamp is local time with a numeric UTC offset, no milliseconds (generic format check; CI runs UTC, so +00:00)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const lines = readLog(dir);
+  assert.match(lines[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} /);
+});
+
+test("log: timestamp reflects TZ (Asia/Tokyo, +09:00), not UTC", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: { ...process.env, TZ: "Asia/Tokyo" } });
+  const lines = readLog(dir);
+  assert.match(lines[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00 start /);
 });
 
 test("log: a second start truncates the previous run's log rather than appending to it", () => {

@@ -170,8 +170,8 @@ an append.
 
 All I/O for this file lives in `state.ts` (`initLog`/`appendLog`); its line
 format lives in `render.ts` (`logLine`), pure text formatting with no I/O
-of its own; `cli.ts` captures the timestamp (`new Date().toISOString()`)
-and is the only caller of either — the same clock-and-I/O-stays-in-cli.ts
+of its own; `cli.ts` captures the timestamp (`localIso(new Date())`) and
+is the only caller of either — the same clock-and-I/O-stays-in-cli.ts
 split this ADR already keeps engine.ts out of.
 
 Four call sites, one line each: `start` (truncate, then a `start` line),
@@ -184,10 +184,13 @@ a transition, and logging one would make the log say something happened
 when nothing did.
 
 Line format: `<ISO-ts> <event> <phase> a=<attempts[phase] ?? 0>
-i=<total_iterations> <detail>`, where `<detail>` supplies whatever the
-event needs beyond those shared fields — the workflow name for `start`,
-the failing check for `retry`, the origin phase for an `advance`, the
-reason for `escalate`/`abort`.
+i=<total_iterations> <detail>`, where `<ISO-ts>` is local time with UTC
+offset (ISO 8601, second precision) — the log's reader is a human or agent
+writing a run report in the user's own timezone, and a numeric offset keeps
+the line unambiguous without forcing a mental UTC conversion — and
+`<detail>` supplies whatever the event needs beyond those shared fields —
+the workflow name for `start`, the failing check for `retry`, the origin
+phase for an `advance`, the reason for `escalate`/`abort`.
 
 Excluded from the tree-hash cache (`treehash.ts`'s `headsignEntries`
 filter and `statusEntries`'s exclusion set) for the same reason
