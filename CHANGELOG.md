@@ -12,10 +12,10 @@ changes), and a patch bump means fixes only.
 ### Added
 
 - Pause notes: writing one line to `.headsign/tmp/stop-note` lets a session
-  stop immediately and quietly — the Stop hook consumes the note, records a
+  stop immediately and quietly — the stop-boundary hook consumes the note, records a
   `paused` line in `.headsign/log`, and leaves the run resumable with
   `headsign next`. Silent exits now always leave a trace.
-- A `stalled` line in `.headsign/log` when the Stop hook's nudge cap is
+- A `stalled` line in `.headsign/log` when the nudge cap is
   reached, so unattended supervisors can detect an abandoned run
   (`status == "running"` plus `stalled` in the log).
 - Role-based example workflows in `example.headsign/` (TDD feature, bugfix,
@@ -57,10 +57,10 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
-- The Stop hook's nudge cap is now purely an abnormal-case backstop and was
-  raised from 3 to 5; the pause note is the intended exit for deliberate
-  stops.
-- The Stop hook's decision order now checks observer opt-out and driver
+- The nudge cap (shared by both stop-boundary hooks) is now purely an
+  abnormal-case backstop and was raised from 3 to 5; the pause note is the
+  intended exit for deliberate stops.
+- The `Stop` hook's decision order now checks observer opt-out and driver
   ownership before the exit-note gate, so a bystander's stop can no longer
   consume the shared nudge-cap insurance or a driver's pause note — see
   [ADR-0008](docs/adr/0008-multi-session-ownership.md).

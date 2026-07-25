@@ -117,7 +117,7 @@ outside it:
 - [ADR-0003](adr/0003-workflow-yaml-vocabulary.md) — YAML vocabulary: what we borrow, what we refuse
 - [ADR-0004](adr/0004-state-attempts-and-cache.md) — state shape, per-phase attempts, tree-hash cache
 - [ADR-0005](adr/0005-distribution-and-toolchain.md) — TypeScript, esbuild single-file bundle, dependency policy
-- [ADR-0006](adr/0006-stop-hook-backstop.md) — Stop hook semantics
+- [ADR-0006](adr/0006-stop-hook-backstop.md) — stop-boundary hook semantics (both events)
 - [ADR-0007](adr/0007-verdict-authorship.md) — verdict authorship: the gate-hardness scale
 - [ADR-0008](adr/0008-multi-session-ownership.md) — multi-session runs: driver ownership, observers, `status`
 - [ADR-0009](adr/0009-claim-handshake.md) — the claim handshake (superseded by ADR-0010)

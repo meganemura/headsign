@@ -375,12 +375,19 @@ through instead. Escalated, aborted, and completed runs pass through too;
 those are correct endings.
 
 The two hooks resolve the "can't tell" case in opposite directions, on
-purpose. If no identifier is available at either end, `Stop` still nudges:
-a session stopping in the run's own directory is probably its driver, and
-missing the real one is worse than one stray reminder. `SubagentStop`
-passes instead, because most delegated agents stopping nearby are
-reviewers and workers with no role in the run at all, and holding one of
-those hostage is worse than a missed reminder.
+purpose. If either end fails to produce an identifier — the stopping turn's
+or the stamped one's — `Stop` still nudges: a session stopping in the run's
+own directory is probably its driver, and missing the real one is worse
+than one stray reminder. `SubagentStop` passes instead, because most
+delegated agents stopping nearby are reviewers and workers with no role in
+the run at all, and holding one of those hostage is worse than a missed
+reminder.
+
+One case never reaches that question: once a run's driver was seated by
+`headsign claim`, what's stamped is an agent identifier, so `Stop`
+passes every session through unconditionally without comparing anything —
+no session can be that agent. See
+[Multiple sessions](#multiple-sessions).
 
 Two hooks, because a driver can be either kind of turn loop: `Stop` fires
 when a session's turn ends, `SubagentStop` when a delegated agent's does.

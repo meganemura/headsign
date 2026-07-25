@@ -88,8 +88,8 @@ edited" — is how source-identifying detail leaks.
 For most changes, `npm test` plus running the CLI directly
 (`node plugin/dist/headsign.mjs …`) is enough. Occasionally you need to
 check a hook or skill change against a *real*, already-installed plugin
-copy — e.g. confirming a Stop-hook edit actually fires the way you expect
-inside a live Claude Code session — without cutting a release and running
+copy — e.g. confirming a stop-boundary hook edit actually fires the way you
+expect inside a live Claude Code session — without cutting a release and running
 `/plugin marketplace update` for every iteration. Claude Code caches an
 installed plugin under a version-scoped path:
 
