@@ -342,7 +342,9 @@ npm run build     # esbuild → plugin/dist/headsign.mjs (committed artifact)
 
 Node ≥ 20 to run; Node ≥ 22.6 to develop (tests run TypeScript natively).
 The design is documented in [docs/architecture.md](docs/architecture.md),
-with the rationale for each decision in [docs/adr/](docs/adr/README.md).
+with the rationale for each decision in [docs/adr/](docs/adr/README.md);
+release and maintenance procedures live in
+[docs/maintenance.md](docs/maintenance.md).
 
 ## License
 

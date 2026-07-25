@@ -317,6 +317,7 @@ npm run build     # esbuild → plugin/dist/headsign.mjs(コミットする成�
 
 実行には Node 20 以上、開発には Node 22.6 以上が必要です(テストが TypeScript をそのまま実行するため)。
 設計は [docs/architecture.md](docs/architecture.md) に、各判断の背景は [docs/adr/](docs/adr/README.md) にまとめてあります。
+リリースとメンテナンスの手順は [docs/maintenance.md](docs/maintenance.md) にあります。
 
 ## ライセンス
 
