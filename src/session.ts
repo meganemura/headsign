@@ -21,8 +21,10 @@ export function resolveSessionId(env: NodeJS.ProcessEnv): string | null {
 
 // Manual opt-out (ADR-0008) for a session that is not driving this run and has no
 // identifier to prove it — or simply wants to be unconditionally exempt. Any non-empty
-// value passes the Stop hook regardless of driver ownership; the value itself is never
-// inspected, presence is the whole signal (documented as `=1`).
+// value passes both stop-boundary hooks — Stop and SubagentStop alike, since a session
+// that opts out is opting its delegated agents' stops out too — regardless of driver
+// ownership; the value itself is never inspected, presence is the whole signal
+// (documented as `=1`).
 export function isObserver(env: NodeJS.ProcessEnv): boolean {
   const raw = env["HEADSIGN_OBSERVER"];
   return typeof raw === "string" && raw.length > 0;

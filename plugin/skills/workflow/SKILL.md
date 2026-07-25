@@ -94,9 +94,10 @@ plugin or `npm install` the package. Do not guess at other paths.
   workflow (the repo or git-worktree root), not a subdirectory. Each git
   worktree is therefore its own independent run: its state lives in that
   worktree's `.headsign/`, and a run in another worktree of the same
-  repository neither shares it nor sees it. The Stop hook is the exception:
-  it finds the run from any subdirectory up to the repo/worktree root, so it
-  still fires even if the session's cwd has drifted.
+  repository neither shares it nor sees it. The stop-boundary hooks are the
+  exception: they find the run from any subdirectory up to the
+  repo/worktree root, so they still fire even if the session's cwd has
+  drifted.
 - Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
   Read the text, don't treat non-zero as a tool failure. PENDING = the gate
   can't be evaluated yet — not a failure. Produce the artifact it's waiting

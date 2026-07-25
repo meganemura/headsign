@@ -261,15 +261,17 @@ function cmdNext(): void {
   }
 
   // Driver stamp (ADR-0008), right after the fresh re-read under the lock: claim/refresh
-  // ownership so the Stop hook's owner check always compares against whoever most
+  // ownership so the stop-boundary hooks' owner checks always compare against whoever most
   // recently called `next`. Only a *positive* identifier overwrites — a caller that
   // resolved no id (env stripped mid-run) must never orphan an existing driver — and only
   // a *changed* value is written, so the common case (same driver calling next
   // repeatedly) costs nothing extra, preserving PENDING's zero-write guarantee below.
-  // driver_source !== "claim" is the stickiness rule from ADR-0009's claim handshake: once
-  // the Stop hook has adopted a driver via `headsign claim`, this env-derived auto-stamp
-  // must never silently overwrite it — only a *new* claim (or a fresh `start`) may. Any
-  // other driver_source (including missing/corrupt) is plain overwritable, same as today.
+  // driver_source !== "claim" is the stickiness rule from the claim handshake: once the
+  // SubagentStop hook has seated a delegated agent via `headsign claim` (ADR-0010), this
+  // env-derived auto-stamp must never silently overwrite it — env can only ever produce the
+  // enclosing session's id, which is precisely the identity the claim exists to override.
+  // Only a *new* claim (or a fresh `start`) may replace it. Any other driver_source
+  // (including missing/corrupt) is plain overwritable, same as today.
   const sid = session.resolveSessionId(process.env);
   if (sid !== null && fresh.driver_source !== "claim" && fresh.driver_session !== sid) {
     fresh = { ...fresh, driver_session: sid, driver_source: "env" };

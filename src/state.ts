@@ -16,19 +16,27 @@ export interface State {
   workflow: string; workflow_path: string; status: Status; phase: string;
   attempts: Record<string, number>; total_iterations: number; last_eval: LastEval | null;
   end_reason: string | null; stop_nudges: number;
-  // The identifier of whoever most recently ran `start`/`next` (ADR-0008) — the Stop
-  // hook's owner check compares this against the stopping session. A state.json written
-  // before this field existed simply lacks it; readers must treat anything that isn't a
-  // string (missing, or a legacy/corrupt non-string value) as null, the same tolerant
-  // idiom stophook.ts already uses for stop_nudges.
+  // Who currently drives this run (ADR-0008/0010). Which *kind* of identifier this holds
+  // is decided entirely by driver_source below — read the two together, never this one
+  // alone. A state.json written before this field existed simply lacks it; readers must
+  // treat anything that isn't a string (missing, or a legacy/corrupt non-string value) as
+  // null, the same tolerant idiom stophook.ts already uses for stop_nudges.
   driver_session: string | null;
-  // How driver_session was stamped (ADR-0009's claim handshake): "env" for the ordinary
-  // auto-stamp from start/next's process env, "claim" for a Stop-hook adoption via
-  // `headsign claim`, null whenever driver_session itself is null. Consumers must treat
-  // only the exact string "claim" as sticky (i.e. immune to being overwritten by the
-  // auto-stamp) — anything else, including a missing field on a pre-claim state.json or a
-  // corrupt/legacy value, is plain overwritable, the same tolerant idiom as the rest of
-  // this file's fields.
+  // The one field that says which identifier space driver_session lives in, and therefore
+  // which stop-boundary hook may compare against it (ADR-0010 Decision 2 — this pairing is
+  // why no separate "kind" field exists):
+  //
+  //   "env"   -> driver_session is a SESSION id, auto-stamped by start/next from the
+  //              process env. Only the Stop hook compares against it.
+  //   "claim" -> driver_session is an AGENT id, sealed by the SubagentStop hook when a
+  //              delegated agent that ran `headsign claim` ends its own turn. Only the
+  //              SubagentStop hook compares against it; Stop passes through on sight.
+  //   null    -> driver_session is null too; nobody is stamped, so nobody is compared.
+  //
+  // Consumers must treat only the exact string "claim" as sticky (i.e. immune to being
+  // overwritten by the auto-stamp) — anything else, including a missing field on a
+  // pre-claim state.json or a corrupt/legacy value, is plain overwritable, the same
+  // tolerant idiom as the rest of this file's fields.
   driver_source: "env" | "claim" | null;
 }
 

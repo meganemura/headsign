@@ -45,12 +45,22 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at about 770 code lines (raw
-`wc -l` is higher, ~1060, because of those comments), well past the target
-after the concurrency lock, the git-root tree-hash fix, ready:/PENDING, and
-the transition log landed — each individually justified, but the drift is
-exactly what ADR-0001 says to watch: the next feature proposal should face
-the "does a thin harness need this?" question with extra suspicion. The 500
+blank lines don't count). It currently sits at **984 code lines** (raw
+`wc -l` is higher, ~1520, because of those comments) — roughly twice the
+target, after the concurrency lock, the git-root tree-hash fix,
+ready:/PENDING, the transition log, multi-session driver ownership, and the
+two stop-boundary hooks landed. Each was individually justified and none is
+obviously removable, which is exactly the shape of drift ADR-0001 says to
+watch: at 2× the guideline, the next feature proposal should face the "does
+a thin harness need this?" question with real suspicion, and a proposal that
+adds a *third* identity mechanism should probably be answered by
+consolidating the first two instead. Recount with:
+
+```sh
+for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
+```
+
+The 500
 figure is a guideline, not a hard cap: per ADR-0001 it "is a design smell
 detector, not a hard compiler limit" — a number drifting past it is a signal
 to periodically check for design bloat, not a fact to fix by deleting lines.
@@ -108,3 +118,7 @@ outside it:
 - [ADR-0004](adr/0004-state-attempts-and-cache.md) — state shape, per-phase attempts, tree-hash cache
 - [ADR-0005](adr/0005-distribution-and-toolchain.md) — TypeScript, esbuild single-file bundle, dependency policy
 - [ADR-0006](adr/0006-stop-hook-backstop.md) — Stop hook semantics
+- [ADR-0007](adr/0007-verdict-authorship.md) — verdict authorship: the gate-hardness scale
+- [ADR-0008](adr/0008-multi-session-ownership.md) — multi-session runs: driver ownership, observers, `status`
+- [ADR-0009](adr/0009-claim-handshake.md) — the claim handshake (superseded by ADR-0010)
+- [ADR-0010](adr/0010-subagent-stop-identity.md) — sealing driver identity on `SubagentStop`

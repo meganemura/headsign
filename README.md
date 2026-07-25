@@ -365,10 +365,19 @@ there is always detected, never mistaken for "nothing changed".
 
 ### The backstop
 
-Skills are instructions, not guarantees. A Stop hook reads
-`.headsign/state.json`; while a run is `running` it blocks the agent from
-stopping and points it back to `headsign next`. Escalated, aborted, and
-completed runs pass through — those are correct endings.
+Skills are instructions, not guarantees. Two stop-boundary hooks read
+`.headsign/state.json`; while a run is `running`, whichever one fires for
+the run's **driver** blocks that turn from ending and points it back to
+`headsign next`. Everyone else stops freely: a session that isn't driving,
+and any delegated agent that isn't either, pass straight through. Escalated,
+aborted, and completed runs pass through too — those are correct endings.
+
+Two hooks, because a driver can be either kind of turn loop: `Stop` fires
+when a session's turn ends, `SubagentStop` when a delegated agent's does.
+A delegated agent never fires `Stop` at all, so without the second hook it
+would have no backstop — and, worse, the run would keep pushing the
+session that merely spawned it (see
+[Multiple sessions](#multiple-sessions)).
 
 **To pause deliberately**, write one line explaining why to
 `.headsign/tmp/stop-note` and stop again: the hook passes immediately, no
