@@ -70,7 +70,7 @@ Cursor でも自作ハーネスでも `CLAUDE.md` でも、次の一則でほぼ
 > `npx headsign next` を実行し、答えの 1 行目に従うこと。`COMPLETE` 以外で run を終えないこと。意図的に止めるときは `npx headsign abort <reason>` を実行すること。
 
 規律の全文は [plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md) にあり、必要な部分をエージェントのルールに写せばよい。
-GitHub CLI で単体スキルとして入れることもできる(`gh skill install meganemura/headsign workflow`。`gh` の preview 機能)。
+GitHub CLI で単体スキルとして入れることもできる(`gh skill install meganemura/headsign workflow`。`gh` の preview 機能で、どのエージェントに入れるかを選べる)。
 Claude Code なら `.claude/skills/` にプロジェクトスキルとして写す手もある。
 これらの方法で得たスキルはプラグインの外で動くため同梱 CLI を見つけられないが、上記のとおりパッケージをインストールしておけば `npx headsign` にフォールバックする。
 
