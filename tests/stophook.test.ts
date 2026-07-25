@@ -526,7 +526,7 @@ test("SubagentStop adoption gate runs BEFORE the owner comparison: an agent that
   assert.equal(after?.driver_source, "claim");
 });
 
-test("SubagentStop adoption: re-claim re-adopts — the right agent's own turn end always wins over a previous mistaken adoption", () => {
+test("SubagentStop adoption: re-claim re-arms, and the next agent to name itself replaces a previous mistaken adoption", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ driver_session: "session-alpha", driver_source: "env" }));
   writeClaimMarker(dir);
@@ -539,7 +539,7 @@ test("SubagentStop adoption: re-claim re-adopts — the right agent's own turn e
   const second = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha" }), NOW, NO_ENV);
   assert.equal(second.block, true);
   const after = state.readState(dir);
-  assert.equal(after?.driver_session, "agent-alpha", "a new claim always wins");
+  assert.equal(after?.driver_session, "agent-alpha", "the later adoption replaces the earlier one");
   assert.equal(after?.driver_source, "claim");
   assert.equal(readLog(dir).filter((l) => l.includes(" claimed ")).length, 2, "each successful adoption logs its own claimed line");
 });

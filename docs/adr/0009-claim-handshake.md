@@ -242,11 +242,12 @@ setup is reliably the lead. "A new claim always wins" was true of markers
 and false of outcomes: re-claiming converged on the same wrong driver
 every time. The confidence in the paragraph above came from reasoning
 about a race between symmetric participants that was never symmetric —
-and never measured. ADR-0010 keeps a race, but one whose loser can always
-correct it, because the intended agent's own turn end is guaranteed to
-fire the event that seals. The loser can re-enter that race, which is
-more than this ADR's design offered; it is not a guarantee of winning it,
-since the adoption gate still seats whoever stops first.
+and never measured. ADR-0010 keeps a race, but one the loser can
+re-enter, because the intended agent's own turn end is guaranteed to fire
+the event that seals. That is more than this ADR's design offered, where
+the intended agent could not win at all; it is still not a guarantee of
+winning, since the adoption gate seats whichever qualifying agent stops
+first.
 
 ## Alternatives considered and deferred/rejected
 

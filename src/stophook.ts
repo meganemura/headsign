@@ -60,9 +60,9 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
 // The two callers set a different bar for that, on purpose: evaluateSubagent requires a
 // positive match, while evaluate also falls through here when either identifier is missing
 // (ADR-0008's fail-open — absence is not a mismatch), so a Stop that reaches this point is
-// the driver's *or unproven*, never confirmed to be someone else's. Deliberately identical for Stop and
-// SubagentStop (ADR-0010): how you pause, how many reminders you get, and what the nudge
-// says must not depend on which stop-boundary event happened to deliver that fact.
+// the driver's *or unproven*, never confirmed to be someone else's. Deliberately identical
+// for Stop and SubagentStop (ADR-0010): how you pause, how many reminders you get, and what
+// the nudge says must not depend on which stop-boundary event happened to deliver that fact.
 function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIso: string): HookDecision {
   // Exit-note gate (ADR-0006): the primary mechanism for a deliberate pause. Checked
   // before the nudge/loop-guard logic below, so a human (or agent) who wants out never

@@ -372,7 +372,7 @@ the run's **driver** blocks that turn from ending and points it back to
 `headsign next`. A turn that can be *shown* not to be the driver's — its
 identifier resolves and disagrees with the stamped one — passes straight
 through instead, unless a `claim` marker is armed and it is the first
-delegated agent to stop, which seats it (see
+delegated agent to stop that can name itself, which seats it (see
 [Multiple sessions](#multiple-sessions)). Escalated, aborted, and completed
 runs pass through too; those are correct endings.
 
@@ -606,7 +606,7 @@ Being the driver also brings the backstop with it: once seated, that
 agent's own turn endings are pushed back to `headsign next` while the run
 is `running`, and pausing with a stop-note or ending with `headsign
 abort` works from there exactly as it does for a session. An agent that is
-neither the stamped driver nor the first to stop under an armed claim
+neither the stamped driver nor the first to name itself under an armed claim
 marker is never held — a reviewer subagent, or an agent working on
 something else entirely, stops normally.
 

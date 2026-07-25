@@ -225,7 +225,7 @@ asked* — costs one line and cannot be invalidated by a change to either
 format. It also documents itself at the exact place a future reader would
 otherwise have to re-derive it.
 
-## Honest weakness: the adoption race, narrowed and now self-repairing
+## Honest weakness: the adoption race, narrowed but still a race
 
 The handshake still is not deterministic. Between `headsign claim` arming
 the marker and the intended agent's own turn end, **another delegated
@@ -241,19 +241,22 @@ first:
   end a turn in this window". The lead session — the wrong winner
   observed in practice, because a lead very often stops shortly after
   handing work off — is no longer eligible at all (Decision 1).
-- **Retrying now converges on the right answer.** Under ADR-0009,
+- **Retrying can now reach the right answer at all.** Under ADR-0009,
   re-running `headsign claim` from the intended teammate led to the same
   outcome as the first attempt, every time: that teammate's turn end
   fired nothing, so the marker waited for a session that *could* fire
   `Stop`, and the lead was seated again. The advice "a new claim always
   wins" was true about markers and false about outcomes. Here, the
   intended agent's own turn end is *guaranteed* to fire `SubagentStop`
-  (fact 6) — so a re-claim from the right agent is not a retry of a
-  coin flip, it is a step toward a fixed point that is correct by
-  construction.
+  (fact 6), which makes that agent an eligible winner rather than a
+  structurally impossible one. Eligible is not certain: the gate still
+  seats whichever qualifying agent stops first, so a re-claim is a fresh
+  entry into the same race, and the intended agent can lose it again.
 
-That is the difference between a race with a bias toward the wrong
-result and a race whose loser can always fix it by trying again.
+That is the difference between a race rigged against the right result
+and a race its loser can re-enter. Re-entering is not winning; the
+operator's instruction is to re-claim until the confirmation names the
+agent they meant, not to assume the second attempt lands.
 
 ## Dependency risk: `agent_id` is not a public API
 

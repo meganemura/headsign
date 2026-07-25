@@ -45,7 +45,7 @@ changes), and a patch bump means fixes only.
   session has always had: while a run is `running`, the agent recorded as
   its driver is pushed back to `headsign next` at the end of its own turn
   instead of stopping silently. Agents that aren't the driver pass through
-  untouched, unless they are the first to stop under an armed `claim`
+  untouched, unless they are the first to name themselves under an armed `claim`
   marker — that is how a claim gets sealed. The plugin registers it
   automatically; the plugin-free
   `settings.json` snippet in the README now shows both hooks.

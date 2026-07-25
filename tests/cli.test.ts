@@ -1777,13 +1777,15 @@ test("re-claim re-adopts: a second claim, sealed by the right agent's turn end, 
   assert.equal(readState(dir).driver_session, "agent-beta");
 
   // The right agent notices the mistake and re-claims. Unlike ADR-0009's version of this
-  // handshake, the retry converges on the right answer: that agent's own turn end always
-  // fires SubagentStop.
+  // handshake, the retry can reach the right answer at all: that agent's own turn end always
+  // fires SubagentStop, making it an eligible winner. Eligible, not certain — the gate still
+  // seats whichever agent names itself first, which is why this test drives that order
+  // explicitly rather than asserting the retry is guaranteed to land.
   run(["claim"], { cwd: dir });
   const result = run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_SESSION_ENV });
   assert.equal(result.status, 2);
   const after = readState(dir);
-  assert.equal(after.driver_session, "agent-alpha", "a new claim always wins");
+  assert.equal(after.driver_session, "agent-alpha", "the later adoption replaces the earlier one");
   assert.equal(after.driver_source, "claim");
 });
 
