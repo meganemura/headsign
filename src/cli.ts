@@ -381,9 +381,10 @@ function cmdStatus(): void {
   // Same honesty on the env path: a match only proves the reader is this session *or an agent
   // it delegated to*, since a delegated agent inherits the enclosing session's env identifier
   // and nothing here can separate the two. No wording here can do better: the one test that
-  // proves ownership belongs to SubagentStop (it holds an agent only on a positive match), and
-  // it is available to delegated agents alone — Stop nudges every session on a run whose
-  // identifier was never stamped, so being held there proves nothing about who drives.
+  // proves ownership belongs to SubagentStop (an ordinary nudge fires only on a positive
+  // match), it is available to delegated agents alone, and it reads the message rather than
+  // the mere fact of being held — Stop nudges every session on a run whose identifier was
+  // never stamped, and SubagentStop's adoption gate holds whoever stops under an armed marker.
   let driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
   if (current.driver_source === "claim") {
     driver = "a delegated agent";

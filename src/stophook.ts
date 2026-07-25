@@ -81,8 +81,10 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   }
 
   // Loop guard (ADR-0006): a safety net for the case where the agent can't even write a
-  // stop-note (a stuck loop, or an agent that has silently departed) — only `next`'s real
-  // gate evaluations reset stop_nudges. Five consecutive nudges with no real evaluation
+  // stop-note (a stuck loop, or an agent that has silently departed). stop_nudges is reset
+  // by anything that proves someone is still steering the run: `next`'s real gate
+  // evaluations, and the two hook gates above (a consumed note, a sealed claim). Five
+  // consecutive nudges with no real evaluation
   // (and no note) between them means nudging isn't working — fail open rather than risk
   // an unstoppable session. N=5 is an arbitrary safety value, not a load-bearing constant.
   // ?? alone doesn't catch a non-null but wrong-type value (e.g. a corrupt/forged/legacy

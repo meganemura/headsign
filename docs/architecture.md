@@ -100,7 +100,8 @@ unceremonious channel, not part of that contract.
 Thin Harness, Fat Skills. The CLI is a state machine; everything smart lives
 outside it:
 
-- **SKILL.md** teaches Claude the loop discipline (five rules, no more).
+- **SKILL.md** teaches Claude the loop discipline (seven numbered rules; if
+  it needs an eighth, prefer sharpening one of the seven).
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
 - **Stop-boundary hooks** are the backstop: skills are instructions, not

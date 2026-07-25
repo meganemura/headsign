@@ -518,17 +518,25 @@ such identifier separates a session from what it delegated to — that gap is
 exactly why `headsign claim` exists.
 
 **If you are a delegated agent, end your turn and watch what happens: being
-pushed back to `headsign next` proves this run is yours to drive.**
-`SubagentStop` holds an agent only on a positive match with the stamped
-driver, so a delegated agent that gets held is the driver, full stop. The
-implication runs one way only. Ending quietly does *not* prove the reverse.
-You may never have claimed, in which case the hook passes you before it
-ever looks at who you are; the nudge cap may have run out (the fifth held
-turn with no evaluation and no note in between still holds you, logs
-`stalled`, and lets every stop after it through); a pause note may have
-been consumed; or `HEADSIGN_OBSERVER` may be set. Only a probe that comes
-back held costs anything — one nudge off that cap — but that is the answer
-you were hoping for, so spend it deliberately rather than habitually.
+pushed back to `headsign next` means this run is yours to drive.**
+`SubagentStop` holds an agent when it matches the stamped driver, and
+otherwise only to seal a claim — so read *which* message you got. The
+ordinary nudge names the phase and tells you to run `headsign next`; that
+one confirms you already drive the run. `Claim confirmed: this agent now
+drives …` means something else entirely: an armed marker just seated
+*you*, possibly one another agent armed for itself. If you get that
+message without having run `headsign claim`, you have taken a seat
+someone else was asking for — say so, and let them claim again.
+
+The implication runs one way only. Ending quietly does *not* prove the
+reverse. You may never have claimed, in which case the hook passes you
+before it ever looks at who you are; the nudge cap may have run out (the
+fifth held turn with no evaluation and no note in between still holds you,
+logs `stalled`, and lets every stop after it through); a pause note may
+have been consumed; or `HEADSIGN_OBSERVER` may be set. A probe is close to
+free, but not quite: if it comes back as an ordinary nudge it spends one
+off that cap, and if you were the driver with a pause note armed, the probe
+consumes the note instead. Spend it deliberately rather than habitually.
 
 For a *session*, the same test is weaker. The owner check only rules a stop
 out on identifier grounds when both identifiers resolve and disagree, so on
@@ -589,9 +597,10 @@ cannot take the seat by stopping first.
 Being the driver also brings the backstop with it: once seated, that
 agent's own turn endings are pushed back to `headsign next` while the run
 is `running`, and pausing with a stop-note or ending with `headsign
-abort` works from there exactly as it does for a session. Agents that
-aren't the run's driver are never held — a reviewer subagent, or an agent
-working on something else entirely, stops normally.
+abort` works from there exactly as it does for a session. An agent that is
+neither the stamped driver nor the first to stop under an armed claim
+marker is never held — a reviewer subagent, or an agent working on
+something else entirely, stops normally.
 
 This is a handshake, not a lock: if some *other* delegated agent happens
 to end a turn while the marker is armed, it gets adopted instead. Run

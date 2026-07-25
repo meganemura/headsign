@@ -312,10 +312,15 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   hidden `driver_session` value *is* changed; what any artifact looks like
   did not.
 - **For a delegated agent, the nudge itself is the reliable test of "am I
-  this run's driver".** `SubagentStop` holds an agent only on a positive
-  match with the stamped driver (Decision 3), so a turn end pushed back to
-  `headsign next` is first-hand proof of ownership — delivered by the one
-  party that can tell the actors apart, at the one moment it can. No
+  this run's driver".** `SubagentStop` holds an agent on a positive match
+  with the stamped driver (Decision 3), so an ordinary nudge at a turn end
+  is first-hand proof of ownership — delivered by the one party that can
+  tell the actors apart, at the one moment it can. The test reads the
+  *message*, not merely the fact of being held: the adoption gate also
+  holds, and it holds whoever stops first under an armed marker without
+  consulting the stamped driver at all, so a `Claim confirmed` reply to an
+  agent that never ran `headsign claim` reports a seat taken, not a seat
+  owned. Documentation offering this test has to say which reply counts. No
   command can offer the equivalent, because facts 2–4 are about what the
   CLI is able to read at all.
 

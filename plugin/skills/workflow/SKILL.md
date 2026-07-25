@@ -63,12 +63,16 @@ plugin or `npm install` the package. Do not guess at other paths.
    unheld. And if you need to check whether you are the driver, don't read
    it off `headsign status` — as a delegated agent, the reliable signal is
    the hook itself: if your turn ends are being pushed back to `headsign
-   next`, this run is yours to drive. That only works in this direction and
-   only for delegated agents: ending quietly proves nothing (not having
-   claimed, an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all
-   end turns quietly), and a plain session gets nudged on a run that stamped
-   no identifier at all. Only a probe that comes back held spends a nudge
-   from the cap — so probe deliberately, not by habit.
+   next`, this run is yours to drive. Read which message you got: an
+   ordinary nudge fires only on a positive match, but `Claim confirmed …`
+   means an armed marker just seated you — if you did not run `headsign
+   claim`, you have taken a seat another agent was asking for, so say so
+   and let it claim again. The test only works in this direction and only
+   for delegated agents: ending quietly proves nothing (not having claimed,
+   an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all end
+   turns quietly), and a plain session gets nudged on a run that stamped no
+   identifier at all. A probe that comes back as an ordinary nudge spends
+   one from the cap — so probe deliberately, not by habit.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
 4. **Whenever you are unsure what to do, think a phase's work is finished, or
