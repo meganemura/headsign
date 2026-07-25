@@ -371,8 +371,10 @@ Skills are instructions, not guarantees. Two stop-boundary hooks read
 the run's **driver** blocks that turn from ending and points it back to
 `headsign next`. A turn that can be *shown* not to be the driver's — its
 identifier resolves and disagrees with the stamped one — passes straight
-through instead. Escalated, aborted, and completed runs pass through too;
-those are correct endings.
+through instead, unless a `claim` marker is armed and it is the first
+delegated agent to stop, which seats it (see
+[Multiple sessions](#multiple-sessions)). Escalated, aborted, and completed
+runs pass through too; those are correct endings.
 
 The two hooks resolve the "can't tell" case in opposite directions, on
 purpose. If either end fails to produce an identifier — the stopping turn's
@@ -533,10 +535,13 @@ reverse. You may never have claimed, in which case the hook passes you
 before it ever looks at who you are; the nudge cap may have run out (the
 fifth held turn with no evaluation and no note in between still holds you,
 logs `stalled`, and lets every stop after it through); a pause note may
-have been consumed; or `HEADSIGN_OBSERVER` may be set. A probe is close to
-free, but not quite: if it comes back as an ordinary nudge it spends one
-off that cap, and if you were the driver with a pause note armed, the probe
-consumes the note instead. Spend it deliberately rather than habitually.
+have been consumed; or `HEADSIGN_OBSERVER` may be set. And a probe is not
+free. An ordinary nudge back spends one off that cap; a probe that passes
+while your own pause note is armed consumes the note instead; and a probe
+that lands while *someone else's* claim marker is armed destroys that
+marker by consuming it — that is the `Claim confirmed` case above, and the
+other agent has to claim again. Spend the probe deliberately rather than
+habitually.
 
 For a *session*, the same test is weaker. The owner check only rules a stop
 out on identifier grounds when both identifiers resolve and disagree, so on

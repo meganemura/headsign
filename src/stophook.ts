@@ -83,9 +83,9 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   // Loop guard (ADR-0006): a safety net for the case where the agent can't even write a
   // stop-note (a stuck loop, or an agent that has silently departed). stop_nudges is reset
   // by anything that proves someone is still steering the run: `next`'s real gate
-  // evaluations, and the two hook gates above (a consumed note, a sealed claim). Five
-  // consecutive nudges with no real evaluation
-  // (and no note) between them means nudging isn't working — fail open rather than risk
+  // evaluations, the exit-note gate just above, and the adoption gate in evaluateSubagent.
+  // Five consecutive nudges with none of those in between means nudging isn't working —
+  // fail open rather than risk
   // an unstoppable session. N=5 is an arbitrary safety value, not a load-bearing constant.
   // ?? alone doesn't catch a non-null but wrong-type value (e.g. a corrupt/forged/legacy
   // state.json with stop_nudges as a string): "x" + 1 would string-concatenate to "x1",
@@ -223,10 +223,13 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     // claim exists to feed. `start`'s tmp/ wipe eventually reclaims a marker that's never
     // consumed, so this can't wedge a run permanently.
 
-    // Owner check — the absolute safety rule for this hook: block ONLY when the recorded
-    // driver is the agent that just stopped. Anything else passes through untouched, so an
-    // unrelated subagent (a reviewer, a searcher, a worker with no headsign role at all)
-    // is never trapped by a run it isn't driving.
+    // Owner check — the safety rule for everything below this line: block ONLY when the
+    // recorded driver is the agent that just stopped. Anything reaching here passes through
+    // untouched, so an unrelated subagent (a reviewer, a searcher, a worker with no headsign
+    // role at all) is never trapped by a run it isn't driving. The adoption gate above is
+    // the one place that can hold an agent this check would have released — it seats whoever
+    // stops first under an armed marker, deliberately, because no other signal can name a
+    // delegated agent (ADR-0010's named race).
     //
     // driver_source !== "claim" means the run is driven by a *session* (env-stamped by
     // start/next) — a subagent stopping under it is not that driver, whatever its agent_id.

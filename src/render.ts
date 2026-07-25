@@ -117,8 +117,8 @@ export function statusRunning(o: {
   // that ends a turn and gets one is the driver (a `Claim confirmed` reply is the adoption
   // gate, which seats whoever stops first under an armed marker, and proves nothing). That
   // test does not generalize to this line's other cases — Stop nudges every session on a run
-  // that stamped no identifier —
-  // which is exactly why this line reports the range it can prove instead of a name.
+  // that stamped no identifier — which is exactly why this line reports the range it can
+  // prove instead of a name.
   driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;

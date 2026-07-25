@@ -166,14 +166,22 @@ safely: `Stop` passes through on `"claim"` by rule 4 below, and
 mismatch, so nobody is nudged. Fail-open, not misfire. Running `headsign
 claim` again (or `headsign start`) restores the invariant.
 
-### 3. `SubagentStop` blocks only the agent recorded as driver
+### 3. Past the adoption gate, `SubagentStop` blocks only the recorded driver
 
 `SubagentStop` fires for **every** delegated agent in the process tree,
 including agents that have nothing to do with the run: a read-only
 reviewer subagent a review phase spawned, an implementer working a
 different task, a helper the user asked something unrelated. Step 8 above
-is the absolute safety condition of this design — block on the recorded
-driver's own turn end, and unconditionally pass on everyone else's.
+is the safety condition governing everything after the adoption gate —
+block on the recorded driver's own turn end, and unconditionally pass on
+everyone else's.
+
+The adoption gate (step 7) is the deliberate exception, and the only one:
+it holds whoever stops first under an armed marker, without consulting the
+stamped driver, because that is the sole moment a delegated agent can be
+named at all. That exception is what the race below is about, and any
+statement of this rule has to carry it — "an unrelated agent is never
+held" is false while a marker is armed.
 
 Getting this wrong would be worse than the bug being fixed. A hook that
 held the turn of any agent that happened to stop would turn headsign from

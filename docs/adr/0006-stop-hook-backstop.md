@@ -160,7 +160,8 @@ counter all behave identically — with two differences:
   confirmation. Marker present but no agent id → leave the marker, fall
   through. Its own owner match then passes through on
   `driver_source !== "claim"` as well as on a confirmed different agent,
-  so an unrelated subagent's stop is never held.
+  so an unrelated subagent's stop is never held *by the owner match*; the
+  adoption gate above is the one exception, and holds by design.
 
 **Why the adoption gate still precedes owner match** (it does, in the
 sibling): a `.headsign/tmp/claim` marker means someone is *in the middle

@@ -45,7 +45,9 @@ changes), and a patch bump means fixes only.
   session has always had: while a run is `running`, the agent recorded as
   its driver is pushed back to `headsign next` at the end of its own turn
   instead of stopping silently. Agents that aren't the driver pass through
-  untouched. The plugin registers it automatically; the plugin-free
+  untouched, unless they are the first to stop under an armed `claim`
+  marker — that is how a claim gets sealed. The plugin registers it
+  automatically; the plugin-free
   `settings.json` snippet in the README now shows both hooks.
 - A triage example workflow (`example.headsign/triage.yaml`): headsign's own
   feedback-intake loop, which judges exactly one ticket per run. It doubles
