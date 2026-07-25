@@ -706,6 +706,10 @@ test("SubagentStop: walk-up finds the run at the .git-bounded root, and both the
   const adopted = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha" }), NOW, NO_ENV);
   assert.equal(adopted.block, true);
   assert.ok(adopted.message?.includes(`${root}/.headsign/tmp/stop-note`));
+  // An agent seated from a subdirectory needs the same cd guidance the nudge carries:
+  // `next` is cwd-only, so "run headsign next" alone would send it at a directory with no run.
+  assert.ok(adopted.message?.includes("cd there"), "adoption from a subdirectory must say where to cd");
+  assert.ok(adopted.message?.includes(root));
   assert.equal(state.readState(root)?.driver_session, "agent-alpha");
 
   const nudged = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha" }), NOW, NO_ENV);

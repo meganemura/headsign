@@ -244,7 +244,9 @@ every time. The confidence in the paragraph above came from reasoning
 about a race between symmetric participants that was never symmetric —
 and never measured. ADR-0010 keeps a race, but one whose loser can always
 correct it, because the intended agent's own turn end is guaranteed to
-fire the event that seals.
+fire the event that seals. The loser can re-enter that race, which is
+more than this ADR's design offered; it is not a guarantee of winning it,
+since the adoption gate still seats whoever stops first.
 
 ## Alternatives considered and deferred/rejected
 

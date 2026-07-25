@@ -56,8 +56,11 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
   return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
 
-// The shared tail of both hooks, entered only once the caller has established that the
-// party that just stopped IS this run's driver. Deliberately identical for Stop and
+// The shared tail of both hooks, entered once the caller has stopped ruling the stopper out.
+// The two callers set a different bar for that, on purpose: evaluateSubagent requires a
+// positive match, while evaluate also falls through here when either identifier is missing
+// (ADR-0008's fail-open — absence is not a mismatch), so a Stop that reaches this point is
+// the driver's *or unproven*, never confirmed to be someone else's. Deliberately identical for Stop and
 // SubagentStop (ADR-0010): how you pause, how many reminders you get, and what the nudge
 // says must not depend on which stop-boundary event happened to deliver that fact.
 function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIso: string): HookDecision {
@@ -212,9 +215,13 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
       const adoptedState = { ...state, driver_session: agentId, driver_source: "claim" as const, stop_nudges: 0 };
       writeState(runDir, adoptedState);
       appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
+      // Same cwd-only caveat the nudge carries (ADR-0004): when the run was found by walking
+      // up, the newly seated agent has to be told where to cd before `next` can find it.
       const adoptionMessage =
-        `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase}). ` +
-        "Run `headsign next` and follow its verdict." +
+        `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase})` +
+        (runDir === startDir
+          ? ". Run `headsign next` and follow its verdict."
+          : ` in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) +
         pauseAndAbortHint(runDir, startDir);
       return { block: true, message: adoptionMessage };
     }

@@ -8000,7 +8000,7 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
       const adoptedState = { ...state, driver_session: agentId, driver_source: "claim", stop_nudges: 0 };
       writeState(runDir, adoptedState);
       appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
-      const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` + pauseAndAbortHint(runDir, startDir);
+      const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase})` + (runDir === startDir ? ". Run `headsign next` and follow its verdict." : ` in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + pauseAndAbortHint(runDir, startDir);
       return { block: true, message: adoptionMessage };
     }
     if (state.driver_source !== "claim") return { block: false };

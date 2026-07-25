@@ -422,8 +422,8 @@ traps a session) after 5 consecutive nudges with nothing in between that
 shows someone is still steering: a real evaluation, a consumed note, or a
 sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
 `.headsign/log`, and every stop after that passes silently. That cap is a
-safety net for a
-stuck or silently departed agent, not the normal way to pause — the note
+safety net for a stuck or silently departed agent, not the normal way to
+pause — the note
 above is. To spot an unattended stall from the outside: `headsign status`
 (read-only, safe to run from any session — see
 [Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
@@ -524,15 +524,16 @@ exactly why `headsign claim` exists.
 **If you are a delegated agent, end your turn and watch what happens: being
 pushed back to `headsign next` means this run is yours to drive.**
 `SubagentStop` holds an agent when it matches the stamped driver, and
-otherwise only to seal a claim — so read *which* message you got, and read
-its opening words, because that is the only part that differs. Both name
-the workflow and phase and both tell you to run `headsign next`. A message
-opening `headsign workflow '…' is still running` is the ordinary nudge, and
-it confirms you already drive the run. One opening `Claim confirmed:` means
+otherwise only to seal a claim — so read *which* message you got, starting
+with its opening words. Both name the workflow and phase, both tell you to
+run `headsign next`, and both end with the same pause and abort advice, so
+the opening is the one part that always tells them apart. A message opening
+`headsign workflow '…' is still running` is the ordinary nudge, and it
+confirms you already drive the run. One opening `Claim confirmed:` means
 something else entirely: an armed marker just seated *you*, possibly one
 another agent armed for itself. If you get that message without having run
-`headsign claim`, you have taken a seat
-someone else was asking for — say so, and let them claim again.
+`headsign claim`, you have taken a seat someone else was asking for — say
+so, and let them claim again.
 
 The implication runs one way only. Ending quietly does *not* prove the
 reverse. You may never have claimed, in which case the hook passes you
