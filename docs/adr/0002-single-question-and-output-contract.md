@@ -21,7 +21,7 @@ ways it can go wrong after compaction.
 | `headsign abort [reason]` | record a human-directed stop |
 | `headsign validate [name] [--workflow path]` | static check of workflow.yaml |
 | `headsign status` | read-only report of the current run, for a session that isn't driving it (ADR-0008) |
-| `headsign claim` | arm a one-shot marker for the Stop hook to adopt this session as driver (ADR-0009) |
+| `headsign claim` | arm a one-shot marker for the `SubagentStop` hook to adopt this delegated agent as driver (ADR-0009, ADR-0010) |
 
 A bare `<name>` resolves to `.headsign/<name>.yaml`; `--workflow <path>`
 still takes an explicit path, and the two are mutually exclusive.
@@ -45,17 +45,22 @@ exists precisely for sessions that are not asking it.
 principle discover its own identifier from inside its own process) also
 does not reopen the question. It runs no gate, transitions no phase, and
 answers no verdict — it only arms `.headsign/tmp/claim`, a marker for a
-later Stop-hook firing to act on. Its own first-line token, `CLAIM`, is a
+later hook firing to act on (ADR-0010 moved which firing that is, from
+`Stop` to `SubagentStop`; the command itself is unchanged by that move,
+which is the point of it arming a marker rather than stamping anything
+itself). Its own first-line token, `CLAIM`, is a
 third distinct vocabulary, exactly as separate from the ADVANCE/RETRY/…
 contract below as `status`'s `RUNNING`/`COMPLETE`/… is. "The one judging
 question is `next`" survives this addition unchanged, the same way it
 survived `status`'s.
 
-(A hidden `stop-hook` subcommand exists for the plugin's Stop hook — it is
-plumbing invoked by Claude Code itself, not part of the agent-facing
-surface. See ADR-0006. Likewise `-h`/`--help`/no-args print usage and exit
-0 — a human convenience outside the agent-facing contract; the six
-commands stay six.)
+(Two hidden subcommands exist for the plugin's stop-boundary hooks —
+`stop-hook` for `Stop` (ADR-0006) and, since ADR-0010, `subagent-stop-hook`
+for `SubagentStop`. Both are plumbing invoked by Claude Code itself, not
+part of the agent-facing surface, and neither is listed in `--help`;
+"six commands" counts what an agent may type. Likewise `-h`/`--help`/no-args
+print usage and exit 0 — a human convenience outside the agent-facing
+contract; the six commands stay six.)
 
 ### Output contract
 

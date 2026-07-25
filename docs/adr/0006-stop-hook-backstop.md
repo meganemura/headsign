@@ -7,7 +7,10 @@
   3 → 5; two tree-hash-document misreadings fixed — see the end of this ADR;
   observer opt-out and driver owner-match added to the decision order —
   see ADR-0008; the claim-adoption gate added ahead of owner match, the one
-  exception to this ADR's fail-open rule for new branches — see ADR-0009)
+  exception to this ADR's fail-open rule for new branches — see ADR-0009;
+  that gate then **moved out of this hook entirely** onto a sibling
+  `SubagentStop` hook, leaving `Stop` with no claim-related branch except
+  an unconditional pass-through — see ADR-0010)
 
 ## Context
 
@@ -92,18 +95,15 @@ artifact, no second file to keep in sync). Logic, in order:
    already continuing as a result of a stop hook". Honored when present;
    see loop guard below for why we do not rely on it.)
 5. If state parses and `status == "running"`:
-   1. **Adoption gate (ADR-0009).** If `.headsign/tmp/claim` exists,
-      resolve this firing's session id the same way owner match does next
-      (stdin `session_id`, falling back to `HEADSIGN_SESSION_ID` from
-      env). If an id resolves → **adopt**: delete the marker, write
-      `driver_session` to that id and `driver_source` to `"claim"`, reset
-      `state.stop_nudges` to 0, append a `claimed` line to `.headsign/log`,
-      and **exit 2 (block)** with a confirmation naming the workflow and
-      current phase, plus the same pause/abort exit guidance every other
-      block carries. If no id resolves, the marker is left in place — this
-      firing is not provably the claim's target — and evaluation falls
-      through to step 5.2 unchanged. See "Why the adoption gate precedes
-      owner match", below, for why this step is new *and* runs first.
+   1. **Claimed-run pass-through (ADR-0010).** If `state.driver_source`
+      is exactly `"claim"` → **exit 0**. The stored `driver_session` is
+      then an *agent* id sealed by the `SubagentStop` hook, and a `Stop`
+      firing carries a session id: this session is, by construction, not
+      the driver, so the comparison in step 5.2 is not merely doomed but
+      meaningless. `Stop` does not read, consume, or act on
+      `.headsign/tmp/claim` at all — the adoption gate ADR-0009 placed
+      here moved to the sibling hook (see "The `SubagentStop` sibling",
+      below).
    2. **Owner match.** `hookSid` = the stdin payload's `session_id`
       (non-empty after `trim()`), falling back to `HEADSIGN_SESSION_ID`
       from env if stdin didn't carry one; `driver` = `state.driver_session`
@@ -137,34 +137,53 @@ artifact, no second file to keep in sync). Logic, in order:
    corrupt state file must never trap the user in a session that cannot
    stop.
 
-### Why the adoption gate precedes owner match
+### The `SubagentStop` sibling
 
-Step 5.1 is new (ADR-0009), and its position — before owner match, not
-after — is load-bearing for the same reason owner match's own position is
-(next section): a `.headsign/tmp/claim` marker means some session is *in
-the middle of* being adopted as driver, and `state.driver_session` at that
-moment is whatever it was *before* the adoption — very possibly a stale
-value the claiming session disagrees with. Had owner match run first, the
-claiming session's own stop could be read as a confirmed mismatch against
-that stale stamp and passed straight through by ADR-0008's
-confirmed-mismatch rule, at which point the claim marker never gets
-consumed and the handshake never completes: the one session `headsign
-claim` was trying to hand ownership to would look, to the hook, exactly
-like a bystander. Running the adoption gate first intercepts that case —
-a claim in progress is checked, and resolved, before any comparison
-against the very stamp the claim exists to replace.
+A delegated agent — a teammate under Claude Code's agent-teams feature,
+or a subagent — **does not fire this hook when its turn ends**; it fires
+`SubagentStop` instead (measured; see
+[ADR-0010](0010-subagent-stop-identity.md)). Everything above therefore
+describes the backstop for *sessions* only. A second hidden subcommand,
+`subagent-stop-hook`, runs a sibling evaluation of the same shape, over
+the same helpers — observer opt-out, `stop_hook_active`, the bounded
+walk-up, the exit-note gate, the nudge cap and its shared `stop_nudges`
+counter all behave identically — with two differences:
 
-This step's `exit 2 (block)` on a resolved claim is also the one place in
-this decision order that departs from this ADR's fail-open rule for new
-branches — every other addition here (observer opt-out, owner match, the
-adoption gate's own no-id fallback) only ever adds a new way to let a stop
-through, never a new way to hold one. The exception is narrow and
-deliberate, not a reopening of that rule: the block is not aimed at a
-session that merely guessed wrong about whether it was driving — it is
-the direct, requested answer to a session that just ran `headsign claim`
-and was told, in that command's own output, to expect exactly this
-confirmation. See [ADR-0009](0009-claim-handshake.md) for the full design,
-including the honest limits of the handshake (the adoption race).
+- Its identifier is the payload's `agent_id`, not `session_id`, and it
+  has no env fallback: the environment a delegated agent sees belongs to
+  the session that spawned it, so there is nothing there to fall back
+  *to*.
+- Where this hook now has the claimed-run pass-through (step 5.1), the
+  sibling has the adoption gate ADR-0009 wrote and this ADR used to
+  host — marker present plus a resolved agent id → adopt, seal
+  `driver_session`/`driver_source`, log `claimed`, and block with the
+  confirmation. Marker present but no agent id → leave the marker, fall
+  through. Its own owner match then passes through on
+  `driver_source !== "claim"` as well as on a confirmed different agent,
+  so an unrelated subagent's stop is never held.
+
+**Why the adoption gate still precedes owner match** (it does, in the
+sibling): a `.headsign/tmp/claim` marker means someone is *in the middle
+of* being adopted, and `state.driver_session` at that moment is whatever
+it was *before* — very possibly a stale value the claimant disagrees
+with. Had owner match run first, the claimant's own stop would be read as
+a confirmed mismatch against that stale stamp and waved through, the
+marker would never be consumed, and the handshake would never complete:
+the one agent `headsign claim` was trying to hand ownership to would look
+to the hook exactly like a bystander. Adoption first intercepts that
+case — a claim in progress is resolved before any comparison against the
+very stamp the claim exists to replace.
+
+**The fail-open exception moved with the gate.** Blocking on a resolved
+claim is still the one branch in either hook that departs from this ADR's
+"new branches only ever let a stop through" rule, and it is still narrow
+and deliberate: it is not aimed at a bystander guessing wrong about
+whether it drives, it is the direct, requested answer to an agent that
+just ran `headsign claim` and was told, in that command's own output, to
+expect exactly this confirmation. What changed is only where it lives.
+`Stop` itself is now back to blocking for exactly one reason — the nudge.
+See ADR-0010 for the full sibling design, the measurements behind it, and
+the honest limits that remain (the adoption race, narrowed).
 
 ### Why owner match precedes the exit-note gate
 
@@ -225,10 +244,13 @@ touches". See ADR-0004 for the line format
 
 A third hook-boundary event, `claimed`, joins this exception list by
 ADR-0009's claim handshake — logged once per adoption, with an empty
-detail field (no session id). It belongs to the adoption gate (step 5.1,
-above), not to the exit-note gate or the nudge cap this ADR owns, so its
-full design lives in ADR-0009 and ADR-0004; it is named here only so this
-section's "two events" does not read as still current.
+detail field (no identifier). It belongs to the adoption gate, which
+since ADR-0010 lives in the `SubagentStop` sibling rather than in this
+hook, not to the exit-note gate or the nudge cap this ADR owns, so its
+full design lives in ADR-0009/ADR-0010 and ADR-0004; it is named here
+only so this section's "two events" does not read as still current.
+`paused` and `stalled` themselves can now be appended by either hook —
+whichever one is evaluating the actual driver's stop.
 
 ### The safety-net loop guard (`stop_nudges`)
 

@@ -95,6 +95,23 @@ this ADR's protection rather than merely weakening it) and for the
 hook-driven `claim` handshake that supplies a trustworthy stamp in
 exactly the cases this section's assumption breaks down.
 
+**Further correction (ADR-0010, 2026-07-25):** a fourth round of
+measurement pinned the granularity question down completely, and it is
+worse than "the env var is process-granular". A delegated agent — a
+teammate or a subagent — shares the spawning session's process outright
+(same pid, same environment), and its environment contains **no**
+identifier of its own under any name; furthermore its turn end does not
+fire the `Stop` hook at all. So for a delegated agent there is no
+session-granular identifier to be had on either side of this table, and
+the event this ADR's Decision 3 reasons about never happens. The
+identifier that *does* exist for it is `agent_id`, delivered on a
+different event, `SubagentStop`. This ADR's table stays exactly right for
+what it covers — one session, one turn loop, an id resolved from the
+environment — and `driver_source: "env"` is precisely the marker for
+"`driver_session` came from this table". A run whose `driver_source` is
+`"claim"` holds an agent id instead, and nothing in this ADR's resolution
+path applies to it; see [ADR-0010](0010-subagent-stop-identity.md).
+
 `CLAUDE_CODE_SESSION_ID` is **not a documented, public part of Claude
 Code's interface** — it is relied on here only because no public
 equivalent exists today. This decision is made with that risk named, not

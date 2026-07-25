@@ -47,8 +47,20 @@ not to this ADR's cache/attempts model; its resolution, stamping rule, and
 the Stop hook's use of it are owned and explained by ADR-0008. Alongside it,
 `driver_source: "env" | "claim" | null` (ADR-0009) records *how*
 `driver_session` was last stamped — `"env"` for the ordinary env-based
-auto-stamp `start`/`next` perform, `"claim"` for a Stop-hook adoption via
+auto-stamp `start`/`next` perform, `"claim"` for an adoption via
 `headsign claim`, and `null` whenever `driver_session` itself is `null`.
+
+Since ADR-0010, `driver_source` also determines **what kind of identifier**
+`driver_session` holds, one to one: `"env"` means a session id (which only
+a `Stop` firing can match), `"claim"` means an *agent* id sealed by a
+`SubagentStop` firing (which only a `SubagentStop` firing can match), and
+`null` means neither. No separate field records this — a second source of
+truth for something the first already fixes can only ever disagree with
+it. Readers that merely record or display `driver_session` need not care;
+readers that *compare* it against an identifier of their own must check
+`driver_source` first to know whether the comparison is even meaningful
+(ADR-0010).
+
 Consumers treat only the exact string `"claim"` as sticky (immune to being
 silently overwritten by a later env-based stamp); any other value —
 missing, `"env"`, or a corrupt/legacy value — is ordinary and overwritable,
@@ -215,11 +227,15 @@ off via `headsign claim`. `stophook.ts` appends `paused` when a non-empty
 `stop_nudges` reaches its cap — never on the 1st-through-4th nudge, and
 never again on the pass-throughs after the cap trips — and `claimed` once,
 the moment the adoption gate seats a new driver via a `.headsign/tmp/claim`
-marker (ADR-0009). Unlike the other two, `claimed`'s detail field is
-empty: the session id just adopted already lives in `driver_session`, and
-the log does not repeat it. This stays a targeted exception rather than
-reopening "log everything the hook does" (see ADR-0006 and ADR-0009 for
-the full designs).
+marker (ADR-0009, ADR-0010). All three can now be appended from either
+stop-boundary hook: `paused` and `stalled` from whichever of `Stop` /
+`SubagentStop` is evaluating the driver's own stop, and `claimed` only
+from `SubagentStop`, the sole hook that can seal a claim (ADR-0010).
+Unlike the other two, `claimed`'s detail field is empty: the identifier
+just adopted already lives in `driver_session`, and the log does not
+repeat it. This stays a targeted exception rather than reopening "log
+everything the hook does" (see ADR-0006, ADR-0009, and ADR-0010 for the
+full designs).
 
 Line format: `<ISO-ts> <event> <phase> a=<attempts[phase] ?? 0>
 i=<total_iterations> <detail>`, where `<ISO-ts>` is local time with UTC

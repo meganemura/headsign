@@ -31,7 +31,7 @@ run `headsign next` and obey the first-line token.**
 plugin/                          # what gets distributed (Claude Code plugin)
   .claude-plugin/plugin.json
   skills/workflow/SKILL.md       # the discipline taught to Claude
-  hooks/hooks.json               # one Stop hook (the backstop)
+  hooks/hooks.json               # the two stop-boundary hooks (the backstop)
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
 docs/                            # this file + ADRs
@@ -64,7 +64,7 @@ to periodically check for design bloat, not a fact to fix by deleting lines.
 | `src/treehash.ts` | working-tree fingerprint for the attempts cache; all git interaction | everything else |
 | `src/engine.ts` | the transition function: (workflow, state, gate result) → (new state, outcome). The ONLY place routing rules live | child_process, printing |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
-| `src/stophook.ts` | Stop hook: stdin JSON → allow/block | workflow.yaml, gates |
+| `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block | workflow.yaml, gates |
 
 `render.ts` owns the entire outcome contract (the START/ADVANCE/RETRY/COMPLETE/ESCALATE/ABORT
 strings and `validate`'s output); `cli.ts`'s `ERROR:` messages (exit code 3, for usage/config
@@ -93,9 +93,12 @@ outside it:
 - **SKILL.md** teaches Claude the loop discipline (five rules, no more).
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
-- **Stop hook** is the backstop: skills are instructions, not guarantees.
-  If Claude tries to stop while a run is `running`, the hook (exit 2) sends
-  it back to `headsign next` (ADR-0006).
+- **Stop-boundary hooks** are the backstop: skills are instructions, not
+  guarantees. If the run's driver tries to stop while a run is `running`,
+  the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events
+  are watched because a driver can be either a session (`Stop`) or a
+  delegated agent (`SubagentStop`), and only the latter's payload can name
+  such an agent at all (ADR-0010).
 
 ## Design records
 

@@ -1,7 +1,20 @@
 # ADR-0009: The claim handshake — session identity is hook-side knowledge
 
-- Status: accepted
+- Status: superseded by [ADR-0010](0010-subagent-stop-identity.md)
 - Date: 2026-07-25
+
+> **Superseded 2026-07-25 by [ADR-0010](0010-subagent-stop-identity.md).**
+> The reasoning below stands — the CLI cannot name itself, so only a hook
+> can seal a driver — but this ADR pointed it at the wrong event.
+> Measurement showed that a delegated agent's turn end fires **no `Stop`
+> hook at all**, so the marker this ADR arms was always consumed by
+> whichever *session* stopped next, systematically seating the party the
+> handshake existed to displace. Sealing moved to `SubagentStop`, and the
+> sealed identifier is an agent id rather than a session id; `Stop` no
+> longer reads the marker. Read ADR-0010 for the behavior that ships. The
+> text below is kept for the reasoning it establishes, which ADR-0010
+> carries forward unchanged, and because its "Honest weakness" section
+> under-states the real failure — see the note there.
 
 ## Context
 
@@ -218,6 +231,20 @@ only that the handshake is practically near-certain to seat the intended
 session when just one session is actually racing to stop next. This
 weakness is named openly here, and again in SKILL.md, rather than hidden
 behind the confidence of the confirmation message.
+
+**This section under-stated the problem
+([ADR-0010](0010-subagent-stop-identity.md), 2026-07-25).** It described
+a narrow window and a self-repairing remedy; the measured behavior was
+neither. A delegated agent's turn end fires no `Stop` hook, so the
+intended claimant could not win the race at all — the marker waited for
+whichever session *could* fire `Stop`, which in a lead-plus-teammate
+setup is reliably the lead. "A new claim always wins" was true of markers
+and false of outcomes: re-claiming converged on the same wrong driver
+every time. The confidence in the paragraph above came from reasoning
+about a race between symmetric participants that was never symmetric —
+and never measured. ADR-0010 keeps a race, but one whose loser can always
+correct it, because the intended agent's own turn end is guaranteed to
+fire the event that seals.
 
 ## Alternatives considered and deferred/rejected
 
