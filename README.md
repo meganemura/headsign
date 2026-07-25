@@ -393,18 +393,22 @@ that never costs an attempt.
 
 ### Where it sits among neighbors
 
-- **takt** — an outer orchestrator: it runs agents (worktree parallelism,
-  personas), so the agent is the subordinate. headsign is the exact
-  inverse: the agent drives and consults the gate. takt's weight is also
-  where this project started — headsign exists for the days that weight
-  isn't wanted.
+- **Curated skill packs** (Superpowers and kin) — those ship polished,
+  fixed workflows; headsign ships the gate machinery, and you bring the
+  workflow (or start from [example.headsign/](example.headsign/)).
 - **ralph-style loops** (re-prompting until done) — complementary, not
   competing: headsign works as the stop condition and phase memory *inside*
   such a loop. The runner just re-invokes the agent until `state.json` goes
   terminal.
-- **Curated skill packs** (Superpowers and kin) — those ship fixed
-  best-practice workflows; headsign ships the gate machinery, and you bring
-  the workflow (or start from [example.headsign/](example.headsign/)).
+- **takt** — a full-featured orchestrator that runs agents itself, with
+  worktree parallelism and personas. headsign flips the relationship — the
+  agent drives and consults the gate — and it owes takt its starting
+  point: working with takt is what made clear which single, agent-driven
+  slice of the problem wanted a deliberately smaller tool.
+- **jdi** — the lightest neighbor: the agent marks phase transitions in
+  its own output. headsign keeps that lightness while moving the one
+  decision that matters — the transition — out of the LLM's text and into
+  exit codes.
 
 ### Should you adopt it? Let your agent decide
 
