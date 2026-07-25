@@ -48,11 +48,11 @@ answers no verdict — it only arms `.headsign/tmp/claim`, a marker for a
 later hook firing to act on (ADR-0010 moved which firing that is, from
 `Stop` to `SubagentStop`; the command itself is unchanged by that move,
 which is the point of it arming a marker rather than stamping anything
-itself). Its own first-line token, `CLAIM`, is a
-third distinct vocabulary, exactly as separate from the ADVANCE/RETRY/…
-contract below as `status`'s `RUNNING`/`COMPLETE`/… is. "The one judging
-question is `next`" survives this addition unchanged, the same way it
-survived `status`'s.
+itself). Its own first-line token, `CLAIM`, is a third distinct
+vocabulary, exactly as separate from the ADVANCE/RETRY/… contract below
+as `status`'s `RUNNING`/`COMPLETE`/… is. "The one judging question is
+`next`" survives this addition unchanged, the same way it survived
+`status`'s.
 
 (Two hidden subcommands exist for the plugin's stop-boundary hooks —
 `stop-hook` for `Stop` (ADR-0006) and, since ADR-0010, `subagent-stop-hook`
@@ -141,8 +141,8 @@ Notes:
   (2026-07-25, ADR-0009): a sixth command was needed for a reason that
   overlaps neither revisit before it — not "no verdict exists yet"
   (PENDING) and not "observe without asking" (status), but "a session
-  cannot discover its own identity from inside itself; only the Stop hook,
-  at the moment it fires, can answer that." `claim` buys that distinction
+  cannot discover its own identity from inside itself; only a
+  stop-boundary hook, at the moment it fires, can answer that." `claim` buys that distinction
   without touching the token contract above at all, the same way `status`
   didn't: it is one more command that isn't `next`'s kind of command,
   arming a signal for the hook to consume rather than asking a question

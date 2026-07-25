@@ -367,8 +367,8 @@ test("logLine: stalled names the fixed nudges=5 cap", () => {
   assert.equal(line, `ts stalled build a=0 i=5 nudges=5\n`);
 });
 
-test("logLine: claimed has no detail — the adopted session id must never appear in the log line", () => {
-  const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "build", driver_session: "session-abc", driver_source: "claim" }));
+test("logLine: claimed has no detail — the adopted agent id must never appear in the log line", () => {
+  const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "build", driver_session: "agent-abc", driver_source: "claim" }));
   assert.equal(line, `ts claimed build a=0 i=0\n`);
-  assert.doesNotMatch(line, /session-abc/);
+  assert.doesNotMatch(line, /agent-abc/);
 });

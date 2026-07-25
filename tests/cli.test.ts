@@ -1665,7 +1665,7 @@ test("claim: a running run -> creates .headsign/tmp/claim, exit 0, and the outpu
   assert.equal(fs.existsSync(claimMarkerPath(dir)), true);
 
   const after = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
-  assert.deepEqual(after, before, "claim must write nothing to state.json — adoption is the Stop hook's job");
+  assert.deepEqual(after, before, "claim must write nothing to state.json — adoption is the SubagentStop hook's job");
 });
 
 test("claim: a re-run (e.g. after a mistaken adoption) harmlessly re-arms the marker rather than erroring", () => {
