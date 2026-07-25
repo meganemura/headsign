@@ -11,7 +11,7 @@ that exist outside the tree. Design rationale lives in
 |---|---|---|
 | Claude Code plugin (marketplace) | a commit lands on `main` | **only if `plugin.json`'s `version` changed** — plugin updates are compared by that string, so an unbumped version makes `marketplace update` a silent no-op. Third-party marketplaces also have auto-update off by default; users run the update themselves |
 | `gh skill` | a GitHub Release tag exists (plus the `agent-skills` topic) | `gh skill update` follows release tags |
-| npm (**not yet enabled**) | `npm publish` | normal npm semantics |
+| npm | `npm publish` | normal npm semantics |
 | git directly (`npm i -D github:…`, clone) | always | whatever ref they point at |
 
 The consequence to internalize: **merging to `main` is the distribution
@@ -69,9 +69,11 @@ patch = fixes only.
    Skills spec and keeps the `agent-skills` topic in place. It reuses the
    same tag; if it balks at the existing release, ensuring the topic is
    present is the part that matters for `gh skill search`.
-7. (once npm is enabled) `npm publish` — `prepublishOnly` forces
-   typecheck+test+build; the `files` whitelist ships only `plugin/`, the
-   READMEs, and the CHANGELOG. Verify with `npm pack --dry-run` (9 files).
+7. `npm publish` from the tagged, CI-green checkout — `prepublishOnly`
+   forces typecheck+test+build; the `files` whitelist ships only `plugin/`,
+   the READMEs, and the CHANGELOG. Sanity-check with `npm pack --dry-run`
+   (9 files) first. Publishing may prompt for a 2FA OTP. Consider
+   `--provenance` once publishing moves into CI instead of a laptop.
 
 ## Repository settings (live outside the tree; recorded here to be reproducible)
 
@@ -86,9 +88,3 @@ patch = fixes only.
 - No branch protections beyond CI at the moment (single-maintainer); add a
   required-check rule on `main` when a second maintainer joins.
 
-## npm publish enablement (future)
-
-When turning npm on: publish from a tagged, CI-green `main` checkout;
-`npm pack --dry-run` must list exactly the whitelisted files; the README's
-install lines switch from `github:meganemura/headsign` to the package name.
-Consider `--provenance` once publishing runs in CI instead of a laptop.

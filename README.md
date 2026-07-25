@@ -62,7 +62,7 @@ have plugin-free equivalents below.
 **Install the CLI.** The bundle is committed, so there is nothing to build:
 
 ```
-npm install -D github:meganemura/headsign   # not on npm yet; later: npm install -D headsign
+npm install -D headsign
 npx headsign --help
 ```
 

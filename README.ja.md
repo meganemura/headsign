@@ -60,7 +60,7 @@ Fix the failure above, then run `headsign next` again.
 **CLI をインストールする。** バンドルはコミット済みなのでビルドは不要です:
 
 ```
-npm install -D github:meganemura/headsign   # npm 未公開のため。公開後は: npm install -D headsign
+npm install -D headsign
 npx headsign --help
 ```
 
