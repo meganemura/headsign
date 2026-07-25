@@ -40,9 +40,12 @@ Fix the failure above, then run `headsign next` again.
   its own output can't guarantee the one decision that matters. Here the
   checks' exit codes decide pass/fail and your routing decides the move — an
   agent cannot talk its way through a failing gate.
-- **One question.** No `status`, no `gate`, no dashboard. `next` both judges
+- **One question, one driver.** No `gate`, no dashboard. `next` both judges
   and, on failure, prints the remaining-work list — the failing check and its
-  output.
+  output — and it's the *driving* session's question, not a menu everyone
+  in the repository gets to pick from. The only other command, `status`, is
+  the observer's: read-only, it never judges or transitions anything (see
+  [Multiple sessions](#multiple-sessions)).
 - **Claude stays in charge.** Unlike outer-loop runners that invoke the LLM as
   a subordinate, headsign is a place Claude asks a question, not a process
   that owns Claude.
@@ -266,14 +269,15 @@ stop while the run is `running`, it's pointed back to `headsign next`.
 
 ## The contract
 
-Four commands; the agent routinely uses one:
+Five commands; a driving session routinely uses one:
 
 | Command | Role |
 |---|---|
 | `headsign start [name] [--workflow path]` | initialize state, print the entry phase's instructions |
-| `headsign next` | **the only question.** Run the current gate, transition, answer |
+| `headsign next` | **the only question a driving session asks.** Run the current gate, transition, answer |
 | `headsign abort [reason]` | record a human-directed stop |
 | `headsign validate [name] [--workflow path]` | static check of the workflow file |
+| `headsign status` | read-only view of the current run, for a session that isn't driving it — see [Multiple sessions](#multiple-sessions) |
 
 Multiple workflows can live as separate files under `.headsign/` (one
 workflow per file); pick one with `headsign start <name>` (→
@@ -359,10 +363,103 @@ traps a session) after 5 consecutive nudges with no real evaluation and no
 note in between; the 5th nudge leaves a `stalled` line in `.headsign/log`,
 and every stop after that passes silently. That cap is a safety net for a
 stuck or silently departed agent, not the normal way to pause — the note
-above is. To spot an unattended stall from the outside: if `status` is
-`"running"` and the log's tail shows `stalled` (equivalently,
-`stop_nudges >= 5`), the agent has walked away without a note — re-drive
-the run with `headsign next`.
+above is. To spot an unattended stall from the outside: `headsign status`
+(read-only, safe to run from any session — see
+[Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
+`.headsign/log`'s tail shows `stalled` (equivalently, `stop_nudges >= 5`) —
+together they mean the driving agent has walked away without a note.
+Re-drive the run with `headsign next` from the session that's actually
+driving it.
+
+## Multiple sessions
+
+A repository often has more than one Claude Code session open on it at
+once — a lead session plus teammates, or a subagent working alongside the
+session that spawned it. Only one of them should ever be answering
+`headsign next` for a given run; headsign calls that one the **driver**.
+Everyone else is an **observer**. The distinction exists because the Stop
+hook (above) used to nudge *every* session that stopped while a run was
+`running`, driver and observer alike — an observer that obeyed the nudge
+could burn a retry or advance a phase it had no business touching, and
+every blocked stop, from any session, consumed the same shared nudge-cap
+counter, so a handful of bystander turn-endings alone could exhaust it and
+silently disable the backstop for the real driver. See
+[ADR-0008](docs/adr/0008-multi-session-ownership.md) for the full design
+and the field feedback that drove it.
+
+`start` and `next` stamp `driver_session` in `.headsign/state.json` from
+whichever session identifier the environment resolves at the time (never
+overwriting it with "nothing" if the environment can't resolve one), so
+ownership always tracks whichever session most recently drove the run. The
+Stop hook compares its own idea of who just stopped against that stamp and
+lets a confirmed non-driver's stop pass straight through — untouched, no
+nudge, no state write — while falling back to its previous behavior
+whenever either side can't be resolved, so the change never creates a new
+way to block an innocent session, only new ways to let one go.
+`HEADSIGN_OBSERVER` (below) is the manual override for environments where
+no identifier resolves at all.
+
+Because ownership simply follows whoever last drove the run, a driver that
+stepped away and comes back reclaims it with a single `headsign next` —
+there's no separate reclaim step. Every other session — teammates, a
+subagent that wasn't delegated the run, or any session that never ran
+`headsign start` — should reach for `headsign status` instead.
+
+### `headsign status`
+
+Read-only: no gate runs, no state is written, no lock is taken. Safe to run
+from any session, at any time, as often as you like.
+
+```
+$ headsign status
+RUNNING implement (attempt 2/5)
+workflow: feature-dev
+--- last failure: unit tests (bundle exec rspec, exit 1) ---
+Failures:
+  1) Billing::Invoice#total ...
+driver: this session
+```
+
+```
+$ headsign status
+COMPLETE
+workflow: feature-dev
+```
+
+```
+$ headsign status
+ESCALATED
+workflow: feature-dev
+reason: review rejected 3 times
+```
+
+The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
+capitalized like `next`'s tokens, but it's a *report*, not a verdict:
+`status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
+judges anything. The `driver:` line (shown only while `RUNNING`) reads
+`this session` when your own resolved identifier matches the stamped
+driver, `another session` when both resolve but disagree, and `unknown`
+whenever either side can't be resolved.
+
+Exit code follows a deliberately different contract from `next`'s: `status`
+exits 0 whenever `.headsign/state.json` could be read at all — an
+`ESCALATED` or `ABORTED` run is normal, informative output, not a status
+error — and exits 3 only when there's nothing to report (no run here, or
+state unreadable). A script that wraps `status` in `set -e` therefore never
+dies just because the run it's watching happens to need a human; read the
+run's own state from line 1, not from the exit code.
+
+### Environment variables
+
+| Variable | Set by | Meaning |
+|---|---|---|
+| `HEADSIGN_SESSION_ID` | you, explicitly | The session identifier headsign uses for driver ownership. Works with any harness — export a stable, per-session value and headsign uses it. Checked first. |
+| `CLAUDE_CODE_SESSION_ID` | Claude Code, automatically | Used only if `HEADSIGN_SESSION_ID` isn't set. This is **not** a documented, public part of Claude Code's interface — headsign relies on it only because no public equivalent exists today. If a future release removes or changes it, headsign simply stops resolving a driver identifier automatically: `driver_session` stops being stamped, and the Stop hook falls back to nudging every stop on a running run, driver and observer alike — exactly the behavior a repository had before this feature existed. Nothing breaks; the feature just stops narrowing who gets nudged. |
+| `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops pass the Stop hook unconditionally, regardless of driver ownership. The manual opt-out for a session you know is only observing — especially useful when no session identifier resolves at all. |
+
+**The rule:** a session that hasn't run `headsign start` and hasn't been
+asked to drive the run should reach for `headsign status`, never `headsign
+next` or `headsign abort`.
 
 ## What headsign is not
 

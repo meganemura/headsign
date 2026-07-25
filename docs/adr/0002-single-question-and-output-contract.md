@@ -12,27 +12,39 @@ ways it can go wrong after compaction.
 
 ## Decision
 
-### Four commands, one question
+### Five commands, one (driver's) question
 
 | Command | Role |
 |---|---|
 | `headsign start [name] [--workflow path]` | initialize state, show the entry phase's instructions |
-| `headsign next` | **the only question.** Run the current gate, transition, answer |
+| `headsign next` | **the only question a driving session asks.** Run the current gate, transition, answer |
 | `headsign abort [reason]` | record a human-directed stop |
 | `headsign validate [name] [--workflow path]` | static check of workflow.yaml |
+| `headsign status` | read-only report of the current run, for a session that isn't driving it (ADR-0008) |
 
 A bare `<name>` resolves to `.headsign/<name>.yaml`; `--workflow <path>`
 still takes an explicit path, and the two are mutually exclusive.
 
 `next` is the only command that transitions state. RETRY output doubles as
 the remaining-work list (the failing check and its output tail), which is
-why no `status` command exists.
+why no *second driver command* exists.
+
+`status` (added by ADR-0008, once multi-session use made a read-only
+observation window necessary) does not reopen that question. It never runs
+a gate and never transitions state, so it isn't a command competing with
+`next` for "the one question" — it's for a session that has no question to
+ask at all, only something to look at. Its own first-line vocabulary
+(`RUNNING`/`COMPLETE`/`ESCALATED`/`ABORTED`) is a distinct, non-judging
+report, not an extension of the token contract below — see ADR-0008 for its
+output and exit-code contract. "One question" in this ADR's title and
+decision has always meant *the driving session's* question; `status`
+exists precisely for sessions that are not asking it.
 
 (A hidden `stop-hook` subcommand exists for the plugin's Stop hook — it is
 plumbing invoked by Claude Code itself, not part of the agent-facing
 surface. See ADR-0006. Likewise `-h`/`--help`/no-args print usage and exit
-0 — a human convenience outside the agent-facing contract; the four commands
-stay four.)
+0 — a human convenience outside the agent-facing contract; the five
+commands stay five.)
 
 ### Output contract
 
@@ -90,8 +102,8 @@ Notes:
 ## Consequences
 
 - The skill can teach one rule: obey the first-line token.
-- A sixth token or a fifth command still requires revisiting this ADR — the
-  friction is deliberate, and PENDING is the one time so far it was worth
+- A sixth token or a sixth command still requires revisiting this ADR — the
+  friction is deliberate, and PENDING was the first time it was worth
   paying. Real usage (a second round of field feedback, reviewed against
   the run logs and cross-checked with a persona-based design review) found
   the four-token vocabulary had no way to say "no verdict exists yet"
@@ -103,3 +115,9 @@ Notes:
   gate, and conflating the two under one token was the bug — not a
   simplification worth keeping. Paying this ADR's friction once, on
   purpose, was cheaper than leaving that lie in the contract.
+- This ADR's own rule was tested again, and paid again, by `status`
+  (2026-07-25, ADR-0008): a fifth command needed exactly this kind of
+  revisit. It bought a real distinction the four-command surface had no
+  way to express — asking a question versus only observing — without
+  adding a sixth token, because `status` never touches the token contract
+  above at all; it just isn't `next`'s kind of command.

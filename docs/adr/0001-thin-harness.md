@@ -46,8 +46,13 @@ that matters: the transition decision.
 - MCP server (CLI + skill suffices until proven otherwise)
 - dashboards / TUI
 - task queues / issue tracker integration
-- additional query commands (`status`, `gate`, …) — the question is `next`,
-  singular. Wanting a second question is a sign the design is drifting.
+- additional *judging* commands (`gate`, dry-run variants, …) — the question
+  is `next`, singular. Wanting a second question is a sign the design is
+  drifting. (Amended by [ADR-0008](0008-multi-session-ownership.md): this
+  entry originally rejected `status` by name, too. Once multi-session use
+  became a normal mode of operation, a strictly read-only `status` was added
+  for sessions that are *not* driving the run — the driving session still
+  gets exactly one question, and `status` never judges or transitions.)
 
 ## Consequences
 

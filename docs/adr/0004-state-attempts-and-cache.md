@@ -33,12 +33,20 @@ implement grants a fresh budget".
     "output_tail": "…"
   },
   "end_reason": null,
-  "stop_nudges": 0
+  "stop_nudges": 0,
+  "driver_session": null
 }
 ```
 
 `stop_nudges` belongs to the Stop hook's loop guard, not to attempts/cache
-semantics — its lifecycle is owned and explained by ADR-0006.
+semantics — its lifecycle is owned and explained by ADR-0006. Likewise
+`driver_session` — which session (`start`/`next`) most recently drove this
+run, or `null` if none resolved one — belongs to multi-session ownership,
+not to this ADR's cache/attempts model; its resolution, stamping rule, and
+the Stop hook's use of it are owned and explained by ADR-0008. A `state.json`
+written before that field existed lacks the key entirely; readers treat a
+missing or non-string `driver_session` as `null`, the same latitude already
+given to a missing/malformed `stop_nudges`.
 
 `end_reason` stores why a run ended for the terminal states that carry a
 reason (`escalated`, `aborted`), so `next` can reprint the outcome

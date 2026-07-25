@@ -4,7 +4,9 @@
 - Date: 2026-07-23
 - Revised: 2026-07-25 (exit-note gate replaces the bare nudge-count backstop
   as the primary mechanism; nudge cap demoted to a safety net, N raised
-  3 → 5; two tree-hash-document misreadings fixed — see the end of this ADR)
+  3 → 5; two tree-hash-document misreadings fixed — see the end of this ADR;
+  observer opt-out and driver owner-match added to the decision order —
+  see ADR-0008)
 
 ## Context
 
@@ -70,23 +72,39 @@ that a stuck session drags on."
 The hook is the hidden `stop-hook` subcommand of the bundled CLI (single
 artifact, no second file to keep in sync). Logic, in order:
 
-1. Locate `.headsign/state.json` by walking up from the session's cwd,
+1. **Observer opt-out.** If `isObserver(env)` (`HEADSIGN_OBSERVER` set to
+   any non-empty value) → **exit 0**, immediately, before stdin is even
+   parsed. This check needs neither stdin nor `.headsign/state.json`, so a
+   session that has opted out costs nothing to recognize (ADR-0008).
+2. Locate `.headsign/state.json` by walking up from the session's cwd,
    bounded by the enclosing git worktree/repo root (see "Bounded walk-up"
    below). If none is found → **exit 0**, immediately. This early return is
-   written first: sessions not using headsign must pay nothing.
-2. Read hook JSON from stdin. If `stop_hook_active` is true → **exit 0**.
+   written first among the state-dependent checks: sessions not using
+   headsign must pay nothing.
+3. Read hook JSON from stdin. If `stop_hook_active` is true → **exit 0**.
    (Legacy field: "Claude is already continuing as a result of a stop
    hook". Honored when present; see loop guard below for why we do not
    rely on it.)
-3. If state parses and `status == "running"`:
-   1. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
+4. If state parses and `status == "running"`:
+   1. **Owner match.** `hookSid` = the stdin payload's `session_id`
+      (non-empty after `trim()`), falling back to `HEADSIGN_SESSION_ID`
+      from env if stdin didn't carry one; `driver` = `state.driver_session`
+      (valid only as a non-empty string). If **both** resolve and
+      disagree → **exit 0** immediately: no state write, the stop-note (if
+      any) is left unconsumed, no output at all. If either side is
+      unresolved, skip this check and fall through unchanged — the same
+      fail-open direction as everything else in this list: a new way to
+      pass a session through, never a new way to block one (ADR-0008; see
+      "Why owner match precedes the exit-note gate", directly below, for
+      why this must run before step 4.2).
+   2. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
       exists and is non-empty after `trim()`: take its first line
       (trimmed, truncated to 120 characters), **delete the note**, reset
       `state.stop_nudges` to 0, append a `paused` line to `.headsign/log`
       (ADR-0004), and **exit 0**. An absent note, or one that is empty or
       whitespace-only after trimming, is treated exactly like "no note" —
       it falls through to the nudge flow below.
-   2. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
+   3. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
       **exit 0** (see "the safety-net loop guard", below). Else increment
       `state.stop_nudges`, persist it, and if that increment just reached
       5, append a `stalled` line to `.headsign/log`. Either way, **exit 2**
@@ -94,12 +112,28 @@ artifact, no second file to keep in sync). Logic, in order:
       going, the stop-note to pause, `headsign abort <reason>` to end for
       good — and, only on the nudge that reaches 5, appending "This is the
       final automatic reminder." right after the verdict sentence.
-4. Any other status (`complete` / `escalated` / `aborted`) → **exit 0**.
+5. Any other status (`complete` / `escalated` / `aborted`) → **exit 0**.
    Escalated and aborted are *correct* endings — they mean "hand back to
    the human", and blocking them would defeat their purpose.
-5. Any error (unreadable state, bad JSON) → **exit 0**. Fail open: a
+6. Any error (unreadable state, bad JSON) → **exit 0**. Fail open: a
    corrupt state file must never trap the user in a session that cannot
    stop.
+
+### Why owner match precedes the exit-note gate
+
+The exit-note gate (step 4.2) treats `.headsign/tmp/stop-note` as a
+one-shot resource: the first stop to find it non-empty consumes (deletes)
+it and passes. Had a bystander's stop been able to reach that gate before
+ownership was checked, an observer's completely unrelated turn-ending
+could read and delete a note the *driver* wrote to pause deliberately — the
+driver's own next stop would then find no note, fall through to the nudge
+path, and either get nudged for a pause it already declared, or contribute
+to exhausting the nudge cap for a stall that never happened. Running owner
+match first means only a stop that is either the driver's, or one the hook
+cannot rule out as the driver's, ever reaches the note at all — a bystander
+whose identity is confirmed is waved through a step earlier and never
+touches it. See ADR-0008 for the full multi-session design this step
+belongs to.
 
 ### Why the note must be consumed
 
@@ -189,7 +223,7 @@ Claude as the reason to continue.
   Claude run `headsign abort <reason>` (permanent), or delete
   `.headsign/state.json` (permanent, unlogged, last resort).
 - "Hook never interferes with normal sessions" is carried entirely by step
-  2, and covered by `tests/acceptance.test.ts`'s test titled "stop-hook: a
+  3, and covered by `tests/acceptance.test.ts`'s test titled "stop-hook: a
   directory that has never used headsign exits 0".
 - **Detecting an unattended stall from the outside** (e.g. a monitoring
   agent, not the one that was working): if `status` is `"running"` and the
@@ -210,7 +244,7 @@ not a run is found there. This lets the backstop fire from any
 subdirectory of the run's project, while never crossing into a sibling or
 parent checkout's run, preserving the git-worktree parallel-run
 independence ADR-0004 exists to protect. The walk is fs-only (`existsSync`
-calls up the path, no `git` subprocess), so it stays the near-no-op step 1
+calls up the path, no `git` subprocess), so it stays the near-no-op step 2
 requires. The exit-note gate and the note path shown in the block message
 both operate on the *found* run directory (`runDir`), not the session's
 own cwd (`startDir`) — when they differ, the message shows
