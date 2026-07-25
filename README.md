@@ -424,8 +424,7 @@ sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
 `.headsign/log`, and every stop after that passes silently. That cap is a
 safety net for a stuck or silently departed agent, not the normal way to
 pause — the note above is. To spot an unattended stall from the outside:
-`headsign status`
-(read-only, safe to run from any session — see
+`headsign status` (read-only, safe to run from any session — see
 [Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
 `.headsign/log`'s tail shows `stalled` (equivalently, `stop_nudges >= 5`) —
 together they mean the driving agent has walked away without a note.
@@ -610,12 +609,14 @@ neither the stamped driver nor the first to name itself under an armed claim
 marker is never held — a reviewer subagent, or an agent working on
 something else entirely, stops normally.
 
-This is a handshake, not a lock: if some *other* delegated agent happens
-to end a turn while the marker is armed, it gets adopted instead. Run
+This is a handshake, not a lock: if some *other* delegated agent ends a
+turn while the marker is armed and can name itself, it gets adopted
+instead. Run
 `headsign claim` again from the right one: a new claim re-arms the marker,
 and that agent is now a real contender for it, because its own turn end is
 guaranteed to fire the event that seals. It is still a contender and not a
-winner — another delegated agent stopping first can take this marker too —
+winner — another delegated agent naming itself first can take this marker
+too —
 so re-claim until the confirmation names the agent you meant. The full
 mechanism, the measurements behind it, and the race that remains are in
 [ADR-0010](docs/adr/0010-subagent-stop-identity.md).

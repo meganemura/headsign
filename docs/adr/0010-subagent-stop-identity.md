@@ -178,9 +178,8 @@ everyone else's.
 
 The adoption gate (step 7) is the deliberate exception, and the only one:
 it holds whoever first names itself under an armed marker, without
-consulting the
-stamped driver, because that is the sole moment a delegated agent can be
-named at all. That exception is what the race below is about, and any
+consulting the stamped driver, because that is the sole moment a
+delegated agent can be named at all. That exception is what the race below is about, and any
 statement of this rule has to carry it — "an unrelated agent is never
 held" is false while a marker is armed.
 
@@ -252,8 +251,8 @@ first:
   (fact 6), which makes that agent an eligible winner rather than a
   structurally impossible one. Eligible is not certain: the gate still
   seats whichever qualifying agent names itself first, so a re-claim is a
-  fresh
-  entry into the same race, and the intended agent can lose it again.
+  fresh entry into the same race, and the intended agent can lose it
+  again.
 
 That is the difference between a race rigged against the right result
 and a race its loser can re-enter. Re-entering is not winning; the
@@ -331,8 +330,8 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   tell the actors apart, at the one moment it can. The test reads the
   *message*, not merely the fact of being held: the adoption gate also
   holds, and it holds whoever first names itself under an armed marker
-  without
-  consulting the stamped driver at all, so a `Claim confirmed` reply to an
+  without consulting the stamped driver at all, so a `Claim confirmed`
+  reply to an
   agent that never ran `headsign claim` reports a seat taken, not a seat
   owned. Documentation offering this test has to say which reply counts. No
   command can offer the equivalent, because facts 2–4 are about what the

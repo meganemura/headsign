@@ -141,13 +141,13 @@ test("claim: first line is the CLAIM token, and the body explains the two-beat h
     "moment headsign can learn which delegated agent you are. The hook confirms it in its\n" +
     "message; do not run `headsign next` before you see that confirmation.\n" +
     "If the wrong agent gets adopted, run `headsign claim` again from the right one: that\n" +
-    "re-arms the marker, though another agent stopping first can take it again. Re-claim\n" +
-    "until the confirmation names the agent you meant.\n";
+    "re-arms the marker, though another agent naming itself first can take it again.\n" +
+    "Re-claim until the confirmation names the agent you meant.\n";
   assert.equal(actual, expected);
   assert.match(actual, /^CLAIM /);
   // The re-claim advice must never promise the retry lands: the adoption gate seats
   // whoever names itself first under an armed marker, so a re-claim is a fresh entry into
-  // same race (ADR-0010's named weakness), not a correction that is guaranteed to stick.
+  // the same race (ADR-0010's named weakness), not a correction that is guaranteed to stick.
   assert.doesNotMatch(actual, /always wins/);
 });
 

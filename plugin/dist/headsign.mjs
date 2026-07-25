@@ -7808,7 +7808,7 @@ Workflow aborted. Report to the user.
 `;
 }
 function claim() {
-  return "CLAIM armed\nNow end your turn. Sealing happens on this agent's own turn end, which is the only\nmoment headsign can learn which delegated agent you are. The hook confirms it in its\nmessage; do not run `headsign next` before you see that confirmation.\nIf the wrong agent gets adopted, run `headsign claim` again from the right one: that\nre-arms the marker, though another agent stopping first can take it again. Re-claim\nuntil the confirmation names the agent you meant.\n";
+  return "CLAIM armed\nNow end your turn. Sealing happens on this agent's own turn end, which is the only\nmoment headsign can learn which delegated agent you are. The hook confirms it in its\nmessage; do not run `headsign next` before you see that confirmation.\nIf the wrong agent gets adopted, run `headsign claim` again from the right one: that\nre-arms the marker, though another agent naming itself first can take it again.\nRe-claim until the confirmation names the agent you meant.\n";
 }
 function validateOk(name, phaseCount) {
   return `OK: workflow '${name}' (${phaseCount} phases)
