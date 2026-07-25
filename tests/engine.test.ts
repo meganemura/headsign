@@ -24,6 +24,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     last_eval: null,
     end_reason: null,
     stop_nudges: 0,
+    driver_session: null,
     ...overrides,
   };
 }
@@ -200,6 +201,34 @@ test("step() resets stop_nudges to 0 after a real fail evaluation", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
   const { state } = engine.step(workflow, st("a", { stop_nudges: 3 }), FAIL(), null);
   assert.equal(state.stop_nudges, 0);
+});
+
+// --- driver_session propagation (ADR-0008): step()'s `{ ...state }` spread must carry it
+// through untouched on every outcome kind — cmdNext relies on this to keep the stamp it
+// wrote under the lock intact after evaluateNext() calls step() and writes the result.
+
+test("step() carries driver_session through unchanged on a pass (ADVANCE)", () => {
+  const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
+  const { state } = engine.step(workflow, st("a", { driver_session: "session-1" }), PASS, null);
+  assert.equal(state.driver_session, "session-1");
+});
+
+test("step() carries driver_session through unchanged on a fail (RETRY)", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const { state } = engine.step(workflow, st("a", { driver_session: "session-1" }), FAIL(), null);
+  assert.equal(state.driver_session, "session-1");
+});
+
+test("step() carries a null driver_session through unchanged (never invents one)", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const { state } = engine.step(workflow, st("a", { driver_session: null }), PASS, null);
+  assert.equal(state.driver_session, null);
+});
+
+test("checkIterationLimit's escalated state carries driver_session through unchanged", () => {
+  const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
+  const result = engine.checkIterationLimit(workflow, st("a", { total_iterations: 5, driver_session: "session-1" }));
+  assert.equal(result?.state.driver_session, "session-1");
 });
 
 // --- terminal idempotency ---

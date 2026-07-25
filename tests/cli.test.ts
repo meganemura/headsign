@@ -62,6 +62,21 @@ function readLog(dir: string): string[] {
   return raw.split("\n").filter((l) => l.length > 0);
 }
 
+// Multi-session ownership (ADR-0008) tests need full control over which session
+// identifiers are visible to the child process — the test *runner* itself may be running
+// inside a Claude Code session (CLAUDE_CODE_SESSION_ID set ambiently), which must not leak
+// into a test that asserts "no identifier available" behavior.
+function envWithout(...keys: string[]): NodeJS.ProcessEnv {
+  const e = { ...process.env };
+  for (const k of keys) delete e[k];
+  return e;
+}
+
+const NO_SESSION_ENV = envWithout("CLAUDE_CODE_SESSION_ID", "HEADSIGN_SESSION_ID", "HEADSIGN_OBSERVER");
+function sessionEnv(id: string): NodeJS.ProcessEnv {
+  return { ...NO_SESSION_ENV, HEADSIGN_SESSION_ID: id };
+}
+
 const TWO_PHASE_WORKFLOW = `
 version: 1
 name: demo
@@ -1379,4 +1394,380 @@ test("stop-hook: walk-up-found run — note consumption and paused logging opera
 
   const lines = readLog(dir);
   assert.match(lines[lines.length - 1], /paused build a=0 i=0 note="pausing from a subdirectory session"/);
+});
+
+// --- multi-session ownership: driver_session stamping and Stop hook owner check (ADR-0008) ---
+
+test("start: no HEADSIGN_SESSION_ID/CLAUDE_CODE_SESSION_ID available -> driver_session is stamped null", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(readState(dir).driver_session, null);
+});
+
+test("start: HEADSIGN_SESSION_ID stamps driver_session", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("session-start") });
+  assert.equal(readState(dir).driver_session, "session-start");
+});
+
+test("start: CLAUDE_CODE_SESSION_ID alone (no HEADSIGN_SESSION_ID) also stamps driver_session", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: { ...NO_SESSION_ENV, CLAUDE_CODE_SESSION_ID: "auto-detected" } });
+  assert.equal(readState(dir).driver_session, "auto-detected");
+});
+
+test("next: the first positive identifier stamps driver_session under the lock (previously null)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(readState(dir).driver_session, null);
+
+  run(["next"], { cwd: dir, env: sessionEnv("session-next") });
+  assert.equal(readState(dir).driver_session, "session-next");
+});
+
+test("next: PENDING path stamps a new positive identifier while leaving attempts/total_iterations unchanged", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const before = readState(dir);
+  assert.equal(before.driver_session, null);
+
+  const result = run(["next"], { cwd: dir, env: sessionEnv("session-pending") });
+  assert.match(result.stdout, /^PENDING review\n/);
+
+  const after = readState(dir);
+  assert.equal(after.driver_session, "session-pending", "PENDING must still stamp a positive identifier");
+  assert.deepEqual(after.attempts, before.attempts);
+  assert.equal(after.total_iterations, before.total_iterations);
+});
+
+test("next: no positive identifier resolved leaves an existing driver_session untouched (never orphans the run)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("session-owner") });
+  assert.equal(readState(dir).driver_session, "session-owner");
+
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // real RETRY, but no identifier available this time
+  assert.equal(readState(dir).driver_session, "session-owner");
+});
+
+test("next: a legacy state.json missing driver_session entirely still gets stamped by the first next with a positive id", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const legacy = readState(dir) as Record<string, unknown>;
+  delete legacy.driver_session;
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(legacy));
+
+  run(["next"], { cwd: dir, env: sessionEnv("session-legacy") });
+  assert.equal(readState(dir).driver_session, "session-legacy");
+});
+
+test("next: an unchanged (matching) driver_session, combined with a cached retry, writes nothing at all to state.json", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const env = sessionEnv("session-same");
+  run(["start"], { cwd: dir, env });
+  run(["next"], { cwd: dir, env }); // real RETRY, stamps driver_session to session-same
+  assert.equal(readState(dir).driver_session, "session-same");
+
+  const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const second = run(["next"], { cwd: dir, env }); // unchanged tree -> cached retry; same sid -> no stamp write either
+  assert.match(second.stdout, /\(unchanged\)/);
+  const after = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  assert.deepEqual(after, before, "same driver + cached retry must not touch state.json at all");
+});
+
+test("stop-hook: HEADSIGN_OBSERVER unconditionally passes through while running, without incrementing stop_nudges", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const result = run(["stop-hook"], { cwd: dir, input: "{}", env: { ...NO_SESSION_ENV, HEADSIGN_OBSERVER: "1" } });
+  assert.equal(result.status, 0);
+  assert.equal(readState(dir).stop_nudges, 0);
+});
+
+test("stop-hook: an owner mismatch (stdin session_id differs from driver_session) passes through — no write, no output, note left unconsumed", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("driver-1") });
+  const noteDir = path.join(dir, ".headsign", "tmp");
+  fs.mkdirSync(noteDir, { recursive: true });
+  fs.writeFileSync(path.join(noteDir, "stop-note"), "the driver is stepping away");
+
+  const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "observer-2" }), env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+
+  const after = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  assert.deepEqual(after, before, "an owner-mismatched stop must not write state.json at all");
+  assert.ok(fs.existsSync(path.join(noteDir, "stop-note")), "a bystander's stop must not consume the driver's note");
+});
+
+test("stop-hook: a matching session_id (owner check passes) falls through to the normal nudge flow and still blocks", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("driver-1") });
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "driver-1" }), env: NO_SESSION_ENV });
+  assert.equal(result.status, 2);
+  assert.equal(readState(dir).stop_nudges, 1);
+});
+
+test("stop-hook: a missing identifier on either side falls back to the legacy nudge (still blocks)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+
+  // Side A: driver_session is set, but the stopping session presents no identifier at all.
+  run(["start"], { cwd: dir, env: sessionEnv("driver-1") });
+  const noHookId = run(["stop-hook"], { cwd: dir, input: "{}", env: NO_SESSION_ENV });
+  assert.equal(noHookId.status, 2, "no hook-side identifier -> owner check skipped, legacy nudge");
+  assert.equal(readState(dir).stop_nudges, 1);
+
+  // Side B: driver_session was never stamped (no identifier at start), but the stopping
+  // session does present one.
+  const dir2 = initRepo();
+  writeWorkflow(dir2, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir2, env: NO_SESSION_ENV });
+  const noDriverId = run(["stop-hook"], { cwd: dir2, input: JSON.stringify({ session_id: "some-session" }), env: NO_SESSION_ENV });
+  assert.equal(noDriverId.status, 2, "no driver_session on state -> owner check skipped, legacy nudge");
+  assert.equal(readState(dir2).stop_nudges, 1);
+});
+
+// --- status: read-only view of the current run (ADR-0002/0008) ---
+
+test("status: no run in progress here -> exit 3, actionable message", () => {
+  const result = run(["status"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /does not search parent directories/);
+  assert.match(result.stderr, /headsign start/);
+});
+
+test("status: running -> RUNNING <phase> (attempt n/max), workflow line, driver line, exit 0", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+    max_attempts: 3
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const before = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(before.status, 0);
+  assert.equal(before.stdout, `RUNNING build (attempt 0/3)\nworkflow: demo\ndriver: unknown\n`);
+
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // real RETRY -> attempts.build = 1
+  const after = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(after.status, 0);
+  assert.match(after.stdout, /^RUNNING build \(attempt 1\/3\)\n/);
+});
+
+test("status: no max_attempts on the phase -> bare attempt number (no slash)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW); // build has no max_attempts
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.match(result.stdout, /^RUNNING build \(attempt 0\)\n/);
+});
+
+test("status: an unreadable workflow.yaml degrades the attempt display to n/? without erroring", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  fs.rmSync(path.join(dir, ".headsign", "workflow.yaml"));
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^RUNNING build \(attempt 0\/\?\)\n/);
+  assert.match(result.stdout, /^workflow: demo$/m, "the workflow name comes from state.json, not the (now-missing) workflow.yaml");
+});
+
+test("status: current phase no longer defined in a (readable) workflow.yaml also degrades to n/?", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV }); // state.phase = "build"
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: otherphase
+phases:
+  otherphase:
+    description: "Other."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^RUNNING build \(attempt 0\/\?\)\n/);
+});
+
+test("status: a matching last_eval renders a last-failure block with the failing check and output tail", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // real RETRY -> last_eval set for phase "build"
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.match(result.stdout, /--- last failure: marker exists \(test -f marker\.txt, exit 1\) ---\n/);
+});
+
+test("status: a last_eval belonging to a different (stale) phase than the current one is not shown", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // last_eval.phase = "build", state.phase = "build"
+
+  // Not reachable via the normal engine flow (see engine.ts: last_eval is always cleared
+  // on any phase change) — simulates a hand-edited/legacy state.json to pin the defensive
+  // guard against misreading a stale failure as current.
+  const st = readState(dir) as Record<string, unknown>;
+  st.phase = "verify";
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(st));
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.doesNotMatch(result.stdout, /last failure/);
+});
+
+test("status: driver line reflects match/mismatch/unknown against driver_session, and never prints either raw session id", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("session-mine") });
+
+  const same = run(["status"], { cwd: dir, env: sessionEnv("session-mine") });
+  assert.match(same.stdout, /driver: this session\n$/);
+  assert.doesNotMatch(same.stdout, /session-mine/);
+
+  const other = run(["status"], { cwd: dir, env: sessionEnv("session-theirs") });
+  assert.match(other.stdout, /driver: another session\n$/);
+  assert.doesNotMatch(other.stdout, /session-mine/);
+  assert.doesNotMatch(other.stdout, /session-theirs/);
+
+  const noId = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.match(noId.stdout, /driver: unknown\n$/);
+});
+
+test("status: complete -> COMPLETE token, workflow line, no reason line, exit 0", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // ADVANCE
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // COMPLETE
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `COMPLETE\nworkflow: demo\n`);
+});
+
+test("status: escalated -> ESCALATED token with reason line, exit 0 (not next's exit 2)", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "exit 1"
+    on_pass: "$end"
+    on_fail: escalate
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // ESCALATE
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^ESCALATED\nworkflow: demo\nreason: /);
+});
+
+test("status: aborted -> ABORTED token with reason line, exit 0", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["abort", "changed", "my", "mind"], { cwd: dir, env: NO_SESSION_ENV });
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `ABORTED\nworkflow: demo\nreason: changed my mind\n`);
+});
+
+test("status: read-only — state.json bytes are identical before and after, and it never acquires the lock", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // real RETRY, gives status something to show
+
+  const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  const after = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  assert.deepEqual(after, before);
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "status must never acquire the lock");
+});
+
+test("status: never executes the ready probe or the gate", () => {
+  const dir = initRepo();
+  const readyMarker = path.join(dir, ".headsign", "tmp", "ready.marker");
+  const gateMarker = path.join(dir, ".headsign", "tmp", "gate.marker");
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: review
+phases:
+  review:
+    description: "Review."
+    ready: "touch ${readyMarker} && test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - run: "touch ${gateMarker} && grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+
+  const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^RUNNING review/);
+  assert.equal(fs.existsSync(readyMarker), false, "status must never execute the ready probe");
+  assert.equal(fs.existsSync(gateMarker), false, "status must never execute the gate");
+});
+
+// --- help: status is documented as the fifth command ---
+
+test("--help lists the status command and its RUNNING/COMPLETE/ESCALATED/ABORTED vocabulary", () => {
+  const result = run(["--help"], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /headsign status/);
+  assert.match(result.stdout, /RUNNING/);
+  assert.match(result.stdout, /COMPLETE/);
+  assert.match(result.stdout, /ESCALATED/);
+  assert.match(result.stdout, /ABORTED/);
 });

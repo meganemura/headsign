@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readState, writeState, statePath, appendLog } from "./state.ts";
 import { logLine } from "./render.ts";
+import { isObserver } from "./session.ts";
 
 interface HookDecision {
   block: boolean;
@@ -12,6 +13,18 @@ interface HookDecision {
 }
 
 const MAX_STOP_NUDGES = 5;
+
+// The hook's own identifier resolution (ADR-0008) — deliberately narrower than
+// session.resolveSessionId: the stdin `session_id` field already *is* Claude Code's
+// CLAUDE_CODE_SESSION_ID (the two are documented to match), so only the explicit
+// HEADSIGN_SESSION_ID override is worth an extra env fallback here; re-checking
+// CLAUDE_CODE_SESSION_ID from env would just re-derive what stdin already gave us.
+function resolveHookSessionId(input: { session_id?: unknown }, env: NodeJS.ProcessEnv): string | null {
+  const fromStdin = typeof input.session_id === "string" ? input.session_id.trim() : "";
+  if (fromStdin.length > 0) return fromStdin;
+  const fromEnv = typeof env.HEADSIGN_SESSION_ID === "string" ? env.HEADSIGN_SESSION_ID.trim() : "";
+  return fromEnv.length > 0 ? fromEnv : null;
+}
 
 // Walk up from startDir to find a run's .headsign/state.json, bounded by the enclosing
 // git worktree/repo root: stop at (and including) the first directory containing a `.git`
@@ -30,9 +43,14 @@ function findRunDir(startDir: string): string | null {
   }
 }
 
-export function evaluate(cwd: string, stdinRaw: string, nowIso: string): HookDecision {
+export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: NodeJS.ProcessEnv): HookDecision {
+  // Manual opt-out (ADR-0008): checked before stdin is even parsed, so a session that
+  // knows it isn't driving this run passes through unconditionally, even if the hook
+  // payload itself is malformed.
+  if (isObserver(env)) return { block: false };
+
   try {
-    const input = JSON.parse(stdinRaw) as { stop_hook_active?: boolean; cwd?: string };
+    const input = JSON.parse(stdinRaw) as { stop_hook_active?: boolean; cwd?: string; session_id?: string };
 
     // The stdin `cwd` is the hook's authoritative session cwd per Claude Code's Stop-hook
     // docs (it reflects any `cd` during the session); fall back to the invocation cwd for
@@ -48,6 +66,17 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string): HookDec
     const state = readState(runDir);
     if (!state) return { block: false }; // race: vanished between findRunDir and here
     if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
+
+    // Owner check (ADR-0008): a session whose identifier disagrees with the run's
+    // recorded driver is a bystander, not the one this nudge is meant for — checked here,
+    // BEFORE the exit-note gate below, so a bystander's stop can never consume the actual
+    // driver's one-shot pause note. Only fires when BOTH sides resolve to a positive
+    // identifier: if either is missing, there is nothing to compare, so this falls
+    // through to the unchanged nudge flow (ADR-0006 fail-open — absence must never be
+    // read as a mismatch).
+    const hookSid = resolveHookSessionId(input, env);
+    const driver = typeof state.driver_session === "string" && state.driver_session.length > 0 ? state.driver_session : null;
+    if (hookSid !== null && driver !== null && hookSid !== driver) return { block: false };
 
     // Exit-note gate (ADR-0006): the primary mechanism for a deliberate pause. Checked
     // before the nudge/loop-guard logic below, so a human (or agent) who wants out never

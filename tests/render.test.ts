@@ -155,6 +155,84 @@ test("pending", () => {
   assert.equal(actual, expected);
 });
 
+// --- status: the read-only observation window (ADR-0002/0008) ---
+
+test("statusRunning: max_attempts defined -> n/max, no last-failure block", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo", lastFailure: null, driver: "this session",
+  });
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: this session\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: max_attempts undefined (unlimited) -> bare attempt number", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 2, maxAttempts: undefined, attemptUnknown: false,
+    workflowName: "demo", lastFailure: null, driver: "unknown",
+  });
+  const expected = `RUNNING build (attempt 2)\nworkflow: demo\ndriver: unknown\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: attemptUnknown (workflow unreadable or phase missing) -> n/?", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 4, maxAttempts: 3, attemptUnknown: true,
+    workflowName: "demo", lastFailure: null, driver: "another session",
+  });
+  const expected = `RUNNING build (attempt 4/?)\nworkflow: demo\ndriver: another session\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: a last-failure block lands between the workflow line and the driver line, matching retry's failure clause", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo",
+    lastFailure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "some output" },
+    driver: "this session",
+  });
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, exit 1) ---\nsome output\ndriver: this session\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: a timeout last failure renders the timed-out clause, same as retry", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo",
+    lastFailure: { check: "tests", run: "npm test", exitCode: "timeout", timeoutSeconds: 5, outputTail: "some output" },
+    driver: "this session",
+  });
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, timed out after 5s) ---\nsome output\ndriver: this session\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: driver values are printed verbatim as one of the three fixed strings, never a session id", () => {
+  for (const driver of ["this session", "another session", "unknown"] as const) {
+    const actual = render.statusRunning({ phase: "build", attempt: 0, attemptUnknown: false, workflowName: "demo", driver });
+    assert.match(actual, new RegExp(`driver: ${driver}\\n$`));
+  }
+});
+
+test("statusTerminal: complete has no reason line", () => {
+  const actual = render.statusTerminal("complete", "demo", null);
+  assert.equal(actual, `COMPLETE\nworkflow: demo\n`);
+});
+
+test("statusTerminal: escalated with a reason", () => {
+  const actual = render.statusTerminal("escalated", "demo", "build: max_attempts (3) exhausted");
+  assert.equal(actual, `ESCALATED\nworkflow: demo\nreason: build: max_attempts (3) exhausted\n`);
+});
+
+test("statusTerminal: aborted with a reason", () => {
+  const actual = render.statusTerminal("aborted", "demo", "changed my mind");
+  assert.equal(actual, `ABORTED\nworkflow: demo\nreason: changed my mind\n`);
+});
+
+test("statusTerminal: a null or empty-string reason omits the reason line", () => {
+  assert.equal(render.statusTerminal("aborted", "demo", null), `ABORTED\nworkflow: demo\n`);
+  assert.equal(render.statusTerminal("aborted", "demo", ""), `ABORTED\nworkflow: demo\n`);
+});
+
 // --- logLine: .headsign/log line formatting ---
 
 function baseState(overrides: Partial<State> = {}): State {
@@ -168,6 +246,7 @@ function baseState(overrides: Partial<State> = {}): State {
     last_eval: null,
     end_reason: null,
     stop_nudges: 0,
+    driver_session: null,
     ...overrides,
   };
 }

@@ -21,6 +21,7 @@ test("round-trips through write/read", () => {
     last_eval: null,
     end_reason: null,
     stop_nudges: 1,
+    driver_session: null,
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
@@ -28,6 +29,47 @@ test("round-trips through write/read", () => {
 
 test("readState returns null when no state file exists", () => {
   assert.equal(state.readState(tmpdir()), null);
+});
+
+// --- driver_session (ADR-0008) ---
+
+test("round-trips a non-null driver_session", () => {
+  const dir = tmpdir();
+  const s: state.State = {
+    workflow: "demo",
+    workflow_path: ".headsign/workflow.yaml",
+    status: "running",
+    phase: "plan",
+    attempts: {},
+    total_iterations: 0,
+    last_eval: null,
+    end_reason: null,
+    stop_nudges: 0,
+    driver_session: "session-abc",
+  };
+  state.writeState(dir, s);
+  assert.deepEqual(state.readState(dir), s);
+});
+
+test("a legacy state.json written without driver_session reads back with the field simply absent (state.ts itself does no validation — tolerance is each consumer's job)", () => {
+  const dir = tmpdir();
+  const legacy = {
+    workflow: "demo",
+    workflow_path: ".headsign/workflow.yaml",
+    status: "running",
+    phase: "plan",
+    attempts: {},
+    total_iterations: 0,
+    last_eval: null,
+    end_reason: null,
+    stop_nudges: 0,
+    // driver_session intentionally omitted, as a pre-ADR-0008 state.json would be.
+  };
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(state.statePath(dir), JSON.stringify(legacy, null, 2) + "\n");
+
+  const read = state.readState(dir) as unknown as Record<string, unknown>;
+  assert.equal("driver_session" in read, false);
 });
 
 test("acquireLock succeeds on a fresh directory and writes this process's own pid", () => {
@@ -110,6 +152,7 @@ test("atomic write leaves valid JSON and no leftover temp files", () => {
     last_eval: null,
     end_reason: null,
     stop_nudges: 0,
+    driver_session: null,
   };
   state.writeState(dir, s);
   const raw = fs.readFileSync(state.statePath(dir), "utf8");

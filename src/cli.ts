@@ -10,6 +10,7 @@ import * as treehash from "./treehash.ts";
 import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
+import * as session from "./session.ts";
 
 // Local-time ISO 8601 with a numeric UTC offset, second precision, no milliseconds — e.g.
 // "2026-07-24T23:00:17+09:00". The log's reader is a human or agent writing a run report in
@@ -34,6 +35,12 @@ function stderrExit(text: string, code: number): never {
 function errorExit(message: string): never {
   return stderrExit(`ERROR: ${message}\n`, 3);
 }
+
+// Shared by cmdNext and cmdStatus (ADR-0004/0008): both are cwd-only lookups of the same
+// .headsign/state.json, so a missing run gets the same actionable guidance either way.
+const NO_RUN_HERE_MESSAGE =
+  "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories — " +
+  "run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
 
 // Resolves the workflow path for `start`/`validate` per the precedence:
 // --workflow <path> wins if given; else a bare positional <name> resolves to
@@ -158,6 +165,10 @@ function cmdStart(args: string[]): void {
   const freshState: state.State = {
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_eval: null, end_reason: null, stop_nudges: 0,
+    // Claim ownership at the moment of start (ADR-0008); null when no identifier is
+    // available (unstamped, same as a pre-multi-session state.json — every session
+    // nudges, same as today).
+    driver_session: session.resolveSessionId(process.env),
   };
   state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -221,12 +232,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
 function cmdNext(): void {
   const cwd = process.cwd();
   const current = state.readState(cwd);
-  if (!current) {
-    errorExit(
-      "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories — " +
-        "run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.",
-    );
-  }
+  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
   if (current.status !== "running") printOutcome(engine.terminalOutcome(current), current.workflow);
 
   const wf = loadWorkflowOrExit(current.workflow_path);
@@ -242,11 +248,24 @@ function cmdNext(): void {
   // pre-lock read and our own acquisition (loadWorkflowOrExit's YAML parse widens that
   // gap); acting on the stale `current` would silently overwrite that process's attempt
   // increment, which defeats the lock's entire purpose.
-  const fresh = state.readState(cwd);
+  let fresh = state.readState(cwd);
   if (!fresh) {
     state.releaseLock(cwd);
     errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
   }
+
+  // Driver stamp (ADR-0008), right after the fresh re-read under the lock: claim/refresh
+  // ownership so the Stop hook's owner check always compares against whoever most
+  // recently called `next`. Only a *positive* identifier overwrites — a caller that
+  // resolved no id (env stripped mid-run) must never orphan an existing driver — and only
+  // a *changed* value is written, so the common case (same driver calling next
+  // repeatedly) costs nothing extra, preserving PENDING's zero-write guarantee below.
+  const sid = session.resolveSessionId(process.env);
+  if (sid !== null && fresh.driver_session !== sid) {
+    fresh = { ...fresh, driver_session: sid };
+    state.writeState(cwd, fresh);
+  }
+
   if (fresh.status !== "running") {
     state.releaseLock(cwd);
     printOutcome(engine.terminalOutcome(fresh), fresh.workflow);
@@ -283,26 +302,78 @@ function cmdValidate(args: string[]): void {
   exitAfter(render.validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
 
+// Read-only observation window (ADR-0002/0008), deliberately kept apart from `next`'s
+// single judging question: no lock, no writeState, no gate/ready execution, no clock
+// read, and cwd-only like `next`/`abort` (no walk-up). workflow.yaml is read best-effort
+// only to resolve max_attempts for the attempt display — its content never gates
+// anything here, so a broken workflow.yaml degrades the display instead of erroring out.
+function cmdStatus(): void {
+  const cwd = process.cwd();
+  const current = state.readState(cwd);
+  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
+
+  if (current.status !== "running") {
+    exitAfter(render.statusTerminal(current.status, current.workflow, current.end_reason), 0);
+  }
+
+  const { workflow: wf } = workflowMod.load(current.workflow_path);
+  const phase = wf?.phases[current.phase];
+  const attempt = current.attempts[current.phase] ?? 0;
+
+  const lastEval = current.last_eval;
+  const lastFailure =
+    lastEval !== null && lastEval.phase === current.phase
+      ? { check: lastEval.check, run: lastEval.run, exitCode: lastEval.exit_code, timeoutSeconds: lastEval.timeout_seconds, outputTail: lastEval.output_tail }
+      : null;
+
+  // Never print the session id itself (nothing here is material for impersonation) —
+  // only whether it matches the recorded driver, and legacy-tolerant the same way the
+  // Stop hook's own owner check is (non-string driver_session -> null).
+  const mySid = session.resolveSessionId(process.env);
+  const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
+  const driver: "this session" | "another session" | "unknown" =
+    mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+
+  exitAfter(
+    render.statusRunning({
+      phase: current.phase,
+      attempt,
+      maxAttempts: phase?.max_attempts,
+      attemptUnknown: phase === undefined,
+      workflowName: current.workflow,
+      lastFailure,
+      driver,
+    }),
+    0,
+  );
+}
+
 function cmdStopHook(): void {
   const raw = readFileOrEmpty(0); // no stdin piped -> "", which evaluate() fails open on
-  const decision = stophook.evaluate(process.cwd(), raw, localIso(new Date()));
+  const decision = stophook.evaluate(process.cwd(), raw, localIso(new Date()), process.env);
   if (decision.block) stderrExit(`${decision.message}\n`, 2);
   process.exit(0);
 }
 
 // Human convenience only — outside the agent-facing contract (ADR-0002). The hidden
-// stop-hook subcommand is deliberately omitted; the four commands are the whole surface.
+// stop-hook subcommand is deliberately omitted; these five commands are the whole surface.
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
   headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml)
   headsign next                                 run the current gate and answer with a verdict
   headsign abort [reason]                       end the run for good (records why)
+  headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  statically check a workflow file
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
 3 usage or configuration error.
+
+\`status\` answers on line 1: RUNNING / COMPLETE / ESCALATED / ABORTED — its own
+vocabulary, never next's. Exit code: 0 whenever state was readable regardless of
+status value, 3 if there is no run here or on a usage error — it never reuses
+next's 1/2, so observing status alone can't trip a \`set -e\` script.
 
 Guide and workflow reference: https://github.com/meganemura/headsign
 `;
@@ -316,6 +387,7 @@ function main(): void {
     case "start": return cmdStart(rest);
     case "next": return cmdNext();
     case "abort": return cmdAbort(rest);
+    case "status": return cmdStatus();
     case "validate": return cmdValidate(rest);
     case "stop-hook": return cmdStopHook();
     default: errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);

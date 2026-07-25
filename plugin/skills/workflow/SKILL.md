@@ -33,18 +33,28 @@ plugin or `npm install` the package. Do not guess at other paths.
 
 ## The discipline
 
-1. To begin a workflow: `headsign start`. It prints the first phase's
+1. **First, check whether this session is the driver.** If this session did
+   not run `headsign start`, and hasn't been explicitly asked (by the user,
+   or by the session that did) to continue an existing run — do not run
+   `headsign next` or `headsign abort`. A repository can have more than one
+   Claude Code session open on it at once (a lead plus teammates, or a
+   subagent working alongside the session that spawned it), and only the
+   one driving the run should touch it: obeying a nudge you weren't meant to
+   answer can burn a retry or advance a phase nobody asked you to touch.
+   Want to know what's happening without touching anything? Run `headsign
+   status` — it's read-only, and safe to call at any time.
+2. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
-2. **Whenever you are unsure what to do, think a phase's work is finished, or
+3. **Whenever you are unsure what to do, think a phase's work is finished, or
    have just recovered from compaction — run `headsign next` and obey the
    first-line token.** That one habit is the whole protocol.
-3. `RETRY` → the output shows exactly which check failed and its last output.
+4. `RETRY` → the output shows exactly which check failed and its last output.
    Fix that, then run `headsign next` again. `ADVANCE` → follow the printed
    instructions of the new phase. If `ADVANCE <phase>` is followed by a line
    like `--- gate failed: ... → routed to <phase> ---`, the *previous*
    phase's gate rejected the work and routed you here — read that line, it's
    why you're back.
-4. **Never end the run on your own judgment while the answer is anything
+5. **Never end the run on your own judgment while the answer is anything
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to
    the user; that's a legitimate exit, but it's permanent: the run cannot be
@@ -53,7 +63,7 @@ plugin or `npm install` the package. Do not guess at other paths.
    again: the Stop hook passes immediately, and `headsign next` picks the
    run back up later from the same phase. `ESCALATE` means stop working and
    ask the user for direction.
-5. If the current phase's gate reads a verdict file (a review phase), spawn
+6. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then
    *you* write that reported verdict, verbatim, to the verdict file and run
@@ -64,11 +74,12 @@ plugin or `npm install` the package. Do not guess at other paths.
 
 - A phase's printed instruction may tell you to use a specific skill or
   spawn a subagent — do what it says.
-- `headsign start`/`next`/`abort` operate on the current directory's
-  `.headsign/` only — run them from the directory that owns the workflow
-  (the repo or git-worktree root), not a subdirectory. The Stop hook is the
-  exception: it finds the run from any subdirectory up to the repo/worktree
-  root, so it still fires even if the session's cwd has drifted.
+- `headsign start`/`next`/`abort`/`status` operate on the current
+  directory's `.headsign/` only — run them from the directory that owns the
+  workflow (the repo or git-worktree root), not a subdirectory. The Stop
+  hook is the exception: it finds the run from any subdirectory up to the
+  repo/worktree root, so it still fires even if the session's cwd has
+  drifted.
 - Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
   Read the text, don't treat non-zero as a tool failure. PENDING = the gate
   can't be evaluated yet — not a failure. Produce the artifact it's waiting
@@ -77,6 +88,15 @@ plugin or `npm install` the package. Do not guess at other paths.
   (unknown command, wrong directory, a workflow that no longer defines the
   current phase, another `next` already running). Fix the invocation, the
   directory, or the workflow file; don't loop-retry on it.
+- `headsign status` is a different kind of command, on purpose: it never
+  judges, so its first-line vocabulary is separate from `next`'s tokens —
+  `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED`, capitalized like a
+  report, not `ADVANCE`/`RETRY`/`PENDING`/`ESCALATE`/`ABORT`. Its exit code
+  doesn't follow the 1=RETRY/PENDING, 2=ESCALATE/ABORT rule above either:
+  it's 0 whenever state could be read at all (even `ESCALATED`/`ABORTED`),
+  and 3 only when there's no run to read. Use it whenever you want to look
+  without the risk of touching anything — see the discipline's first rule,
+  above, for when that's required rather than optional.
 - `headsign next` is cheap and safe to call at any moment: if nothing changed
   in the working tree it reprints the last verdict without consuming an
   attempt.

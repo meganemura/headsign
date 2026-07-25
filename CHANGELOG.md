@@ -21,12 +21,29 @@ changes), and a patch bump means fixes only.
 - Role-based example workflows in `example.headsign/` (TDD feature, bugfix,
   docs, release, and headsign's own development workflow); this repository
   dogfoods them through a `.headsign` symlink.
+- Multi-session driver ownership: `headsign start`/`next` stamp which
+  session is driving a run (`driver_session`, resolved from
+  `HEADSIGN_SESSION_ID` or, automatically under Claude Code,
+  `CLAUDE_CODE_SESSION_ID`), and the Stop hook now recognizes a confirmed
+  non-driver session's stop and passes it through instead of nudging it.
+- `headsign status`: a new, strictly read-only command for a session that
+  isn't driving a run — reports the current phase (or terminal outcome)
+  without running any gate, writing state, or taking the lock. Its exit
+  code never overlaps `next`'s: 0 whenever state is readable (including
+  `ESCALATED`/`ABORTED`), 3 only when there's no run to read.
+- `HEADSIGN_OBSERVER`: set on a session that should never be nudged by the
+  Stop hook, regardless of driver ownership — the manual opt-out for
+  environments where no session identifier resolves.
 
 ### Changed
 
 - The Stop hook's nudge cap is now purely an abnormal-case backstop and was
   raised from 3 to 5; the pause note is the intended exit for deliberate
   stops.
+- The Stop hook's decision order now checks observer opt-out and driver
+  ownership before the exit-note gate, so a bystander's stop can no longer
+  consume the shared nudge-cap insurance or a driver's pause note — see
+  [ADR-0008](docs/adr/0008-multi-session-ownership.md).
 
 ## [0.1.0] - 2026-07-25
 

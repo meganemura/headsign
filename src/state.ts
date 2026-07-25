@@ -16,6 +16,12 @@ export interface State {
   workflow: string; workflow_path: string; status: Status; phase: string;
   attempts: Record<string, number>; total_iterations: number; last_eval: LastEval | null;
   end_reason: string | null; stop_nudges: number;
+  // The identifier of whoever most recently ran `start`/`next` (ADR-0008) — the Stop
+  // hook's owner check compares this against the stopping session. A state.json written
+  // before this field existed simply lacks it; readers must treat anything that isn't a
+  // string (missing, or a legacy/corrupt non-string value) as null, the same tolerant
+  // idiom stophook.ts already uses for stop_nudges.
+  driver_session: string | null;
 }
 
 export function statePath(cwd: string): string {

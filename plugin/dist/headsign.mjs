@@ -7819,6 +7819,23 @@ ${errors.map((e) => `- ${e}
 function clause(run, exitCode, timeoutSeconds) {
   return exitCode === "timeout" ? `${run}, timed out after ${timeoutSeconds}s` : `${run}, exit ${exitCode}`;
 }
+function statusRunning(o) {
+  const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  const lastFailureBlock = o.lastFailure ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds)}) ---
+${o.lastFailure.outputTail}
+` : "";
+  return `RUNNING ${o.phase} (attempt ${n})
+workflow: ${o.workflowName}
+${lastFailureBlock}driver: ${o.driver}
+`;
+}
+function statusTerminal(status, workflowName, endReason) {
+  const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}
+` : "";
+  return `${status.toUpperCase()}
+workflow: ${workflowName}
+${reasonLine}`;
+}
 function logLine(ts, event, state, prevPhase) {
   const phase = state.phase;
   const a = state.attempts[phase] ?? 0;
@@ -7876,7 +7893,30 @@ function logDetail(event, prevPhase) {
 // src/stophook.ts
 import fs4 from "node:fs";
 import path3 from "node:path";
+
+// src/session.ts
+function resolveSessionId(env) {
+  for (const key of ["HEADSIGN_SESSION_ID", "CLAUDE_CODE_SESSION_ID"]) {
+    const raw = env[key];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return null;
+}
+function isObserver(env) {
+  const raw = env["HEADSIGN_OBSERVER"];
+  return typeof raw === "string" && raw.length > 0;
+}
+
+// src/stophook.ts
 var MAX_STOP_NUDGES = 5;
+function resolveHookSessionId(input, env) {
+  const fromStdin = typeof input.session_id === "string" ? input.session_id.trim() : "";
+  if (fromStdin.length > 0) return fromStdin;
+  const fromEnv = typeof env.HEADSIGN_SESSION_ID === "string" ? env.HEADSIGN_SESSION_ID.trim() : "";
+  return fromEnv.length > 0 ? fromEnv : null;
+}
 function findRunDir(startDir) {
   let dir = startDir;
   for (; ; ) {
@@ -7887,7 +7927,8 @@ function findRunDir(startDir) {
     dir = parent;
   }
 }
-function evaluate(cwd, stdinRaw, nowIso) {
+function evaluate(cwd, stdinRaw, nowIso, env) {
+  if (isObserver(env)) return { block: false };
   try {
     const input = JSON.parse(stdinRaw);
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
@@ -7897,6 +7938,9 @@ function evaluate(cwd, stdinRaw, nowIso) {
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
+    const hookSid = resolveHookSessionId(input, env);
+    const driver = typeof state.driver_session === "string" && state.driver_session.length > 0 ? state.driver_session : null;
+    if (hookSid !== null && driver !== null && hookSid !== driver) return { block: false };
     const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
     if (fs4.existsSync(notePath)) {
       const noteRaw = fs4.readFileSync(notePath, "utf8");
@@ -7946,6 +7990,7 @@ function errorExit(message) {
   return stderrExit(`ERROR: ${message}
 `, 3);
 }
+var NO_RUN_HERE_MESSAGE = "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
 function resolveWorkflowPath(args) {
   const flagIdx = args.indexOf("--workflow");
   let flagValue;
@@ -8047,7 +8092,11 @@ function cmdStart(args) {
     total_iterations: 0,
     last_eval: null,
     end_reason: null,
-    stop_nudges: 0
+    stop_nudges: 0,
+    // Claim ownership at the moment of start (ADR-0008); null when no identifier is
+    // available (unstamped, same as a pre-multi-session state.json — every session
+    // nudges, same as today).
+    driver_session: resolveSessionId(process.env)
   };
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -8089,21 +8138,22 @@ function evaluateNext(cwd, wf, current) {
 function cmdNext() {
   const cwd = process.cwd();
   const current = readState(cwd);
-  if (!current) {
-    errorExit(
-      "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`."
-    );
-  }
+  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
   if (current.status !== "running") printOutcome(terminalOutcome(current), current.workflow);
   const wf = loadWorkflowOrExit(current.workflow_path);
   const lock = acquireLock(cwd);
   if (!lock.ok) {
     errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
   }
-  const fresh = readState(cwd);
+  let fresh = readState(cwd);
   if (!fresh) {
     releaseLock(cwd);
     errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
+  }
+  const sid = resolveSessionId(process.env);
+  if (sid !== null && fresh.driver_session !== sid) {
+    fresh = { ...fresh, driver_session: sid };
+    writeState(cwd, fresh);
   }
   if (fresh.status !== "running") {
     releaseLock(cwd);
@@ -8135,9 +8185,37 @@ function cmdValidate(args) {
   const wf = loadWorkflowOrExit(workflowPath);
   exitAfter(validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
+function cmdStatus() {
+  const cwd = process.cwd();
+  const current = readState(cwd);
+  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
+  if (current.status !== "running") {
+    exitAfter(statusTerminal(current.status, current.workflow, current.end_reason), 0);
+  }
+  const { workflow: wf } = load(current.workflow_path);
+  const phase = wf?.phases[current.phase];
+  const attempt = current.attempts[current.phase] ?? 0;
+  const lastEval = current.last_eval;
+  const lastFailure = lastEval !== null && lastEval.phase === current.phase ? { check: lastEval.check, run: lastEval.run, exitCode: lastEval.exit_code, timeoutSeconds: lastEval.timeout_seconds, outputTail: lastEval.output_tail } : null;
+  const mySid = resolveSessionId(process.env);
+  const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
+  const driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+  exitAfter(
+    statusRunning({
+      phase: current.phase,
+      attempt,
+      maxAttempts: phase?.max_attempts,
+      attemptUnknown: phase === void 0,
+      workflowName: current.workflow,
+      lastFailure,
+      driver
+    }),
+    0
+  );
+}
 function cmdStopHook() {
   const raw = readFileOrEmpty(0);
-  const decision = evaluate(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()));
+  const decision = evaluate(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()), process.env);
   if (decision.block) stderrExit(`${decision.message}
 `, 2);
   process.exit(0);
@@ -8148,11 +8226,17 @@ Usage:
   headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml)
   headsign next                                 run the current gate and answer with a verdict
   headsign abort [reason]                       end the run for good (records why)
+  headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  statically check a workflow file
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
 3 usage or configuration error.
+
+\`status\` answers on line 1: RUNNING / COMPLETE / ESCALATED / ABORTED \u2014 its own
+vocabulary, never next's. Exit code: 0 whenever state was readable regardless of
+status value, 3 if there is no run here or on a usage error \u2014 it never reuses
+next's 1/2, so observing status alone can't trip a \`set -e\` script.
 
 Guide and workflow reference: https://github.com/meganemura/headsign
 `;
@@ -8168,6 +8252,8 @@ function main() {
       return cmdNext();
     case "abort":
       return cmdAbort(rest);
+    case "status":
+      return cmdStatus();
     case "validate":
       return cmdValidate(rest);
     case "stop-hook":

@@ -70,6 +70,39 @@ function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: numb
   return exitCode === "timeout" ? `${run}, timed out after ${timeoutSeconds}s` : `${run}, exit ${exitCode}`;
 }
 
+// --- status: the read-only observation window (ADR-0002/0008) ---
+// Its own token vocabulary (RUNNING/COMPLETE/ESCALATED/ABORTED), deliberately distinct
+// from next's (ADVANCE/RETRY/PENDING/COMPLETE/ESCALATE/ABORT) even where the words
+// overlap in meaning — status observes, it never judges, and the two must never be
+// mistaken for each other's output.
+
+export function statusRunning(o: {
+  phase: string;
+  attempt: number;
+  maxAttempts?: number;
+  // Workflow unreadable, or this phase no longer defined in it — degrade to "n/?" rather
+  // than guess at a limit that can't actually be resolved right now.
+  attemptUnknown: boolean;
+  workflowName: string;
+  // Only set by the caller when state.last_eval is non-null AND belongs to the current
+  // phase (cli.ts's job — render.ts doesn't know the state shape's field names); a
+  // last_eval left over from a since-departed phase must never be shown as if it were
+  // about now.
+  lastFailure?: (Failure & { outputTail: string }) | null;
+  driver: "this session" | "another session" | "unknown";
+}): string {
+  const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  const lastFailureBlock = o.lastFailure
+    ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds)}) ---\n${o.lastFailure.outputTail}\n`
+    : "";
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n`;
+}
+
+export function statusTerminal(status: "complete" | "escalated" | "aborted", workflowName: string, endReason: string | null): string {
+  const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}\n` : "";
+  return `${status.toUpperCase()}\nworkflow: ${workflowName}\n${reasonLine}`;
+}
+
 // What a `.headsign/log` line can be about: every real transition cli.ts logs, plus the
 // synthetic `start` event (which isn't an engine.Outcome — `start` never runs step()), plus
 // the two Stop-boundary events (ADR-0004's explicit exception to "transitions only"; owned
