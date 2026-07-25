@@ -36,6 +36,53 @@ without its rebuilt bundle.
   for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
   ```
 
+## Feedback triage loop
+
+Field feedback on headsign accumulates, pull-style, as tickets in a private
+aggregation repository. Where that repository lives is a per-machine
+setting, never a relative or sibling path — a relative one breaks the moment
+you work from a git worktree:
+
+```
+git config --global headsign.feedbackDir <path>
+```
+
+Everything downstream — the triage workflow's gate check, and the phase
+instructions that say where to read and move tickets — resolves the
+directory through that config value, so a machine that hasn't set it
+simply has no tickets to triage.
+
+**Running the loop.** `headsign start triage` (that's
+`example.headsign/triage.yaml`, reached through this repository's
+`.headsign` symlink). One run judges **one** ticket: read it, fill its
+`Judgment` section with a decision and a reason, move it on, then either
+implement it or end the run. Three is the upper bound once the loop is
+second nature, and that is a cap, not a target — past it you are batching,
+which is the one thing this structure exists to prevent. Triage is where
+the thinking happens, and a queue swept in a single pass is a queue nobody
+judged. A run whose ticket was rejected or deferred — or whose inbox
+turned out empty — has no implementation to do and ends `COMPLETE`: that
+clean exit is the design, not a failure.
+
+**The public-repository rule.** This repository is public; the feedback
+sources are not. Nothing that lands here — code, tests, docs, YAML,
+CHANGELOG entries, commit messages — may carry anything that identifies a
+feedback source: no private project or repository names, no ticket ids, no
+quoted logs, paths, or workflow excerpts, no reproduction detail that only
+one reporter's setup could produce. Restate the underlying problem in
+general terms and fix *that*. A problem that cannot survive being
+generalized isn't ready to be worked on here.
+
+**The link runs one way, private → public.** What a ticket turned into is
+recorded in that ticket's `Response` section on the private side, with the
+public commit hash. Never add the reverse link: nothing in this repository
+points back at a ticket, a private repository, or a reporter.
+
+**Turning a ticket into a public issue** is for the generalizable ones
+only, and it is a rewrite, not a copy. Open a blank editor and state the
+problem from scratch in your own words; pasting ticket text — even "lightly
+edited" — is how source-identifying detail leaks.
+
 ## Live-patching an installed plugin (local testing)
 
 For most changes, `npm test` plus running the CLI directly

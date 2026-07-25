@@ -40,6 +40,13 @@ changes), and a patch bump means fixes only.
   drives a run in environments (e.g. Claude Code's agent-teams feature)
   where a session's own Bash environment can't be trusted to know its own
   session id. See [ADR-0009](docs/adr/0009-claim-handshake.md).
+- A triage example workflow (`example.headsign/triage.yaml`): headsign's own
+  feedback-intake loop, which judges exactly one ticket per run. It doubles
+  as a worked example of two patterns — a run-local completion marker as the
+  `ready:` condition (a `next` issued before the judging is finished answers
+  `PENDING` instead of spending an attempt) and `on_fail: "$end"` as the
+  clean ending for a run that turns out to have no work to do (a reject, a
+  defer, or an empty inbox).
 
 ### Changed
 
@@ -60,6 +67,15 @@ changes), and a patch bump means fixes only.
   whenever a run exists, falling back to the plain `.headsign/workflow.yaml`
   default only when there is no run; an explicit name or `--workflow`
   still always wins.
+- Git worktrees are now documented as supported within one clear boundary —
+  **one worktree, one independent run**: a worktree's `state.json`, lock,
+  and log live in that worktree's own `.headsign/`, headsign writes nothing
+  under the shared `.git`, and sharing or coordinating state between
+  worktrees remains out of scope.
+- `docs/maintenance.md` gained a "Feedback triage loop" section: the
+  `headsign.feedbackDir` prerequisite, one ticket per run and why batching
+  defeats the point, and the rule that nothing identifying a feedback source
+  may enter this public repository.
 
 ## [0.1.0] - 2026-07-25
 
