@@ -143,7 +143,7 @@ id. Rather than record that in a new field, this ADR observes that
 |---|---|---|
 | `"env"` | a session id, stamped by the CLI from the environment (ADR-0008) | `Stop` |
 | `"claim"` | an **agent id**, sealed by `SubagentStop` (this ADR) | `SubagentStop` |
-| `null` | nothing | neither — every stop is nudged, as before ownership existed |
+| `null` | nothing | neither — `Stop` nudges every session as it did before ownership existed; `SubagentStop` holds no one |
 
 So `state.json`'s shape does not change. Only the meaning of the
 `"claim"` row does, from "a session id that a Stop firing supplied" to
@@ -271,12 +271,13 @@ If a future Claude Code release stops supplying it, renames it, or
 changes what it contains, the degradation is safe and quiet: step 6
 resolves nothing, step 7 leaves the marker in place instead of adopting,
 and a run therefore never acquires a `"claim"` driver. Ownership stays
-whatever the env-based stamp produced, `Stop` keeps behaving exactly as
-ADR-0008 describes, and the system falls back to nudging every stop on a
-running run. That is the same direction ADR-0008 chose to degrade
-toward — more nudges, never a wrong or silent one — so this decision
-takes no version pin, no shim, and no detection beyond a plain
-non-empty-string check.
+whatever the env-based stamp produced, and `Stop` keeps nudging every
+session on a running run exactly as ADR-0008 describes. Delegated agents
+lose the backstop this ADR gave them — the same quiet loss the next
+paragraph names — while no session is ever nudged wrongly or left
+silently unnudged. That is the direction ADR-0008 chose to degrade
+toward, so this decision takes no version pin, no shim, and no detection
+beyond a plain non-empty-string check.
 
 If `SubagentStop` itself were to stop firing, the result is the
 pre-ADR-0010 world: claims never seal, and delegated agents are not
