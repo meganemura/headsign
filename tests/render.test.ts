@@ -131,6 +131,20 @@ test("abort with an empty reason falls back to '(no reason given)'", () => {
   assert.equal(actual, expected);
 });
 
+// --- claim: the driver-adoption handshake (ADR-0009) ---
+
+test("claim: first line is the CLAIM token, and the body explains the two-beat handshake and re-claim self-repair", () => {
+  const actual = render.claim();
+  const expected =
+    "CLAIM armed\n" +
+    "Now end your turn. The next session to stop seals the claim: the Stop hook\n" +
+    "records that session as this run's driver and confirms it in its message.\n" +
+    "If another session happens to stop first and gets adopted by mistake, run\n" +
+    "`headsign claim` again from the right session — a new claim always wins.\n";
+  assert.equal(actual, expected);
+  assert.match(actual, /^CLAIM /);
+});
+
 test("validateOk", () => {
   const actual = render.validateOk("demo", 3);
   const expected = `OK: workflow 'demo' (3 phases)\n`;
@@ -206,8 +220,8 @@ test("statusRunning: a timeout last failure renders the timed-out clause, same a
   assert.equal(actual, expected);
 });
 
-test("statusRunning: driver values are printed verbatim as one of the three fixed strings, never a session id", () => {
-  for (const driver of ["this session", "another session", "unknown"] as const) {
+test("statusRunning: driver values are printed verbatim as one of the four fixed strings, never a session id", () => {
+  for (const driver of ["this session", "another session", "unknown", "claimed"] as const) {
     const actual = render.statusRunning({ phase: "build", attempt: 0, attemptUnknown: false, workflowName: "demo", driver });
     assert.match(actual, new RegExp(`driver: ${driver}\\n$`));
   }
@@ -247,6 +261,7 @@ function baseState(overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,
+    driver_source: null,
     ...overrides,
   };
 }
@@ -307,7 +322,7 @@ test("logLine: PENDING is never a valid event to log (defensive — cli.ts must 
   assert.throws(() => render.logLine("ts", outcome, baseState({ phase: "review" })));
 });
 
-// --- logLine: the two Stop-boundary events (ADR-0006 revision; stophook.ts is the caller) ---
+// --- logLine: the three Stop-boundary events (ADR-0006/0009; stophook.ts is the caller) ---
 
 test("logLine: paused carries the note's first line", () => {
   const line = render.logLine("ts", { kind: "PAUSED", note: "stepping away for lunch" }, baseState({ phase: "build" }));
@@ -322,4 +337,10 @@ test("logLine: paused reflects the resulting state's attempts/iterations", () =>
 test("logLine: stalled names the fixed nudges=5 cap", () => {
   const line = render.logLine("ts", { kind: "STALLED" }, baseState({ phase: "build", total_iterations: 5 }));
   assert.equal(line, `ts stalled build a=0 i=5 nudges=5\n`);
+});
+
+test("logLine: claimed has no detail — the adopted session id must never appear in the log line", () => {
+  const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "build", driver_session: "session-abc", driver_source: "claim" }));
+  assert.equal(line, `ts claimed build a=0 i=0\n`);
+  assert.doesNotMatch(line, /session-abc/);
 });

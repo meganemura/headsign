@@ -22,6 +22,14 @@ export interface State {
   // string (missing, or a legacy/corrupt non-string value) as null, the same tolerant
   // idiom stophook.ts already uses for stop_nudges.
   driver_session: string | null;
+  // How driver_session was stamped (ADR-0009's claim handshake): "env" for the ordinary
+  // auto-stamp from start/next's process env, "claim" for a Stop-hook adoption via
+  // `headsign claim`, null whenever driver_session itself is null. Consumers must treat
+  // only the exact string "claim" as sticky (i.e. immune to being overwritten by the
+  // auto-stamp) — anything else, including a missing field on a pre-claim state.json or a
+  // corrupt/legacy value, is plain overwritable, the same tolerant idiom as the rest of
+  // this file's fields.
+  driver_source: "env" | "claim" | null;
 }
 
 export function statePath(cwd: string): string {

@@ -67,6 +67,43 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     if (!state) return { block: false }; // race: vanished between findRunDir and here
     if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
 
+    // Both exits (pause via note, or end for good via abort) are named on every block, not
+    // only the last one, so a human who wants out never has to hunt for how. Computed here
+    // (depends only on runDir/startDir, already known) so the adoption gate below and the
+    // ordinary nudge message further down can share the identical wording.
+    const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
+    const pauseAndAbortHint = ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+
+    // Adoption gate (ADR-0009's claim handshake): a claim marker means some session ran
+    // `headsign claim` and ended its turn, waiting for the Stop hook to seal it as this
+    // run's driver — the CLI itself can never learn the session-granular id (only the hook's
+    // stdin can), so this is the one place that identifier can actually be recorded. Checked
+    // BEFORE the owner comparison below, on purpose: otherwise a just-claiming session that
+    // doesn't yet match the (possibly stale, possibly wrong) old driver would be passed
+    // through as a mismatched bystander instead of adopted — exactly backwards.
+    const claimPath = path.join(runDir, ".headsign", "tmp", "claim");
+    if (fs.existsSync(claimPath)) {
+      const claimSid = resolveHookSessionId(input, env);
+      if (claimSid !== null) {
+        // Consume the marker: like the stop-note below, a claim is a one-shot request —
+        // leaving it in place would re-adopt on every future stop, not just this one.
+        fs.rmSync(claimPath, { force: true });
+        const adoptedState = { ...state, driver_session: claimSid, driver_source: "claim" as const, stop_nudges: 0 };
+        writeState(runDir, adoptedState);
+        appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
+        const adoptionMessage =
+          `Claim confirmed: this session now drives workflow '${state.workflow}' (phase: ${state.phase}). ` +
+          "Run `headsign next` and follow its verdict." +
+          pauseAndAbortHint;
+        return { block: true, message: adoptionMessage };
+      }
+      // No session identifier resolvable from anywhere (neither stdin nor
+      // HEADSIGN_SESSION_ID): leave the marker in place for a later, hopefully
+      // identifiable, stop to consume instead — adopting an unnamed driver would defeat
+      // the owner check claim exists to feed. `start`'s tmp/ wipe eventually reclaims a
+      // marker that's never consumed, so this can't wedge a run permanently.
+    }
+
     // Owner check (ADR-0008): a session whose identifier disagrees with the run's
     // recorded driver is a bystander, not the one this nudge is meant for — checked here,
     // BEFORE the exit-note gate below, so a bystander's stop can never consume the actual
@@ -118,9 +155,7 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
 
     // `next`/`abort` stay strictly cwd-only (ADR-0004), so when the run was found via
     // walk-up (runDir !== startDir) the agent must be told where to cd first — cwd-only
-    // `next` will not find the run from startDir itself. The note path shown mirrors that:
-    // relative when the hook already sits in runDir, runDir-prefixed otherwise.
-    const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
+    // `next` will not find the run from startDir itself.
     const verdictSentence =
       runDir === startDir
         ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.`
@@ -128,9 +163,6 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // The final-reminder phrase rides only on the nudge that trips the cap: earlier nudges
     // must keep pushing `headsign next`, not dilute it with "this is your last chance".
     const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-    // Both exits — pause via note, or end for good via abort — are named on every block, not
-    // only the last one, so a human who wants out never has to hunt for how.
-    const pauseAndAbortHint = ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
     const message = verdictSentence + finalNotice + pauseAndAbortHint;
     return { block: true, message };
   } catch {

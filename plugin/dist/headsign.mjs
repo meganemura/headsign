@@ -7807,6 +7807,9 @@ function abort(reason) {
 Workflow aborted. Report to the user.
 `;
 }
+function claim() {
+  return "CLAIM armed\nNow end your turn. The next session to stop seals the claim: the Stop hook\nrecords that session as this run's driver and confirms it in its message.\nIf another session happens to stop first and gets adopted by mistake, run\n`headsign claim` again from the right session \u2014 a new claim always wins.\n";
+}
 function validateOk(name, phaseCount) {
   return `OK: workflow '${name}' (${phaseCount} phases)
 `;
@@ -7864,6 +7867,8 @@ function eventName(event) {
       return "paused";
     case "STALLED":
       return "stalled";
+    case "CLAIMED":
+      return "claimed";
     case "PENDING":
       throw new Error("logLine: PENDING is never logged");
   }
@@ -7883,6 +7888,8 @@ function logDetail(event, prevPhase) {
       return `note="${event.note}"`;
     case "STALLED":
       return "nudges=5";
+    case "CLAIMED":
+      return "";
     case "COMPLETE":
       return "";
     case "PENDING":
@@ -7938,6 +7945,20 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
+    const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
+    const pauseAndAbortHint = ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
+    if (fs4.existsSync(claimPath)) {
+      const claimSid = resolveHookSessionId(input, env);
+      if (claimSid !== null) {
+        fs4.rmSync(claimPath, { force: true });
+        const adoptedState = { ...state, driver_session: claimSid, driver_source: "claim", stop_nudges: 0 };
+        writeState(runDir, adoptedState);
+        appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
+        const adoptionMessage = `Claim confirmed: this session now drives workflow '${state.workflow}' (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` + pauseAndAbortHint;
+        return { block: true, message: adoptionMessage };
+      }
+    }
     const hookSid = resolveHookSessionId(input, env);
     const driver = typeof state.driver_session === "string" && state.driver_session.length > 0 ? state.driver_session : null;
     if (hookSid !== null && driver !== null && hookSid !== driver) return { block: false };
@@ -7960,10 +7981,8 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const nudgedState = { ...state, stop_nudges: nextNudges };
     writeState(runDir, nudgedState);
     if (nextNudges === MAX_STOP_NUDGES) appendLog(runDir, logLine(nowIso, { kind: "STALLED" }, nudgedState));
-    const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
     const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
     const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-    const pauseAndAbortHint = ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
     const message = verdictSentence + finalNotice + pauseAndAbortHint;
     return { block: true, message };
   } catch {
@@ -7991,7 +8010,7 @@ function errorExit(message) {
 `, 3);
 }
 var NO_RUN_HERE_MESSAGE = "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
-function resolveWorkflowPath(args) {
+function resolveWorkflowPath(args, defaultPath = ".headsign/workflow.yaml") {
   const flagIdx = args.indexOf("--workflow");
   let flagValue;
   const consumed = /* @__PURE__ */ new Set();
@@ -8006,7 +8025,7 @@ function resolveWorkflowPath(args) {
     errorExit("use either a workflow name or --workflow <path>, not both");
   }
   if (flagValue !== void 0) return flagValue;
-  if (positional === void 0) return ".headsign/workflow.yaml";
+  if (positional === void 0) return defaultPath;
   if (positional.includes("/")) {
     errorExit(`workflow name '${positional}' cannot contain '/'; use --workflow <path> to name an explicit path`);
   }
@@ -8083,6 +8102,7 @@ function cmdStart(args) {
   if (existing && existing.status === "running") {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
+  const startSid = resolveSessionId(process.env);
   const freshState = {
     workflow: wf.name,
     workflow_path: workflowPath,
@@ -8093,10 +8113,8 @@ function cmdStart(args) {
     last_eval: null,
     end_reason: null,
     stop_nudges: 0,
-    // Claim ownership at the moment of start (ADR-0008); null when no identifier is
-    // available (unstamped, same as a pre-multi-session state.json — every session
-    // nudges, same as today).
-    driver_session: resolveSessionId(process.env)
+    driver_session: startSid,
+    driver_source: startSid !== null ? "env" : null
   };
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -8151,8 +8169,8 @@ function cmdNext() {
     errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
   }
   const sid = resolveSessionId(process.env);
-  if (sid !== null && fresh.driver_session !== sid) {
-    fresh = { ...fresh, driver_session: sid };
+  if (sid !== null && fresh.driver_source !== "claim" && fresh.driver_session !== sid) {
+    fresh = { ...fresh, driver_session: sid, driver_source: "env" };
     writeState(cwd, fresh);
   }
   if (fresh.status !== "running") {
@@ -8180,8 +8198,22 @@ function cmdAbort(args) {
   appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "ABORT", reason }, nextState));
   exitAfter(abort(reason), 2);
 }
+function cmdClaim() {
+  const cwd = process.cwd();
+  const current = readState(cwd);
+  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
+  if (current.status !== "running") {
+    errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.`);
+  }
+  const tmpDir = path4.join(cwd, ".headsign", "tmp");
+  fs5.mkdirSync(tmpDir, { recursive: true });
+  fs5.writeFileSync(path4.join(tmpDir, "claim"), "");
+  exitAfter(claim(), 0);
+}
 function cmdValidate(args) {
-  const workflowPath = resolveWorkflowPath(args);
+  const current = readState(process.cwd());
+  const defaultPath = current !== null ? current.workflow_path : ".headsign/workflow.yaml";
+  const workflowPath = resolveWorkflowPath(args, defaultPath);
   const wf = loadWorkflowOrExit(workflowPath);
   exitAfter(validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
@@ -8197,9 +8229,14 @@ function cmdStatus() {
   const attempt = current.attempts[current.phase] ?? 0;
   const lastEval = current.last_eval;
   const lastFailure = lastEval !== null && lastEval.phase === current.phase ? { check: lastEval.check, run: lastEval.run, exitCode: lastEval.exit_code, timeoutSeconds: lastEval.timeout_seconds, outputTail: lastEval.output_tail } : null;
-  const mySid = resolveSessionId(process.env);
-  const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
-  const driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+  let driver;
+  if (current.driver_source === "claim") {
+    driver = "claimed";
+  } else {
+    const mySid = resolveSessionId(process.env);
+    const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
+    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+  }
   exitAfter(
     statusRunning({
       phase: current.phase,
@@ -8227,7 +8264,8 @@ Usage:
   headsign next                                 run the current gate and answer with a verdict
   headsign abort [reason]                       end the run for good (records why)
   headsign status                               read-only view of the current run (never judges)
-  headsign validate [name] [--workflow <path>]  statically check a workflow file
+  headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
+  headsign claim                                claim driver ownership for this session (see docs)
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -8256,6 +8294,8 @@ function main() {
       return cmdStatus();
     case "validate":
       return cmdValidate(rest);
+    case "claim":
+      return cmdClaim();
     case "stop-hook":
       return cmdStopHook();
     default:

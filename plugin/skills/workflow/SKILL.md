@@ -43,18 +43,30 @@ plugin or `npm install` the package. Do not guess at other paths.
    answer can burn a retry or advance a phase nobody asked you to touch.
    Want to know what's happening without touching anything? Run `headsign
    status` — it's read-only, and safe to call at any time.
-2. To begin a workflow: `headsign start`. It prints the first phase's
+2. **If a teammate entrusted you with driving a run, claim it first — don't
+   just start calling `next`.** Inside Claude Code's agent-teams feature,
+   your own session can't reliably tell its own session id apart from the
+   lead's, so `next`'s ordinary auto-stamp can silently mark the *wrong*
+   session as driver. Instead: run `headsign claim`, then end your turn.
+   The Stop hook — which does know the real session id — adopts you as
+   driver on that stop and confirms it in its message. Once that
+   confirmation arrives, drive the run with `headsign next` as usual; do
+   not call `next` before you've seen it. If a different session happens to
+   get adopted by mistake (another session stopped first), run `headsign
+   claim` again from the right session — a fresh claim always wins, and it
+   self-repairs the mis-adoption on that session's next stop.
+3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
-3. **Whenever you are unsure what to do, think a phase's work is finished, or
+4. **Whenever you are unsure what to do, think a phase's work is finished, or
    have just recovered from compaction — run `headsign next` and obey the
    first-line token.** That one habit is the whole protocol.
-4. `RETRY` → the output shows exactly which check failed and its last output.
+5. `RETRY` → the output shows exactly which check failed and its last output.
    Fix that, then run `headsign next` again. `ADVANCE` → follow the printed
    instructions of the new phase. If `ADVANCE <phase>` is followed by a line
    like `--- gate failed: ... → routed to <phase> ---`, the *previous*
    phase's gate rejected the work and routed you here — read that line, it's
    why you're back.
-5. **Never end the run on your own judgment while the answer is anything
+6. **Never end the run on your own judgment while the answer is anything
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to
    the user; that's a legitimate exit, but it's permanent: the run cannot be
@@ -63,7 +75,7 @@ plugin or `npm install` the package. Do not guess at other paths.
    again: the Stop hook passes immediately, and `headsign next` picks the
    run back up later from the same phase. `ESCALATE` means stop working and
    ask the user for direction.
-6. If the current phase's gate reads a verdict file (a review phase), spawn
+7. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then
    *you* write that reported verdict, verbatim, to the verdict file and run
@@ -74,7 +86,7 @@ plugin or `npm install` the package. Do not guess at other paths.
 
 - A phase's printed instruction may tell you to use a specific skill or
   spawn a subagent — do what it says.
-- `headsign start`/`next`/`abort`/`status` operate on the current
+- `headsign start`/`next`/`abort`/`status`/`claim` operate on the current
   directory's `.headsign/` only — run them from the directory that owns the
   workflow (the repo or git-worktree root), not a subdirectory. The Stop
   hook is the exception: it finds the run from any subdirectory up to the

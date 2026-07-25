@@ -34,6 +34,12 @@ changes), and a patch bump means fixes only.
 - `HEADSIGN_OBSERVER`: set on a session that should never be nudged by the
   Stop hook, regardless of driver ownership — the manual opt-out for
   environments where no session identifier resolves.
+- `headsign claim`: arms a one-shot marker so the *next* Stop hook firing
+  that can resolve a session id adopts that session as the run's driver and
+  confirms it in its block message — the reliable way to hand off who
+  drives a run in environments (e.g. Claude Code's agent-teams feature)
+  where a session's own Bash environment can't be trusted to know its own
+  session id. See [ADR-0009](docs/adr/0009-claim-handshake.md).
 
 ### Changed
 
@@ -44,6 +50,16 @@ changes), and a patch bump means fixes only.
   ownership before the exit-note gate, so a bystander's stop can no longer
   consume the shared nudge-cap insurance or a driver's pause note — see
   [ADR-0008](docs/adr/0008-multi-session-ownership.md).
+- `headsign status`'s `driver:` line now shows `claimed` (instead of
+  guessing this-session/another-session) once a run's driver was seated via
+  `headsign claim` — the CLI has no reliable way to make that guess in the
+  same environments `claim` exists to handle, so it reports the fact it
+  does know instead.
+- No-argument `headsign validate` now defaults to the current run's own
+  `workflow_path` (from `.headsign/state.json`, whatever its status)
+  whenever a run exists, falling back to the plain `.headsign/workflow.yaml`
+  default only when there is no run; an explicit name or `--workflow`
+  still always wins.
 
 ## [0.1.0] - 2026-07-25
 

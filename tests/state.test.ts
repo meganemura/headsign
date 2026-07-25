@@ -22,6 +22,7 @@ test("round-trips through write/read", () => {
     end_reason: null,
     stop_nudges: 1,
     driver_session: null,
+    driver_source: null,
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
@@ -46,6 +47,26 @@ test("round-trips a non-null driver_session", () => {
     end_reason: null,
     stop_nudges: 0,
     driver_session: "session-abc",
+    driver_source: "env",
+  };
+  state.writeState(dir, s);
+  assert.deepEqual(state.readState(dir), s);
+});
+
+test("round-trips a driver_source of \"claim\" (ADR-0009's claim handshake)", () => {
+  const dir = tmpdir();
+  const s: state.State = {
+    workflow: "demo",
+    workflow_path: ".headsign/workflow.yaml",
+    status: "running",
+    phase: "plan",
+    attempts: {},
+    total_iterations: 0,
+    last_eval: null,
+    end_reason: null,
+    stop_nudges: 0,
+    driver_session: "session-claimed",
+    driver_source: "claim",
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
@@ -153,6 +174,7 @@ test("atomic write leaves valid JSON and no leftover temp files", () => {
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,
+    driver_source: null,
   };
   state.writeState(dir, s);
   const raw = fs.readFileSync(state.statePath(dir), "utf8");

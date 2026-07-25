@@ -58,6 +58,20 @@ export function abort(reason: string): string {
   return `ABORT ${reason || "(no reason given)"}\nWorkflow aborted. Report to the user.\n`;
 }
 
+// --- claim: the driver-adoption handshake (ADR-0009) ---
+// Deliberately fixed, argument-free text: `claim` itself never judges or varies its
+// output by workflow/phase (ADR-0002's "the only judging command is `next`" still holds —
+// this just arms a marker for the Stop hook to act on).
+export function claim(): string {
+  return (
+    "CLAIM armed\n" +
+    "Now end your turn. The next session to stop seals the claim: the Stop hook\n" +
+    "records that session as this run's driver and confirms it in its message.\n" +
+    "If another session happens to stop first and gets adopted by mistake, run\n" +
+    "`headsign claim` again from the right session — a new claim always wins.\n"
+  );
+}
+
 export function validateOk(name: string, phaseCount: number): string {
   return `OK: workflow '${name}' (${phaseCount} phases)\n`;
 }
@@ -89,7 +103,11 @@ export function statusRunning(o: {
   // last_eval left over from a since-departed phase must never be shown as if it were
   // about now.
   lastFailure?: (Failure & { outputTail: string }) | null;
-  driver: "this session" | "another session" | "unknown";
+  // "claimed" (ADR-0009) is distinct from the other three: it's not a match/mismatch/
+  // unknown judgment against *this* status-invoking session's own id (which the CLI can't
+  // even resolve reliably in a claim scenario — see cmdStatus) but a plain factual report
+  // that the run's driver was set via the claim handshake.
+  driver: "this session" | "another session" | "unknown" | "claimed";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure
@@ -112,7 +130,15 @@ export function statusTerminal(status: "complete" | "escalated" | "aborted", wor
 // produces one — narrowing here would just force an unsafe cast at the one real call site.
 // PENDING has no line format (see logDetail): cli.ts never calls this on the PENDING path
 // (probes aren't transitions), so it's unreachable in practice, not by type.
-export type LogEvent = { kind: "START"; workflow: string } | Outcome | { kind: "PAUSED"; note: string } | { kind: "STALLED" };
+export type LogEvent =
+  | { kind: "START"; workflow: string }
+  | Outcome
+  | { kind: "PAUSED"; note: string }
+  | { kind: "STALLED" }
+  // The claim handshake's adoption event (ADR-0009) — a third hook-boundary exception
+  // alongside PAUSED/STALLED. Deliberately detail-free: the session id that was just
+  // adopted must never be written to the log (see logDetail below).
+  | { kind: "CLAIMED" };
 
 // Pure formatting of one .headsign/log line (state.ts's appendLog/initLog own the I/O).
 // `ts` always originates from cli.ts's local `localIso(new Date())` helper — the one place
@@ -149,6 +175,8 @@ function eventName(event: LogEvent): string {
       return "paused";
     case "STALLED":
       return "stalled";
+    case "CLAIMED":
+      return "claimed";
     case "PENDING":
       // Unreachable: no cli.ts call site ever logs a PENDING outcome. Kept only so this
       // switch stays exhaustive against the full engine.Outcome type.
@@ -173,6 +201,10 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
       return `note="${event.note}"`;
     case "STALLED":
       return "nudges=5";
+    case "CLAIMED":
+      // No detail — the whole point of the claimed event is to record *that* an adoption
+      // happened, never *who* was adopted (that stays in state.json only, per ADR-0009).
+      return "";
     case "COMPLETE":
       // No detail form is specified for `complete` in the spec's enumeration (start /
       // retry / fail-route advance / pass advance / escalate+abort) despite it being

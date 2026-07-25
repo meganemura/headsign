@@ -24,6 +24,7 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,
+    driver_source: null,
     ...overrides,
   };
 }
@@ -361,4 +362,103 @@ test("a blank stdin session_id (whitespace only) is treated as absent, falling b
   state.writeState(dir, runningState({ driver_session: "driver-1" }));
   const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "   " }), NOW, { HEADSIGN_SESSION_ID: "observer-2" });
   assert.deepEqual(decision, { block: false });
+});
+
+// --- adoption gate: the claim handshake (ADR-0009) ---
+
+function writeClaimMarker(dir: string): void {
+  const tmpDir = path.join(dir, ".headsign", "tmp");
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.writeFileSync(path.join(tmpDir, "claim"), "");
+}
+
+function claimMarkerPath(dir: string): string {
+  return path.join(dir, ".headsign", "tmp", "claim");
+}
+
+test("adoption: a claim marker with a stdin session_id adopts — driver_session/driver_source/stop_nudges stamped, marker consumed, one claimed log line, block=true with the adoption message", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build", driver_session: "old-driver", driver_source: "env", stop_nudges: 3 }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "claimer-1" }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.ok(decision.message);
+  assert.match(decision.message, /^Claim confirmed: this session now drives workflow 'demo' \(phase: build\)\./);
+  assert.match(decision.message, /headsign next`/);
+  assert.match(decision.message, /headsign abort/);
+  assert.doesNotMatch(decision.message, /claimer-1/, "the adopted session id must never appear in the hook's own message");
+
+  const after = state.readState(dir);
+  assert.equal(after?.driver_session, "claimer-1");
+  assert.equal(after?.driver_source, "claim");
+  assert.equal(after?.stop_nudges, 0);
+
+  assert.ok(!fs.existsSync(claimMarkerPath(dir)), "the claim marker must be consumed");
+
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ claimed build a=0 i=0$/);
+  assert.doesNotMatch(lines[0], /claimer-1/, "the log line must never carry the adopted session id");
+});
+
+test("adoption: a claim marker with an env HEADSIGN_SESSION_ID (no stdin session_id) also adopts", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: null, driver_source: null }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, { HEADSIGN_SESSION_ID: "claimer-env" });
+  assert.equal(decision.block, true);
+  assert.equal(state.readState(dir)?.driver_session, "claimer-env");
+  assert.equal(state.readState(dir)?.driver_source, "claim");
+});
+
+test("adoption: a claim marker with no session identifier resolvable anywhere leaves the marker in place and falls through to the existing (fail-open) flow", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "old-driver", driver_source: "env", stop_nudges: 0 }));
+  writeClaimMarker(dir);
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.equal(decision.block, true, "falls through to the ordinary nudge flow, still blocking");
+  assert.ok(fs.existsSync(claimMarkerPath(dir)), "an unidentifiable stop must leave the marker for a later, identifiable stop");
+
+  const after = state.readState(dir);
+  assert.equal(after?.driver_session, "old-driver", "no adoption happened — driver must be untouched");
+  assert.equal(after?.driver_source, "env");
+  assert.equal(after?.stop_nudges, 1, "the ordinary loop-guard nudge still applies");
+  assert.equal(readLog(dir).filter((l) => l.includes(" claimed ")).length, 0, "no claimed log line without a resolvable identifier");
+});
+
+test("adoption gate runs BEFORE the owner comparison: a claiming session that mismatches the old driver is adopted, not passed through as a bystander", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "old-driver", driver_source: "env" }));
+  writeClaimMarker(dir);
+
+  // Without the adoption gate running first, this session_id would mismatch driver_session
+  // and the owner check would silently pass it through (block: false, no state write).
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "mismatched-claimer" }), NOW, NO_ENV);
+  assert.equal(decision.block, true, "adopted, not passed through as a mismatched bystander");
+  const after = state.readState(dir);
+  assert.equal(after?.driver_session, "mismatched-claimer");
+  assert.equal(after?.driver_source, "claim");
+});
+
+test("adoption: re-claim re-adopts — a second claim marker overrides a previous (possibly mistaken) adoption", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_session: "old-driver", driver_source: "env" }));
+  writeClaimMarker(dir);
+
+  const first = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "wrong-adoptee" }), NOW, NO_ENV);
+  assert.equal(first.block, true);
+  assert.equal(state.readState(dir)?.driver_session, "wrong-adoptee");
+
+  // The right session re-claims: a fresh marker, a fresh stop.
+  writeClaimMarker(dir);
+  const second = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "right-adoptee" }), NOW, NO_ENV);
+  assert.equal(second.block, true);
+  const after = state.readState(dir);
+  assert.equal(after?.driver_session, "right-adoptee", "the new claim always wins");
+  assert.equal(after?.driver_source, "claim");
+
+  assert.equal(readLog(dir).filter((l) => l.includes(" claimed ")).length, 2, "each successful adoption logs its own claimed line");
 });

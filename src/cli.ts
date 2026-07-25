@@ -45,9 +45,11 @@ const NO_RUN_HERE_MESSAGE =
 // Resolves the workflow path for `start`/`validate` per the precedence:
 // --workflow <path> wins if given; else a bare positional <name> resolves to
 // .headsign/<name>.yaml (appending .yaml unless the name already ends in
-// .yaml/.yml); else the default .headsign/workflow.yaml. `abort`'s args (a
-// free-text reason) never go through this.
-function resolveWorkflowPath(args: string[]): string {
+// .yaml/.yml); else `defaultPath` (plain .headsign/workflow.yaml for `start`
+// and no-run `validate`; a run's own recorded workflow_path for `validate`
+// when a run exists — see cmdValidate). `abort`'s args (a free-text reason)
+// never go through this.
+function resolveWorkflowPath(args: string[], defaultPath = ".headsign/workflow.yaml"): string {
   const flagIdx = args.indexOf("--workflow");
   let flagValue: string | undefined;
   const consumed = new Set<number>();
@@ -63,7 +65,7 @@ function resolveWorkflowPath(args: string[]): string {
     errorExit("use either a workflow name or --workflow <path>, not both");
   }
   if (flagValue !== undefined) return flagValue;
-  if (positional === undefined) return ".headsign/workflow.yaml";
+  if (positional === undefined) return defaultPath;
   if (positional.includes("/")) {
     errorExit(`workflow name '${positional}' cannot contain '/'; use --workflow <path> to name an explicit path`);
   }
@@ -162,13 +164,17 @@ function cmdStart(args: string[]): void {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
 
+  // Claim ownership at the moment of start (ADR-0008); null when no identifier is
+  // available (unstamped, same as a pre-multi-session state.json — every session
+  // nudges, same as today). driver_source mirrors that: "env" only when an id was
+  // actually available to stamp, otherwise null — a new run always starts with a clean
+  // (non-sticky) driver, never inheriting a previous run's "claim" stickiness.
+  const startSid = session.resolveSessionId(process.env);
   const freshState: state.State = {
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_eval: null, end_reason: null, stop_nudges: 0,
-    // Claim ownership at the moment of start (ADR-0008); null when no identifier is
-    // available (unstamped, same as a pre-multi-session state.json — every session
-    // nudges, same as today).
-    driver_session: session.resolveSessionId(process.env),
+    driver_session: startSid,
+    driver_source: startSid !== null ? "env" : null,
   };
   state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -260,9 +266,13 @@ function cmdNext(): void {
   // resolved no id (env stripped mid-run) must never orphan an existing driver — and only
   // a *changed* value is written, so the common case (same driver calling next
   // repeatedly) costs nothing extra, preserving PENDING's zero-write guarantee below.
+  // driver_source !== "claim" is the stickiness rule from ADR-0009's claim handshake: once
+  // the Stop hook has adopted a driver via `headsign claim`, this env-derived auto-stamp
+  // must never silently overwrite it — only a *new* claim (or a fresh `start`) may. Any
+  // other driver_source (including missing/corrupt) is plain overwritable, same as today.
   const sid = session.resolveSessionId(process.env);
-  if (sid !== null && fresh.driver_session !== sid) {
-    fresh = { ...fresh, driver_session: sid };
+  if (sid !== null && fresh.driver_source !== "claim" && fresh.driver_session !== sid) {
+    fresh = { ...fresh, driver_session: sid, driver_source: "env" };
     state.writeState(cwd, fresh);
   }
 
@@ -296,8 +306,36 @@ function cmdAbort(args: string[]): void {
   exitAfter(render.abort(reason), 2);
 }
 
+// Arms the driver-adoption marker (ADR-0009's claim handshake) — cwd-only, like next/
+// abort/status. Deliberately writes nothing to state.json: the CLI process itself can
+// never learn the session-granular identifier (only the Stop hook's stdin can), so
+// `claim` can only ask the hook to do the actual adoption on this session's next stop.
+function cmdClaim(): void {
+  const cwd = process.cwd();
+  const current = state.readState(cwd);
+  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
+  if (current.status !== "running") {
+    errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.`);
+  }
+
+  const tmpDir = path.join(cwd, ".headsign", "tmp");
+  // A re-run (e.g. after a mistaken adoption) must harmlessly re-arm rather than fail: an
+  // empty file's content is never read, only its existence — mkdir+write is idempotent.
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.writeFileSync(path.join(tmpDir, "claim"), "");
+  exitAfter(render.claim(), 0);
+}
+
 function cmdValidate(args: string[]): void {
-  const workflowPath = resolveWorkflowPath(args);
+  // No-args default (ADR-0009): with a run present here — of any status, not just
+  // running — validate the workflow it actually recorded (current.workflow_path), so a
+  // named run (`headsign start myflow`) doesn't ENOENT against the plain
+  // .headsign/workflow.yaml default. An explicit name/--workflow always overrides this
+  // (resolveWorkflowPath's own precedence, unchanged); only the no-run-here fallback is
+  // still the plain default.
+  const current = state.readState(process.cwd());
+  const defaultPath = current !== null ? current.workflow_path : ".headsign/workflow.yaml";
+  const workflowPath = resolveWorkflowPath(args, defaultPath);
   const wf = loadWorkflowOrExit(workflowPath);
   exitAfter(render.validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
@@ -329,10 +367,20 @@ function cmdStatus(): void {
   // Never print the session id itself (nothing here is material for impersonation) —
   // only whether it matches the recorded driver, and legacy-tolerant the same way the
   // Stop hook's own owner check is (non-string driver_session -> null).
-  const mySid = session.resolveSessionId(process.env);
-  const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
-  const driver: "this session" | "another session" | "unknown" =
-    mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+  //
+  // driver_source === "claim" (ADR-0009) skips the match/mismatch judgment entirely: the
+  // whole reason claim exists is that the CLI can never resolve its own session-granular
+  // id (only the Stop hook's stdin can) — a teammate whose Bash env shows the lead's id
+  // would otherwise always misjudge "this session"/"another session" here. Reporting the
+  // plain fact that adoption happened is honest about what the CLI can and can't know.
+  let driver: "this session" | "another session" | "unknown" | "claimed";
+  if (current.driver_source === "claim") {
+    driver = "claimed";
+  } else {
+    const mySid = session.resolveSessionId(process.env);
+    const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
+    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session" : "another session";
+  }
 
   exitAfter(
     render.statusRunning({
@@ -356,7 +404,7 @@ function cmdStopHook(): void {
 }
 
 // Human convenience only — outside the agent-facing contract (ADR-0002). The hidden
-// stop-hook subcommand is deliberately omitted; these five commands are the whole surface.
+// stop-hook subcommand is deliberately omitted; these six commands are the whole surface.
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
@@ -364,7 +412,8 @@ Usage:
   headsign next                                 run the current gate and answer with a verdict
   headsign abort [reason]                       end the run for good (records why)
   headsign status                               read-only view of the current run (never judges)
-  headsign validate [name] [--workflow <path>]  statically check a workflow file
+  headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
+  headsign claim                                claim driver ownership for this session (see docs)
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -389,6 +438,7 @@ function main(): void {
     case "abort": return cmdAbort(rest);
     case "status": return cmdStatus();
     case "validate": return cmdValidate(rest);
+    case "claim": return cmdClaim();
     case "stop-hook": return cmdStopHook();
     default: errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }

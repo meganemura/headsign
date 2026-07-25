@@ -603,6 +603,93 @@ test("validate <name> validates .headsign/<name>.yaml", () => {
   assert.match(result.stdout, /^OK: workflow 'demo'/);
 });
 
+// --- validate: no-args default resolution (ADR-0009) ---
+
+test("validate with no args and no run here still falls back to the plain .headsign/workflow.yaml default", () => {
+  const dir = tmpdir();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const result = run(["validate"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^OK: workflow 'demo'/);
+});
+
+test("validate with no args and a running run present validates the run's own workflow_path, not the plain default", () => {
+  const dir = initRepo();
+  // Only feature.yaml exists — no plain .headsign/workflow.yaml at all — so this only
+  // passes if validate actually reads state.workflow_path instead of the plain default.
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  run(["start", "feature"], { cwd: dir });
+  assert.equal(readState(dir).workflow_path, ".headsign/feature.yaml");
+
+  const result = run(["validate"], { cwd: dir });
+  assert.equal(result.status, 0, `expected validate to resolve state's workflow_path; stderr: ${result.stderr}`);
+  assert.match(result.stdout, /^OK: workflow 'demo'/);
+});
+
+test("validate with no args and a terminal (aborted) run present still validates the run's own workflow_path — status is not a factor", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  run(["start", "feature"], { cwd: dir });
+  run(["abort", "done"], { cwd: dir });
+  assert.equal(readState(dir).status, "aborted");
+
+  const result = run(["validate"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^OK: workflow 'demo'/);
+});
+
+test("validate: an explicit name always wins over a run's own workflow_path", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  writeNamedWorkflow(
+    dir,
+    "other.yaml",
+    `
+version: 1
+name: other-demo
+entry: only
+phases:
+  only:
+    description: "Only phase."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start", "feature"], { cwd: dir });
+
+  const result = run(["validate", "other"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^OK: workflow 'other-demo'/);
+});
+
+test("validate: an explicit --workflow path always wins over a run's own workflow_path", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(dir, "feature.yaml", TWO_PHASE_WORKFLOW);
+  writeNamedWorkflow(
+    dir,
+    "other.yaml",
+    `
+version: 1
+name: other-demo
+entry: only
+phases:
+  only:
+    description: "Only phase."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start", "feature"], { cwd: dir });
+
+  const result = run(["validate", "--workflow", ".headsign/other.yaml"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^OK: workflow 'other-demo'/);
+});
+
 // --- clear: phase-entry artifact reset ---
 
 test("clear-on-ADVANCE: entering a phase deletes its declared artifacts, so a stale verdict left from a previous pass can't wrongly pass the gate", () => {
@@ -1538,6 +1625,157 @@ test("stop-hook: a missing identifier on either side falls back to the legacy nu
   assert.equal(readState(dir2).stop_nudges, 1);
 });
 
+// --- claim: the driver-adoption handshake (ADR-0009) ---
+
+function claimMarkerPath(dir: string): string {
+  return path.join(dir, ".headsign", "tmp", "claim");
+}
+
+test("claim: no run in progress here -> exit 3, actionable cwd-only message", () => {
+  const result = run(["claim"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /does not search parent directories/);
+  assert.match(result.stderr, /headsign start/);
+});
+
+test("claim: a terminal (aborted) run -> exit 3, names the actual status, nothing to claim", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  run(["abort", "done"], { cwd: dir, env: NO_SESSION_ENV });
+
+  const result = run(["claim"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR:/);
+  assert.match(result.stderr, /already aborted/);
+  assert.match(result.stderr, /nothing to claim/);
+});
+
+test("claim: a running run -> creates .headsign/tmp/claim, exit 0, and the output tells the caller to end its turn; state.json is untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+
+  const result = run(["claim"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^CLAIM armed\n/);
+  assert.match(result.stdout, /Now end your turn/);
+  assert.equal(fs.existsSync(claimMarkerPath(dir)), true);
+
+  const after = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  assert.deepEqual(after, before, "claim must write nothing to state.json — adoption is the Stop hook's job");
+});
+
+test("claim: a re-run (e.g. after a mistaken adoption) harmlessly re-arms the marker rather than erroring", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+  const first = run(["claim"], { cwd: dir });
+  assert.equal(first.status, 0);
+  const second = run(["claim"], { cwd: dir });
+  assert.equal(second.status, 0);
+  assert.equal(fs.existsSync(claimMarkerPath(dir)), true);
+});
+
+test("claim + stop-hook end-to-end: the next stop (any session) seals the claim, blocking with the adoption message", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("original-driver") });
+  run(["claim"], { cwd: dir });
+
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "claimer-1" }), env: NO_SESSION_ENV });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /^Claim confirmed: this session now drives workflow 'demo' \(phase: build\)\./);
+  assert.match(result.stderr, /headsign next`/);
+  assert.match(result.stderr, /headsign abort/);
+
+  const after = readState(dir);
+  assert.equal(after.driver_session, "claimer-1");
+  assert.equal(after.driver_source, "claim");
+  assert.equal(after.stop_nudges, 0);
+  assert.equal(fs.existsSync(claimMarkerPath(dir)), false);
+
+  const lines = readLog(dir);
+  assert.equal(lines.filter((l) => l.includes(" claimed ")).length, 1);
+});
+
+test("stickiness: once adopted via claim, next's ordinary env-derived auto-stamp does not overwrite the driver", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("original-driver") });
+  run(["claim"], { cwd: dir });
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "claimer-1" }), env: NO_SESSION_ENV });
+  assert.equal(readState(dir).driver_session, "claimer-1");
+  assert.equal(readState(dir).driver_source, "claim");
+
+  // A completely different session id calls `next` — under the old (pre-claim) stamping
+  // rule this would silently overwrite the driver; claim's stickiness must prevent that.
+  run(["next"], { cwd: dir, env: sessionEnv("some-other-session") });
+  const after = readState(dir);
+  assert.equal(after.driver_session, "claimer-1", "the claimed driver must survive an unrelated session's next");
+  assert.equal(after.driver_source, "claim");
+});
+
+test("stickiness only applies to driver_source \"claim\": an ordinary env-stamped driver is still overwritten by the next positive identifier", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("driver-a") });
+  assert.equal(readState(dir).driver_source, "env");
+
+  run(["next"], { cwd: dir, env: sessionEnv("driver-b") });
+  const after = readState(dir);
+  assert.equal(after.driver_session, "driver-b", "a plain env-sourced driver is not sticky");
+  assert.equal(after.driver_source, "env");
+});
+
+test("re-claim re-adopts: a second claim from the right session overrides a previous mistaken adoption", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_SESSION_ENV });
+
+  run(["claim"], { cwd: dir });
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "wrong-session" }), env: NO_SESSION_ENV });
+  assert.equal(readState(dir).driver_session, "wrong-session");
+
+  // The right session notices the mistake and re-claims.
+  run(["claim"], { cwd: dir });
+  const result = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "right-session" }), env: NO_SESSION_ENV });
+  assert.equal(result.status, 2);
+  const after = readState(dir);
+  assert.equal(after.driver_session, "right-session", "a new claim always wins");
+  assert.equal(after.driver_source, "claim");
+});
+
+test("status: driver_source \"claim\" reports driver: claimed, not this/another session", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("original-driver") });
+  run(["claim"], { cwd: dir });
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ session_id: "claimer-1" }), env: NO_SESSION_ENV });
+
+  // Even when the status-invoking session's own env id happens to equal the claimed
+  // driver, "claimed" is reported — the CLI must not fall back to this/another judgment.
+  const result = run(["status"], { cwd: dir, env: sessionEnv("claimer-1") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /driver: claimed\n$/);
+  assert.doesNotMatch(result.stdout, /claimer-1/);
+});
+
+test("--help lists the claim command and its validate line describes the new default (current run's workflow, then .headsign/workflow.yaml)", () => {
+  const result = run(["--help"], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /headsign claim/);
+  assert.match(result.stdout, /defaults to the current run's workflow, then \.headsign\/workflow\.yaml/);
+});
+
+test("src/cli.ts no longer describes the command surface as \"five commands\" now that claim makes six", () => {
+  const src = fs.readFileSync(CLI, "utf8");
+  assert.doesNotMatch(src, /five commands/);
+  assert.match(src, /six commands/);
+});
+
 // --- status: read-only view of the current run (ADR-0002/0008) ---
 
 test("status: no run in progress here -> exit 3, actionable message", () => {
@@ -1760,7 +1998,7 @@ phases:
   assert.equal(fs.existsSync(gateMarker), false, "status must never execute the gate");
 });
 
-// --- help: status is documented as the fifth command ---
+// --- help: status is documented among the command surface ---
 
 test("--help lists the status command and its RUNNING/COMPLETE/ESCALATED/ABORTED vocabulary", () => {
   const result = run(["--help"], { cwd: tmpdir() });

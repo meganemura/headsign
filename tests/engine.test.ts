@@ -25,6 +25,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,
+    driver_source: null,
     ...overrides,
   };
 }
