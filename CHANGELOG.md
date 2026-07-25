@@ -73,9 +73,12 @@ changes), and a patch bump means fixes only.
   environment-based match establishes and no more: it reads `this session,
   or an agent it delegated to` where it used to read `this session`. A
   delegated agent resolves the identifier of the session that spawned it,
-  so the comparison cannot separate the two; the reliable check of who is
-  driving remains the stop-boundary hook, which nudges only the recorded
-  driver. See [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
+  so the comparison cannot separate the two. A delegated agent that wants
+  certainty can end a turn instead: `SubagentStop` holds an agent only on a
+  positive match, so being pushed back to `headsign next` proves ownership
+  (ending quietly proves nothing — the nudge cap, a pause note, or
+  `HEADSIGN_OBSERVER` all end turns quietly too). See
+  [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 - No-argument `headsign validate` now defaults to the current run's own
   `workflow_path` (from `.headsign/state.json`, whatever its status)
   whenever a run exists, falling back to the plain `.headsign/workflow.yaml`

@@ -513,14 +513,26 @@ The line states the fact it has, and nothing more.
 That first reading is wordy on purpose. A delegated agent shares its
 spawning session's identifier, so a match narrows the driver down to *that
 session or any agent under it* and stops there — it cannot tell one of them
-from another. **The only reliable way to learn whether *you* are the driver
-is to end your turn and see whether the stop-boundary hook pushes you back
-to `headsign next`.** That hook blocks the recorded driver and lets every
-other stop through untouched, so being nudged is itself the answer: if you
-are held, this run is yours to drive; if your turns end quietly while the
-run is `RUNNING`, it isn't. `status` compares identifiers the environment
-hands it, and no such identifier separates a session from what it
-delegated to — that gap is exactly why `headsign claim` exists.
+from another. `status` compares identifiers the environment hands it, and no
+such identifier separates a session from what it delegated to — that gap is
+exactly why `headsign claim` exists.
+
+**If you are a delegated agent, end your turn and watch what happens: being
+pushed back to `headsign next` proves this run is yours to drive.**
+`SubagentStop` holds an agent only on a positive match with the stamped
+driver, so a delegated agent that gets held is the driver, full stop. The
+implication runs one way only. Ending quietly does *not* prove the reverse:
+the nudge cap may have been reached (five held turns with no evaluation
+between them, after which the hook falls open and logs `stalled`), a pause
+note may have been consumed, or `HEADSIGN_OBSERVER` may be set. And each
+check costs one nudge from that cap, so it is a probe to spend
+deliberately, not a habit.
+
+For a *session*, the same test is weaker. `Stop` only passes a stop it can
+positively rule out — both identifiers resolved and disagreeing — so on a
+run where no identifier was ever stamped, every session in the directory is
+nudged, driver or not. Being held there says the run is running, not that
+you own it.
 
 Exit code follows a deliberately different contract from `next`'s: `status`
 exits 0 whenever `.headsign/state.json` could be read at all — an

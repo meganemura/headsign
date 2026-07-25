@@ -311,13 +311,25 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   is unchanged, including its empty detail field (ADR-0004). What the
   hidden `driver_session` value *is* changed; what any artifact looks like
   did not.
-- **The reliable test of "am I this run's driver" is the nudge itself.**
-  Both stop-boundary evaluations block only the recorded driver and pass
-  every other stop through untouched (Decisions 1 and 3), so a turn end
-  that gets pushed back to `headsign next` is first-hand, positive proof of
-  ownership — delivered by the one party that can tell the actors apart,
-  at the one moment it can. No command can offer the equivalent, because
-  facts 2–4 are about what the CLI is able to read at all.
+- **For a delegated agent, the nudge itself is the reliable test of "am I
+  this run's driver".** `SubagentStop` holds an agent only on a positive
+  match with the stamped driver (Decision 3), so a turn end pushed back to
+  `headsign next` is first-hand proof of ownership — delivered by the one
+  party that can tell the actors apart, at the one moment it can. No
+  command can offer the equivalent, because facts 2–4 are about what the
+  CLI is able to read at all.
+
+  The test is one-directional, and does not extend to `Stop`. A quiet turn
+  end proves nothing: the nudge cap may have tripped, a pause note may have
+  been consumed, or `HEADSIGN_OBSERVER` may be set — and a delegated agent
+  that never claimed is passed by `driver_source !== "claim"` before its
+  identity is ever considered. `Stop`, meanwhile, passes only a stop it can
+  positively rule out, so on a run with no stamped identifier it nudges
+  every session in the directory (Decision 3's asymmetry, and ADR-0008's
+  fail-open rule): being held there means the run is running, not that the
+  holder owns it. Documentation that offers this test must carry the
+  delegated-agent scope with it; stated bare, it is the same kind of
+  overclaim as the `status` line this ADR's follow-up corrected.
 - `headsign status`'s `driver:` line inherits that limit and is worded to
   admit it. While `driver_source` is `"env"`, the line is a comparison of
   environment-resolved session identifiers, and a delegated agent resolves
