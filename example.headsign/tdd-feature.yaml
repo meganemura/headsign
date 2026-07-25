@@ -1,0 +1,131 @@
+# tdd-feature.yaml
+#
+# Test-first feature development: spec -> red -> green -> refactor -> review.
+# The `run:` commands below assume Node/TS with vitest and eslint — swap them
+# for your project's actual tooling (jest, npm test, ruff, go test, ...).
+# The shapes (what each gate checks, and why) are the reusable part.
+version: 1
+name: tdd-feature
+entry: spec
+
+phases:
+  # 1. Nail down what "done" means before any code exists. A vague ticket
+  # produces a vague red/green cycle, so this phase gates on a written spec
+  # with explicit acceptance criteria rather than trusting a description.
+  spec:
+    description: >
+      Write the feature spec to docs/spec.md: problem statement, scope, and
+      an "## Acceptance" section listing concrete, testable criteria. Do not
+      write any test or implementation code in this phase.
+    gate:
+      checks:
+        - name: spec exists
+          run: "test -s docs/spec.md"
+        - name: acceptance criteria present
+          run: "grep -q '## Acceptance' docs/spec.md"
+    on_pass: red
+    max_attempts: 3
+    # A vague or missing spec should bounce back to the agent, not escalate
+    # to a human after only a few tries at writing a paragraph.
+
+  # 2. TDD's first discipline: the test must exist AND fail before any
+  # production code is written. Checking only "does the suite pass" can't
+  # distinguish a red test from a trivial or accidentally-already-passing
+  # one, so this phase asserts failure explicitly instead of assuming it.
+  red:
+    description: >
+      Pick one acceptance criterion from docs/spec.md and write a single
+      failing test for it. Do not write the implementation yet — the test
+      must fail for the right reason (missing behavior), not a typo or
+      import error. Run the test yourself to sanity-check the failure
+      before calling `headsign next`.
+    gate:
+      checks:
+        # Existence check first: if this fails, no test was added at all,
+        # which is a different problem from "the test doesn't fail" and
+        # deserves a different message back to the agent.
+        - name: new test file added
+          run: "git status --porcelain -- '*.test.ts' '*.spec.ts' | grep -q ."
+        # `!` inverts the exit code, so this check PASSES only when the
+        # test run FAILS. A green run here means the test asserts nothing
+        # meaningful or the feature already exists — both are bugs in the
+        # red phase, not grounds to advance.
+        - name: new test fails (red)
+          run: >-
+            ! npx vitest run --reporter=basic
+            $(git status --porcelain -- '*.test.ts' '*.spec.ts' | awk '{print $2}')
+          timeout: 120
+    on_pass: green
+    max_attempts: 3
+
+  # 3. Make it pass — the whole suite, not just the new test, so this phase
+  # also catches regressions the new code introduces elsewhere.
+  green:
+    description: >
+      Write the minimum implementation to make the failing test, and the
+      rest of the suite, pass. Resist adding anything the current
+      acceptance criterion doesn't require — that is refactor's job, not
+      this phase's.
+    gate:
+      checks:
+        - name: full suite passes
+          run: "npm test"
+          timeout: 300
+    on_pass: refactor
+    max_attempts: 5
+    # Implementation legitimately takes more tries than writing a spec or a
+    # single test, so this phase gets the most attempts before escalating.
+
+  # 4. Clean up with the safety net already in place. Gating on lint here,
+  # not earlier, keeps the red/green cycle focused purely on behavior; style
+  # is a separate, cheaper concern layered on once the suite is green.
+  refactor:
+    description: >
+      Improve naming, remove duplication, and tidy structure without
+      changing behavior. Do not add new test cases here — untested behavior
+      you notice belongs in a fresh red phase, not a refactor.
+    gate:
+      checks:
+        - name: suite still green
+          run: "npm test"
+          timeout: 300
+        - name: lint clean
+          run: "npx eslint ."
+          timeout: 120
+    on_pass: review
+    max_attempts: 3
+
+  # 5. Soft gate: "is this actually good" isn't something shell can judge,
+  # so a read-only reviewer subagent forms the verdict and this phase's gate
+  # only checks that the verdict says APPROVED. `clear:` deletes any stale
+  # verdict on entry so a leftover APPROVED from an earlier pass can't wave
+  # through unreviewed work; `ready:` lets the agent probe status without
+  # burning an attempt while the reviewer is still working (see README's
+  # "Async review").
+  review:
+    description: >
+      Spawn a read-only reviewer subagent to check the diff against
+      docs/spec.md's acceptance criteria and general code quality. Once it
+      reports, write APPROVED or REJECTED (with reasons) to
+      .headsign/tmp/verdict yourself.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - name: review approved
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: $end
+    on_fail: green
+    # A rejection almost always means the implementation needs more work,
+    # not a fresh red test, so this routes back to green rather than spec
+    # or red.
+    max_attempts: 3
+    # Three rejection rounds without landing APPROVED is a signal this needs
+    # a human, not a fourth automatic bounce (on_exhausted defaults to
+    # escalate).
+
+limits:
+  # Backstop against a bounce loop (e.g. green <-> review) burning turns
+  # forever even though every individual phase is already under its own
+  # max_attempts.
+  max_total_iterations: 40

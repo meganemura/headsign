@@ -1,0 +1,140 @@
+# release.yaml — a phase gate for cutting a headsign release.
+#
+# Turns the manual checklist in docs/maintenance.md into machine-checked gates:
+# a phase advances only when its shell checks exit 0, so "did we bump the plugin
+# manifest / write the changelog / tag the right commit" stops being something a
+# human has to eyeball. Every `run:` is /bin/sh (POSIX).
+#
+# The version-source and build-output checks are wired for THIS repo (a Claude
+# Code plugin that commits its bundle). Two SWAP comments mark the lines a
+# different Node package would adapt.
+version: 1
+name: release
+entry: prepare
+
+phases:
+  # ── prepare ──────────────────────────────────────────────────────────────
+  # The release commit (version bump + changelog) is assembled by hand. These
+  # checks refuse to advance until that commit is internally consistent AND
+  # actually committed: a dirty tree here means the bump/changelog aren't yet in
+  # the commit that will be tagged.
+  prepare:
+    description: >
+      Prepare the release commit. Bump `version` in package.json and — for this
+      plugin repo — in plugin/.claude-plugin/plugin.json to the SAME value; add
+      the matching CHANGELOG.md entry (Keep a Changelog `## [X.Y.Z]` heading);
+      then commit everything with message `Release vX.Y.Z`. Do not tag yet — the
+      tag is created in the ship phase.
+    gate:
+      checks:
+        # Both version sources must agree. CI enforces this equality too, so
+        # catching it here means we never build a release commit CI will reject.
+        # Compare as strings via node rather than shell-parsing JSON.
+        # SWAP: a non-plugin package compares its own second source, or drops
+        # this check if package.json is the only source of truth.
+        - name: version sources agree (package.json == plugin.json)
+          run: >
+            node -e "const a=require('./package.json').version,
+            b=require('./plugin/.claude-plugin/plugin.json').version;
+            if(a!==b){console.error('version mismatch: package.json '+a+' vs plugin.json '+b);process.exit(1)}"
+        # The changelog must carry a heading for the version being released, so
+        # we never tag a release with no user-facing notes. `grep -F` keeps the
+        # version's dots and the brackets literal; the heading form is Keep a
+        # Changelog's `## [X.Y.Z]`.
+        # SWAP: if your changelog headings omit the brackets, drop the `[` `]`.
+        - name: CHANGELOG has an entry for this version
+          run: 'grep -qF "## [$(node -p "require(''./package.json'').version")]" CHANGELOG.md'
+        # A clean tree proves the bump and changelog live in the commit that
+        # will be tagged, not in an unstaged edit. Two probes: unstaged, then
+        # staged-but-uncommitted.
+        - name: working tree is clean
+          run: "git diff --quiet && git diff --cached --quiet"
+    on_pass: verify
+    on_fail: retry
+    max_attempts: 5
+    on_exhausted: escalate
+
+  # ── verify ───────────────────────────────────────────────────────────────
+  # The mechanical "is it green" gate — the same things CI runs — done before we
+  # ask a human to sign off, so the go/no-go is a judgment call, not a discovery
+  # that the build is broken.
+  verify:
+    description: >
+      Run the full verification suite locally and fix anything red. This mirrors
+      CI: tests, a clean build, and — for repos that commit their build output —
+      proof that the committed bundle matches source. If the build changed the
+      committed bundle, commit the rebuilt bundle before retrying.
+    gate:
+      checks:
+        # SWAP: replace with your project's test command (pytest, go test ./...).
+        - name: tests pass
+          run: "npm test"
+          timeout: 600
+        # SWAP: replace with your build command, or drop if there is no build.
+        - name: build succeeds
+          run: "npm run build"
+          timeout: 600
+        # Guards the "merging to main ships the plugin" trap: the committed
+        # bundle everyone's hook executes must be exactly what src builds to.
+        # Runs after `build` above, so a stale bundle surfaces here as a diff.
+        # SWAP: point at your committed build dir, or drop this check entirely if
+        # you do not commit build output.
+        - name: committed build output matches source
+          run: "git diff --quiet -- plugin/dist"
+    on_pass: approve
+    on_fail: retry
+    max_attempts: 5
+    on_exhausted: escalate
+
+  # ── approve ──────────────────────────────────────────────────────────────
+  # The human go/no-go. This is ADR-0003's "human gate": the gate reads a
+  # decision file a PERSON writes — never the agent. `clear:` deletes any
+  # decision left over from a previous release so a stale GO can't wave this one
+  # through; `ready:` holds the phase at PENDING (no attempt burned) until the
+  # human has actually decided.
+  approve:
+    description: >
+      ASK a human maintainer for an explicit go/no-go on this release, then WAIT.
+      The human writes the decision to .headsign/tmp/go-decision — exactly `GO`
+      or `NO-GO` on its own line. You must NEVER write this file yourself:
+      grading your own release defeats the entire purpose of the gate. After you
+      have asked, run `headsign next` again — it stays PENDING until the file
+      exists.
+    clear: [.headsign/tmp/go-decision]
+    ready: "test -f .headsign/tmp/go-decision"
+    gate:
+      checks:
+        # -x = whole-line match, so a `NO-GO` line does NOT satisfy `GO`.
+        - name: human wrote GO
+          run: "grep -qx GO .headsign/tmp/go-decision"
+    on_pass: ship
+    # A NO-GO (or any non-GO decision) hands the call back to the human rather
+    # than looping the agent. No max_attempts here — pairing it with escalate is
+    # invalid: the first failure ends the run before attempts could accrue.
+    on_fail: escalate
+
+  # ── ship ─────────────────────────────────────────────────────────────────
+  # The release is out only once the tag exists AT the commit we verified.
+  ship:
+    description: >
+      Ship it: tag the release commit (`git tag vX.Y.Z`), `git push --tags`,
+      create the GitHub Release from the CHANGELOG section, and `npm publish`
+      from the CI-green checkout (docs/maintenance.md has the full order and the
+      `npm pack --dry-run` sanity check). The gate below anchors only on the tag
+      existing at HEAD; the rest is procedure the description choreographs.
+    gate:
+      checks:
+        # A tag named v<version> must point at the exact commit we verified — not
+        # an older commit, not a floating tag. -x pins the whole tag name so
+        # `v0.1.0` is not matched by `v0.1.0-rc1`.
+        - name: tag v<version> points at HEAD
+          run: 'git tag --points-at HEAD | grep -qx "v$(node -p "require(''./package.json'').version")"'
+    on_pass: $end
+    on_fail: retry
+    max_attempts: 3
+    on_exhausted: escalate
+
+# Global runaway backstop: even with per-phase caps, stop a loop that keeps
+# bouncing between phases.
+limits:
+  max_total_iterations: 30

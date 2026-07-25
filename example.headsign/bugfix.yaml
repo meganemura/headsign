@@ -1,0 +1,124 @@
+# bugfix.yaml
+#
+# Bug-fix discipline: prove the bug before touching it, prove the fix
+# actually fixed it (and broke nothing else), then leave a root-cause
+# trail behind. Three phases, straight line, no loop-back edges — see the
+# comment on `fix.on_fail` below for why a loop-back to `reproduce` isn't
+# wired in even though the schema allows it.
+#
+# Convention this workflow relies on (own it, it's not headsign's):
+#   .headsign/tmp/repro-path   — one line, the relative path (from repo
+#                                 root) to the regression test file that
+#                                 reproduces the bug. Written by the agent
+#                                 during `reproduce`, read by both
+#                                 `reproduce`'s and `fix`'s gates.
+#   .headsign/tmp/postmortem.md — the root-cause note written during
+#                                 `harden`. `.headsign/tmp/` is wiped on
+#                                 every `headsign start` (see README's
+#                                 "backstop" section), so it does not
+#                                 survive past this run — the `harden`
+#                                 phase description tells the agent to
+#                                 fold it into the commit message / PR
+#                                 body before finishing.
+
+version: 1
+name: bugfix
+entry: reproduce
+
+phases:
+  reproduce:
+    description: >
+      Reproduce the bug as a failing automated test BEFORE changing any
+      production code. Write a regression test that fails for the same
+      reason the bug report describes (not for an unrelated reason like a
+      typo or a missing fixture) — a repro that fails for the wrong reason
+      proves nothing once the real bug is fixed. Then record its path:
+      write the test file's path, relative to the repo root, as a single
+      line to `.headsign/tmp/repro-path` (no extra whitespace, no other
+      content). Do not attempt a fix in this phase.
+    gate:
+      checks:
+        - name: repro path recorded
+          run: "test -s .headsign/tmp/repro-path"
+        - name: repro test file exists
+          run: 'test -f "$(cat .headsign/tmp/repro-path)"'
+        - name: repro test currently fails
+          # swap-me: single-test invocation for your stack, e.g.
+          #   pytest "$(cat .headsign/tmp/repro-path)"
+          #   go test -run "$(basename "$(cat .headsign/tmp/repro-path)")" ./...
+          #   bundle exec rspec "$(cat .headsign/tmp/repro-path)"
+          # `!` inverts the exit code: this check PASSES exactly when the
+          # test FAILS, which is what proves the bug is reproduced. Note
+          # this can't distinguish "fails on the real bug" from "fails to
+          # even load" (e.g. a syntax error) — exit codes are the only
+          # signal headsign judges by (see docs/adr/0003), so writing a
+          # repro that fails for the right reason is on the agent, same as
+          # the instruction above asks.
+          run: '! npx vitest run "$(cat .headsign/tmp/repro-path)"'
+          timeout: 120
+    on_pass: fix
+    on_fail: retry
+    max_attempts: 5
+    on_exhausted: escalate
+
+  fix:
+    description: >
+      Make the regression test from `reproduce` pass by fixing the actual
+      bug — not by editing the repro test's assertions, which would make
+      the gate pass without fixing anything. Keep the rest of the suite
+      green too; a fix that breaks something else isn't done.
+    gate:
+      checks:
+        - name: repro test now passes
+          # Same single-test invocation as the reproduce phase, without
+          # the `!` — same swap-me note applies.
+          run: 'npx vitest run "$(cat .headsign/tmp/repro-path)"'
+          timeout: 120
+        - name: full suite passes
+          # swap-me: your project's full test command, e.g.
+          #   pytest / go test ./... / bundle exec rspec
+          run: "npm test"
+          timeout: 600
+    on_pass: harden
+    # Deliberately `retry`, not a route back to `reproduce`. Two reasons:
+    # (1) the schema can't express "route by which check failed" — a gate
+    # is judged pass/fail as a whole (docs/adr/0003), so there is no way
+    # to send only "repro test now passes" failures back while keeping
+    # "full suite passes" failures here; routing every fix failure back to
+    # reproduce would burn cycles rewriting a repro that was probably
+    # fine. (2) on_exhausted only accepts escalate|abort, never a phase
+    # name — so even exhaustion can't be wired straight back to
+    # `reproduce`. Escalating instead hands it to the human/agent
+    # conversation, which is the right place to judge "the repro itself
+    # was wrong" — and reproduce's own gate is cheap and idempotent (one
+    # targeted test, not the full suite), so a deliberate `headsign abort`
+    # + fresh `headsign start` to redo it from scratch costs almost
+    # nothing if that's the call.
+    max_attempts: 8
+    on_exhausted: escalate
+
+  harden:
+    description: >
+      Write a short root-cause note to `.headsign/tmp/postmortem.md`. A
+      good note is a few sentences covering: what broke (user-visible
+      symptom), why it broke (the actual root cause — the mechanism, not
+      just "the code was wrong"), what the fix does, and one concrete idea
+      for preventing this class of bug from recurring (a test category
+      that was missing, a lint/type rule, a monitoring gap). Before
+      finishing, copy this note into the commit message or PR
+      description — `.headsign/tmp/` is wiped on the next `headsign
+      start` and will not survive past this run.
+    gate:
+      checks:
+        - name: postmortem note exists
+          run: "test -s .headsign/tmp/postmortem.md"
+    on_pass: $end
+    on_fail: retry
+    max_attempts: 3
+    on_exhausted: escalate
+
+limits:
+  # Worst-case sum if every phase burns its full max_attempts before
+  # passing: (5+1) + (8+1) + (3+1) = 19 real evaluations. 25 leaves some
+  # slack without being a meaningfully looser backstop.
+  max_total_iterations: 25

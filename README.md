@@ -258,6 +258,9 @@ Four commands; the agent routinely uses one:
 Multiple workflows can live as separate files under `.headsign/` (one
 workflow per file); pick one with `headsign start <name>` (→
 `.headsign/<name>.yaml`), or pass `--workflow <path>` for an explicit path.
+Ready-made examples for several roles — TDD features, bug fixing, docs,
+releases — live in [example.headsign/](example.headsign/); this repo's own
+`.headsign` is a symlink to it.
 
 `next` answers with a machine-readable first line, then instructions:
 

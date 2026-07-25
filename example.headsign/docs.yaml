@@ -1,0 +1,141 @@
+# docs.yaml — ship documentation through review like code.
+#
+# The lesson this file teaches: a doc is "done" only when a reader who is NOT
+# the author agrees it is. Mechanical checks (a file exists, it has the
+# required sections, it passes a lint) prove a draft is *not broken* — they can
+# never prove it is *good*. So the mechanics gate the early phases to keep the
+# loop honest and cheap, and one review soft-gate at the end carries the single
+# judgment shell cannot make: does this actually read well for its audience?
+#
+# Adapt before use: replace docs/guide.md and docs/outline.md with your target
+# document and its outline; swap the grep'd section names ("## Overview",
+# "## Examples") for your doc's real required sections and the forbidden-word
+# list for your house style's banned words.
+version: 1
+name: docs
+entry: outline
+
+phases:
+  # OUTLINE — think about structure and, above all, the reader before writing a
+  # word of prose. The gate can't judge whether the outline is any good, but it
+  # CAN prove the writer did the one thing first drafts most often skip: naming
+  # who the reader is. That single honest check ("is there an Audience
+  # section?") earns its phase because an outline that never states its reader
+  # produces a draft that serves no one.
+  outline:
+    description: >
+      Sketch docs/guide.md's structure in docs/outline.md before drafting.
+      List the sections you will write, and add an "## Audience" section that
+      states who the reader is — their role and what they already know. If a
+      house style-guide skill is configured, read it now so the outline follows
+      its structure conventions.
+    gate:
+      checks:
+        - name: outline exists
+          run: "test -s docs/outline.md"
+        - name: outline names its audience
+          # Honest, not smart: proves an Audience/Reader heading exists, not
+          # that the audience was described well. "Well" is the reviewer's job.
+          run: "grep -qiE '^##+[[:space:]]+(audience|reader|who (this|it) is for)' docs/outline.md"
+    on_pass: draft
+    max_attempts: 3
+
+  # DRAFT — write the document. The gate proves the draft is substantial and
+  # structurally complete (a title, minimum heft, the sections the outline
+  # promised), never that the prose is good. Keep these checks fast and
+  # idempotent: after `headsign abort` a fresh start replays this workflow from
+  # the outline gate, and file-existence + grep checks re-run for near-nothing.
+  draft:
+    description: >
+      Draft docs/guide.md following docs/outline.md — cover every section the
+      outline promised. If a house style-guide skill is configured, apply it as
+      you write. Aim for prose a first-time reader can follow start to finish.
+    gate:
+      checks:
+        - name: draft exists
+          run: "test -s docs/guide.md"
+        - name: draft has a title
+          run: "grep -qE '^# ' docs/guide.md"
+        - name: draft has real heft (>= 300 words)
+          # A stub passes "file exists"; a word floor makes "substantial"
+          # mechanical. Tune the number to your doc — it only rules out stubs.
+          run: "test \"$(wc -w < docs/guide.md | tr -d '[:space:]')\" -ge 300"
+        - name: 'section present: Overview'
+          run: "grep -qE '^##[[:space:]]+Overview' docs/guide.md"
+        - name: 'section present: Examples'
+          run: "grep -qE '^##[[:space:]]+Examples' docs/guide.md"
+    on_pass: style
+    max_attempts: 5
+
+  # STYLE — mechanical prose hygiene. These are the checks a shell CAN honestly
+  # express; they catch typographic sloppiness, not bad writing. A shell linter
+  # can't parse Markdown, so it lints code fences and tables too — the known
+  # cost of doing this in grep/awk (each check notes its false positives).
+  # Teams with a real prose linter should replace this whole gate with one
+  # check that shells out to textlint or vale (`npx textlint docs/guide.md`,
+  # `vale docs/guide.md`), which understand Markdown and carry a real ruleset.
+  # The description still points the agent at a house style-guide skill for the
+  # judgment no linter makes.
+  style:
+    description: >
+      Run the mechanical style gate over docs/guide.md and fix what it flags.
+      Then apply your house style-guide skill (if configured) for the prose
+      issues no linter can see — tone, jargon, sentence rhythm.
+    gate:
+      checks:
+        - name: no run-together double spaces
+          # Two-plus spaces after a non-space char (stray gaps, double space
+          # after a period). Leading `!` so the gate PASSES when grep finds
+          # nothing. Known false positives: space-aligned Markdown tables.
+          run: "! grep -nE '[^[:space:]][[:space:]]{2,}' docs/guide.md"
+        - name: no line over 100 columns
+          # Prints offending line numbers + widths so the agent sees exactly
+          # where. Drop this if your team reflows prose one sentence per line;
+          # URLs, tables, and code fences are its usual false positives.
+          run: "awk 'length > 100 { print NR, length; bad=1 } END { exit bad }' docs/guide.md"
+        - name: no banned weasel words
+          # A house forbidden-words list (-w = whole words, portable across GNU
+          # and BSD grep). Placeholder set — replace with yours. Leading `!` so
+          # the gate passes when none are present.
+          run: "! grep -niwE '(very|really|simply|just|obviously|clearly|easily)' docs/guide.md"
+    on_pass: review
+    max_attempts: 3
+
+  # REVIEW — the soft gate that makes "done" mean something. A read-only
+  # reviewer subagent reads the doc AS the target reader and reports a verdict;
+  # the agent writes that verdict to a file the gate greps. This is the one
+  # judgment shell can't make, so it is carried by a review the agent runs on
+  # itself — not a substitute for a human reviewing the eventual PR.
+  #
+  #   clear:  wipes a stale verdict on every entry, so a leftover APPROVED from
+  #           a previous pass can't wave a reworked draft through unread.
+  #   ready:  holds the gate at PENDING (no attempt burned, clear: not run)
+  #           until the reviewer has actually written a verdict — this is the
+  #           async-review guard: an early `next` costs nothing and can't
+  #           discard a verdict that lands a moment later.
+  #   on_fail: draft sends a REJECTED doc back to drafting; the reviewer's
+  #           reasons drive the rework, style re-lints it, and it returns for
+  #           another read. Three rejections exhaust max_attempts and, by the
+  #           default on_exhausted: escalate, hand the call to a human.
+  review:
+    description: >
+      Spawn a read-only reviewer subagent. Have it read docs/guide.md as the
+      audience named in docs/outline.md and report APPROVED or REJECTED with
+      concrete reasons. Then write that verdict yourself to
+      .headsign/tmp/verdict — the single word APPROVED or REJECTED on its own
+      line — and, if REJECTED, act on the reasons when you loop back to draft.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - name: reader review approved
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: $end
+    on_fail: draft
+    max_attempts: 3
+
+# Global runaway backstop. The draft -> style -> review -> draft loop can turn
+# a few times on a doc that keeps not landing; this caps total iterations so a
+# workflow that never converges stops and asks for a human instead of spinning.
+limits:
+  max_total_iterations: 25

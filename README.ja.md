@@ -244,6 +244,8 @@ run が `running` の間に Claude が止まろうとすると、`headsign next`
 複数のワークフローは `.headsign/` 配下に別々のファイルとして置けます(1 ファイル 1 ワークフロー)。
 `headsign start <name>` で選ぶと `.headsign/<name>.yaml` を使います。
 明示的なパスを指定したい場合は `--workflow <path>` を使います。
+ロール別の実例(TDD 開発、バグ修正、ドキュメント執筆、リリース)は [example.headsign/](example.headsign/) にあります。
+このリポジトリ自身の `.headsign` はそこへのシンボリックリンクです。
 
 `next` の答えは、1 行目が機械可読トークン、以降がエージェント向けの指示です。
 
