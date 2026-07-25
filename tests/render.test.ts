@@ -146,7 +146,7 @@ test("claim: first line is the CLAIM token, and the body explains the two-beat h
   assert.equal(actual, expected);
   assert.match(actual, /^CLAIM /);
   // The re-claim advice must never promise the retry lands: the adoption gate seats
-  // whoever names itself first under an armed marker, so a re-claim is a fresh entry into the
+  // whoever names itself first under an armed marker, so a re-claim is a fresh entry into
   // same race (ADR-0010's named weakness), not a correction that is guaranteed to stick.
   assert.doesNotMatch(actual, /always wins/);
 });

@@ -246,8 +246,8 @@ and never measured. ADR-0010 keeps a race, but one the loser can
 re-enter, because the intended agent's own turn end is guaranteed to fire
 the event that seals. That is more than this ADR's design offered, where
 the intended agent could not win at all; it is still not a guarantee of
-winning, since the adoption gate seats whichever qualifying agent stops
-first.
+winning, since the adoption gate seats whichever qualifying agent names
+itself first.
 
 ## Alternatives considered and deferred/rejected
 

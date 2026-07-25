@@ -80,8 +80,8 @@ changes), and a patch bump means fixes only.
   next` proves ownership, since `SubagentStop` sends one only on a positive
   match (a `Claim confirmed` reply is a different thing — the adoption gate
   seats whoever names itself first under an armed marker). Ending quietly
-  proves nothing: never having claimed, an exhausted nudge cap, a consumed pause
-  note, and `HEADSIGN_OBSERVER` all end turns quietly too. See
+  proves nothing: never having claimed, an exhausted nudge cap, a consumed
+  pause note, and `HEADSIGN_OBSERVER` all end turns quietly too. See
   [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 - No-argument `headsign validate` now defaults to the current run's own
   `workflow_path` (from `.headsign/state.json`, whatever its status)

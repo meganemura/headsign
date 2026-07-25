@@ -384,7 +384,8 @@ function cmdStatus(): void {
   // proves ownership belongs to SubagentStop (an ordinary nudge fires only on a positive
   // match), it is available to delegated agents alone, and it reads the message rather than
   // the mere fact of being held — Stop nudges every session on a run whose identifier was
-  // never stamped, and SubagentStop's adoption gate holds whoever names itself first under an armed marker.
+  // never stamped, and SubagentStop's adoption gate holds whoever names itself first under
+  // an armed marker.
   let driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
   if (current.driver_source === "claim") {
     driver = "a delegated agent";
