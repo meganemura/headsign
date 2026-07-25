@@ -12,7 +12,7 @@ ways it can go wrong after compaction.
 
 ## Decision
 
-### Five commands, one (driver's) question
+### Six commands, one (driver's) question
 
 | Command | Role |
 |---|---|
@@ -21,6 +21,7 @@ ways it can go wrong after compaction.
 | `headsign abort [reason]` | record a human-directed stop |
 | `headsign validate [name] [--workflow path]` | static check of workflow.yaml |
 | `headsign status` | read-only report of the current run, for a session that isn't driving it (ADR-0008) |
+| `headsign claim` | arm a one-shot marker for the Stop hook to adopt this session as driver (ADR-0009) |
 
 A bare `<name>` resolves to `.headsign/<name>.yaml`; `--workflow <path>`
 still takes an explicit path, and the two are mutually exclusive.
@@ -40,11 +41,21 @@ output and exit-code contract. "One question" in this ADR's title and
 decision has always meant *the driving session's* question; `status`
 exists precisely for sessions that are not asking it.
 
+`claim` (added by ADR-0009, once it turned out a session cannot in
+principle discover its own identifier from inside its own process) also
+does not reopen the question. It runs no gate, transitions no phase, and
+answers no verdict — it only arms `.headsign/tmp/claim`, a marker for a
+later Stop-hook firing to act on. Its own first-line token, `CLAIM`, is a
+third distinct vocabulary, exactly as separate from the ADVANCE/RETRY/…
+contract below as `status`'s `RUNNING`/`COMPLETE`/… is. "The one judging
+question is `next`" survives this addition unchanged, the same way it
+survived `status`'s.
+
 (A hidden `stop-hook` subcommand exists for the plugin's Stop hook — it is
 plumbing invoked by Claude Code itself, not part of the agent-facing
 surface. See ADR-0006. Likewise `-h`/`--help`/no-args print usage and exit
-0 — a human convenience outside the agent-facing contract; the five
-commands stay five.)
+0 — a human convenience outside the agent-facing contract; the six
+commands stay six.)
 
 ### Output contract
 
@@ -121,3 +132,13 @@ Notes:
   way to express — asking a question versus only observing — without
   adding a sixth token, because `status` never touches the token contract
   above at all; it just isn't `next`'s kind of command.
+- The rule was tested a third time, and paid a third time, by `claim`
+  (2026-07-25, ADR-0009): a sixth command was needed for a reason that
+  overlaps neither revisit before it — not "no verdict exists yet"
+  (PENDING) and not "observe without asking" (status), but "a session
+  cannot discover its own identity from inside itself; only the Stop hook,
+  at the moment it fires, can answer that." `claim` buys that distinction
+  without touching the token contract above at all, the same way `status`
+  didn't: it is one more command that isn't `next`'s kind of command,
+  arming a signal for the hook to consume rather than asking a question
+  itself.

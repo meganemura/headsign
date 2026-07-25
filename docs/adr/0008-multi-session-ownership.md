@@ -78,6 +78,23 @@ session's `CLAUDE_CODE_SESSION_ID` unchanged, so a driver that delegates
 skill uses — does not look like a different driver; the delegated call
 still stamps the same identifier the parent would have.
 
+**Correction (ADR-0009, 2026-07-25):** a third measurement, taken against
+Claude Code's agent-teams feature in two separate environments,
+complicates the first of the two facts above: `CLAUDE_CODE_SESSION_ID`
+turned out to be **process-granular, not session-granular** — a
+teammate's Bash tool inherits the *lead* session's value, not its own.
+The equality this section relies on (env value == the Stop hook's own
+stdin `session_id`) still holds for a lone session; it does not hold once
+more than one session shares a process tree, and Decision 1's env-based
+auto-stamp inherits that failure in exactly that case. The owner-match
+comparison in Decision 3 below — "both sides resolve and disagree → pass
+through" — remains correct exactly as written; what was wrong was one of
+the two *inputs* fed into it, not the comparison itself. See
+[ADR-0009](0009-claim-handshake.md) for the full failure mode (it inverts
+this ADR's protection rather than merely weakening it) and for the
+hook-driven `claim` handshake that supplies a trustworthy stamp in
+exactly the cases this section's assumption breaks down.
+
 `CLAUDE_CODE_SESSION_ID` is **not a documented, public part of Claude
 Code's interface** — it is relied on here only because no public
 equivalent exists today. This decision is made with that risk named, not

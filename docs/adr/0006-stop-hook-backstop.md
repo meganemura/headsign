@@ -6,7 +6,8 @@
   as the primary mechanism; nudge cap demoted to a safety net, N raised
   3 → 5; two tree-hash-document misreadings fixed — see the end of this ADR;
   observer opt-out and driver owner-match added to the decision order —
-  see ADR-0008)
+  see ADR-0008; the claim-adoption gate added ahead of owner match, the one
+  exception to this ADR's fail-open rule for new branches — see ADR-0009)
 
 ## Context
 
@@ -76,17 +77,34 @@ artifact, no second file to keep in sync). Logic, in order:
    any non-empty value) → **exit 0**, immediately, before stdin is even
    parsed. This check needs neither stdin nor `.headsign/state.json`, so a
    session that has opted out costs nothing to recognize (ADR-0008).
-2. Locate `.headsign/state.json` by walking up from the session's cwd,
+2. Read and parse the hook JSON from stdin — the payload carrying `cwd`,
+   `session_id`, and `stop_hook_active`. This happens before locating state
+   because the walk-up below needs the payload's `cwd`, not the checks
+   further down that read `session_id`/`stop_hook_active` off the same
+   already-parsed object.
+3. Locate `.headsign/state.json` by walking up from the parsed payload's
+   `cwd` (falling back to the invocation cwd if that field is absent),
    bounded by the enclosing git worktree/repo root (see "Bounded walk-up"
    below). If none is found → **exit 0**, immediately. This early return is
    written first among the state-dependent checks: sessions not using
    headsign must pay nothing.
-3. Read hook JSON from stdin. If `stop_hook_active` is true → **exit 0**.
-   (Legacy field: "Claude is already continuing as a result of a stop
-   hook". Honored when present; see loop guard below for why we do not
-   rely on it.)
-4. If state parses and `status == "running"`:
-   1. **Owner match.** `hookSid` = the stdin payload's `session_id`
+4. If `stop_hook_active` is true → **exit 0**. (Legacy field: "Claude is
+   already continuing as a result of a stop hook". Honored when present;
+   see loop guard below for why we do not rely on it.)
+5. If state parses and `status == "running"`:
+   1. **Adoption gate (ADR-0009).** If `.headsign/tmp/claim` exists,
+      resolve this firing's session id the same way owner match does next
+      (stdin `session_id`, falling back to `HEADSIGN_SESSION_ID` from
+      env). If an id resolves → **adopt**: delete the marker, write
+      `driver_session` to that id and `driver_source` to `"claim"`, reset
+      `state.stop_nudges` to 0, append a `claimed` line to `.headsign/log`,
+      and **exit 2 (block)** with a confirmation naming the workflow and
+      current phase, plus the same pause/abort exit guidance every other
+      block carries. If no id resolves, the marker is left in place — this
+      firing is not provably the claim's target — and evaluation falls
+      through to step 5.2 unchanged. See "Why the adoption gate precedes
+      owner match", below, for why this step is new *and* runs first.
+   2. **Owner match.** `hookSid` = the stdin payload's `session_id`
       (non-empty after `trim()`), falling back to `HEADSIGN_SESSION_ID`
       from env if stdin didn't carry one; `driver` = `state.driver_session`
       (valid only as a non-empty string). If **both** resolve and
@@ -96,15 +114,15 @@ artifact, no second file to keep in sync). Logic, in order:
       fail-open direction as everything else in this list: a new way to
       pass a session through, never a new way to block one (ADR-0008; see
       "Why owner match precedes the exit-note gate", directly below, for
-      why this must run before step 4.2).
-   2. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
+      why this must run before step 5.3).
+   3. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
       exists and is non-empty after `trim()`: take its first line
       (trimmed, truncated to 120 characters), **delete the note**, reset
       `state.stop_nudges` to 0, append a `paused` line to `.headsign/log`
       (ADR-0004), and **exit 0**. An absent note, or one that is empty or
       whitespace-only after trimming, is treated exactly like "no note" —
       it falls through to the nudge flow below.
-   3. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
+   4. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
       **exit 0** (see "the safety-net loop guard", below). Else increment
       `state.stop_nudges`, persist it, and if that increment just reached
       5, append a `stalled` line to `.headsign/log`. Either way, **exit 2**
@@ -112,16 +130,45 @@ artifact, no second file to keep in sync). Logic, in order:
       going, the stop-note to pause, `headsign abort <reason>` to end for
       good — and, only on the nudge that reaches 5, appending "This is the
       final automatic reminder." right after the verdict sentence.
-5. Any other status (`complete` / `escalated` / `aborted`) → **exit 0**.
+6. Any other status (`complete` / `escalated` / `aborted`) → **exit 0**.
    Escalated and aborted are *correct* endings — they mean "hand back to
    the human", and blocking them would defeat their purpose.
-6. Any error (unreadable state, bad JSON) → **exit 0**. Fail open: a
+7. Any error (unreadable state, bad JSON) → **exit 0**. Fail open: a
    corrupt state file must never trap the user in a session that cannot
    stop.
 
+### Why the adoption gate precedes owner match
+
+Step 5.1 is new (ADR-0009), and its position — before owner match, not
+after — is load-bearing for the same reason owner match's own position is
+(next section): a `.headsign/tmp/claim` marker means some session is *in
+the middle of* being adopted as driver, and `state.driver_session` at that
+moment is whatever it was *before* the adoption — very possibly a stale
+value the claiming session disagrees with. Had owner match run first, the
+claiming session's own stop could be read as a confirmed mismatch against
+that stale stamp and passed straight through by ADR-0008's
+confirmed-mismatch rule, at which point the claim marker never gets
+consumed and the handshake never completes: the one session `headsign
+claim` was trying to hand ownership to would look, to the hook, exactly
+like a bystander. Running the adoption gate first intercepts that case —
+a claim in progress is checked, and resolved, before any comparison
+against the very stamp the claim exists to replace.
+
+This step's `exit 2 (block)` on a resolved claim is also the one place in
+this decision order that departs from this ADR's fail-open rule for new
+branches — every other addition here (observer opt-out, owner match, the
+adoption gate's own no-id fallback) only ever adds a new way to let a stop
+through, never a new way to hold one. The exception is narrow and
+deliberate, not a reopening of that rule: the block is not aimed at a
+session that merely guessed wrong about whether it was driving — it is
+the direct, requested answer to a session that just ran `headsign claim`
+and was told, in that command's own output, to expect exactly this
+confirmation. See [ADR-0009](0009-claim-handshake.md) for the full design,
+including the honest limits of the handshake (the adoption race).
+
 ### Why owner match precedes the exit-note gate
 
-The exit-note gate (step 4.2) treats `.headsign/tmp/stop-note` as a
+The exit-note gate (step 5.3) treats `.headsign/tmp/stop-note` as a
 one-shot resource: the first stop to find it non-empty consumes (deletes)
 it and passes. Had a bystander's stop been able to reach that gate before
 ownership was checked, an observer's completely unrelated turn-ending
@@ -175,6 +222,13 @@ a targeted exception, not a reopening of "log everything the hook
 touches". See ADR-0004 for the line format
 (`<ts> paused <phase> a=<n> i=<n> note="<first line>"` /
 `<ts> stalled <phase> a=<n> i=<n> nudges=5`).
+
+A third hook-boundary event, `claimed`, joins this exception list by
+ADR-0009's claim handshake — logged once per adoption, with an empty
+detail field (no session id). It belongs to the adoption gate (step 5.1,
+above), not to the exit-note gate or the nudge cap this ADR owns, so its
+full design lives in ADR-0009 and ADR-0004; it is named here only so this
+section's "two events" does not read as still current.
 
 ### The safety-net loop guard (`stop_nudges`)
 
@@ -244,7 +298,7 @@ not a run is found there. This lets the backstop fire from any
 subdirectory of the run's project, while never crossing into a sibling or
 parent checkout's run, preserving the git-worktree parallel-run
 independence ADR-0004 exists to protect. The walk is fs-only (`existsSync`
-calls up the path, no `git` subprocess), so it stays the near-no-op step 2
+calls up the path, no `git` subprocess), so it stays the near-no-op step 3
 requires. The exit-note gate and the note path shown in the block message
 both operate on the *found* run directory (`runDir`), not the session's
 own cwd (`startDir`) — when they differ, the message shows

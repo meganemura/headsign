@@ -19,7 +19,7 @@ friction are therefore design constraints, not nice-to-haves.
   a working CLI with zero build. The bundle is regenerated and committed
   whenever `src/` changes (checked in review).
 - **Runtime dependency policy: `yaml` and nothing else.** No CLI framework
-  (commander etc.) — there are five commands and at most one flag; parsing
+  (commander etc.) — there are six commands and at most one flag; parsing
   by hand is ~20 lines. Dev dependencies: `typescript`, `esbuild`,
   `@types/node` only.
 - **Tests use `node:test`** on Node's native TypeScript type-stripping

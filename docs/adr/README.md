@@ -14,6 +14,7 @@ record the reasoning each choice rests on.
 | [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — the pause-note exit gate, the nudge counter demoted to insurance, fail-open, and the subdirectory walk-up |
 | [0007](0007-verdict-authorship.md) | Verdict authorship — the gate-hardness scale (hard/semi/soft), why soft gates stay soft, and how to move the pen out of the worker's hand |
 | [0008](0008-multi-session-ownership.md) | Multi-session runs — driver ownership stamped on `start`/`next`, the Stop hook's owner-match and observer opt-out, and the read-only `status` command |
+| [0009](0009-claim-handshake.md) | The claim handshake — session identity is hook-side knowledge; `headsign claim`, the Stop hook's adoption gate, and sticky `claimed` ownership |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

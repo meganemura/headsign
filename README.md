@@ -43,8 +43,10 @@ Fix the failure above, then run `headsign next` again.
 - **One question, one driver.** No `gate`, no dashboard. `next` both judges
   and, on failure, prints the remaining-work list — the failing check and its
   output — and it's the *driving* session's question, not a menu everyone
-  in the repository gets to pick from. The only other command, `status`, is
-  the observer's: read-only, it never judges or transitions anything (see
+  in the repository gets to pick from. `status` is the observer's: read-only,
+  it never judges or transitions anything. `claim` doesn't judge either — it
+  hands driver ownership to this session via the Stop hook, for the one
+  moment a run needs to change hands on purpose (see
   [Multiple sessions](#multiple-sessions)).
 - **Claude stays in charge.** Unlike outer-loop runners that invoke the LLM as
   a subordinate, headsign is a place Claude asks a question, not a process
@@ -269,7 +271,7 @@ stop while the run is `running`, it's pointed back to `headsign next`.
 
 ## The contract
 
-Five commands; a driving session routinely uses one:
+Six commands; a driving session routinely uses one:
 
 | Command | Role |
 |---|---|
@@ -278,6 +280,7 @@ Five commands; a driving session routinely uses one:
 | `headsign abort [reason]` | record a human-directed stop |
 | `headsign validate [name] [--workflow path]` | static check of the workflow file |
 | `headsign status` | read-only view of the current run, for a session that isn't driving it — see [Multiple sessions](#multiple-sessions) |
+| `headsign claim` | hand this session driver ownership via the Stop hook — for delegating who drives a run; see [Multiple sessions](#multiple-sessions) |
 
 Multiple workflows can live as separate files under `.headsign/` (one
 workflow per file); pick one with `headsign start <name>` (→
@@ -285,6 +288,15 @@ workflow per file); pick one with `headsign start <name>` (→
 Ready-made examples for several roles — TDD features, bug fixing, docs,
 releases — live in [example.headsign/](example.headsign/); this repo's own
 `.headsign` is a symlink to it.
+
+A bare `headsign validate` (no name, no `--workflow`) checks whichever
+workflow the current run is actually using: if `.headsign/state.json`
+exists — whatever its status — it validates that run's own
+`workflow_path`, not just a fixed default file, so validating a run
+started with `headsign start <name>` checks the right `.headsign/<name>.yaml`
+without having to repeat the name. With no run present, it falls back to
+`.headsign/workflow.yaml`, as before. An explicit `<name>` or
+`--workflow <path>` always wins over both.
 
 `next` answers with a machine-readable first line, then instructions:
 
@@ -439,7 +451,12 @@ capitalized like `next`'s tokens, but it's a *report*, not a verdict:
 judges anything. The `driver:` line (shown only while `RUNNING`) reads
 `this session` when your own resolved identifier matches the stamped
 driver, `another session` when both resolve but disagree, and `unknown`
-whenever either side can't be resolved.
+whenever either side can't be resolved. After a `headsign claim` handoff
+(below), it instead reads `driver: claimed` — `status` deliberately does
+not guess this-session-or-another for a claimed run, because the same
+resolution gap that makes `claim` necessary in the first place also makes
+that particular guess unreliable; `claimed` says plainly that the current
+driver was seated by the handshake, and nothing more.
 
 Exit code follows a deliberately different contract from `next`'s: `status`
 exits 0 whenever `.headsign/state.json` could be read at all — an
@@ -448,6 +465,41 @@ error — and exits 3 only when there's nothing to report (no run here, or
 state unreadable). A script that wraps `status` in `set -e` therefore never
 dies just because the run it's watching happens to need a human; read the
 run's own state from line 1, not from the exit code.
+
+### Delegating who drives: `headsign claim`
+
+Ownership normally just follows whoever last called `next` with a
+resolvable session identifier (above). Inside Claude Code's agent-teams
+feature, that identifier isn't reliable enough to lean on for a
+*deliberate* handoff — from inside a session's own Bash tool there is no
+way to tell "my session" apart from "the lead session I was spawned
+under," so asking a teammate to just start calling `next` can silently
+stamp the wrong session as driver. `headsign claim` sidesteps that by
+letting the Stop hook — the one place that *does* know, because Claude
+Code hands it a real session id on every firing — do the stamping
+instead, in two steps:
+
+1. From the session you want driving the run, run `headsign claim`. It
+   arms a one-shot marker and tells you to end your turn — it does not
+   stamp anything itself.
+2. End that turn. The next Stop-hook firing that can resolve a session id
+   adopts *that* session as driver (`driver_session`/`driver_source` in
+   `.headsign/state.json`), confirms it in the block message, and records
+   a `claimed` line in `.headsign/log`. Once you see that confirmation,
+   drive the run with `headsign next` as usual.
+
+A typical delegation looks like: "teammate, please drive this run" →
+teammate runs `headsign claim` and stops → the hook's confirmation
+message arrives → teammate proceeds with `headsign next`. Ownership
+claimed this way is sticky: an unrelated session's ordinary `next` call
+from the same shared environment cannot silently reclaim it the way plain
+env-based stamping could.
+
+This is a handshake, not a lock — if another session happens to stop
+first and gets adopted by mistake, run `headsign claim` again from the
+right session; a fresh claim always wins, and the mis-adoption
+self-repairs on the next stop. The full mechanism, including this
+narrow race window, is [ADR-0009](docs/adr/0009-claim-handshake.md).
 
 ### Environment variables
 

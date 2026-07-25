@@ -34,7 +34,8 @@ implement grants a fresh budget".
   },
   "end_reason": null,
   "stop_nudges": 0,
-  "driver_session": null
+  "driver_session": null,
+  "driver_source": null
 }
 ```
 
@@ -43,10 +44,18 @@ semantics — its lifecycle is owned and explained by ADR-0006. Likewise
 `driver_session` — which session (`start`/`next`) most recently drove this
 run, or `null` if none resolved one — belongs to multi-session ownership,
 not to this ADR's cache/attempts model; its resolution, stamping rule, and
-the Stop hook's use of it are owned and explained by ADR-0008. A `state.json`
-written before that field existed lacks the key entirely; readers treat a
-missing or non-string `driver_session` as `null`, the same latitude already
-given to a missing/malformed `stop_nudges`.
+the Stop hook's use of it are owned and explained by ADR-0008. Alongside it,
+`driver_source: "env" | "claim" | null` (ADR-0009) records *how*
+`driver_session` was last stamped — `"env"` for the ordinary env-based
+auto-stamp `start`/`next` perform, `"claim"` for a Stop-hook adoption via
+`headsign claim`, and `null` whenever `driver_session` itself is `null`.
+Consumers treat only the exact string `"claim"` as sticky (immune to being
+silently overwritten by a later env-based stamp); any other value —
+missing, `"env"`, or a corrupt/legacy value — is ordinary and overwritable,
+the same tolerant-reader idiom already applied to `driver_session` and
+`stop_nudges`. A `state.json` written before either field existed lacks
+both keys entirely; readers apply the same missing-means-`null` latitude to
+both.
 
 `end_reason` stores why a run ended for the terminal states that carry a
 reason (`escalated`, `aborted`), so `next` can reprint the outcome
@@ -195,16 +204,22 @@ terminal-state re-display, and a PENDING answer (ADR-0002) are
 deliberately silent — none of the three is a transition, and logging one
 would make the log say something happened when nothing did.
 
-**Explicit exception — the two Stop-boundary events** (added by the
-exit-note-gate revision of ADR-0006): `paused` and `stalled` are not
-`step()` transitions, but the log records them anyway, because they are
-the only trace a human-initiated pause or a stuck/departed-agent stall
-otherwise leaves behind. `stophook.ts` appends `paused` when a non-empty
-`.headsign/tmp/stop-note` is consumed, and `stalled` once, the moment
+**Explicit exception — the three Stop-boundary events** (`paused` and
+`stalled` added by the exit-note-gate revision of ADR-0006; `claimed`
+added by ADR-0009's claim handshake): none of the three is a `step()`
+transition, but the log records them anyway, because each is the only
+trace its own kind of Stop-boundary event otherwise leaves behind — a
+human-initiated pause, a stuck/departed-agent stall, or a driver handed
+off via `headsign claim`. `stophook.ts` appends `paused` when a non-empty
+`.headsign/tmp/stop-note` is consumed, `stalled` once, the moment
 `stop_nudges` reaches its cap — never on the 1st-through-4th nudge, and
-never again on the pass-throughs after the cap trips, so this exception
-stays narrow rather than reopening "log everything the hook does" (see
-ADR-0006 for the full design).
+never again on the pass-throughs after the cap trips — and `claimed` once,
+the moment the adoption gate seats a new driver via a `.headsign/tmp/claim`
+marker (ADR-0009). Unlike the other two, `claimed`'s detail field is
+empty: the session id just adopted already lives in `driver_session`, and
+the log does not repeat it. This stays a targeted exception rather than
+reopening "log everything the hook does" (see ADR-0006 and ADR-0009 for
+the full designs).
 
 Line format: `<ISO-ts> <event> <phase> a=<attempts[phase] ?? 0>
 i=<total_iterations> <detail>`, where `<ISO-ts>` is local time with UTC
@@ -214,7 +229,8 @@ the line unambiguous without forcing a mental UTC conversion — and
 `<detail>` supplies whatever the event needs beyond those shared fields —
 the workflow name for `start`, the failing check for `retry`, the origin
 phase for an `advance`, the reason for `escalate`/`abort`, the note's
-first line for `paused`, and the fixed `nudges=5` for `stalled`.
+first line for `paused`, the fixed `nudges=5` for `stalled`, and nothing
+(an empty detail) for `claimed`.
 
 Excluded from the tree-hash cache (`treehash.ts`'s `headsignEntries`
 filter and `statusEntries`'s exclusion set) for the same reason

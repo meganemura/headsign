@@ -36,6 +36,54 @@ without its rebuilt bundle.
   for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
   ```
 
+## Live-patching an installed plugin (local testing)
+
+For most changes, `npm test` plus running the CLI directly
+(`node plugin/dist/headsign.mjs …`) is enough. Occasionally you need to
+check a hook or skill change against a *real*, already-installed plugin
+copy — e.g. confirming a Stop-hook edit actually fires the way you expect
+inside a live Claude Code session — without cutting a release and running
+`/plugin marketplace update` for every iteration. Claude Code caches an
+installed plugin under a version-scoped path:
+
+```
+~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/
+```
+
+For headsign installed from its own marketplace, that's typically
+`~/.claude/plugins/cache/headsign/headsign/<version>/`, mirroring this
+repository's `plugin/` layout (`dist/`, `hooks/`, `skills/`). Build and
+copy your local changes straight over the cached copy:
+
+```
+npm run build   # regenerate plugin/dist/headsign.mjs from src/
+cp plugin/dist/headsign.mjs ~/.claude/plugins/cache/headsign/headsign/<version>/dist/headsign.mjs
+rsync -a plugin/skills/      ~/.claude/plugins/cache/headsign/headsign/<version>/skills/
+```
+
+(Or `rsync -a plugin/ ~/.claude/plugins/cache/headsign/headsign/<version>/`
+for everything at once — `hooks.json` rarely changes, but syncing it too
+is harmless.)
+
+This is a **local testing shortcut, not a distribution channel**: it
+patches one machine's cache, gets silently overwritten the next time the
+marketplace updates, and must never substitute for actually committing and
+releasing the change (see the distribution map above).
+
+**The two halves patch asymmetrically — know which before you go looking
+for a change that "isn't taking".**
+
+- **`dist/headsign.mjs` (the hook and CLI) takes effect immediately, even
+  in a session that's already running.** The Stop hook is invoked fresh on
+  every single firing and re-reads the bundle off disk each time, so a
+  patched `dist/headsign.mjs` changes the very next Stop-hook firing in any
+  open session — no restart needed.
+- **`skills/workflow/SKILL.md` only takes effect in new sessions.** Skill
+  text is loaded once, at session start, and stays fixed in that session's
+  context for its whole lifetime; a session already running keeps whatever
+  SKILL.md text it started with. A skill-text patch only shows up in a
+  session started after the patch was applied.
+
 ## What CI enforces (.github/workflows/ci.yml)
 
 On every PR and push to `main`, ubuntu + Node 24:
