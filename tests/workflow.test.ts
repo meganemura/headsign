@@ -74,13 +74,6 @@ test("empty checks is rejected", () => {
   assert.ok(errors(doc).some((e) => e.includes("gate.checks")));
 });
 
-test("on_exhausted naming a phase is rejected", () => {
-  const doc = validWorkflow();
-  phases(doc).plan.max_attempts = 3;
-  phases(doc).plan.on_exhausted = "build";
-  assert.ok(errors(doc).some((e) => e.includes("on_exhausted")));
-});
-
 test("an unreachable phase is a warning, not an error", () => {
   const doc = validWorkflow();
   phases(doc).orphan = { description: "orphan", gate: { checks: [{ run: "true" }] }, on_pass: "$end" };
@@ -114,11 +107,12 @@ test("max_attempts with on_fail: escalate is rejected as dead config", () => {
   assert.ok(errors(doc).some((e) => e.includes("max_attempts") && e.includes("on_fail")));
 });
 
-test("max_attempts with on_fail: abort is rejected as dead config", () => {
+// `abort` is not an on_fail token (ADR-0014) — ending a run for good is the `headsign abort`
+// command's job, so a workflow naming it here gets the ordinary unknown-route error.
+test("on_fail: abort is rejected as an unknown route", () => {
   const doc = validWorkflow();
   phases(doc).plan.on_fail = "abort";
-  phases(doc).plan.max_attempts = 3;
-  assert.ok(errors(doc).some((e) => e.includes("max_attempts") && e.includes("on_fail")));
+  assert.ok(errors(doc).some((e) => e.includes("on_fail") && e.includes("abort")));
 });
 
 test("load() reports an error for a missing/unparseable file", () => {

@@ -84,12 +84,15 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, r
   const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds };
 
   const maxAttempts = phase.max_attempts;
+  // Exhaustion always escalates (ADR-0014): a budget running out is precisely the moment a
+  // person should be asked, and it is not a fact the workflow author can know better at
+  // authoring time than the run does at exhaustion time.
   if (maxAttempts !== undefined && next.attempts[phaseName] >= maxAttempts) {
     const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
     next.last_failure = null;
     next.end_reason = reason;
-    next.status = phase.on_exhausted === "abort" ? "aborted" : "escalated";
-    return { state: next, outcome: { kind: next.status === "aborted" ? "ABORT" : "ESCALATE", reason } };
+    next.status = "escalated";
+    return { state: next, outcome: { kind: "ESCALATE", reason } };
   }
 
   const onFail = phase.on_fail ?? "retry";
@@ -108,11 +111,14 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, r
     next.status = "complete";
     return { state: next, outcome: { kind: "COMPLETE" } };
   }
-  if (onFail === "escalate" || onFail === "abort") {
-    const reason = `${phaseName}: gate failed (on_fail: ${onFail})`;
-    next.status = onFail === "abort" ? "aborted" : "escalated";
+  // `escalate` is the only end-the-run token on the failure path (ADR-0014). A run ends as
+  // ABORT only when a person says so through `headsign abort`, which cli.ts writes directly —
+  // never as a verdict this function reaches.
+  if (onFail === "escalate") {
+    const reason = `${phaseName}: gate failed (on_fail: escalate)`;
+    next.status = "escalated";
     next.end_reason = reason;
-    return { state: next, outcome: { kind: onFail === "abort" ? "ABORT" : "ESCALATE", reason } };
+    return { state: next, outcome: { kind: "ESCALATE", reason } };
   }
 
   next.phase = onFail; // onFail names a phase to route to

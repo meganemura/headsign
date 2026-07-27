@@ -11,6 +11,10 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- A run that reads `ABORTED` was ended by a person. With the two `abort`
+  routes removed below, nothing headsign judges can produce that status, so
+  `status`'s terminal line and the log's `abort` event now say
+  unambiguously who ended the run.
 - **Breaking: `next` no longer reprints a cached verdict, and
   `max_attempts` now counts judgments.** Until now, a `next` on a working
   tree unchanged since that phase's last failure reprinted the old verdict
@@ -22,9 +26,9 @@ changes), and a patch bump means fixes only.
   suite runs twice. The rule that replaces "probing is free" is **did work
   → `next`; want to look → `status`**. One effect is deliberate: an agent
   that keeps calling `next` without doing any work now spends the phase's
-  attempts, and once `max_attempts` runs out the run ends the way
-  `on_exhausted` says — `ESCALATE`, by default — where before it consumed
-  nothing and could be abandoned quietly. A `RETRY` line no longer carries the
+  attempts, and once `max_attempts` runs out the run ends in `ESCALATE`,
+  where before it consumed nothing and could be abandoned quietly. A
+  `RETRY` line no longer carries the
   `(unchanged)` marker or its `[cached — …]` note, since neither can happen
   any more. See
   [ADR-0012](docs/adr/0012-removing-the-tree-hash-cache.md).
@@ -64,6 +68,32 @@ changes), and a patch bump means fixes only.
   outside one, and in a linked worktree, and `/bin/sh -c` — running the
   check commands you wrote — is the only kind of process it spawns.
 
+### Removed
+
+- **Breaking: a phase's `env:` is gone.** Write the variables a check needs
+  into the check's own command — `run: "FOO=bar npm test"` — the same way
+  you would at a prompt. Every command headsign runs (checks, `ready:`
+  probes, and routes' `when:` predicates) now inherits headsign's own
+  environment and nothing else. None of the shipped example workflows ever
+  used the field. `env:` is not rejected by `validate`, only ignored, so
+  delete it rather than leaving it in place — see Upgrading. See
+  [ADR-0014](docs/adr/0014-removing-three-unused-knobs.md).
+- **Breaking: `on_exhausted:` is gone; exhausting `max_attempts` always
+  answers `ESCALATE`.** The field chose between `escalate` (the default)
+  and `abort`, and every one of its eleven uses across the shipped example
+  workflows spelled out the default. A spent budget is the moment to ask a
+  person, which is what `escalate` does and what `abort` — noticing the run
+  is stuck and then ending it without telling anyone — did not. Like `env:`,
+  the field is now ignored rather than rejected; an `on_exhausted: abort`
+  left in a file escalates.
+- **Breaking: `on_fail: abort` is gone.** `on_fail` now takes `retry` (the
+  default), a phase name, `$end`, or `escalate`. Ending a run for good stays
+  a person's decision, made with `headsign abort <reason>` — the command is
+  unchanged, and so is the `ABORT` answer token. Unlike the two fields
+  above, this one *is* rejected: a workflow declaring it fails `validate`
+  with exit 3. One consequence of `abort` leaving the token set: a phase
+  actually named `abort` is now a legal `on_fail` target.
+
 ### Upgrading
 
 Finish or abort a run before upgrading, or start it again afterwards: a
@@ -72,10 +102,21 @@ this version replaced, so an upgraded-into run loses its recorded driver
 (it reads as unclaimed) as well as its last-failure block. If such a run
 was being driven by a delegated agent, have that agent run `headsign
 claim` again. Drop `HEADSIGN_SESSION_ID` from any shell profile or hook
-config that exports it — nothing reads it any more. Workflow files are
-unaffected: nothing in `workflow.yaml` changes, and the six answer tokens
-are the same six. Do re-read your slowest gate, though — its cost is now
-paid on every `next` rather than once per change to the working tree.
+config that exports it — nothing reads it any more.
+
+Then edit your workflow files, because three removals land there. Delete
+every `on_exhausted:` line: `escalate` is now what exhaustion always does,
+so a line that said `escalate` was already redundant, and one that said
+`abort` will silently escalate instead. Delete every `env:` mapping and
+move its variables into the commands that need them (`run: "FOO=bar npm
+test"`); left in place it is ignored, so a check that quietly stopped
+seeing its variables is the failure to watch for. Replace `on_fail: abort`
+with `on_fail: escalate` (or a phase name) — this one is caught for you,
+since a workflow declaring it fails `headsign validate` with exit 3 and
+will not load. Running `headsign validate` on each of your workflow files
+after the edits is the quickest check. The six answer tokens are the same
+six. Do re-read your slowest gate, too — its cost is now paid on every
+`next` rather than once per change to the working tree.
 
 ## [0.2.0] - 2026-07-27
 

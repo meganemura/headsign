@@ -115,8 +115,8 @@ phases:
   #           discard a verdict that lands a moment later.
   #   on_fail: draft sends a REJECTED doc back to drafting; the reviewer's
   #           reasons drive the rework, style re-lints it, and it returns for
-  #           another read. Three rejections exhaust max_attempts and, by the
-  #           default on_exhausted: escalate, hand the call to a human.
+  #           another read. Three rejections exhaust max_attempts, which always
+  #           escalates — the call goes to a human.
   review:
     description: >
       Spawn a read-only reviewer subagent. Have it read docs/guide.md as the

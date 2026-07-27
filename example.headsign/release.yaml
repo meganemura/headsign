@@ -52,7 +52,6 @@ phases:
     on_pass: verify
     on_fail: retry
     max_attempts: 5
-    on_exhausted: escalate
 
   # ── verify ───────────────────────────────────────────────────────────────
   # The mechanical "is it green" gate — the same things CI runs — done before we
@@ -84,7 +83,6 @@ phases:
     on_pass: approve
     on_fail: retry
     max_attempts: 5
-    on_exhausted: escalate
 
   # ── approve ──────────────────────────────────────────────────────────────
   # The human go/no-go. This is ADR-0003's "human gate": the gate reads a
@@ -132,7 +130,6 @@ phases:
     on_pass: $end
     on_fail: retry
     max_attempts: 3
-    on_exhausted: escalate
 
 # Global runaway backstop: even with per-phase caps, stop a loop that keeps
 # bouncing between phases.

@@ -1,8 +1,12 @@
-// Responsibility: run one phase's gate checks in order, shell + env + timeout + output tail
+// Responsibility: run one phase's gate checks in order, shell + timeout + output tail
 // (ADR-0002/0003), and resolve a k-way `on_pass` by running its `when:` predicates (ADR-0011).
 // Both are "run shell, read exit code" — the routing *rules* still live in engine.ts; this
 // module only reports which branch answered yes.
 // Must NOT know about: state.json, git.
+//
+// Every command here inherits headsign's own environment unmodified (ADR-0014): a phase
+// cannot declare variables, because `FOO=bar cmd` in the `run:` string already says it, in
+// the shell the workflow author is already writing.
 
 import { spawnSync } from "node:child_process";
 import type { Check, Route } from "./workflow.ts";
@@ -13,14 +17,12 @@ export type GateResult = { pass: true } | ({ pass: false } & CheckFailure);
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const OUTPUT_TAIL_LIMIT = 4000;
 
-export function runGate(checks: Check[], cwd: string, phaseEnv: Record<string, unknown> | undefined): GateResult {
-  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
+export function runGate(checks: Check[], cwd: string): GateResult {
   for (const c of checks) {
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const check = c.name ?? c.run;
     const result = spawnSync("/bin/sh", ["-c", c.run], {
       cwd,
-      env: { ...process.env, ...env },
       timeout: timeoutSeconds * 1000,
       // Node's spawnSync default maxBuffer is 1MB; a verbose-but-passing check
       // (e.g. a large test suite) can legitimately print more than that.
@@ -47,13 +49,11 @@ export function runGate(checks: Check[], cwd: string, phaseEnv: Record<string, u
 }
 
 // Readiness probe for a phase's optional `ready:` field, mirroring runGate's spawnSync
-// pattern (same shell, cwd, env-merge). exitCode 0 -> ready (the real gate should be
+// pattern (same shell, same cwd). exitCode 0 -> ready (the real gate should be
 // evaluated); nonzero -> not ready (PENDING, no attempt counted).
-export function isReady(sh: string, cwd: string, env: Record<string, unknown> | undefined): boolean {
-  const envVars = env ? Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)])) : {};
+export function isReady(sh: string, cwd: string): boolean {
   const result = spawnSync("/bin/sh", ["-c", sh], {
     cwd,
-    env: { ...process.env, ...envVars },
     timeout: DEFAULT_TIMEOUT_SECONDS * 1000,
     stdio: "ignore",
   });
@@ -73,22 +73,20 @@ export type RouteResolution =
 
 // Evaluated only after the gate has already passed. Entries are tried top to bottom and the
 // first `when:` to exit 0 wins; the entry without a `when:` (validated to be the last one) is
-// the default. Mirrors runGate's spawnSync pattern (same shell, cwd, env-merge, timeout
-// default), but discards output like isReady does: a `when:` is a predicate, and nothing here
-// is ever shown to the agent.
+// the default. Mirrors runGate's spawnSync pattern (same shell, cwd, timeout default), but
+// discards output like isReady does: a `when:` is a predicate, and nothing here is ever
+// shown to the agent.
 //
 // Fails toward stopping, unlike isReady: a nonzero exit is a real answer ("not this branch"),
 // but a probe that could not run at all has produced no answer, and the thing being decided
 // here is the destination itself. Silently taking the default would move the run to a phase
 // nobody declared for that situation — see ADR-0011.
-export function resolveRoute(routes: Route[], cwd: string, phaseEnv: Record<string, unknown> | undefined): RouteResolution {
-  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
+export function resolveRoute(routes: Route[], cwd: string): RouteResolution {
   for (const route of routes) {
     if (route.when === undefined) return { kind: "default", to: route.to };
     const timeoutSeconds = route.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const result = spawnSync("/bin/sh", ["-c", route.when], {
       cwd,
-      env: { ...process.env, ...env },
       timeout: timeoutSeconds * 1000,
       stdio: "ignore",
     });

@@ -2,6 +2,12 @@
 
 - Status: accepted
 - Date: 2026-07-23
+- Revised: 2026-07-28 (the transition table's failure rows are narrowed by
+  [ADR-0014](0014-removing-three-unused-knobs.md): `on_fail` loses its
+  `abort` value and `on_exhausted` is removed, so exhaustion always
+  escalates. The table below is updated in place. The output contract is
+  untouched — `ABORT` is still one of the six tokens, produced by
+  `headsign abort` and reprinted idempotently by `next`.)
 
 ## Context
 
@@ -94,8 +100,8 @@ Evaluated on `headsign next` for the current phase P:
 |---|---|---|---|
 | `ready:` probe fails (phase declares `ready`) | `ready` (optional) | non-empty shell string | PENDING (see below) |
 | gate passes | `on_pass` (required) | phase name, `$end` | ADVANCE to phase / COMPLETE |
-| gate fails, attempts < max | `on_fail` (default `retry`) | `retry`, phase name, `$end`, `escalate`, `abort` | RETRY / ADVANCE(with failure note) / COMPLETE / ESCALATE / ABORT |
-| gate fails, attempts ≥ `max_attempts` | `on_exhausted` (default `escalate`) | `escalate`, `abort` | ESCALATE / ABORT |
+| gate fails, attempts < max | `on_fail` (default `retry`) | `retry`, phase name, `$end`, `escalate` | RETRY / ADVANCE(with failure note) / COMPLETE / ESCALATE |
+| gate fails, attempts ≥ `max_attempts` | — (fixed) | — | ESCALATE |
 | `limits.max_total_iterations` reached | — | — | ESCALATE (checked before evaluating) |
 
 Notes:

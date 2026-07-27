@@ -8,7 +8,7 @@ record the reasoning each choice rests on.
 |---|---|
 | [0001](0001-thin-harness.md) | Thin harness — Claude drives, the CLI only holds state and judges; the non-goals that keep it small |
 | [0002](0002-single-question-and-output-contract.md) | One question (`headsign next`), the first-line token contract, and the phase transition table |
-| [0003](0003-workflow-yaml-vocabulary.md) | The `workflow.yaml` vocabulary (what's borrowed from CI, what's refused), plus `clear:` and why `description` is advisory |
+| [0003](0003-workflow-yaml-vocabulary.md) | The `workflow.yaml` vocabulary (what's borrowed from CI, what's refused), plus `clear:` and why `description` is advisory *(its `env:`, `on_exhausted:`, and `on_fail: abort` removed by 0014)* |
 | [0004](0004-state-attempts-and-cache.md) | `state.json` shape, per-phase attempts, cwd-only resolution, and the concurrency lock *(its tree-hash cache retracted by 0012)* |
 | [0005](0005-distribution-and-toolchain.md) | TypeScript + esbuild single-file bundle, and the minimal-dependency policy |
 | [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — the pause-note exit gate, the nudge counter demoted to insurance, fail-open, and the subdirectory walk-up |
@@ -19,6 +19,7 @@ record the reasoning each choice rests on.
 | [0011](0011-k-way-routing-on-pass.md) | k-way routing on `on_pass` — a list of `when:`/`to:` routes, why a per-check `on_fail` was refused, why a broken `when:` stops the run, and unreachable phases demoted to warnings |
 | [0012](0012-removing-the-tree-hash-cache.md) | Removing the tree-hash cache — why the free probe was right before `status` existed, what it hid, `max_attempts` now counting judgments, and `last_failure` |
 | [0013](0013-claim-only-driver-identity.md) | Claim-only driver identity — retiring the environment stamp: why `Stop` now compares nothing, `driver_agent`, the two-valued `driver:` line, and what a single identity path gives up |
+| [0014](0014-removing-three-unused-knobs.md) | Removing three unused knobs — phase `env:` (write it in the shell), `on_exhausted:` (exhaustion always escalates), and `on_fail: abort` (ending a run for good is `headsign abort`'s job) |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

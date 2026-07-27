@@ -2280,46 +2280,6 @@ phases:
   assert.equal(readState(dir).phase, "classify");
 });
 
-test("routing: a when inherits the phase's env, like the gate's checks do", () => {
-  const dir = initRepo();
-  writeWorkflow(
-    dir,
-    `
-version: 1
-name: router-env
-entry: classify
-phases:
-  classify:
-    description: "Classify."
-    env:
-      KIND: docs
-    gate:
-      checks:
-        - run: "true"
-    on_pass:
-      - when: 'test "$KIND" = "docs"'
-        to: write-docs
-      - to: implement
-  write-docs:
-    description: "Write the docs."
-    gate:
-      checks:
-        - run: "true"
-    on_pass: "$end"
-  implement:
-    description: "Implement it."
-    gate:
-      checks:
-        - run: "true"
-    on_pass: "$end"
-`,
-  );
-  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
-  const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /^ADVANCE write-docs\n/);
-});
-
 test("routing: a when that cannot be evaluated stops the run at exit 3 and moves nothing", () => {
   const dir = initRepo();
   writeWorkflow(

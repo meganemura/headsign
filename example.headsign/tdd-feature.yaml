@@ -121,8 +121,8 @@ phases:
     # or red.
     max_attempts: 3
     # Three rejection rounds without landing APPROVED is a signal this needs
-    # a human, not a fourth automatic bounce (on_exhausted defaults to
-    # escalate).
+    # a human, not a fourth automatic bounce (exhausting max_attempts always
+    # escalates).
 
 limits:
   # Backstop against a bounce loop (e.g. green <-> review) burning turns

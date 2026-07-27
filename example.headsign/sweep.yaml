@@ -127,7 +127,6 @@ phases:
     # queue" is a note to the agent standing right here, not a reason to
     # start the lap over.
     max_attempts: 5
-    on_exhausted: escalate
 
   # ── verify ───────────────────────────────────────────────────────────────
   # The per-item safety net. Running the suite once per item (rather than
@@ -157,7 +156,7 @@ phases:
     # counter — so across a 20-item sweep this reads "this ONE item broke
     # the suite three times", not "the sweep had three bad laps". At that
     # point the plan is probably wrong for this item, which is a judgment
-    # call: on_exhausted defaults to escalate, so it goes to a human.
+    # call: exhausting max_attempts always escalates, so it goes to a human.
     max_attempts: 3
 
   # ── record ───────────────────────────────────────────────────────────────

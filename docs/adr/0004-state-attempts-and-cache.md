@@ -93,7 +93,9 @@ bounce and `max_attempts: 3` can never fire. Therefore:
   passed** (or since start). It increments on a counted failure, survives
   transitions away and back, and is cleared when P's gate passes.
 - Exhaustion check: after incrementing, if `attempts[P] >= max_attempts(P)`
-  → route `on_exhausted`.
+  → ESCALATE. (This was originally routed by an `on_exhausted` field;
+  [ADR-0014](0014-removing-three-unused-knobs.md) removed it and fixed
+  exhaustion to escalate.)
 
 This yields both target behaviors: review rejections accumulate to 3 across
 bounces (escalate), while implement — whose gate passed on the way to

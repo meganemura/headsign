@@ -59,7 +59,6 @@ phases:
     on_pass: fix
     on_fail: retry
     max_attempts: 5
-    on_exhausted: escalate
 
   fix:
     description: >
@@ -86,16 +85,14 @@ phases:
     # to send only "repro test now passes" failures back while keeping
     # "full suite passes" failures here; routing every fix failure back to
     # reproduce would burn cycles rewriting a repro that was probably
-    # fine. (2) on_exhausted only accepts escalate|abort, never a phase
-    # name — so even exhaustion can't be wired straight back to
-    # `reproduce`. Escalating instead hands it to the human/agent
-    # conversation, which is the right place to judge "the repro itself
-    # was wrong" — and reproduce's own gate is cheap and idempotent (one
-    # targeted test, not the full suite), so a deliberate `headsign abort`
-    # + fresh `headsign start` to redo it from scratch costs almost
-    # nothing if that's the call.
+    # fine. (2) exhausting max_attempts always escalates, so even
+    # exhaustion can't be wired straight back to `reproduce`. Escalating
+    # hands it to the human/agent conversation, which is the right place
+    # to judge "the repro itself was wrong" — and reproduce's own gate is
+    # cheap and idempotent (one targeted test, not the full suite), so a
+    # deliberate `headsign abort` + fresh `headsign start` to redo it from
+    # scratch costs almost nothing if that's the call.
     max_attempts: 8
-    on_exhausted: escalate
 
   harden:
     description: >
@@ -115,7 +112,6 @@ phases:
     on_pass: $end
     on_fail: retry
     max_attempts: 3
-    on_exhausted: escalate
 
 limits:
   # Worst-case sum if every phase burns its full max_attempts before

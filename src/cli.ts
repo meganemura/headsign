@@ -215,18 +215,18 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   // Ready probe: before the gate, and the one path that answers without judging. Not
   // ready -> PENDING without touching state.json at all (no writeState on this path):
   // "stay put, don't count it" — the cell the transition table was missing.
-  if (phase.ready !== undefined && !gate.isReady(phase.ready, cwd, phase.env)) {
+  if (phase.ready !== undefined && !gate.isReady(phase.ready, cwd)) {
     return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
   }
 
-  const gateResult = gate.runGate(phase.gate.checks, cwd, phase.env);
+  const gateResult = gate.runGate(phase.gate.checks, cwd);
 
   // k-way `on_pass` (ADR-0011): resolved here, after the gate passed and before step(), so
   // engine.ts stays free of shell execution. Only the pass path ever routes — a failed gate
   // never evaluates a `when:`.
   let route: engine.ResolvedRoute | undefined;
   if (gateResult.pass && Array.isArray(phase.on_pass)) {
-    const resolution = gate.resolveRoute(phase.on_pass, cwd, phase.env);
+    const resolution = gate.resolveRoute(phase.on_pass, cwd);
     if (resolution.kind === "error") {
       // Nothing has been written yet: state.json, the log and total_iterations are all
       // untouched, so this exit leaves the run exactly where it was. Deliberately not

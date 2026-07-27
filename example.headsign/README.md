@@ -59,10 +59,9 @@ can go — straight on, back, around, or out.
 Two things are deliberately left out, because they are true of nearly
 every node and would bury the shape. Staying put: `on_fail: retry` (the
 default) keeps the run in the phase it is already in. Giving up:
-exhausting `max_attempts` hands the run to a human, since `on_exhausted`
-defaults to `escalate`. So every edge drawn below is one that moves the
-run — including `release.yaml`'s `on_fail: escalate`, where handing the
-decision to a person IS the route.
+exhausting `max_attempts` always hands the run to a human. So every edge
+drawn below is one that moves the run — including `release.yaml`'s
+`on_fail: escalate`, where handing the decision to a person IS the route.
 
 **workflow.yaml** — the smallest loop: review sends work back.
 

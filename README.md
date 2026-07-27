@@ -356,17 +356,25 @@ as you like (see [Multiple sessions](#multiple-sessions)).
 | Field | Values | Default |
 |---|---|---|
 | `on_pass` | phase name, `$end`, or a list of `when:`/`to:` routes — see [The router pattern](#the-router-pattern) | — (required) |
-| `on_fail` | `retry`, phase name, `$end`, `escalate`, `abort` | `retry` |
-| `max_attempts` | positive int; counts failures of this phase since it last passed | unlimited |
-| `on_exhausted` | `escalate`, `abort` | `escalate` |
+| `on_fail` | `retry`, phase name, `$end`, `escalate` | `retry` |
+| `max_attempts` | positive int; counts failures of this phase since it last passed. Running out always answers `ESCALATE` | unlimited |
 | `limits.max_total_iterations` | positive int; global runaway backstop | none |
 
 Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
-`/bin/sh -c` (first failure stops the gate); phases may set `env:`.
-Deliberately absent: `needs:`, `${{ }}`, matrices, triggers. A route's
-`when:` is not `if:` in disguise either — it is a shell command judged by
-its exit code, not an expression to evaluate — so every routing decision is
-still an exit code choosing among destinations you wrote down.
+`/bin/sh -c` (first failure stops the gate). Every command headsign runs
+inherits headsign's own environment; a check that needs a variable sets it
+in its own `run:` string (`run: "FOO=bar npm test"`), the same way you would
+at a prompt. Deliberately absent: `needs:`, `${{ }}`, matrices, triggers,
+and a per-phase `env:`. A route's `when:` is not `if:` in disguise either —
+it is a shell command judged by its exit code, not an expression to
+evaluate — so every routing decision is still an exit code choosing among
+destinations you wrote down.
+
+Neither a gate nor a budget can end a run as `ABORT`: a failure route can
+say `escalate` (stop and ask a person) but never "stop", and exhausting
+`max_attempts` always escalates. `ABORT` comes from `headsign abort
+<reason>`, which is a person's decision and records their reason — so an
+aborted run is always one somebody ended on purpose.
 
 Two of `on_fail`'s values look interchangeable and are not. `retry` keeps
 the run where it is; naming the phase itself sends the run out of the phase
@@ -417,8 +425,8 @@ The rules, in full:
   path. A router phase whose own gate fails is an ordinary failing phase.
 - The `when:` commands run in order, and the **first one to exit 0** wins.
   If none matches, the last entry's `to:` is used.
-- `when:` inherits the phase's `env:` and takes an optional `timeout:`
-  (seconds, default 120) — the same treatment a check gets.
+- `when:` takes an optional `timeout:` (seconds, default 120) and runs in
+  headsign's own environment — the same treatment a check gets.
 - `to:` names a phase or `$end`.
 - `validate` rejects a list whose last entry has a `when:` (nothing would
   be the default) and one whose earlier entry lacks one (everything after

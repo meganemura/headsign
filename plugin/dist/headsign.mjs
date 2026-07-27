@@ -7371,8 +7371,7 @@ import path3 from "node:path";
 // src/workflow.ts
 var import_yaml = __toESM(require_dist(), 1);
 import fs from "node:fs";
-var ON_FAIL_TOKENS = /* @__PURE__ */ new Set(["retry", "$end", "escalate", "abort"]);
-var ON_EXHAUSTED_TOKENS = /* @__PURE__ */ new Set(["escalate", "abort"]);
+var ON_FAIL_TOKENS = /* @__PURE__ */ new Set(["retry", "$end", "escalate"]);
 var isMap = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isPosInt = (v) => typeof v === "number" && Number.isInteger(v) && v > 0;
 function load(path4) {
@@ -7435,7 +7434,6 @@ function validatePhase(name, p, names, errors) {
       });
     }
   }
-  if (p.env !== void 0 && !isMap(p.env)) errors.push(`phase '${name}': env must be a mapping`);
   if (p.ready !== void 0 && (typeof p.ready !== "string" || !p.ready)) {
     errors.push(`phase '${name}': ready must be a non-empty shell string`);
   }
@@ -7447,11 +7445,8 @@ function validatePhase(name, p, names, errors) {
     errors.push(`phase '${name}': on_fail '${String(p.on_fail)}' is not a valid route`);
   }
   if (p.max_attempts !== void 0 && !isPosInt(p.max_attempts)) errors.push(`phase '${name}': max_attempts must be a positive integer`);
-  if (p.max_attempts !== void 0 && (p.on_fail === "escalate" || p.on_fail === "abort")) {
-    errors.push(`phase '${name}': max_attempts has no effect when on_fail is '${p.on_fail}' \u2014 the first failure already ends the run; remove one of them`);
-  }
-  if (p.on_exhausted !== void 0 && (typeof p.on_exhausted !== "string" || !ON_EXHAUSTED_TOKENS.has(p.on_exhausted))) {
-    errors.push(`phase '${name}': on_exhausted must be 'escalate' or 'abort'`);
+  if (p.max_attempts !== void 0 && p.on_fail === "escalate") {
+    errors.push(`phase '${name}': max_attempts has no effect when on_fail is 'escalate' \u2014 the first failure already ends the run; remove one of them`);
   }
 }
 function validateRoutes(name, routes, names, errors) {
@@ -7586,14 +7581,12 @@ function isAlive(pid) {
 import { spawnSync } from "node:child_process";
 var DEFAULT_TIMEOUT_SECONDS = 120;
 var OUTPUT_TAIL_LIMIT = 4e3;
-function runGate(checks, cwd, phaseEnv) {
-  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
+function runGate(checks, cwd) {
   for (const c of checks) {
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const check = c.name ?? c.run;
     const result = spawnSync("/bin/sh", ["-c", c.run], {
       cwd,
-      env: { ...process.env, ...env },
       timeout: timeoutSeconds * 1e3,
       // Node's spawnSync default maxBuffer is 1MB; a verbose-but-passing check
       // (e.g. a large test suite) can legitimately print more than that.
@@ -7619,25 +7612,21 @@ ${outputTail}`
   }
   return { pass: true };
 }
-function isReady(sh, cwd, env) {
-  const envVars = env ? Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)])) : {};
+function isReady(sh, cwd) {
   const result = spawnSync("/bin/sh", ["-c", sh], {
     cwd,
-    env: { ...process.env, ...envVars },
     timeout: DEFAULT_TIMEOUT_SECONDS * 1e3,
     stdio: "ignore"
   });
   if (result.error) return true;
   return result.status === 0;
 }
-function resolveRoute(routes, cwd, phaseEnv) {
-  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
+function resolveRoute(routes, cwd) {
   for (const route of routes) {
     if (route.when === void 0) return { kind: "default", to: route.to };
     const timeoutSeconds = route.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const result = spawnSync("/bin/sh", ["-c", route.when], {
       cwd,
-      env: { ...process.env, ...env },
       timeout: timeoutSeconds * 1e3,
       stdio: "ignore"
     });
@@ -7701,8 +7690,8 @@ function step(workflow, state, gateResult, route) {
     const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
     next.last_failure = null;
     next.end_reason = reason;
-    next.status = phase.on_exhausted === "abort" ? "aborted" : "escalated";
-    return { state: next, outcome: { kind: next.status === "aborted" ? "ABORT" : "ESCALATE", reason } };
+    next.status = "escalated";
+    return { state: next, outcome: { kind: "ESCALATE", reason } };
   }
   const onFail = phase.on_fail ?? "retry";
   if (onFail === "retry") {
@@ -7721,11 +7710,11 @@ function step(workflow, state, gateResult, route) {
     next.status = "complete";
     return { state: next, outcome: { kind: "COMPLETE" } };
   }
-  if (onFail === "escalate" || onFail === "abort") {
-    const reason = `${phaseName}: gate failed (on_fail: ${onFail})`;
-    next.status = onFail === "abort" ? "aborted" : "escalated";
+  if (onFail === "escalate") {
+    const reason = `${phaseName}: gate failed (on_fail: escalate)`;
+    next.status = "escalated";
     next.end_reason = reason;
-    return { state: next, outcome: { kind: onFail === "abort" ? "ABORT" : "ESCALATE", reason } };
+    return { state: next, outcome: { kind: "ESCALATE", reason } };
   }
   next.phase = onFail;
   return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: workflow.phases[onFail].description, failure: { ...failure, routedTo: onFail } } };
@@ -8127,13 +8116,13 @@ function evaluateNext(cwd, wf, current) {
     return { outcome: limitHit.outcome };
   }
   const phase = wf.phases[current.phase];
-  if (phase.ready !== void 0 && !isReady(phase.ready, cwd, phase.env)) {
+  if (phase.ready !== void 0 && !isReady(phase.ready, cwd)) {
     return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
   }
-  const gateResult = runGate(phase.gate.checks, cwd, phase.env);
+  const gateResult = runGate(phase.gate.checks, cwd);
   let route;
   if (gateResult.pass && Array.isArray(phase.on_pass)) {
-    const resolution = resolveRoute(phase.on_pass, cwd, phase.env);
+    const resolution = resolveRoute(phase.on_pass, cwd);
     if (resolution.kind === "error") {
       releaseLock(cwd);
       errorExit(

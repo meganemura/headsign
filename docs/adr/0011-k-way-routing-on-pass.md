@@ -44,8 +44,10 @@ Routes are resolved **after** the gate passes, never on the failure path.
 Each `when:` runs in order, and the first one to exit 0 decides the
 destination; if none matches, the last entry (the one with no `when:`)
 does. `when:` is a shell command judged by its exit code — the same kind of
-thing a check is, run the same way (`/bin/sh -c`, the phase's `env:`, a
-`timeout:` defaulting to the same 120 seconds checks use). The field
+thing a check is, run the same way (`/bin/sh -c`, a `timeout:` defaulting
+to the same 120 seconds checks use; the phase `env:` this originally
+inherited was removed by
+[ADR-0014](0014-removing-three-unused-knobs.md)). The field
 reference for authors lives in README's routing section; this ADR records
 why the shape is what it is.
 
@@ -88,10 +90,11 @@ says the same thing once, forwards.
 
 Routing happens on the pass path, and by the time routes are resolved the
 engine has already cleared this phase's `attempts` entry and its recorded
-failure — that is what passing a gate has always done. So `max_attempts`,
-`on_exhausted`, and `last_failure` keep exactly the meaning ADR-0004 gave
-them: a route decision can neither cost an attempt nor grant one, because
-there is no failure in the neighborhood of it.
+failure — that is what passing a gate has always done. So `max_attempts`
+and `last_failure` keep exactly the meaning ADR-0004 gave them (as did
+`on_exhausted`, until ADR-0014 removed it): a route decision can neither
+cost an attempt nor grant one, because there is no failure in the
+neighborhood of it.
 
 A router phase whose own gate *fails* is an ordinary failing phase: RETRY
 (or whatever its `on_fail` says), attempt counted, routes never consulted.

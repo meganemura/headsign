@@ -2,6 +2,12 @@
 
 - Status: accepted
 - Date: 2026-07-23
+- Revised: 2026-07-27 (three fields are removed by
+  [ADR-0014](0014-removing-three-unused-knobs.md): the per-phase `env:`
+  borrowed below, `on_exhausted:`, and `abort` as an `on_fail` value. The
+  schema block and the `validate` list below are updated in place; ADR-0014
+  records what replaces each. Everything else here — the borrowed and
+  refused lists, `clear:`, and `description` being advisory — stands.)
 
 ## Context
 
@@ -19,9 +25,11 @@ order, plus an explicit refusal list.
   exhaustion handling; a global iteration limit (`max_turns` →
   `limits.max_total_iterations`).
 - **CI dialect common core (GitHub Actions / CircleCI)**: check steps as
-  `- name:` + `run:`; per-check `timeout` (seconds); per-phase `env:`.
-  If a v2 human gate ever lands, it uses CircleCI's `type: approval`
-  vocabulary.
+  `- name:` + `run:`; per-check `timeout` (seconds); per-phase `env:`
+  *(removed by ADR-0014 — nothing authored ever used it, and `FOO=bar cmd`
+  in the `run:` string says the same in the shell the author is already
+  writing)*. If a v2 human gate ever lands, it uses CircleCI's
+  `type: approval` vocabulary.
 
 ### Refused (and why)
 
@@ -63,16 +71,14 @@ phases:                 # required, at least one
   plan:
     description: …      # required; shown to Claude on START/ADVANCE
     clear: [.headsign/tmp/verdict]  # optional; deleted each time this phase is entered
-    env: {K: V}         # optional; merged over process env for checks
     gate:               # required
       checks:           # required, non-empty
         - name: …       # optional; defaults to the run string
           run: "…"      # required; /bin/sh -c, judged by exit code
           timeout: 300  # optional seconds, default 120
     on_pass: implement  # required: phase name | $end | list of when:/to: routes (ADR-0011)
-    on_fail: retry      # optional: retry(default) | phase | $end | escalate | abort
-    max_attempts: 3     # optional; absent = unlimited
-    on_exhausted: escalate  # optional: escalate(default) | abort
+    on_fail: retry      # optional: retry(default) | phase | $end | escalate
+    max_attempts: 3     # optional; absent = unlimited; exhaustion always escalates
 
   review:
     description: …
@@ -90,8 +96,8 @@ limits:                 # optional
 `headsign validate` enforces: version/name/entry present, entry exists,
 every routing target names a defined phase or an allowed token, checks
 non-empty with `run` strings, timeouts positive, phases reachable from
-entry, `max_attempts` not paired with `on_fail: escalate`/`abort` (the
-first failure would already end the run, so `max_attempts` could never be
+entry, `max_attempts` not paired with `on_fail: escalate` (the first
+failure would already end the run, so `max_attempts` could never be
 reached), and `ready`, when present, is a non-empty shell string. `ready`
 adds no routing edge and takes no part in the reachability check — it
 gates whether the phase's own gate runs at all, it never sends the run

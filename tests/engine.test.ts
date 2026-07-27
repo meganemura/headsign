@@ -87,13 +87,6 @@ test("fail routes to escalate", () => {
   assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: gate failed (on_fail: escalate)" });
 });
 
-test("fail routes to abort", () => {
-  const workflow = wf({ a: { on_pass: "$end", on_fail: "abort" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
-  assert.equal(state.status, "aborted");
-  assert.deepEqual(outcome, { kind: "ABORT", reason: "a: gate failed (on_fail: abort)" });
-});
-
 test("fail routes to $end (COMPLETE)", () => {
   const workflow = wf({ a: { on_pass: "$end", on_fail: "$end" } });
   const { state, outcome } = engine.step(workflow, st("a"), FAIL());
@@ -101,20 +94,14 @@ test("fail routes to $end (COMPLETE)", () => {
   assert.deepEqual(outcome, { kind: "COMPLETE" });
 });
 
-test("exhaustion escalates by default", () => {
+// Exhaustion has one destination (ADR-0014): a spent budget always asks a person.
+test("exhaustion escalates", () => {
   const workflow = wf({ a: { on_pass: "$end", max_attempts: 2 } });
   const s1 = engine.step(workflow, st("a"), FAIL()).state;
   const { state, outcome } = engine.step(workflow, s1, FAIL());
   assert.equal(state.attempts.a, 2);
   assert.equal(state.status, "escalated");
   assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: max_attempts (2) exhausted" });
-});
-
-test("exhaustion aborts when on_exhausted: abort", () => {
-  const workflow = wf({ a: { on_pass: "$end", max_attempts: 1, on_exhausted: "abort" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
-  assert.equal(state.status, "aborted");
-  assert.deepEqual(outcome, { kind: "ABORT", reason: "a: max_attempts (1) exhausted" });
 });
 
 // --- attempts semantics (ADR-0004) ---

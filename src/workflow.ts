@@ -12,18 +12,18 @@ export interface Route { when?: string; to: string; timeout?: number }
 export interface Phase {
   description: string;
   clear?: string[];
-  env?: Record<string, unknown>;
   gate: { checks: Check[] };
   on_pass: string | Route[];
   on_fail?: string;
   max_attempts?: number;
-  on_exhausted?: string;
   ready?: string;
 }
 export interface Workflow { version: number; name: string; entry: string; phases: Record<string, Phase>; limits?: { max_total_iterations?: number } }
 
-const ON_FAIL_TOKENS = new Set(["retry", "$end", "escalate", "abort"]);
-const ON_EXHAUSTED_TOKENS = new Set(["escalate", "abort"]);
+// No `abort` here (ADR-0014): a gate failure is a machine verdict, and ending a run for good
+// is a human-directed act — `headsign abort <reason>` — so the only end-the-run token a
+// workflow can declare on failure is `escalate`, which hands the call to a person.
+const ON_FAIL_TOKENS = new Set(["retry", "$end", "escalate"]);
 const isMap = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isPosInt = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v) && v > 0;
 
@@ -102,8 +102,6 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
     }
   }
 
-  if (p.env !== undefined && !isMap(p.env)) errors.push(`phase '${name}': env must be a mapping`);
-
   // `ready` is a readiness probe, not a routing field: it never adds a graph edge, so it
   // takes no part in the `unreachable()` walk below.
   if (p.ready !== undefined && (typeof p.ready !== "string" || !p.ready)) {
@@ -120,13 +118,10 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
   }
   if (p.max_attempts !== undefined && !isPosInt(p.max_attempts)) errors.push(`phase '${name}': max_attempts must be a positive integer`);
   // engine.ts step() checks max_attempts exhaustion before on_fail, but on_fail
-  // 'escalate'/'abort' ends the run on the very first failure — attempts never
-  // gets a chance to reach max_attempts, so one of the two settings is always dead.
-  if (p.max_attempts !== undefined && (p.on_fail === "escalate" || p.on_fail === "abort")) {
-    errors.push(`phase '${name}': max_attempts has no effect when on_fail is '${p.on_fail}' — the first failure already ends the run; remove one of them`);
-  }
-  if (p.on_exhausted !== undefined && (typeof p.on_exhausted !== "string" || !ON_EXHAUSTED_TOKENS.has(p.on_exhausted))) {
-    errors.push(`phase '${name}': on_exhausted must be 'escalate' or 'abort'`);
+  // 'escalate' ends the run on the very first failure — attempts never gets a
+  // chance to reach max_attempts, so one of the two settings is always dead.
+  if (p.max_attempts !== undefined && p.on_fail === "escalate") {
+    errors.push(`phase '${name}': max_attempts has no effect when on_fail is 'escalate' — the first failure already ends the run; remove one of them`);
   }
 }
 

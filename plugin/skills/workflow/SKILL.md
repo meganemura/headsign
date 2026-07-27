@@ -143,7 +143,15 @@ plugin or `npm install` the package. Do not guess at other paths.
   no gate runs, no state is touched — so drafting or editing one is safe at
   any time. Errors (exit 3) must be fixed; warnings print to stderr and
   still exit 0, so a phase nothing routes to yet won't stop the run you are
-  in.
+  in. Two things a phase cannot declare: an environment (a check that needs
+  a variable writes it into its own `run:` string, e.g. `run: "FOO=bar npm
+  test"` — there is no `env:` field), and "end the run here" on failure
+  (`on_fail` goes as far as `escalate`, which stops and asks a person, and
+  exhausting `max_attempts` always escalates too).
+- **No gate can abort a run — only a person can.** `ABORT` is what
+  `headsign abort <reason>` produces, so a run that reads `ABORTED` was
+  ended deliberately, by you on the user's instruction or by the user. A
+  run headsign itself stopped always reads `ESCALATED`.
 - **A phase can branch to one of several phases.** Its `on_pass` is then a
   list instead of a phase name: each entry has a `when:` shell command and a
   `to:`, the first `when:` that exits 0 decides where the run goes, and the

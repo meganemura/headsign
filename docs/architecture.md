@@ -45,21 +45,24 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at **963 code lines** (raw
-`wc -l` is higher, ~1575, because of those comments) — roughly twice the
+blank lines don't count). It currently sits at **950 code lines** (raw
+`wc -l` is higher, ~1574, because of those comments) — roughly twice the
 target, after the concurrency lock, ready:/PENDING, the transition log,
 driver ownership, the two stop-boundary hooks, and k-way `on_pass` routing
 landed. Each was individually justified and none is obviously removable,
 which is exactly the shape of drift ADR-0001 says to watch: at 2× the
 guideline, the next feature proposal should face the "does a thin harness
-need this?" question with real suspicion. It has come down twice, both
-times because a mechanism was removed rather than because lines were
-trimmed: 1081 → 992 when ADR-0012 dropped the tree-hash cache, and 992 →
-963 when ADR-0013 retired the environment-derived driver stamp. That second
-subtraction is the note that used to stand here — that a proposal adding a
-*third* identity mechanism should be answered by consolidating the first
-two — taken up rather than repeated. A feature whose justification has
-moved elsewhere is where to look next. Recount with:
+need this?" question with real suspicion. It has come down three times,
+every time because a mechanism was removed rather than because lines were
+trimmed: 1081 → 992 when ADR-0012 dropped the tree-hash cache, 992 → 963
+when ADR-0013 retired the environment-derived driver stamp, and 963 → 950
+when ADR-0014 removed three schema fields nothing authored ever turned
+(phase `env:`, `on_exhausted:`, `on_fail: abort`). The second subtraction
+is the note that used to stand here — that a proposal adding a *third*
+identity mechanism should be answered by consolidating the first two —
+taken up rather than repeated; the third is the counterpart question asked
+of the schema, and the answer was to count uses. A knob the shipped
+workflows never turn is where to look next. Recount with:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
@@ -75,7 +78,7 @@ lines.
 | `src/cli.ts` | argv parsing, command dispatch, printing, process exit code | routing rules, YAML schema |
 | `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types | state.json, gates, git |
 | `src/state.ts` | read/write `state.json` (atomic write); owns the state shape | routing rules, YAML |
-| `src/gate.ts` | run one phase's checks (shell, env, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
+| `src/gate.ts` | run one phase's checks (shell, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
 | `src/engine.ts` | the transition function: (workflow, state, gate result, resolved route) → (new state, outcome). The ONLY place routing rules live — a resolved route arrives as data and is applied here, never evaluated here | child_process, printing |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, the one env signal headsign reads (ADR-0013) | workflow.yaml, gates |
@@ -136,3 +139,4 @@ outside it:
 - [ADR-0011](adr/0011-k-way-routing-on-pass.md) — k-way routing on `on_pass`: `when:`/`to:` routes, and unreachable phases as warnings
 - [ADR-0012](adr/0012-removing-the-tree-hash-cache.md) — removing the tree-hash cache: every `next` judges, `max_attempts` counts judgments
 - [ADR-0013](adr/0013-claim-only-driver-identity.md) — claim-only driver identity: the environment stamp retired, `Stop` compares nothing
+- [ADR-0014](adr/0014-removing-three-unused-knobs.md) — removing three unused knobs: phase `env:`, `on_exhausted:`, `on_fail: abort`

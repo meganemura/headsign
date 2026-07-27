@@ -75,7 +75,6 @@ phases:
           timeout: 600
     on_pass: review
     max_attempts: 5
-    on_exhausted: escalate
 
   write-docs:
     description: >
@@ -94,7 +93,6 @@ phases:
           run: "! grep -rn 'TODO(docs)' docs/"
     on_pass: review
     max_attempts: 5
-    on_exhausted: escalate
 
   implement:
     description: >
@@ -112,7 +110,6 @@ phases:
           timeout: 600
     on_pass: review
     max_attempts: 5
-    on_exhausted: escalate
 
   review:
     description: >
@@ -138,7 +135,6 @@ phases:
     # counter), so three laps without an APPROVED verdict escalate.
     on_fail: classify
     max_attempts: 3
-    on_exhausted: escalate
 
 limits:
   # Two full laps plus slack: 4 phases per lap, and the routing itself
