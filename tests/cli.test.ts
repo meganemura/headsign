@@ -2157,3 +2157,359 @@ test("--help lists the status command and its RUNNING/COMPLETE/ESCALATED/ABORTED
   assert.match(result.stdout, /ESCALATED/);
   assert.match(result.stdout, /ABORTED/);
 });
+
+// --- k-way on_pass: routing a pass by `when:` predicates (ADR-0011) ---
+
+// Three destinations behind one gate. The `route` file stands in for whatever the agent
+// wrote down during the phase; the gate proves it says something legible, and the `when:`
+// predicates read it to pick an edge that was declared here, in the workflow.
+const ROUTER_WORKFLOW = `
+version: 1
+name: router
+entry: classify
+phases:
+  classify:
+    description: "Classify the request."
+    gate:
+      checks:
+        - name: "route recorded"
+          run: "test -s route"
+    on_pass:
+      - when: "grep -qx docs route"
+        to: write-docs
+      - when: "grep -qx bug route"
+        to: fix-bug
+      - to: implement
+  write-docs:
+    description: "Write the docs."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  fix-bug:
+    description: "Fix the bug."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  implement:
+    description: "Implement it."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`;
+
+function startRouterRun(route: string, workflow = ROUTER_WORKFLOW): string {
+  const dir = initRepo();
+  writeWorkflow(dir, workflow);
+  fs.writeFileSync(path.join(dir, "route"), `${route}\n`);
+  const started = run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(started.status, 0);
+  return dir;
+}
+
+test("routing: the first matching when takes the pass, and one routed line names it", () => {
+  const dir = startRouterRun("docs");
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.equal(
+    result.stdout,
+    `ADVANCE write-docs\n--- routed: when "grep -qx docs route" → write-docs ---\n--- phase: write-docs ---\nWrite the docs.\n`,
+  );
+  assert.equal(readState(dir).phase, "write-docs");
+  assert.match(readLog(dir).at(-1)!, /advance write-docs a=0 i=1 from=classify routed-when="grep -qx docs route"$/);
+});
+
+test("routing: a later when takes the pass when the earlier one does not match", () => {
+  const dir = startRouterRun("bug");
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^ADVANCE fix-bug\n--- routed: when "grep -qx bug route" → fix-bug ---\n/);
+  assert.equal(readState(dir).phase, "fix-bug");
+  assert.match(readLog(dir).at(-1)!, /routed-when="grep -qx bug route"$/);
+});
+
+test("routing: nothing matching falls to the last entry, announced as the default", () => {
+  const dir = startRouterRun("something-else");
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^ADVANCE implement\n--- routed: default → implement ---\n/);
+  assert.equal(readState(dir).phase, "implement");
+  assert.match(readLog(dir).at(-1)!, /advance implement a=0 i=1 from=classify routed-default$/);
+});
+
+test("routing: a routed run reaches COMPLETE through the branch it picked", () => {
+  const dir = startRouterRun("docs");
+  run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  const done = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(done.status, 0);
+  assert.match(done.stdout, /^COMPLETE\n/);
+  assert.equal(readState(dir).status, "complete");
+});
+
+test("routing: a route whose 'to' is $end completes the run", () => {
+  const dir = startRouterRun(
+    "done",
+    `
+version: 1
+name: router-end
+entry: classify
+phases:
+  classify:
+    description: "Classify."
+    gate:
+      checks:
+        - run: "test -s route"
+    on_pass:
+      - when: "grep -qx done route"
+        to: "$end"
+      - to: implement
+  implement:
+    description: "Implement it."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^COMPLETE\n/);
+  assert.equal(readState(dir).status, "complete");
+});
+
+test("routing: the branch costs no attempt — the pass cleared the counter, same as any pass", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, ROUTER_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+
+  // Two real failures first, so there is an attempt count that routing could plausibly touch.
+  assert.equal(run(["next"], { cwd: dir, env: sessionEnv("router-session") }).status, 1);
+  fs.writeFileSync(path.join(dir, "unrelated"), "x"); // move the tree so the cache doesn't answer
+  assert.equal(run(["next"], { cwd: dir, env: sessionEnv("router-session") }).status, 1);
+  assert.equal((readState(dir).attempts as Record<string, number>).classify, 2);
+
+  fs.writeFileSync(path.join(dir, "route"), "docs\n");
+  const routed = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(routed.status, 0);
+  assert.deepEqual(readState(dir).attempts, {}, "a routed pass clears attempts like any other pass");
+});
+
+test("routing: a failing gate never evaluates a when — the fail path is untouched by branching", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: router-fail
+entry: classify
+phases:
+  classify:
+    description: "Classify."
+    gate:
+      checks:
+        - name: "route recorded"
+          run: "test -s route"
+    on_pass:
+      - when: "touch when-ran && grep -qx docs route"
+        to: write-docs
+      - to: implement
+  write-docs:
+    description: "Write the docs."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  implement:
+    description: "Implement it."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+
+  const failed = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(failed.status, 1);
+  assert.match(failed.stdout, /^RETRY 1 classify\n/);
+  assert.doesNotMatch(failed.stdout, /routed:/);
+  assert.equal(fs.existsSync(path.join(dir, "when-ran")), false, "no when: may run on the failure path");
+  assert.equal(readState(dir).phase, "classify");
+});
+
+test("routing: a when inherits the phase's env, like the gate's checks do", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: router-env
+entry: classify
+phases:
+  classify:
+    description: "Classify."
+    env:
+      KIND: docs
+    gate:
+      checks:
+        - run: "true"
+    on_pass:
+      - when: 'test "$KIND" = "docs"'
+        to: write-docs
+      - to: implement
+  write-docs:
+    description: "Write the docs."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  implement:
+    description: "Implement it."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^ADVANCE write-docs\n/);
+});
+
+test("routing: a when that cannot be evaluated stops the run at exit 3 and moves nothing", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: router-broken
+entry: classify
+phases:
+  classify:
+    description: "Classify."
+    gate:
+      checks:
+        - run: "true"
+    on_pass:
+      - when: "sleep 5"
+        timeout: 0.2
+        to: write-docs
+      - to: implement
+  write-docs:
+    description: "Write the docs."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  implement:
+    description: "Implement it."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+  const stateBefore = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const logBefore = fs.readFileSync(path.join(dir, ".headsign", "log"));
+
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /could not evaluate the on_pass condition `sleep 5`/);
+  assert.match(result.stderr, /timed out after 0.2s/);
+  assert.match(result.stderr, /The run has not moved\./);
+  assert.equal(result.stdout, "", "a configuration error says nothing on stdout");
+
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "state.json")), stateBefore, "state.json must be byte-identical");
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "log")), logBefore, "no transition happened, so nothing is logged");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released before exiting");
+});
+
+test("routing: a string on_pass is unchanged — no routed line on stdout, no routed detail in the log", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `ADVANCE verify\n--- phase: verify ---\nVerify the thing.\n`);
+  assert.doesNotMatch(result.stdout, /routed/);
+  assert.match(readLog(dir).at(-1)!, /advance verify a=0 i=1 from=build$/);
+});
+
+// --- unreachable phases: a warning now, not an error (ADR-0011) ---
+
+const UNREACHABLE_WORKFLOW = `
+version: 1
+name: has-orphan
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  draft:
+    description: "A phase nothing points at yet."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`;
+
+test("an unreachable phase no longer blocks validate: exit 0, warning on stderr", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, UNREACHABLE_WORKFLOW);
+  const result = run(["validate"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^OK: workflow 'has-orphan' \(2 phases\)\n$/);
+  assert.equal(result.stderr, `WARNING: .headsign/workflow.yaml\n- phase 'draft' is unreachable from entry 'build'\n`);
+});
+
+test("an unreachable phase no longer blocks a run: start works and says so once", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, UNREACHABLE_WORKFLOW);
+  const started = run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(started.status, 0);
+  assert.match(started.stdout, /^START build\n/);
+  assert.match(started.stderr, /phase 'draft' is unreachable from entry 'build'/);
+  assert.equal(readState(dir).phase, "build");
+});
+
+test("next stays quiet about warnings: the loop's hot path prints none", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, UNREACHABLE_WORKFLOW);
+  run(["start"], { cwd: dir, env: sessionEnv("router-session") });
+  const result = run(["next"], { cwd: dir, env: sessionEnv("router-session") });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^COMPLETE\n/);
+  assert.equal(result.stderr, "");
+});
+
+test("a real error still fails validate, and is not softened into a warning", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: broken
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: nowhere
+`,
+  );
+  const result = run(["validate"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^INVALID: /);
+  assert.match(result.stderr, /on_pass 'nowhere' does not name a defined phase/);
+});

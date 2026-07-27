@@ -19,6 +19,7 @@ headsign start tdd-feature  # .headsign/tdd-feature.yaml
 | [docs.yaml](docs.yaml) | technical writer | outline (audience named) → draft → style (mechanical lint) → reader review |
 | [release.yaml](release.yaml) | release engineer | prepare (versions/changelog/clean tree) → verify (CI mirror) → approve (human GO file) → ship (tag at HEAD) |
 | [triage.yaml](triage.yaml) | headsign's own feedback intake (pull-based queue) | triage (judge one ticket; a no-work run ends clean) → implement → review → respond |
+| [router.yaml](router.yaml) | request intake that dispatches one of three kinds of work | classify (agent writes one word) → fix-bug / write-docs / implement → review (rejection re-enters classify) |
 
 Things these examples demonstrate beyond the Quick start:
 
@@ -32,10 +33,14 @@ Things these examples demonstrate beyond the Quick start:
 - gating a phase on a run-local completion marker with `ready:` — the agent
   declares "I am done here" rather than the queue being probed — and ending
   a run with nothing to do cleanly via `on_fail: "$end"` (triage)
+- branching a pass three ways with a list-form `on_pass`, where the agent
+  writes down its judgment and the `when:` predicates pick an edge that was
+  declared in the file (router)
 
 This repository dogfoods headsign: `.headsign` at the repo root is a
 symlink to this directory, so `headsign start` here runs the
-`headsign-dev` workflow, `headsign start release` runs the release one, and
-`headsign start triage` runs one feedback ticket end to end.
+`headsign-dev` workflow, `headsign start release` runs the release one,
+`headsign start triage` runs one feedback ticket end to end, and
+`headsign start router` runs the branching one.
 The `.gitignore` in this directory keeps run state (`state.json`, `lock`,
 `log`, `tmp/`) out of the repository.

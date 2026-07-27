@@ -12,11 +12,22 @@ export function start(phase: string, description: string, cleared?: string[]): s
 
 type Failure = { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number };
 
-export function advance(phase: string, description: string, failure?: Failure & { routedTo: string }, cleared?: string[]): string {
+// `routedBy` is present only for a k-way `on_pass` (ADR-0011) and adds exactly one line, in
+// the same slot the gate-failed line uses (the two never co-occur: one is the pass path, the
+// other the fail-route path). A string-form `on_pass` adds nothing, so the output of every
+// workflow written before k-way routing is unchanged to the byte.
+export function advance(
+  phase: string,
+  description: string,
+  failure?: Failure & { routedTo: string },
+  cleared?: string[],
+  routedBy?: { when: string } | { default: true },
+): string {
   const failedLine = failure
     ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds)}) → routed to ${failure.routedTo} ---\n`
     : "";
-  return `ADVANCE ${phase}\n${clearedBlock(cleared)}${failedLine}--- phase: ${phase} ---\n${description}\n`;
+  const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} → ${phase} ---\n` : "";
+  return `ADVANCE ${phase}\n${clearedBlock(cleared)}${failedLine}${routedLine}--- phase: ${phase} ---\n${description}\n`;
 }
 
 // One `--- cleared: <path> ---` line per file clearPhaseArtifacts actually deleted
@@ -80,6 +91,12 @@ export function validateOk(name: string, phaseCount: number): string {
 
 export function validateFail(path: string, errors: string[]): string {
   return `INVALID: ${path}\n${errors.map((e) => `- ${e}\n`).join("")}`;
+}
+
+// Warnings never change an exit code — the workflow still loads and the run still starts.
+// Written to stderr by `validate` and `start` only, so `next`'s hot path stays clean.
+export function validateWarnings(path: string, warnings: string[]): string {
+  return `WARNING: ${path}\n${warnings.map((w) => `- ${w}\n`).join("")}`;
 }
 
 function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: number): string {
@@ -204,6 +221,14 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
     case "RETRY":
       return `check="${event.failure.check}" exit=${event.failure.exitCode}`;
     case "ADVANCE":
+      // Which branch of a k-way `on_pass` was taken is recorded here and nowhere else that
+      // outlives the run: without it, a routed advance reads exactly like a straight one and
+      // why the run went this way instead of that way is gone for good. The log is the
+      // human's audit trail, so it may say more than stdout does.
+      if (event.routedBy) {
+        const why = "when" in event.routedBy ? `routed-when="${event.routedBy.when}"` : "routed-default";
+        return `from=${prevPhase} ${why}`;
+      }
       return event.failure
         ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}`
         : `from=${prevPhase}`;

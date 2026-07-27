@@ -73,9 +73,13 @@ function resolveWorkflowPath(args: string[], defaultPath = ".headsign/workflow.y
   return `.headsign/${filename}`;
 }
 
-function loadWorkflowOrExit(workflowPath: string): workflowMod.Workflow {
-  const { workflow: wf, errors } = workflowMod.load(workflowPath);
+// `showWarnings` is off by default because `next` is the hot path: a warning belongs where
+// someone is in a position to act on it (`validate`, and once per run at `start`), not on
+// every lap of the loop. Warnings never affect the exit code.
+function loadWorkflowOrExit(workflowPath: string, showWarnings = false): workflowMod.Workflow {
+  const { workflow: wf, errors, warnings } = workflowMod.load(workflowPath);
   if (!wf) stderrExit(render.validateFail(workflowPath, errors), 3);
+  if (showWarnings && warnings.length > 0) process.stderr.write(render.validateWarnings(workflowPath, warnings));
   return wf;
 }
 
@@ -87,7 +91,7 @@ function loadWorkflowOrExit(workflowPath: string): workflowMod.Workflow {
 function printOutcome(outcome: engine.Outcome, workflowName: string, ctx?: { wf: workflowMod.Workflow; cleared?: string[] }): never {
   switch (outcome.kind) {
     case "ADVANCE":
-      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared), 0);
+      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, outcome.routedBy), 0);
     case "COMPLETE":
       return exitAfter(render.complete(workflowName), 0);
     case "RETRY":
@@ -156,7 +160,7 @@ function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): string[] {
 
 function cmdStart(args: string[]): void {
   const workflowPath = resolveWorkflowPath(args);
-  const wf = loadWorkflowOrExit(workflowPath);
+  const wf = loadWorkflowOrExit(workflowPath, true);
   const cwd = process.cwd();
 
   const existing = state.readState(cwd);
@@ -227,7 +231,30 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
   }
 
   const gateResult = gate.runGate(phase.gate.checks, cwd, phase.env);
-  const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash);
+
+  // k-way `on_pass` (ADR-0011): resolved here, after the gate passed and before step(), so
+  // engine.ts stays free of shell execution. Only the pass path ever routes — a failed gate
+  // never evaluates a `when:`.
+  let route: engine.ResolvedRoute | undefined;
+  if (gateResult.pass && Array.isArray(phase.on_pass)) {
+    const resolution = gate.resolveRoute(phase.on_pass, cwd, phase.env);
+    if (resolution.kind === "error") {
+      // Nothing has been written yet: state.json, the log and total_iterations are all
+      // untouched, so this exit leaves the run exactly where it was. Deliberately not
+      // falling through to the default destination — the thing that could not be evaluated
+      // is the destination itself, and a silent wrong phase would break the one promise
+      // headsign makes about transitions (ADR-0011).
+      state.releaseLock(cwd);
+      errorExit(
+        `phase '${current.phase}': could not evaluate the on_pass condition \`${resolution.when}\` (${resolution.reason}). ` +
+          `The gate passed, but headsign will not guess where to go: fix that condition in '${current.workflow_path}' ` +
+          "and run `headsign next` again. The run has not moved.",
+      );
+    }
+    route = resolution;
+  }
+
+  const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, route);
   let cleared: string[] | undefined;
   if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);
@@ -339,7 +366,7 @@ function cmdValidate(args: string[]): void {
   const current = state.readState(process.cwd());
   const defaultPath = current !== null ? current.workflow_path : ".headsign/workflow.yaml";
   const workflowPath = resolveWorkflowPath(args, defaultPath);
-  const wf = loadWorkflowOrExit(workflowPath);
+  const wf = loadWorkflowOrExit(workflowPath, true);
   exitAfter(render.validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
 

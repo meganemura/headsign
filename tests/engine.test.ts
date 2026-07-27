@@ -5,7 +5,7 @@ import type { Workflow, Phase } from "../src/workflow.ts";
 import type { State } from "../src/state.ts";
 import type { GateResult } from "../src/gate.ts";
 
-function wf(phases: Record<string, Partial<Phase> & { on_pass: string }>, entry?: string): Workflow {
+function wf(phases: Record<string, Partial<Phase> & { on_pass: Phase["on_pass"] }>, entry?: string): Workflow {
   const built: Record<string, Phase> = {};
   for (const [name, p] of Object.entries(phases)) {
     built[name] = { description: name, gate: { checks: [{ run: "true" }] }, ...p } as Phase;
@@ -163,6 +163,61 @@ test("checkIterationLimit is null below the limit or when unconfigured", () => {
   const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
   assert.equal(engine.checkIterationLimit(workflow, st("a", { total_iterations: 4 })), null);
   assert.equal(engine.checkIterationLimit(wf({ a: { on_pass: "$end" } }), st("a", { total_iterations: 999 })), null);
+});
+
+// --- k-way on_pass (ADR-0011): step() reads the branch the caller already resolved ---
+
+const ROUTED = { a: { on_pass: [{ when: "w1", to: "b" }, { when: "w2", to: "c" }, { to: "d" }] }, b: { on_pass: "$end" }, c: { on_pass: "$end" }, d: { on_pass: "$end" } };
+
+test("a matched route sends the pass to that route's target and names the when in routedBy", () => {
+  const workflow = wf(ROUTED);
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "matched", to: "c", when: "w2" });
+  assert.equal(state.phase, "c");
+  assert.deepEqual(outcome, { kind: "ADVANCE", phase: "c", description: "c", routedBy: { when: "w2" } });
+});
+
+test("a default resolution sends the pass to the default target and marks routedBy as default", () => {
+  const workflow = wf(ROUTED);
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "default", to: "d" });
+  assert.equal(state.phase, "d");
+  assert.deepEqual(outcome, { kind: "ADVANCE", phase: "d", description: "d", routedBy: { default: true } });
+});
+
+test("a route to $end completes the workflow, same as the string form", () => {
+  const workflow = wf({ a: { on_pass: [{ when: "w1", to: "b" }, { to: "$end" }] }, b: { on_pass: "$end" } });
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "matched", to: "$end", when: "w1" });
+  assert.equal(state.status, "complete");
+  assert.deepEqual(outcome, { kind: "COMPLETE" });
+});
+
+test("a routed pass clears the phase's attempts like any other pass", () => {
+  const workflow = wf(ROUTED);
+  const { state } = engine.step(workflow, st("a", { attempts: { a: 2 } }), PASS, null, { kind: "default", to: "d" });
+  assert.deepEqual(state.attempts, {});
+});
+
+test("a string on_pass ignores any resolution handed to it and adds no routedBy key", () => {
+  const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "matched", to: "nowhere", when: "w1" });
+  assert.equal(state.phase, "b");
+  assert.deepEqual(outcome, { kind: "ADVANCE", phase: "b", description: "b" });
+});
+
+test("a failing gate never consults the route list: on_fail decides, and routedBy stays absent", () => {
+  const workflow = wf({ ...ROUTED, a: { on_pass: ROUTED.a.on_pass, on_fail: "d" } });
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL("lint", "eslint", 2), null);
+  assert.equal(state.phase, "d");
+  assert.deepEqual(outcome, {
+    kind: "ADVANCE",
+    phase: "d",
+    description: "d",
+    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, routedTo: "d" },
+  });
+});
+
+test("a k-way pass with no resolution throws rather than guessing a destination", () => {
+  const workflow = wf(ROUTED);
+  assert.throws(() => engine.step(workflow, st("a"), PASS, null), /no resolution/);
 });
 
 // --- shouldUseCache / cachedRetry (ADR-0004) ---

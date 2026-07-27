@@ -102,3 +102,66 @@ test("isReady: fails open (true) on a spawn error rather than stalling the run b
   const brokenCwd = path.join(tmpdir(), "does-not-exist");
   assert.equal(gate.isReady("false", brokenCwd, undefined), true);
 });
+
+// --- resolveRoute: which branch of a k-way on_pass answers (ADR-0011) ---
+
+test("resolveRoute: the first matching when wins", () => {
+  const resolution = gate.resolveRoute(
+    [
+      { when: "false", to: "a" },
+      { when: "true", to: "b" },
+      { when: "true", to: "c" },
+      { to: "fallback" },
+    ],
+    tmpdir(),
+    undefined,
+  );
+  assert.deepEqual(resolution, { kind: "matched", to: "b", when: "true" });
+});
+
+test("resolveRoute: no match falls to the entry without a when", () => {
+  const resolution = gate.resolveRoute([{ when: "false", to: "a" }, { to: "fallback" }], tmpdir(), undefined);
+  assert.deepEqual(resolution, { kind: "default", to: "fallback" });
+});
+
+test("resolveRoute: entries after the first match are not evaluated", () => {
+  const dir = tmpdir();
+  const marker = path.join(dir, "ran-later");
+  gate.resolveRoute([{ when: "true", to: "a" }, { when: `touch ${marker}`, to: "b" }, { to: "fallback" }], dir, undefined);
+  assert.equal(fs.existsSync(marker), false);
+});
+
+test("resolveRoute: predicates run in the given cwd, like runGate", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "marker"), "");
+  assert.deepEqual(gate.resolveRoute([{ when: "test -f marker", to: "a" }, { to: "b" }], dir, undefined), {
+    kind: "matched",
+    to: "a",
+    when: "test -f marker",
+  });
+});
+
+test("resolveRoute: phase env reaches the predicate, coerced to strings like runGate", () => {
+  const routes = [{ when: 'test "$KIND" = "docs"', to: "docs" }, { when: 'test "$COUNT" = "3"', to: "counted" }, { to: "fallback" }];
+  assert.deepEqual(gate.resolveRoute(routes, tmpdir(), { KIND: "docs" }), { kind: "matched", to: "docs", when: 'test "$KIND" = "docs"' });
+  assert.deepEqual(gate.resolveRoute(routes, tmpdir(), { COUNT: 3 }), { kind: "matched", to: "counted", when: 'test "$COUNT" = "3"' });
+});
+
+test("resolveRoute: a timed-out predicate is an error, not a fall-through to the default", () => {
+  const resolution = gate.resolveRoute([{ when: "sleep 5", to: "a", timeout: 0.2 }, { to: "fallback" }], tmpdir(), undefined);
+  assert.deepEqual(resolution, { kind: "error", when: "sleep 5", reason: "timed out after 0.2s" });
+});
+
+test("resolveRoute: a predicate that cannot be launched at all is an error", () => {
+  // Same trick as the isReady spawn-error test: a nonexistent cwd stops /bin/sh from
+  // starting, which is not the same event as the shell running and exiting nonzero.
+  const brokenCwd = path.join(tmpdir(), "does-not-exist");
+  const resolution = gate.resolveRoute([{ when: "true", to: "a" }, { to: "fallback" }], brokenCwd, undefined);
+  assert.equal(resolution.kind, "error");
+  if (resolution.kind === "error") assert.equal(resolution.when, "true");
+});
+
+test("resolveRoute: a route list with no default entry is an error rather than a silent no-answer", () => {
+  const resolution = gate.resolveRoute([{ when: "false", to: "a" }], tmpdir(), undefined);
+  assert.equal(resolution.kind, "error");
+});

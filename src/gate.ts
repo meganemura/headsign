@@ -1,8 +1,11 @@
-// Responsibility: run one phase's gate checks in order, shell + env + timeout + output tail (ADR-0002/0003).
-// Must NOT know about: routing, state.json, git.
+// Responsibility: run one phase's gate checks in order, shell + env + timeout + output tail
+// (ADR-0002/0003), and resolve a k-way `on_pass` by running its `when:` predicates (ADR-0011).
+// Both are "run shell, read exit code" — the routing *rules* still live in engine.ts; this
+// module only reports which branch answered yes.
+// Must NOT know about: state.json, git.
 
 import { spawnSync } from "node:child_process";
-import type { Check } from "./workflow.ts";
+import type { Check, Route } from "./workflow.ts";
 
 export interface CheckFailure { check: string; run: string; exitCode: number | "timeout"; outputTail: string; timeoutSeconds?: number }
 export type GateResult = { pass: true } | ({ pass: false } & CheckFailure);
@@ -59,6 +62,47 @@ export function isReady(sh: string, cwd: string, env: Record<string, unknown> | 
   // producing an actual verdict is the safer failure mode.
   if (result.error) return true;
   return result.status === 0;
+}
+
+// --- resolveRoute: which branch of a k-way `on_pass` takes the pass (ADR-0011) ---
+
+export type RouteResolution =
+  | { kind: "matched"; to: string; when: string }
+  | { kind: "default"; to: string }
+  | { kind: "error"; when: string; reason: string };
+
+// Evaluated only after the gate has already passed. Entries are tried top to bottom and the
+// first `when:` to exit 0 wins; the entry without a `when:` (validated to be the last one) is
+// the default. Mirrors runGate's spawnSync pattern (same shell, cwd, env-merge, timeout
+// default), but discards output like isReady does: a `when:` is a predicate, and nothing here
+// is ever shown to the agent.
+//
+// Fails toward stopping, unlike isReady: a nonzero exit is a real answer ("not this branch"),
+// but a probe that could not run at all has produced no answer, and the thing being decided
+// here is the destination itself. Silently taking the default would move the run to a phase
+// nobody declared for that situation — see ADR-0011.
+export function resolveRoute(routes: Route[], cwd: string, phaseEnv: Record<string, unknown> | undefined): RouteResolution {
+  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
+  for (const route of routes) {
+    if (route.when === undefined) return { kind: "default", to: route.to };
+    const timeoutSeconds = route.timeout ?? DEFAULT_TIMEOUT_SECONDS;
+    const result = spawnSync("/bin/sh", ["-c", route.when], {
+      cwd,
+      env: { ...process.env, ...env },
+      timeout: timeoutSeconds * 1000,
+      stdio: "ignore",
+    });
+    const spawnError = result.error as NodeJS.ErrnoException | undefined;
+    if (spawnError?.code === "ETIMEDOUT") {
+      return { kind: "error", when: route.when, reason: `timed out after ${timeoutSeconds}s` };
+    }
+    if (spawnError) return { kind: "error", when: route.when, reason: `could not run it (${spawnError.code})` };
+    if (result.status === 0) return { kind: "matched", to: route.to, when: route.when };
+  }
+  // Unreachable for a validated workflow: the last entry always omits `when` and returns
+  // "default" above. Kept total rather than asserted, so a hand-built Route[] can't fall off
+  // the end silently.
+  return { kind: "error", when: "", reason: "no default destination (the last on_pass entry must have no 'when')" };
 }
 
 function buildTail(stdout: string, stderr: string): string {

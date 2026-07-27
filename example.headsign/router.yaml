@@ -1,0 +1,147 @@
+# router.yaml — one intake queue, three shapes of work.
+#
+# Every other example here is a straight line: the phases are known before
+# the run starts. This one isn't. The `classify` phase decides WHICH kind
+# of work this request is, and headsign routes the pass to the phase that
+# matches — a k-way `on_pass` (docs/adr/0011).
+#
+# The division of labor is the point. The agent judges (it writes one word
+# to a file); headsign transitions (it runs the `when:` predicates and
+# takes the first edge that answers). The agent cannot invent a
+# destination: every place this run can go is written below.
+#
+# Convention this workflow relies on (own it, it's not headsign's):
+#   .headsign/tmp/route    — one line, exactly one of `fix-bug`,
+#                            `write-docs`, `implement`. Written by the
+#                            agent during `classify`, read by classify's
+#                            gate and by its `when:` predicates.
+#   .headsign/tmp/verdict  — the reviewer's verdict, exactly APPROVED or
+#                            REJECTED (same convention as the other
+#                            examples here).
+
+version: 1
+name: request-router
+entry: classify
+
+phases:
+  classify:
+    description: >
+      Read the request you were given and decide which kind of work it is.
+      Write exactly one word to `.headsign/tmp/route`, on a line of its
+      own, with no other content: `fix-bug` for something that is broken,
+      `write-docs` for something that is only explained badly,
+      `implement` for anything else. Decide, don't hedge — one run does
+      one kind of work, and a wrong guess comes back here after review.
+      Do not start the work itself in this phase.
+    # Wiped on entry, including re-entry from a rejected review: a stale
+    # word from the previous lap must not decide this one. Paired with
+    # `ready:` so a premature `headsign next` waits (PENDING, no attempt
+    # counted) instead of failing the gate on a file that isn't written
+    # yet.
+    clear: [.headsign/tmp/route]
+    ready: "test -s .headsign/tmp/route"
+    gate:
+      checks:
+        # The gate's job is legibility, not the decision: it only proves
+        # the word is one this workflow knows how to route. The decision
+        # itself is the agent's, and the `when:` predicates below read it.
+        - name: route names one of the three known kinds
+          run: "grep -qx -e fix-bug -e write-docs -e implement .headsign/tmp/route"
+    # Tried top to bottom; the first `when:` to exit 0 wins. Keep these
+    # cheap and free of side effects — they run on the success path, every
+    # lap, until one of them matches. The last entry has no `when:`: it is
+    # the default, so a pass always has somewhere declared to land.
+    on_pass:
+      - when: "grep -qx fix-bug .headsign/tmp/route"
+        to: fix-bug
+      - when: "grep -qx write-docs .headsign/tmp/route"
+        to: write-docs
+      - to: implement
+    max_attempts: 3
+
+  fix-bug:
+    description: >
+      Fix the bug. Write a regression test that fails before your change
+      and passes after it, then make the rest of the suite stay green. If
+      the "bug" turns out to be a documentation problem, say so in your
+      report rather than quietly writing docs here — the route was picked
+      one phase ago and can be picked again after review.
+    gate:
+      checks:
+        - name: full suite passes
+          # swap-me: your project's test command, e.g.
+          #   pytest / go test ./... / bundle exec rspec
+          run: "npm test"
+          timeout: 600
+    on_pass: review
+    max_attempts: 5
+    on_exhausted: escalate
+
+  write-docs:
+    description: >
+      Write or repair the documentation the request is about. Change the
+      docs only: if you find yourself needing to change behavior to make
+      the docs true, stop and report it — that is a different kind of work
+      than this run was routed for.
+    gate:
+      checks:
+        - name: docs lint passes
+          # swap-me: your prose/markdown linter, e.g.
+          #   npx markdownlint-cli2 "docs/**/*.md" / vale docs/
+          run: "npx --yes markdownlint-cli2 'docs/**/*.md'"
+          timeout: 300
+        - name: no placeholder left behind
+          run: "! grep -rn 'TODO(docs)' docs/"
+    on_pass: review
+    max_attempts: 5
+    on_exhausted: escalate
+
+  implement:
+    description: >
+      Build the change the request asks for. Work test-first where
+      practical, keep the change to the scope that was requested, and
+      leave the suite green.
+    gate:
+      checks:
+        - name: typecheck
+          # swap-me: your type checker, or drop this check entirely
+          run: "npm run typecheck"
+        - name: full suite passes
+          # swap-me: same command as fix-bug's
+          run: "npm test"
+          timeout: 600
+    on_pass: review
+    max_attempts: 5
+    on_exhausted: escalate
+
+  review:
+    description: >
+      Spawn a read-only reviewer subagent (Read/Grep/Glob) to check the
+      diff against the request — including whether this was the right kind
+      of work to do at all. Have it REPORT exactly APPROVED or REJECTED
+      with reasons, then write that verdict verbatim to
+      .headsign/tmp/verdict yourself.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - name: review approved
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: $end
+    # Back to the router rather than to any one worker phase. A rejection
+    # here can mean "you did this badly" OR "this was the wrong kind of
+    # work" — headsign keeps no memory of which branch this lap took, so
+    # the phase that can answer both is the one that chose in the first
+    # place. Re-entering classify clears the route file, so the second lap
+    # can legitimately land somewhere else. `max_attempts` counts every
+    # rejection since the last approval (a pass is what clears the
+    # counter), so three laps without an APPROVED verdict escalate.
+    on_fail: classify
+    max_attempts: 3
+    on_exhausted: escalate
+
+limits:
+  # Two full laps plus slack: 4 phases per lap, and the routing itself
+  # costs nothing extra (it happens on a pass that was going to be
+  # evaluated anyway).
+  max_total_iterations: 20

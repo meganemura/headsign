@@ -2,14 +2,22 @@
 // The ONLY place routing rules live (ADR-0002, ADR-0004).
 // Must NOT know about: child_process, printing.
 
-import type { Workflow } from "./workflow.ts";
+import type { Workflow, Route } from "./workflow.ts";
 import type { State, LastEval } from "./state.ts";
-import type { GateResult, CheckFailure } from "./gate.ts";
+import type { GateResult, CheckFailure, RouteResolution } from "./gate.ts";
 
 type FailureInfo = CheckFailure;
 
+// What step() accepts for a k-way `on_pass`: the branch gate.resolveRoute already picked.
+// The "error" arm is deliberately excluded — cli.ts stops the run on it (exit 3) and never
+// reaches step(), so the transition function never has to invent a destination.
+export type ResolvedRoute = Exclude<RouteResolution, { kind: "error" }>;
+
 export type Outcome =
-  | { kind: "ADVANCE"; phase: string; description: string; failure?: FailureInfo & { routedTo: string } }
+  // `routedBy` is set only when this ADVANCE came through a k-way `on_pass`: which `when:`
+  // answered, or that nothing did and the default was taken. Carried verbatim for render.ts
+  // to print and log — the engine decides nothing from it.
+  | { kind: "ADVANCE"; phase: string; description: string; failure?: FailureInfo & { routedTo: string }; routedBy?: { when: string } | { default: true } }
   | { kind: "COMPLETE" }
   | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; cached: boolean }
   | { kind: "ESCALATE"; reason: string }
@@ -47,9 +55,21 @@ export function terminalOutcome(state: State): Outcome {
   return { kind: "ABORT", reason: state.end_reason ?? "" };
 }
 
-// step() is fully deterministic: same (workflow, state, gateResult, treeHash) always
-// yields the same output — no clock, no randomness.
-export function step(workflow: Workflow, state: State, gateResult: GateResult, treeHash: string | null): { state: State; outcome: Outcome } {
+// Turns the phase's declared `on_pass` plus (for the k-way form) the branch already resolved
+// by the caller into one destination. String form ignores `route` entirely, so existing
+// workflows keep the exact behavior they had.
+function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: string; routedBy?: { when: string } | { default: true } } {
+  if (typeof onPass === "string") return { to: onPass };
+  // Can't happen through cli.ts (it resolves whenever on_pass is a list). Throwing beats
+  // guessing a phase: an unrouted k-way pass has no defensible destination.
+  if (route === undefined) throw new Error("step: on_pass is a route list but no resolution was given");
+  return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
+}
+
+// step() is fully deterministic: same (workflow, state, gateResult, treeHash, route) always
+// yields the same output — no clock, no randomness. The shell work behind `route` happened in
+// gate.ts before the call; this function only reads the answer.
+export function step(workflow: Workflow, state: State, gateResult: GateResult, treeHash: string | null, route?: ResolvedRoute): { state: State; outcome: Outcome } {
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
   const next: State = { ...state, attempts: { ...state.attempts } };
@@ -61,12 +81,15 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, t
   if (gateResult.pass) {
     delete next.attempts[phaseName];
     next.last_eval = null;
-    if (phase.on_pass === "$end") {
+    const { to, routedBy } = passTarget(phase.on_pass, route);
+    if (to === "$end") {
       next.status = "complete";
       return { state: next, outcome: { kind: "COMPLETE" } };
     }
-    next.phase = phase.on_pass;
-    return { state: next, outcome: { kind: "ADVANCE", phase: next.phase, description: workflow.phases[next.phase].description } };
+    next.phase = to;
+    // Spread rather than always setting the key: a string-form `on_pass` must produce the
+    // byte-identical outcome it produced before k-way routing existed, absent key included.
+    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: workflow.phases[to].description, ...(routedBy && { routedBy }) } };
   }
 
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;

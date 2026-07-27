@@ -46,6 +46,30 @@ test("advance with cleared artifacts and no failure", () => {
   assert.equal(actual, expected);
 });
 
+// --- routed: the one line a k-way on_pass adds (ADR-0011) ---
+
+test("advance routed by a matching when quotes the command and names the destination", () => {
+  const actual = render.advance("fix-bug", "Fix it.", undefined, undefined, { when: "grep -qx fix-bug .headsign/tmp/route" });
+  const expected = `ADVANCE fix-bug\n--- routed: when "grep -qx fix-bug .headsign/tmp/route" → fix-bug ---\n--- phase: fix-bug ---\nFix it.\n`;
+  assert.equal(actual, expected);
+});
+
+test("advance routed by the default names the destination without a command", () => {
+  const actual = render.advance("implement", "Do it.", undefined, undefined, { default: true });
+  const expected = `ADVANCE implement\n--- routed: default → implement ---\n--- phase: implement ---\nDo it.\n`;
+  assert.equal(actual, expected);
+});
+
+test("advance with a string on_pass (no routedBy) prints exactly what it always did", () => {
+  assert.equal(render.advance("build", "Build it.", undefined, undefined, undefined), render.advance("build", "Build it."));
+});
+
+test("the routed line sits where the gate-failed line sits: after the cleared block, before the phase line", () => {
+  const actual = render.advance("docs", "Write it.", undefined, ["artifact.txt"], { default: true });
+  const expected = `ADVANCE docs\n--- cleared: artifact.txt ---\n--- routed: default → docs ---\n--- phase: docs ---\nWrite it.\n`;
+  assert.equal(actual, expected);
+});
+
 test("retry: fresh attempt with maxAttempts shows N/M, no unchanged, no cached note", () => {
   const actual = render.retry({
     check: "tests",
@@ -169,6 +193,12 @@ test("validateOk", () => {
 test("validateFail lists each error as a bullet line after the header", () => {
   const actual = render.validateFail(".headsign/workflow.yaml", ["entry phase 'x' not defined", "phase 'y': circular on_fail"]);
   const expected = `INVALID: .headsign/workflow.yaml\n- entry phase 'x' not defined\n- phase 'y': circular on_fail\n`;
+  assert.equal(actual, expected);
+});
+
+test("validateWarnings uses its own header so a warning can never read as an INVALID verdict", () => {
+  const actual = render.validateWarnings(".headsign/workflow.yaml", ["phase 'draft' is unreachable from entry 'plan'"]);
+  const expected = `WARNING: .headsign/workflow.yaml\n- phase 'draft' is unreachable from entry 'plan'\n`;
   assert.equal(actual, expected);
 });
 
@@ -326,6 +356,18 @@ test("logLine: fail-routed advance names both the origin phase and the failing c
   };
   const line = render.logLine("ts", outcome, baseState({ phase: "implement", attempts: { review: 1 }, total_iterations: 3 }), "review");
   assert.equal(line, `ts advance implement a=0 i=3 from=review routed-fail check="review approved" exit=1\n`);
+});
+
+test("logLine: routed advance records which when answered", () => {
+  const outcome = { kind: "ADVANCE" as const, phase: "fix-bug", description: "Fix.", routedBy: { when: "grep -qx fix-bug .headsign/tmp/route" } };
+  const line = render.logLine("ts", outcome, baseState({ phase: "fix-bug", total_iterations: 2 }), "classify");
+  assert.equal(line, `ts advance fix-bug a=0 i=2 from=classify routed-when="grep -qx fix-bug .headsign/tmp/route"\n`);
+});
+
+test("logLine: an advance that fell through to the default says so", () => {
+  const outcome = { kind: "ADVANCE" as const, phase: "implement", description: "Do.", routedBy: { default: true as const } };
+  const line = render.logLine("ts", outcome, baseState({ phase: "implement", total_iterations: 3 }), "classify");
+  assert.equal(line, `ts advance implement a=0 i=3 from=classify routed-default\n`);
 });
 
 test("logLine: complete", () => {

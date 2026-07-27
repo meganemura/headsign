@@ -284,3 +284,72 @@ phases:
   assert.equal(finalLog.length, 2);
   assert.match(finalLog[1], /complete review a=0 i=1$/);
 });
+
+// --- 8 (shipped examples): every workflow in example.headsign/ is valid against the bundle ---
+
+test("every example workflow validates through the shipped bundle", () => {
+  const examplesDir = path.join(import.meta.dirname, "..", "example.headsign");
+  const files = fs.readdirSync(examplesDir).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
+  assert.ok(files.length > 0, "example.headsign/ must contain at least one workflow");
+  const cwd = tmpdir(); // validate --workflow takes an explicit path, so no run is needed here
+  for (const file of files) {
+    const result = run(["validate", "--workflow", path.join(examplesDir, file)], { cwd });
+    assert.equal(result.status, 0, `${file} failed to validate:\n${result.stderr}`);
+    assert.match(result.stdout, /^OK: workflow /);
+    assert.equal(result.stderr, "", `${file} validates with warnings:\n${result.stderr}`);
+  }
+});
+
+// --- 9 (k-way on_pass): the branch is taken by the shipped bundle, not just by src ---
+
+test("k-way on_pass: the bundle routes a pass by its when: predicates and names the branch it took", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: router
+entry: classify
+phases:
+  classify:
+    description: "Classify."
+    ready: "test -s .headsign/tmp/route"
+    gate:
+      checks:
+        - run: "grep -qx -e docs -e code .headsign/tmp/route"
+    on_pass:
+      - when: "grep -qx docs .headsign/tmp/route"
+        to: write-docs
+      - to: implement
+  write-docs:
+    description: "Write the docs."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+  implement:
+    description: "Implement it."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir });
+
+  writeFile(dir, ".headsign/tmp/route", "docs\n");
+  const routed = run(["next"], { cwd: dir });
+  assert.equal(routed.status, 0);
+  assert.equal(
+    routed.stdout,
+    `ADVANCE write-docs\n--- routed: when "grep -qx docs .headsign/tmp/route" → write-docs ---\n--- phase: write-docs ---\nWrite the docs.\n`,
+  );
+  assert.equal(readState(dir).phase, "write-docs");
+
+  const log = fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8").trim().split("\n");
+  assert.match(log.at(-1)!, /advance write-docs a=0 i=1 from=classify routed-when="grep -qx docs \.headsign\/tmp\/route"$/);
+
+  const done = run(["next"], { cwd: dir });
+  assert.equal(done.status, 0);
+  assert.match(done.stdout, /^COMPLETE\n/);
+});

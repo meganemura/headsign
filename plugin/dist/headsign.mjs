@@ -7380,20 +7380,21 @@ function load(path5) {
   try {
     doc = (0, import_yaml.parse)(fs.readFileSync(path5, "utf8"));
   } catch (err) {
-    return { workflow: null, errors: [`could not read/parse ${path5}: ${err.message}`] };
+    return { workflow: null, errors: [`could not read/parse ${path5}: ${err.message}`], warnings: [] };
   }
-  const errors = validate(doc);
-  return errors.length > 0 ? { workflow: null, errors } : { workflow: doc, errors: [] };
+  const { errors, warnings } = validate(doc);
+  return errors.length > 0 ? { workflow: null, errors, warnings } : { workflow: doc, errors: [], warnings };
 }
 function validate(doc) {
-  if (!isMap(doc)) return ["workflow must be a YAML mapping"];
+  if (!isMap(doc)) return { errors: ["workflow must be a YAML mapping"], warnings: [] };
   const errors = [];
+  const warnings = [];
   if (doc.version !== 1) errors.push("version must be 1");
   if (typeof doc.name !== "string" || !doc.name) errors.push("name is required");
   if (typeof doc.entry !== "string" || !doc.entry) errors.push("entry is required");
   if (!isMap(doc.phases) || Object.keys(doc.phases).length === 0) {
     errors.push("phases is required and must be a non-empty mapping");
-    return errors;
+    return { errors, warnings };
   }
   const phases = doc.phases;
   const names = new Set(Object.keys(phases));
@@ -7408,8 +7409,8 @@ function validate(doc) {
       errors.push("limits.max_total_iterations must be a positive integer");
     }
   }
-  if (errors.length === 0) errors.push(...unreachable(doc.entry, phases, names));
-  return errors;
+  if (errors.length === 0) warnings.push(...unreachable(doc.entry, phases, names));
+  return { errors, warnings };
 }
 function validatePhase(name, p, names, errors) {
   if (typeof p.description !== "string" || !p.description) errors.push(`phase '${name}': description is required`);
@@ -7438,7 +7439,8 @@ function validatePhase(name, p, names, errors) {
   if (p.ready !== void 0 && (typeof p.ready !== "string" || !p.ready)) {
     errors.push(`phase '${name}': ready must be a non-empty shell string`);
   }
-  if (typeof p.on_pass !== "string" || !p.on_pass) errors.push(`phase '${name}': on_pass is required`);
+  if (Array.isArray(p.on_pass)) validateRoutes(name, p.on_pass, names, errors);
+  else if (typeof p.on_pass !== "string" || !p.on_pass) errors.push(`phase '${name}': on_pass is required`);
   else if (p.on_pass === "retry") errors.push(`phase '${name}': on_pass cannot be 'retry'`);
   else if (p.on_pass !== "$end" && !names.has(p.on_pass)) errors.push(`phase '${name}': on_pass '${p.on_pass}' does not name a defined phase`);
   if (p.on_fail !== void 0 && (typeof p.on_fail !== "string" || !ON_FAIL_TOKENS.has(p.on_fail) && !names.has(p.on_fail))) {
@@ -7452,6 +7454,38 @@ function validatePhase(name, p, names, errors) {
     errors.push(`phase '${name}': on_exhausted must be 'escalate' or 'abort'`);
   }
 }
+function validateRoutes(name, routes, names, errors) {
+  if (routes.length === 0) {
+    errors.push(`phase '${name}': on_pass must not be an empty list`);
+    return;
+  }
+  routes.forEach((raw, i) => {
+    if (!isMap(raw)) {
+      errors.push(`phase '${name}': on_pass[${i}] must be a mapping with 'to' and an optional 'when'`);
+      return;
+    }
+    if (typeof raw.to !== "string" || !raw.to) errors.push(`phase '${name}': on_pass[${i}].to is required`);
+    else if (raw.to === "retry") errors.push(`phase '${name}': on_pass[${i}].to cannot be 'retry'`);
+    else if (raw.to !== "$end" && !names.has(raw.to)) errors.push(`phase '${name}': on_pass[${i}].to '${raw.to}' does not name a defined phase`);
+    if (raw.when !== void 0 && (typeof raw.when !== "string" || !raw.when)) {
+      errors.push(`phase '${name}': on_pass[${i}].when must be a non-empty shell string`);
+    }
+    const isLast = i === routes.length - 1;
+    if (isLast && raw.when !== void 0) {
+      errors.push(`phase '${name}': on_pass[${i}] is the last entry and must have no 'when' \u2014 it is the default destination when nothing matches`);
+    }
+    if (!isLast && raw.when === void 0) {
+      errors.push(`phase '${name}': on_pass[${i}] has no 'when', so no later entry can ever be reached \u2014 only the last entry may omit it`);
+    }
+    if (raw.timeout !== void 0 && !(typeof raw.timeout === "number" && raw.timeout > 0)) {
+      errors.push(`phase '${name}': on_pass[${i}].timeout must be a positive number`);
+    }
+  });
+}
+function routeTargets(p) {
+  const passTargets = Array.isArray(p.on_pass) ? p.on_pass.map((r) => r.to) : [p.on_pass];
+  return [...passTargets, p.on_fail];
+}
 function unreachable(entry, phases, names) {
   const visited = /* @__PURE__ */ new Set();
   const stack = [entry];
@@ -7459,7 +7493,7 @@ function unreachable(entry, phases, names) {
     const name = stack.pop();
     if (visited.has(name) || !names.has(name)) continue;
     visited.add(name);
-    for (const t of [phases[name].on_pass, phases[name].on_fail]) if (typeof t === "string" && names.has(t)) stack.push(t);
+    for (const t of routeTargets(phases[name])) if (typeof t === "string" && names.has(t)) stack.push(t);
   }
   return [...names].filter((n) => !visited.has(n)).map((n) => `phase '${n}' is unreachable from entry '${entry}'`);
 }
@@ -7596,6 +7630,26 @@ function isReady(sh, cwd, env) {
   if (result.error) return true;
   return result.status === 0;
 }
+function resolveRoute(routes, cwd, phaseEnv) {
+  const env = phaseEnv ? Object.fromEntries(Object.entries(phaseEnv).map(([k, v]) => [k, String(v)])) : {};
+  for (const route of routes) {
+    if (route.when === void 0) return { kind: "default", to: route.to };
+    const timeoutSeconds = route.timeout ?? DEFAULT_TIMEOUT_SECONDS;
+    const result = spawnSync("/bin/sh", ["-c", route.when], {
+      cwd,
+      env: { ...process.env, ...env },
+      timeout: timeoutSeconds * 1e3,
+      stdio: "ignore"
+    });
+    const spawnError = result.error;
+    if (spawnError?.code === "ETIMEDOUT") {
+      return { kind: "error", when: route.when, reason: `timed out after ${timeoutSeconds}s` };
+    }
+    if (spawnError) return { kind: "error", when: route.when, reason: `could not run it (${spawnError.code})` };
+    if (result.status === 0) return { kind: "matched", to: route.to, when: route.when };
+  }
+  return { kind: "error", when: "", reason: "no default destination (the last on_pass entry must have no 'when')" };
+}
 function buildTail(stdout, stderr) {
   const combined = stdout + stderr;
   const truncated = combined.length > OUTPUT_TAIL_LIMIT;
@@ -7699,7 +7753,12 @@ function terminalOutcome(state) {
   if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
   return { kind: "ABORT", reason: state.end_reason ?? "" };
 }
-function step(workflow, state, gateResult, treeHash2) {
+function passTarget(onPass, route) {
+  if (typeof onPass === "string") return { to: onPass };
+  if (route === void 0) throw new Error("step: on_pass is a route list but no resolution was given");
+  return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
+}
+function step(workflow, state, gateResult, treeHash2, route) {
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
   const next = { ...state, attempts: { ...state.attempts } };
@@ -7708,12 +7767,13 @@ function step(workflow, state, gateResult, treeHash2) {
   if (gateResult.pass) {
     delete next.attempts[phaseName];
     next.last_eval = null;
-    if (phase.on_pass === "$end") {
+    const { to, routedBy } = passTarget(phase.on_pass, route);
+    if (to === "$end") {
       next.status = "complete";
       return { state: next, outcome: { kind: "COMPLETE" } };
     }
-    next.phase = phase.on_pass;
-    return { state: next, outcome: { kind: "ADVANCE", phase: next.phase, description: workflow.phases[next.phase].description } };
+    next.phase = to;
+    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: workflow.phases[to].description, ...routedBy && { routedBy } } };
   }
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
   const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
@@ -7762,11 +7822,13 @@ ${clearedBlock(cleared)}--- phase: ${phase} ---
 ${description}
 `;
 }
-function advance(phase, description, failure, cleared) {
+function advance(phase, description, failure, cleared, routedBy) {
   const failedLine = failure ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds)}) \u2192 routed to ${failure.routedTo} ---
 ` : "";
+  const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} \u2192 ${phase} ---
+` : "";
   return `ADVANCE ${phase}
-${clearedBlock(cleared)}${failedLine}--- phase: ${phase} ---
+${clearedBlock(cleared)}${failedLine}${routedLine}--- phase: ${phase} ---
 ${description}
 `;
 }
@@ -7817,6 +7879,11 @@ function validateOk(name, phaseCount) {
 function validateFail(path5, errors) {
   return `INVALID: ${path5}
 ${errors.map((e) => `- ${e}
+`).join("")}`;
+}
+function validateWarnings(path5, warnings) {
+  return `WARNING: ${path5}
+${warnings.map((w) => `- ${w}
 `).join("")}`;
 }
 function clause(run, exitCode, timeoutSeconds) {
@@ -7880,6 +7947,10 @@ function logDetail(event, prevPhase) {
     case "RETRY":
       return `check="${event.failure.check}" exit=${event.failure.exitCode}`;
     case "ADVANCE":
+      if (event.routedBy) {
+        const why = "when" in event.routedBy ? `routed-when="${event.routedBy.when}"` : "routed-default";
+        return `from=${prevPhase} ${why}`;
+      }
       return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}` : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":
@@ -8053,15 +8124,16 @@ function resolveWorkflowPath(args, defaultPath = ".headsign/workflow.yaml") {
   const filename = positional.endsWith(".yaml") || positional.endsWith(".yml") ? positional : `${positional}.yaml`;
   return `.headsign/${filename}`;
 }
-function loadWorkflowOrExit(workflowPath) {
-  const { workflow: wf, errors } = load(workflowPath);
+function loadWorkflowOrExit(workflowPath, showWarnings = false) {
+  const { workflow: wf, errors, warnings } = load(workflowPath);
   if (!wf) stderrExit(validateFail(workflowPath, errors), 3);
+  if (showWarnings && warnings.length > 0) process.stderr.write(validateWarnings(workflowPath, warnings));
   return wf;
 }
 function printOutcome(outcome, workflowName, ctx) {
   switch (outcome.kind) {
     case "ADVANCE":
-      return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared), 0);
+      return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, outcome.routedBy), 0);
     case "COMPLETE":
       return exitAfter(complete(workflowName), 0);
     case "RETRY":
@@ -8117,7 +8189,7 @@ function clearPhaseArtifacts(cwd, phase) {
 }
 function cmdStart(args) {
   const workflowPath = resolveWorkflowPath(args);
-  const wf = loadWorkflowOrExit(workflowPath);
+  const wf = loadWorkflowOrExit(workflowPath, true);
   const cwd = process.cwd();
   const existing = readState(cwd);
   if (existing && existing.status === "running") {
@@ -8167,7 +8239,18 @@ function evaluateNext(cwd, wf, current) {
     return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
   }
   const gateResult = runGate(phase.gate.checks, cwd, phase.env);
-  const { state: nextState, outcome } = step(wf, current, gateResult, hash);
+  let route;
+  if (gateResult.pass && Array.isArray(phase.on_pass)) {
+    const resolution = resolveRoute(phase.on_pass, cwd, phase.env);
+    if (resolution.kind === "error") {
+      releaseLock(cwd);
+      errorExit(
+        `phase '${current.phase}': could not evaluate the on_pass condition \`${resolution.when}\` (${resolution.reason}). The gate passed, but headsign will not guess where to go: fix that condition in '${current.workflow_path}' and run \`headsign next\` again. The run has not moved.`
+      );
+    }
+    route = resolution;
+  }
+  const { state: nextState, outcome } = step(wf, current, gateResult, hash, route);
   let cleared;
   if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);
@@ -8235,7 +8318,7 @@ function cmdValidate(args) {
   const current = readState(process.cwd());
   const defaultPath = current !== null ? current.workflow_path : ".headsign/workflow.yaml";
   const workflowPath = resolveWorkflowPath(args, defaultPath);
-  const wf = loadWorkflowOrExit(workflowPath);
+  const wf = loadWorkflowOrExit(workflowPath, true);
   exitAfter(validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
 function cmdStatus() {
