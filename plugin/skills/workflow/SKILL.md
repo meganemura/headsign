@@ -2,11 +2,12 @@
 name: workflow
 license: MIT
 description: >-
-  Drive a headsign phase-gate workflow. Use when the repository contains
-  .headsign/workflow.yaml and the user asks to start, continue, or resume a
-  workflow run — or when .headsign/state.json shows a run in progress (e.g.
-  when recovering after compaction). Do not use in repositories that have no
-  .headsign directory.
+  Drive a headsign phase-gate workflow. Use when the repository has a
+  .headsign/ directory holding one or more workflow files — workflow.yaml, or
+  named ones like fitness.yaml run with `headsign start fitness` — and the
+  user asks to start, continue, or resume a run, or when .headsign/state.json
+  shows a run in progress (e.g. when recovering after compaction). Do not use
+  in repositories that have no .headsign directory.
 ---
 
 # headsign workflow
@@ -81,8 +82,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    spends one from the cap, one that passes while your own pause note is
    armed consumes the note, and one that lands under another agent's armed
    marker consumes that marker. Probe deliberately, not by habit.
-3. To begin a workflow: `headsign start`. It prints the first phase's
-   instructions.
+3. To begin a workflow: `headsign start`, or `headsign start <name>` when
+   `.headsign/` holds more than one — `<name>` is the file's basename, so
+   `headsign start fitness` runs `.headsign/fitness.yaml`. Either way it
+   prints the first phase's instructions. If `start` reports it cannot read
+   `.headsign/workflow.yaml`, this repository names its workflows rather than
+   keeping a default: list `.headsign/` and start the one you were asked for.
 4. **When you have done work you think finishes the phase — or have just
    recovered from compaction and need to know where the run stands — run
    `headsign next` and obey the first-line token.** That one habit is the
