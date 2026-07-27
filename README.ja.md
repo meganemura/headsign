@@ -645,6 +645,36 @@ run が始まる前に書かれるものであり、run 自身の履歴は `.hea
 | 判断を人間に戻すこと | `ESCALATE` |
 | run が実際に通った経路 | `.headsign/log` |
 
+同梱のサンプルの一つ [example.headsign/sweep.yaml](example.headsign/sweep.yaml) は、機械的な変更を待ち行列の先頭から 1 周に 1 件ずつ適用していくワークフローです。
+これをそのままグラフとして描くと、次の形になります。
+[実行の流れ](#実行の流れ)のシーケンス図とは別物で、あちらはループを 1 周する手順、こちらは run が始まる前に決まっているワークフローの形そのものです。
+
+```mermaid
+flowchart TD
+    survey["survey"]
+    apply["apply"]
+    verify["verify"]
+    record["record"]
+    report["report"]
+    finish(["$end"])
+
+    survey -- "pass" --> apply
+    apply -- "pass" --> verify
+    verify -- "pass" --> record
+    verify -- "fail" --> apply
+    record -- "when: queue not empty" --> apply
+    record -- "default: queue empty" --> report
+    report -- "pass" --> finish
+```
+
+ここに描かれた辺は、すべてシェルの exit code で決まります。
+図に描いてあるのは run を動かす辺だけです。
+ゲートが落ちただけのフェーズはその場に留まるので、ほとんどのフェーズが持つその自己ループは描いていません。
+例外が `verify` で、こちらは落ちたときに留まらず `apply` へ差し戻します。
+これが手直しの辺です。
+分岐を持つのは `record` で、`when:` のチェックはキューに項目が残っている間は循環を回し続け、無くなれば既定のルートが `report` へ抜けます。
+つまりここでの停止条件はカウンタではなくデータの方で、`limits.max_total_iterations` はその上に置いたバックストップ、キューがいつまでも尽きない場合に人間へ escalate するためのものです。
+
 グラフであること自体は手柄ではないので、モデルが「終わった」と言うまで再投入し続けるだけのループに対してグラフが何を足しているのかを、正直に採点しておきます。
 
 - **独立した検証:あります。ただし、あなたのチェックが独立している範囲で。** 遷移を決めるのはワークフロー定義に書かれたコマンドであって、作業しているエージェント自身の報告ではありません。レビューのフェーズなら、判定を読み取り専用の reviewer の手に委ねることもできます。それがどこまで届くのか、hard / semi / soft のゲートの話は [ADR-0007](docs/adr/0007-verdict-authorship.md) にあります。

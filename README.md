@@ -751,6 +751,42 @@ think in graph terms, the vocabulary maps over like this:
 | handing the decision back to a person | `ESCALATE` |
 | the path a run actually took | `.headsign/log` |
 
+One of the shipped examples,
+[example.headsign/sweep.yaml](example.headsign/sweep.yaml), applies a
+mechanical change to a queue of files one item per lap; drawn as its graph,
+it looks like this. This is a different picture from the sequence diagram in
+[How a run flows](#how-a-run-flows): that one is a single trip around the
+loop, this one is the shape of the whole workflow, fixed before the run
+starts.
+
+```mermaid
+flowchart TD
+    survey["survey"]
+    apply["apply"]
+    verify["verify"]
+    record["record"]
+    report["report"]
+    finish(["$end"])
+
+    survey -- "pass" --> apply
+    apply -- "pass" --> verify
+    verify -- "pass" --> record
+    verify -- "fail" --> apply
+    record -- "when: queue not empty" --> apply
+    record -- "default: queue empty" --> report
+    report -- "pass" --> finish
+```
+
+Every edge in it is decided by a shell exit code. Only edges that move the
+run are drawn: a phase whose gate fails simply stays where it is, which is
+true of nearly all of them. `verify` is the exception — its failure routes
+back to `apply` instead of staying, and that is the rework edge — and `record` is the branch: its `when:` check
+turns the cycle for as long as the queue still has entries, and its default
+route leaves for `report` once it doesn't. So the stopping condition here is
+the data rather than a counter, and `limits.max_total_iterations` sits above
+the whole thing as the backstop that escalates to a person if the queue
+never drains.
+
 Being a graph is not itself an achievement, so here is a plain scorecard of
 what it adds over a loop that just re-prompts until the model says it's
 done:

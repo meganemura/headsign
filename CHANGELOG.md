@@ -70,6 +70,12 @@ changes), and a patch bump means fixes only.
   `PENDING` instead of spending an attempt) and `on_fail: "$end"` as the
   clean ending for a run that turns out to have no work to do (a reject, a
   defer, or an empty inbox).
+- A sweep example workflow (`example.headsign/sweep.yaml`): a queue of
+  mechanical edits applied one item per lap, where `record` routes back to
+  `apply` while the queue still has entries and leaves for `report` once it
+  drains. It is the example of a cycle that ends because the data ran out
+  rather than because a counter tripped, and the top-level README now draws
+  its graph under "Nodes, edges, and state".
 
 ### Changed
 

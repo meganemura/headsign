@@ -1,0 +1,231 @@
+# sweep.yaml — one mechanical change, applied to a queue of items one at a
+# time.
+#
+# Every other example here runs through its phases once: router.yaml picks
+# WHICH line to run, but it still runs one. This one turns — apply ->
+# verify -> record -> apply — and leaves the loop only when the work list
+# built in `survey` has run out. How many laps this workflow takes is not
+# written in this file; it is in the data.
+#
+# The division of labor is router.yaml's, applied to a loop: the agent does
+# the work and writes down what it did, and headsign runs the `when:`
+# predicate over the work list and takes the edge that answers
+# (docs/adr/0011). Nothing here asks the agent whether it would like
+# another lap — "is there more work" is a question about a file, so a shell
+# command answers it.
+#
+# Use it for the sweeps that are boring and easy to get wrong: a codemod
+# across a package, migrating call sites off a deprecated API, renaming a
+# concept in fifty files. One item per lap keeps the test suite as the
+# per-item safety net instead of one enormous diff at the end.
+#
+# Conventions this workflow relies on (own them, they are not headsign's):
+#   .headsign/tmp/queue          — the work list, one item per line, written by
+#                              `survey` and shortened by `apply` as items
+#                              are done. Empty means the sweep is finished.
+#   .headsign/tmp/current    — the ONE item the current lap claimed, one
+#                              line, copied verbatim from the queue.
+#   .headsign/tmp/done           — items whose change passed the suite, one per
+#                              line, appended by `record`.
+#   .headsign/tmp/plan.md    — how to change an item (written by `survey`).
+#   .headsign/tmp/summary.md — the sweep's write-up (written by `report`).
+#
+# Every file this workflow writes lives under .headsign/tmp/, the scratch
+# area headsign already keeps out of version control for you: the
+# .headsign/.gitignore it maintains covers tmp/ but knows nothing about a
+# particular workflow's files, so anything written beside state.json would
+# show up as untracked in every repository that copies this example. The
+# next `headsign start` empties tmp/, which costs nothing here — `survey`
+# clears the ledger on entry anyway, so a sweep always begins empty.
+
+version: 1
+name: codemod-sweep
+entry: survey
+
+phases:
+  # ── survey ───────────────────────────────────────────────────────────────
+  # Make the list before touching anything. A list written after the first
+  # few edits is shaped by them (you stop seeing the cases you already
+  # decided to skip), and the loop below has no way to add items back.
+  survey:
+    description: >
+      Find every place that needs this change and write the work list
+      before changing anything. Put one item per line in `.headsign/tmp/queue`
+      — an item is whatever one lap of work is, usually a file path such as
+      `src/legacy/client.ts` — with no blank lines, no numbering and no
+      other content. Then write how to change one item to
+      `.headsign/tmp/plan.md`: the before/after shape, and what must NOT be
+      touched. Do not start applying the change in this phase.
+    # Cleared on entry, which for the entry phase means on `headsign start`:
+    # a queue or a done list left behind by the previous sweep would make
+    # this run chew through the wrong items and report numbers it never
+    # earned.
+    clear: [.headsign/tmp/queue, .headsign/tmp/done]
+    gate:
+      checks:
+        - name: queue has at least one item
+          # `test -s` would also accept a file holding nothing but blank
+          # lines, which the loop below would then treat as work forever, so
+          # the question is asked as "is there a line with a non-space
+          # character on it". This exact command is `record`'s `when:`
+          # predicate too: the loop ends on the same condition that let it
+          # start.
+          run: "grep -q '[^[:space:]]' .headsign/tmp/queue"
+        - name: change plan written
+          # What keeps lap 12 making the same change as lap 1. headsign
+          # remembers nothing about the work itself between phases — only
+          # where the run is — so the plan has to live in a file the agent
+          # can re-read on every lap.
+          run: "test -s .headsign/tmp/plan.md"
+    on_pass: apply
+    max_attempts: 3
+
+  # ── apply ────────────────────────────────────────────────────────────────
+  # One item, start to finish. The gate here is bookkeeping, not quality —
+  # `verify` owns quality — but it is the bookkeeping that makes the loop
+  # terminate, so it is checked mechanically rather than trusted.
+  apply:
+    description: >
+      Take the FIRST item off `.headsign/tmp/queue` and work on that one alone.
+      Claim it first: copy the line verbatim into `.headsign/tmp/current`
+      (`head -n 1 .headsign/tmp/queue > .headsign/tmp/current`). Apply the
+      change described in `.headsign/tmp/plan.md` to that item only —
+      resist fixing the next one while you are in the neighborhood, because
+      an item that was changed but never verified is exactly what this
+      workflow exists to prevent. Then remove that line from
+      `.headsign/tmp/queue`. Run `headsign next` once the item is changed and
+      the queue is one line shorter.
+    # Cleared on every entry, and every way into this phase is a real
+    # transition (from survey, from record's loop-back, from a failed
+    # verify), so the claim never carries over: each lap has to say out loud
+    # which item it is working on.
+    clear: [.headsign/tmp/current]
+    # Paired with `clear:` so an early `headsign next` — before anything is
+    # claimed — answers PENDING and costs nothing, instead of failing a gate
+    # on a file that does not exist yet.
+    ready: "test -s .headsign/tmp/current"
+    gate:
+      checks:
+        - name: exactly one item claimed
+          # One item per lap is the discipline this workflow teaches, so it
+          # is checked rather than asked for: a claim listing three files
+          # would send three files through a single `verify` and make a
+          # failure ambiguous.
+          run: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/current)" -eq 1'
+        - name: the claimed item is gone from the queue
+          # The check that makes the loop finite. Forgetting to shorten the
+          # queue is the one mistake that turns this workflow into an
+          # infinite one: record's `when:` would keep seeing work, and the
+          # same item would come round again and again until
+          # max_total_iterations stopped it. -F -x so an item is matched as
+          # a whole line, literally.
+          run: '! grep -qxF -e "$(head -n 1 .headsign/tmp/current)" .headsign/tmp/queue'
+    on_pass: verify
+    # No `on_fail:` — the default `retry` keeps the run in this phase. A
+    # self-route (`on_fail: apply`) would re-run `clear:` and throw away the
+    # claim in the middle of working on it; "you forgot to shorten the
+    # queue" is a note to the agent standing right here, not a reason to
+    # start the lap over.
+    max_attempts: 5
+    on_exhausted: escalate
+
+  # ── verify ───────────────────────────────────────────────────────────────
+  # The per-item safety net. Running the suite once per item (rather than
+  # once at the end of the sweep) is what makes a failure cheap to place:
+  # exactly one item changed since the last green run.
+  verify:
+    description: >
+      Run the project's full test suite. If it is red, the item you just
+      changed is the prime suspect — you will be sent back to `apply` to
+      redo that item, not to pick a new one.
+    gate:
+      checks:
+        - name: full suite passes
+          # swap-me: your project's test command, e.g.
+          #   pytest / go test ./... / bundle exec rspec
+          run: "npm test"
+          timeout: 600
+    on_pass: record
+    # Back to `apply` rather than `retry`: the work to redo is this item's
+    # change, and `apply` is the phase whose description says how to make
+    # it. Re-entering also clears the claim, so the agent has to restate
+    # which item it is on instead of quietly drifting onto another. The
+    # apply gate then re-passes trivially (the item already left the queue),
+    # which is the intended behavior — this lap is a redo, not a new item.
+    on_fail: apply
+    # Counts verify failures since verify last passed, and a pass clears the
+    # counter — so across a 20-item sweep this reads "this ONE item broke
+    # the suite three times", not "the sweep had three bad laps". At that
+    # point the plan is probably wrong for this item, which is a judgment
+    # call: on_exhausted defaults to escalate, so it goes to a human.
+    max_attempts: 3
+
+  # ── record ───────────────────────────────────────────────────────────────
+  # The loop's hinge. The gate proves this lap was really finished, and the
+  # `when:` decides whether there is another one — from the queue file, not
+  # from the agent's opinion of how much is left.
+  record:
+    description: >
+      Append the item in `.headsign/tmp/current` to `.headsign/tmp/done`, on a
+      line of its own and byte-identical to how it appeared in the queue
+      (`cat .headsign/tmp/current >> .headsign/tmp/done`). Commit the item's
+      change now, while the suite is green and the diff is one item wide —
+      a sweep committed item by item is one a reviewer can actually read,
+      and one you can bisect later.
+    gate:
+      checks:
+        - name: the item this lap finished is on the done list
+          # Cheap, and it keeps `report`'s count honest: the done list is
+          # the only record of what the sweep covered once the queue has
+          # been emptied.
+          run: 'grep -qxF -e "$(head -n 1 .headsign/tmp/current)" .headsign/tmp/done'
+    # The branch that makes this a loop instead of a line (docs/adr/0011).
+    # Tried top to bottom, first `when:` to exit 0 wins, and the last entry
+    # carries no `when:` — it is the default, so a pass always has somewhere
+    # declared to land. Note what is NOT here: no edge back to `survey`. The
+    # work list is fixed when the sweep starts, so a sweep is a sweep and
+    # not an open-ended errand.
+    on_pass:
+      # Same predicate as survey's gate. If `.headsign/tmp/queue` is missing
+      # entirely, grep exits nonzero too — "not this branch" — and the run
+      # takes the default edge to `report`, which is the right answer for a
+      # queue that is gone.
+      - when: "grep -q '[^[:space:]]' .headsign/tmp/queue"
+        to: apply
+      - to: report
+    max_attempts: 3
+
+  # ── report ───────────────────────────────────────────────────────────────
+  # Reached only through record's default edge, i.e. only once the queue is
+  # empty. The sweep's one piece of prose: what a reader needs to know that
+  # the diff does not say.
+  report:
+    description: >
+      Write the sweep's summary to `.headsign/tmp/summary.md`: what the
+      change was, how many items it covered (`.headsign/tmp/done` is the list),
+      what you deliberately skipped and why, and anything you noticed that
+      wants a follow-up. Copy it into the commit message or the PR
+      description before you finish — `.headsign/tmp/` is wiped by the next
+      `headsign start` and will not survive past this run.
+    gate:
+      checks:
+        - name: summary written
+          # Honest, not smart: proves something was written, never that it
+          # is a good summary. A word floor or a required-sections grep
+          # would fit here if your team wants one (docs.yaml's draft phase
+          # shows both).
+          run: "test -s .headsign/tmp/summary.md"
+    on_pass: $end
+    max_attempts: 3
+
+limits:
+  # Deliberately much larger than the other examples here, because this
+  # number is not "how many phases does the workflow have" — it is "how many
+  # gate evaluations does the whole sweep cost". Each item costs three
+  # (apply, verify, record), plus survey and report once each, and only real
+  # evaluations count (a PENDING probe does not). So 60 buys roughly 19
+  # items with nothing going wrong, or about a dozen with the usual handful
+  # of retries and verify bounces. It is a runaway backstop, not a budget:
+  # raise it for a bigger sweep, or split the sweep into several runs, which
+  # also keeps each one's diff reviewable.
+  max_total_iterations: 60
