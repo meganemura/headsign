@@ -3,6 +3,14 @@
 - Status: accepted
 - Date: 2026-07-25
 - Supersedes: [ADR-0009](0009-claim-handshake.md)
+- Revised: 2026-07-27 (Decision 2 is retracted by
+  [ADR-0013](0013-claim-only-driver-identity.md), which removed the
+  environment stamp and with it the second identifier space that decision
+  existed to distinguish. The stored field is now `driver_agent`, this
+  hook's adoption gate is its only writer, and the conditions that used to
+  test which mechanism had stamped it — steps 7 and 8, and Decision 4's
+  early return — are restated in terms of that one field. Decisions 1 and
+  3, the measurements they rest on, and the named race are unchanged.)
 
 ## Context
 
@@ -105,21 +113,20 @@ The new hook's decision order, in the shape ADR-0006 uses for `Stop`
    no env fallback here — the whole point of this hook is that the
    environment cannot answer this question (facts 2–4).
 7. **Adoption gate.** If `.headsign/tmp/claim` exists *and* an agent id
-   resolved: delete the marker, write `driver_session` = that agent id,
-   `driver_source` = `"claim"`, reset `stop_nudges` to 0, append a
-   `claimed` line to `.headsign/log`, and **block** with the confirmation
-   naming the workflow and phase, plus the same pause/abort exit guidance
-   every other block carries. If the marker exists but no agent id
-   resolved, leave the marker in place and fall through — a firing that
-   cannot say who it is must not consume a one-shot marker meant for
-   someone specific. This gate runs **before** owner match, for the
-   reason ADR-0009 and ADR-0006 already give: the stamp the claim exists
-   to replace must not be allowed to wave the claimant through first.
-8. **Owner match.** `driver_source !== "claim"` → pass (the run is driven
-   by a session via the env stamp; a subagent stopping underneath it is
-   by definition not the driver). `driver_source === "claim"` but the
-   resolved agent id differs from `driver_session` → pass (a different,
-   unrelated agent). Only the recorded driver reaches step 9.
+   resolved: delete the marker, write `driver_agent` = that agent id, reset
+   `stop_nudges` to 0, append a `claimed` line to `.headsign/log`, and
+   **block** with the confirmation naming the workflow and phase, plus the
+   same pause/abort exit guidance every other block carries. If the marker
+   exists but no agent id resolved, leave the marker in place and fall
+   through — a firing that cannot say who it is must not consume a one-shot
+   marker meant for someone specific. This gate runs **before** owner
+   match, for the reason ADR-0009 and ADR-0006 already give: the driver on
+   file, whom the claim exists to replace, must not be allowed to wave the
+   claimant through first.
+8. **Owner match.** `driver_agent` is null → pass (nobody has claimed this
+   run, so there is no driver to be). Otherwise, no agent id resolved, or
+   one that differs from `driver_agent` → pass (a different, unrelated
+   agent). Only the recorded driver reaches step 9.
 9. **Exit-note gate.** Identical to `Stop`'s (ADR-0006): consume a
    non-empty `.headsign/tmp/stop-note`, reset `stop_nudges`, log
    `paused`, pass.
@@ -133,38 +140,24 @@ they share an implementation file (`src/stophook.ts`, whose remit widens
 from "the Stop hook" to "the stop-boundary hooks") rather than acquiring
 a parallel module that would drift from it.
 
-### 2. `driver_source` already says which kind of identifier is stored
+### 2. Which kind of identifier is stored — retracted by ADR-0013
 
-The stored driver is now sometimes a session id and sometimes an agent
-id. Rather than record that in a new field, this ADR observes that
-`driver_source` **already determines it**, one to one:
-
-| `driver_source` | What `driver_session` holds | Which event can match it |
-|---|---|---|
-| `"env"` | a session id, stamped by the CLI from the environment (ADR-0008) | `Stop` |
-| `"claim"` | an **agent id**, sealed by `SubagentStop` (this ADR) | `SubagentStop` |
-| `null` | nothing | neither — `Stop` nudges every session as it did before ownership existed; `SubagentStop` holds no one |
-
-So `state.json`'s shape does not change. Only the meaning of the
-`"claim"` row does, from "a session id that a Stop firing supplied" to
-"an agent id that a SubagentStop firing supplied".
-
-A separate `driver_kind` field was considered and rejected: it would be a
-second source of truth for something the first already fixes, and two
-fields that *can* disagree eventually do — at which point every reader
-needs a rule for which one wins, and every writer needs to remember to
-update both. The one-to-one mapping above needs no such rule, and it is
-enforced by construction, since the only writer of `"claim"` is the only
-reader of an agent id.
-
-There is no released-version compatibility to weigh: `claim` exists only
-in `[Unreleased]` and shipped in no release. A run created by a
-*development* copy from before this change can hold the old combination —
-`driver_source: "claim"` with a session id inside — and it degrades
-safely: `Stop` passes through on `"claim"` by rule 4 below, and
-`SubagentStop` compares an agent id against a session id and finds a
-mismatch, so nobody is nudged. Fail-open, not misfire. Running `headsign
-claim` again (or `headsign start`) restores the invariant.
+> **Retracted 2026-07-27 by
+> [ADR-0013](0013-claim-only-driver-identity.md).** Because the stored
+> driver was then sometimes a session id (stamped from the environment by
+> `start`/`next`, ADR-0008) and sometimes an agent id (sealed here), this
+> section made the field that already recorded *how* the driver had been
+> stamped carry that distinction too — one to one, so that a reader knew
+> which of the two hooks could meaningfully compare against the value, and
+> no second `driver_kind` field was needed to say the same thing twice.
+>
+> ADR-0013 removed the environment stamp, so only one kind of identifier
+> can be stored and there is nothing left to discriminate. The field is
+> gone and the one that remains is named for what it holds:
+> `driver_agent`, an agent id, written only by this ADR's adoption gate.
+> The rejection of a redundant second field stands on its own reasoning and
+> did not need this mechanism; the original text of this section is in the
+> repository's history.
 
 ### 3. Past the adoption gate, `SubagentStop` blocks only the recorded driver
 
@@ -192,38 +185,45 @@ precisely the correctness bug ADR-0008 was written to close, re-opened
 one layer down.
 
 This is why the match here must be *positive*, and why that differs from
-`Stop`'s owner check on purpose. There, an unresolvable identifier still
-nudges: the session stopping in the run's own directory is very likely
-its driver, so absence of proof is read as "can't rule this out." Here
-the prior runs the other way — most subagent stops belong to agents with
-no headsign role at all — so a stop that cannot name itself is treated as
-*not* the driver and passes untouched. The same fail-open instinct
-(ADR-0006) points at opposite branches once you ask what an unnamed
-stopper is most likely to be.
+what `Stop` does on purpose. There, a run with no driver on file still
+nudges whichever session stopped: a session stopping in the run's own
+directory is very likely its driver, so absence of proof is read as "can't
+rule this out." Here the prior runs the other way — most subagent stops
+belong to agents with no headsign role at all — so a stop that cannot name
+itself, or lands on a run nobody has claimed, is treated as *not* the
+driver and passes untouched. The same fail-open instinct (ADR-0006) points
+at opposite branches once you ask what an unnamed stopper is most likely
+to be.
 
 ### 4. `Stop` passes through unconditionally on a claimed run
 
 Ahead of its own owner-match comparison, `Stop` gains a single early
-return: if `driver_source === "claim"`, pass, full stop.
+return: if the driver on file was sealed by a claim, pass, full stop.
+(Since ADR-0013 retired the other way a driver could be recorded, the test
+is simply that `driver_agent` holds a non-empty string, and it is now the
+whole of `Stop`'s ownership logic rather than a shortcut ahead of a
+comparison.)
 
 ```ts
 // The stored driver is an agent id sealed via SubagentStop (ADR-0010): a Stop event
 // carries a session id, which can never be that agent — so this session is, by
-// construction, not the driver. Return before the comparison below rather than relying
-// on two unrelated id spaces happening not to collide.
-if (state.driver_source === "claim") return { block: false };
+// construction, not the driver. Return before comparing rather than relying on two
+// unrelated id spaces happening not to collide.
+if (recordedDriver(state) !== null) return { block: false };
 ```
 
-The comparison one line below would, in practice, reach the same verdict:
-a session id and an agent id are drawn from different id spaces and will
-not be equal. But "will not be equal" is an empirical property of two
-identifier formats that neither this project nor its users control, and
+A comparison of the two identifiers would, in practice, reach the same
+verdict: a session id and an agent id are drawn from different id spaces
+and will not be equal. But "will not be equal" is an empirical property of
+two identifier formats that neither this project nor its users control, and
 the whole reason this ADR exists is that an unstated assumption about
 someone else's identifiers held right up until it didn't. Stating the
 intent — *these are different kinds of name, so the question is not even
 asked* — costs one line and cannot be invalidated by a change to either
 format. It also documents itself at the exact place a future reader would
-otherwise have to re-derive it.
+otherwise have to re-derive it. ADR-0013 took the argument to its
+conclusion: `Stop` reads no identifier at all now, so there is no second
+id space left for it to be wrong about.
 
 ## Honest weakness: the adoption race, narrowed but still a race
 
@@ -270,14 +270,15 @@ source.
 If a future Claude Code release stops supplying it, renames it, or
 changes what it contains, the degradation is safe and quiet: step 6
 resolves nothing, step 7 leaves the marker in place instead of adopting,
-and a run therefore never acquires a `"claim"` driver. Ownership stays
-whatever the env-based stamp produced, and `Stop` keeps nudging every
-session on a running run exactly as ADR-0008 describes. Delegated agents
-lose the backstop this ADR gave them — the same quiet loss the next
-paragraph names — while no session is ever nudged wrongly or left
-silently unnudged. That is the direction ADR-0008 chose to degrade
-toward, so this decision takes no version pin, no shim, and no detection
-beyond a plain non-empty-string check.
+and a run therefore never acquires a driver at all. `Stop` keeps nudging
+every session that stops on a running run, exactly as it does for any
+unclaimed run. Delegated agents lose the backstop this ADR gave them — the
+same quiet loss the next paragraph names — while no session is ever nudged
+wrongly or left silently unnudged. That is the direction ADR-0008 chose to
+degrade toward, so this decision takes no version pin, no shim, and no
+detection beyond a plain non-empty-string check. Since ADR-0013 there is no
+second identity path behind this one, which makes the loss total rather
+than partial; that ADR weighs it.
 
 If `SubagentStop` itself were to stop firing, the result is the
 pre-ADR-0010 world: claims never seal, and delegated agents are not
@@ -288,11 +289,13 @@ nudged. Nothing wedges.
 This ADR **supersedes** ADR-0009. Everything ADR-0009 established about
 *why* the CLI cannot name itself, why the procedure has two beats, why
 the adoption gate must precede owner match, why the marker is one-shot
-and consumed, why adoption is fail-open on an unresolvable identifier,
-why claimed ownership is sticky against later env stamps, and why the
-`claimed` log line carries no identifier — all of that is carried forward
-here unchanged. What is superseded is narrow and total: the event that
-seals, and therefore the kind of identifier that gets sealed.
+and consumed, why adoption is fail-open on an unresolvable identifier, and
+why the `claimed` log line carries no identifier — all of that is carried
+forward here unchanged. What is superseded is narrow and total: the event
+that seals, and therefore the kind of identifier that gets sealed. (One
+item on that list did not survive further: ADR-0009 also made claimed
+ownership *sticky* against a later automatic stamp, and ADR-0013 deleted
+the rule along with the stamp it defended against.)
 
 ADR-0009's "Honest weakness" section is also superseded, and was, in
 hindsight, an under-statement rather than an over-statement: it described
@@ -319,11 +322,13 @@ attempts could not correct. ADR-0009 carries a note to that effect.
   (replacing ADR-0009's `claimed`). The CLI still cannot judge whether
   that agent is the caller — less than ever, now that the stored value is
   not even the same kind of name as anything the CLI can resolve — so it
-  states the fact it has instead of guessing.
-- `state.json` is unchanged in shape; `.headsign/log`'s `claimed` event
-  is unchanged, including its empty detail field (ADR-0004). What the
-  hidden `driver_session` value *is* changed; what any artifact looks like
-  did not.
+  states the fact it has instead of guessing. Since ADR-0013 that is the
+  only positive thing the line ever says.
+- `state.json` is unchanged in shape (ADR-0013 later renamed the stored
+  field to `driver_agent` and dropped its companion); `.headsign/log`'s
+  `claimed` event is unchanged, including its empty detail field
+  (ADR-0004). What the hidden driver value *is* changed; what any artifact
+  looks like did not.
 - **For a delegated agent, the nudge itself is the reliable test of "am I
   this run's driver".** `SubagentStop` holds an agent on a positive match
   with the stamped driver (Decision 3), so an ordinary nudge at a turn end
@@ -339,26 +344,27 @@ attempts could not correct. ADR-0009 carries a note to that effect.
 
   The test is one-directional, and does not extend to `Stop`. A quiet turn
   end proves nothing: the nudge cap may have tripped, a pause note may have
-  been consumed, or `HEADSIGN_OBSERVER` may be set — and a delegated agent
-  that never claimed is passed by `driver_source !== "claim"` before its
-  identity is ever considered. `Stop`'s owner check, meanwhile, rules a stop
-  out on identifier grounds only when both identifiers resolve and disagree,
-  so on a run with no stamped identifier it nudges every session in the
-  directory (Decision 3's asymmetry, and ADR-0008's fail-open rule): being
-  held there means the run is running, not that the holder owns it.
+  been consumed, or `HEADSIGN_OBSERVER` may be set — and on a run nobody
+  has claimed, a delegated agent is passed before its identity is ever
+  considered. `Stop`, meanwhile, rules a stop out on ownership grounds only
+  when a driver is on file, so on a run with none it nudges every session
+  in the directory (Decision 3's asymmetry, and ADR-0006's fail-open rule):
+  being held there means the run is running, not that the holder owns it.
   Documentation that offers this test must carry the delegated-agent scope
   with it; stated bare, it is the same kind of overclaim as the `status`
   line this ADR's follow-up corrected.
 - `headsign status`'s `driver:` line inherits that limit and is worded to
-  admit it. While `driver_source` is `"env"`, the line is a comparison of
-  environment-resolved session identifiers, and a delegated agent resolves
-  the identifier of the session that spawned it (fact 2) — so a match
-  narrows the driver to *that session or an agent it delegated to* and can
-  go no further. Reported field experience was a delegated agent reading
-  the older wording, `this session`, as confirmation that it held the run
-  when the stamp in fact belonged to its parent. The line now states the
-  boundary of what the comparison establishes rather than the stronger
-  claim it cannot support.
+  admit it. On a run stamped from the environment, the line was a
+  comparison of environment-resolved session identifiers, and a delegated
+  agent resolves the identifier of the session that spawned it (fact 2) —
+  so a match narrowed the driver to *that session or an agent it delegated
+  to* and could go no further. Reported field experience was a delegated
+  agent reading the older wording, `this session`, as confirmation that it
+  held the run when the stamp in fact belonged to its parent. The line was
+  reworded to state the boundary of what the comparison established rather
+  than the stronger claim it could not support — and ADR-0013 removed the
+  comparison itself, leaving a line that reports whether a delegated agent
+  holds the run and says nothing about who is asking.
 - Having a hook write a whoami-style breadcrumb file — so a caller could
   read back which agent it is — was considered and rejected. For the
   direction that matters, *am I the driver of this run*, the nudge already

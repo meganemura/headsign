@@ -33,6 +33,32 @@ changes), and a patch bump means fixes only.
   What `status` prints as `--- last failure: … ---` is unchanged; that
   display is the field's only reader and the reason it still exists. A
   `state.json` written by 0.2.0 is not migrated — see Upgrading.
+- **Breaking: `headsign claim` is now the only way a run learns who drives
+  it.** `start` and `next` no longer record a driver, and the `Stop` hook
+  no longer compares identifiers: while nobody has claimed a run it nudges
+  whichever session stops in the run's directory, and once a delegated
+  agent has claimed it, that agent's own turn ends are the only ones held.
+  A session driving its own run needs no claim and keeps its backstop.
+  What this gives up is telling two *sessions* apart in one directory: a
+  second session watching a run it isn't driving is now nudged like any
+  other, and should set `HEADSIGN_OBSERVER` to opt out. `status`'s
+  `driver:` line has two readings to match — `a delegated agent`, or `not
+  delegated yet — no agent has claimed this run`. See
+  [ADR-0013](docs/adr/0013-claim-only-driver-identity.md).
+- **Breaking: `HEADSIGN_SESSION_ID` is gone**, and headsign no longer reads
+  a session identifier from the environment at all (`CLAUDE_CODE_SESSION_ID`
+  included). `HEADSIGN_OBSERVER` is the only environment variable it now
+  consults. Setting `HEADSIGN_SESSION_ID` was worse than useless under
+  Claude Code: the CLI recorded the value you exported while the hook
+  compared against the identifier Claude Code handed it on stdin, so the
+  two disagreed permanently and the session that set it stopped being
+  nudged at all.
+- **Breaking: `state.json`'s `driver_session` and `driver_source` are
+  replaced by a single `driver_agent`.** Only one thing can be recorded
+  there now — the id of the delegated agent that claimed the run — so the
+  field is named for it, and the companion field that used to say which
+  mechanism had written it is gone. A `state.json` written by 0.2.0 is not
+  migrated; an unfinished run reads as unclaimed. See Upgrading.
 - headsign no longer runs `git`. The working-tree fingerprint was its only
   use of it, so the tool now behaves identically inside a repository,
   outside one, and in a linked worktree, and `/bin/sh -c` — running the
@@ -41,11 +67,15 @@ changes), and a patch bump means fixes only.
 ### Upgrading
 
 Finish or abort a run before upgrading, or start it again afterwards: a
-`state.json` from 0.2.0 carries `last_eval`, and this version reads
-`last_failure`. Workflow files are unaffected: nothing in `workflow.yaml`
-changes, and the six answer tokens are the same six. Do re-read your
-slowest gate, though — its cost is now paid on every `next` rather than
-once per change to the working tree.
+`state.json` from 0.2.0 carries `last_eval` and the two ownership fields
+this version replaced, so an upgraded-into run loses its recorded driver
+(it reads as unclaimed) as well as its last-failure block. If such a run
+was being driven by a delegated agent, have that agent run `headsign
+claim` again. Drop `HEADSIGN_SESSION_ID` from any shell profile or hook
+config that exports it — nothing reads it any more. Workflow files are
+unaffected: nothing in `workflow.yaml` changes, and the six answer tokens
+are the same six. Do re-read your slowest gate, though — its cost is now
+paid on every `next` rather than once per change to the working tree.
 
 ## [0.2.0] - 2026-07-27
 

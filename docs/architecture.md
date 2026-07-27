@@ -45,19 +45,21 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at **992 code lines** (raw
-`wc -l` is higher, ~1620, because of those comments) — roughly twice the
+blank lines don't count). It currently sits at **963 code lines** (raw
+`wc -l` is higher, ~1575, because of those comments) — roughly twice the
 target, after the concurrency lock, ready:/PENDING, the transition log,
-multi-session driver ownership, the two stop-boundary hooks, and k-way
-`on_pass` routing landed. Each was individually justified and none is
-obviously removable, which is exactly the shape of drift ADR-0001 says to
-watch: at 2× the guideline, the next feature proposal should face the "does
-a thin harness need this?" question with real suspicion, and a proposal that
-adds a *third* identity mechanism should probably be answered by
-consolidating the first two instead. It came down from 1081 when ADR-0012
-removed the tree-hash cache: subtraction is available, and a feature whose
-justification has moved to another command is where to look for it. Recount
-with:
+driver ownership, the two stop-boundary hooks, and k-way `on_pass` routing
+landed. Each was individually justified and none is obviously removable,
+which is exactly the shape of drift ADR-0001 says to watch: at 2× the
+guideline, the next feature proposal should face the "does a thin harness
+need this?" question with real suspicion. It has come down twice, both
+times because a mechanism was removed rather than because lines were
+trimmed: 1081 → 992 when ADR-0012 dropped the tree-hash cache, and 992 →
+963 when ADR-0013 retired the environment-derived driver stamp. That second
+subtraction is the note that used to stand here — that a proposal adding a
+*third* identity mechanism should be answered by consolidating the first
+two — taken up rather than repeated. A feature whose justification has
+moved elsewhere is where to look next. Recount with:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
@@ -76,7 +78,7 @@ lines.
 | `src/gate.ts` | run one phase's checks (shell, env, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
 | `src/engine.ts` | the transition function: (workflow, state, gate result, resolved route) → (new state, outcome). The ONLY place routing rules live — a resolved route arrives as data and is applied here, never evaluated here | child_process, printing |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
-| `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block | workflow.yaml, gates |
+| `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, the one env signal headsign reads (ADR-0013) | workflow.yaml, gates |
 
 `render.ts` owns the entire outcome contract (the START/ADVANCE/RETRY/COMPLETE/ESCALATE/ABORT
 strings and `validate`'s output); `cli.ts`'s `ERROR:` messages (exit code 3, for usage/config
@@ -112,9 +114,12 @@ outside it:
 - **Stop-boundary hooks** are the backstop: skills are instructions, not
   guarantees. If the run's driver tries to stop while a run is `running`,
   the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events
-  are watched because a driver can be either a session (`Stop`) or a
-  delegated agent (`SubagentStop`), and only the latter's payload can name
-  such an agent at all (ADR-0010).
+  are watched because a turn can end in two ways: `Stop` for a session,
+  `SubagentStop` for a delegated agent. Only `SubagentStop` carries an
+  identifier that can name its stopper, so it is the only event that can
+  record a driver — and, since ADR-0013, the only one that compares
+  anything. `Stop` nudges whoever stops while nobody has claimed the run,
+  and passes every session once someone has.
 
 ## Design records
 
@@ -125,8 +130,9 @@ outside it:
 - [ADR-0005](adr/0005-distribution-and-toolchain.md) — TypeScript, esbuild single-file bundle, dependency policy
 - [ADR-0006](adr/0006-stop-hook-backstop.md) — stop-boundary hook semantics (both events)
 - [ADR-0007](adr/0007-verdict-authorship.md) — verdict authorship: the gate-hardness scale
-- [ADR-0008](adr/0008-multi-session-ownership.md) — multi-session runs: driver ownership, observers, `status`
+- [ADR-0008](adr/0008-multi-session-ownership.md) — multi-session runs: driver ownership, observers, `status` (its env stamp retracted by ADR-0013)
 - [ADR-0009](adr/0009-claim-handshake.md) — the claim handshake (superseded by ADR-0010)
 - [ADR-0010](adr/0010-subagent-stop-identity.md) — sealing driver identity on `SubagentStop`
 - [ADR-0011](adr/0011-k-way-routing-on-pass.md) — k-way routing on `on_pass`: `when:`/`to:` routes, and unreachable phases as warnings
 - [ADR-0012](adr/0012-removing-the-tree-hash-cache.md) — removing the tree-hash cache: every `next` judges, `max_attempts` counts judgments
+- [ADR-0013](adr/0013-claim-only-driver-identity.md) — claim-only driver identity: the environment stamp retired, `Stop` compares nothing

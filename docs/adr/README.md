@@ -13,11 +13,12 @@ record the reasoning each choice rests on.
 | [0005](0005-distribution-and-toolchain.md) | TypeScript + esbuild single-file bundle, and the minimal-dependency policy |
 | [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — the pause-note exit gate, the nudge counter demoted to insurance, fail-open, and the subdirectory walk-up |
 | [0007](0007-verdict-authorship.md) | Verdict authorship — the gate-hardness scale (hard/semi/soft), why soft gates stay soft, and how to move the pen out of the worker's hand |
-| [0008](0008-multi-session-ownership.md) | Multi-session runs — driver ownership stamped on `start`/`next`, the Stop hook's owner-match and observer opt-out, and the read-only `status` command |
+| [0008](0008-multi-session-ownership.md) | Multi-session runs — driver ownership, the observer opt-out, and the read-only `status` command *(its environment-derived driver stamp and the Stop hook's owner match retracted by 0013)* |
 | [0009](0009-claim-handshake.md) | The claim handshake — session identity is hook-side knowledge; `headsign claim`, the Stop hook's adoption gate, and sticky `claimed` ownership *(superseded by 0010)* |
-| [0010](0010-subagent-stop-identity.md) | Sealing driver identity on `SubagentStop` — the event ADR-0009 got wrong; the delegated-agent backstop, and why `driver_source` already says which kind of identifier is stored |
+| [0010](0010-subagent-stop-identity.md) | Sealing driver identity on `SubagentStop` — the event ADR-0009 got wrong, and the delegated-agent backstop *(its identifier-kind decision retracted by 0013)* |
 | [0011](0011-k-way-routing-on-pass.md) | k-way routing on `on_pass` — a list of `when:`/`to:` routes, why a per-check `on_fail` was refused, why a broken `when:` stops the run, and unreachable phases demoted to warnings |
 | [0012](0012-removing-the-tree-hash-cache.md) | Removing the tree-hash cache — why the free probe was right before `status` existed, what it hid, `max_attempts` now counting judgments, and `last_failure` |
+| [0013](0013-claim-only-driver-identity.md) | Claim-only driver identity — retiring the environment stamp: why `Stop` now compares nothing, `driver_agent`, the two-valued `driver:` line, and what a single identity path gives up |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

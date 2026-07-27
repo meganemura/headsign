@@ -11,6 +11,12 @@
   that gate then **moved out of this hook entirely** onto a sibling
   `SubagentStop` hook, leaving `Stop` with no claim-related branch except
   an unconditional pass-through — see ADR-0010)
+- Revised: 2026-07-27 (`Stop` reads no identifier at all: the owner match
+  added by ADR-0008 is retracted by
+  [ADR-0013](0013-claim-only-driver-identity.md) along with the stamp it
+  compared against, and the pass-through above is now the whole of this
+  hook's ownership logic. The sibling `SubagentStop` hook's owner match
+  stays, on the one identifier that can name a delegated agent.)
 
 ## Context
 
@@ -80,11 +86,13 @@ artifact, no second file to keep in sync). Logic, in order:
    any non-empty value) → **exit 0**, immediately, before stdin is even
    parsed. This check needs neither stdin nor `.headsign/state.json`, so a
    session that has opted out costs nothing to recognize (ADR-0008).
-2. Read and parse the hook JSON from stdin — the payload carrying `cwd`,
-   `session_id`, and `stop_hook_active`. This happens before locating state
-   because the walk-up below needs the payload's `cwd`, not the checks
-   further down that read `session_id`/`stop_hook_active` off the same
-   already-parsed object.
+2. Read and parse the hook JSON from stdin — the payload carrying `cwd`
+   and `stop_hook_active`. This happens before locating state because the
+   walk-up below needs the payload's `cwd`, not the check further down that
+   reads `stop_hook_active` off the same already-parsed object. The
+   payload's `session_id` is deliberately not read (ADR-0013): this hook
+   compares no identifiers, so the type it parses into does not name a
+   field that would invite one.
 3. Locate `.headsign/state.json` by walking up from the parsed payload's
    `cwd` (falling back to the invocation cwd if that field is absent),
    bounded by the enclosing git worktree/repo root (see "Bounded walk-up"
@@ -95,34 +103,28 @@ artifact, no second file to keep in sync). Logic, in order:
    already continuing as a result of a stop hook". Honored when present;
    see loop guard below for why we do not rely on it.)
 5. If state parses and `status == "running"`:
-   1. **Claimed-run pass-through (ADR-0010).** If `state.driver_source`
-      is exactly `"claim"` → **exit 0**. The stored `driver_session` is
-      then an *agent* id sealed by the `SubagentStop` hook, and a `Stop`
-      firing carries a session id: this session is, by construction, not
-      the driver, so the comparison in step 5.2 is not merely doomed but
-      meaningless. `Stop` does not read, consume, or act on
-      `.headsign/tmp/claim` at all — the adoption gate ADR-0009 placed
-      here moved to the sibling hook (see "The `SubagentStop` sibling",
-      below).
-   2. **Owner match.** `hookSid` = the stdin payload's `session_id`
-      (non-empty after `trim()`), falling back to `HEADSIGN_SESSION_ID`
-      from env if stdin didn't carry one; `driver` = `state.driver_session`
-      (valid only as a non-empty string). If **both** resolve and
-      disagree → **exit 0** immediately: no state write, the stop-note (if
-      any) is left unconsumed, no output at all. If either side is
-      unresolved, skip this check and fall through unchanged — the same
-      fail-open direction as everything else in this list: a new way to
-      pass a session through, never a new way to block one (ADR-0008; see
-      "Why owner match precedes the exit-note gate", directly below, for
-      why this must run before step 5.3).
-   3. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
+   1. **Claimed-run pass-through (ADR-0010, ADR-0013).** If
+      `state.driver_agent` holds a non-empty string → **exit 0**
+      immediately: no state write, the stop-note (if any) is left
+      unconsumed, no output at all. What is stored there is an *agent* id
+      sealed by the `SubagentStop` hook, and a `Stop` firing is a session's
+      turn end: this session is, by construction, not the driver, so no
+      comparison is worth making — and this hook makes none (see "Why the
+      driver check precedes the exit-note gate", directly below, for why
+      it must run before step 5.2). On a run nobody has claimed, the check
+      falls through unchanged, which is this hook's fail-open direction: it
+      is a way to pass a session through, never a new way to block one.
+      `Stop` does not read, consume, or act on `.headsign/tmp/claim` at
+      all — the adoption gate ADR-0009 placed here moved to the sibling
+      hook (see "The `SubagentStop` sibling", below).
+   2. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
       exists and is non-empty after `trim()`: take its first line
       (trimmed, truncated to 120 characters), **delete the note**, reset
       `state.stop_nudges` to 0, append a `paused` line to `.headsign/log`
       (ADR-0004), and **exit 0**. An absent note, or one that is empty or
       whitespace-only after trimming, is treated exactly like "no note" —
       it falls through to the nudge flow below.
-   4. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
+   3. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
       **exit 0** (see "the safety-net loop guard", below). Else increment
       `state.stop_nudges`, persist it, and if that increment just reached
       5, append a `stalled` line to `.headsign/log`. Either way, **exit 2**
@@ -149,31 +151,31 @@ the same helpers — observer opt-out, `stop_hook_active`, the bounded
 walk-up, the exit-note gate, the nudge cap and its shared `stop_nudges`
 counter all behave identically — with two differences:
 
-- Its identifier is the payload's `agent_id`, not `session_id`, and it
-  has no env fallback: the environment a delegated agent sees belongs to
-  the session that spawned it, so there is nothing there to fall back
-  *to*.
+- It reads an identifier at all, and that identifier is the payload's
+  `agent_id`, with no env fallback: the environment a delegated agent sees
+  belongs to the session that spawned it, so there is nothing there to fall
+  back *to*. This hook reads none (ADR-0013).
 - Where this hook now has the claimed-run pass-through (step 5.1), the
   sibling has the adoption gate ADR-0009 wrote and this ADR used to
   host — marker present plus a resolved agent id → adopt, seal
-  `driver_session`/`driver_source`, log `claimed`, and block with the
-  confirmation. Marker present but no agent id → leave the marker, fall
-  through. Its own owner match then passes through on
-  `driver_source !== "claim"` as well as on a confirmed different agent,
-  so an unrelated subagent's stop is never held *by the owner match*; the
-  adoption gate above is the one exception, and holds by design.
+  `driver_agent`, log `claimed`, and block with the confirmation. Marker
+  present but no agent id → leave the marker, fall through. Its own owner
+  match then passes through on a run nobody has claimed as well as on a
+  confirmed different agent, so an unrelated subagent's stop is never held
+  *by the owner match*; the adoption gate above is the one exception, and
+  holds by design.
 
 **Why the adoption gate still precedes owner match** (it does, in the
 sibling): a `.headsign/tmp/claim` marker means someone is *in the middle
-of* being adopted, and `state.driver_session` at that moment is whatever
-it was *before* — very possibly a stale value the claimant disagrees
-with. Had owner match run first, the claimant's own stop would be read as
-a confirmed mismatch against that stale stamp and waved through, the
-marker would never be consumed, and the handshake would never complete:
-the one agent `headsign claim` was trying to hand ownership to would look
-to the hook exactly like a bystander. Adoption first intercepts that
-case — a claim in progress is resolved before any comparison against the
-very stamp the claim exists to replace.
+of* being adopted, and the recorded driver at that moment is whatever it
+was *before* — very possibly a stale value the claimant disagrees with. Had
+owner match run first, the claimant's own stop would be read as a
+confirmed mismatch against that stale stamp and waved through, the marker
+would never be consumed, and the handshake would never complete: the one
+agent `headsign claim` was trying to hand ownership to would look to the
+hook exactly like a bystander. Adoption first intercepts that case — a
+claim in progress is resolved before any comparison against the very stamp
+the claim exists to replace.
 
 **The fail-open exception moved with the gate.** Blocking on a resolved
 claim is still the one branch in either hook that departs from this ADR's
@@ -186,21 +188,23 @@ expect exactly this confirmation. What changed is only where it lives.
 See ADR-0010 for the full sibling design, the measurements behind it, and
 the honest limits that remain (the adoption race, narrowed).
 
-### Why owner match precedes the exit-note gate
+### Why the driver check precedes the exit-note gate
 
-The exit-note gate (step 5.3) treats `.headsign/tmp/stop-note` as a
+The exit-note gate (step 5.2) treats `.headsign/tmp/stop-note` as a
 one-shot resource: the first stop to find it non-empty consumes (deletes)
 it and passes. Had a bystander's stop been able to reach that gate before
-ownership was checked, an observer's completely unrelated turn-ending
-could read and delete a note the *driver* wrote to pause deliberately — the
-driver's own next stop would then find no note, fall through to the nudge
-path, and either get nudged for a pause it already declared, or contribute
-to exhausting the nudge cap for a stall that never happened. Running owner
-match first means only a stop that is either the driver's, or one the hook
-cannot rule out as the driver's, ever reaches the note at all — a bystander
-whose identity is confirmed is waved through a step earlier and never
-touches it. See ADR-0008 for the full multi-session design this step
-belongs to.
+ownership was checked, an unrelated turn-ending could read and delete a
+note the *driver* wrote to pause deliberately — the driver's own next stop
+would then find no note, fall through to the nudge path, and either get
+nudged for a pause it already declared, or contribute to exhausting the
+nudge cap for a stall that never happened. Checking ownership first means
+only a stop that is either the driver's, or one the hook cannot rule out as
+the driver's, ever reaches the note at all — a session stopping while a
+delegated agent holds the run is waved through a step earlier and never
+touches it. The sibling hook keeps the same order for the same reason,
+with its own positive match in place of step 5.1. See ADR-0008 for the
+multi-session design this step belongs to and ADR-0013 for what is left of
+it here.
 
 ### Why the note must be consumed
 

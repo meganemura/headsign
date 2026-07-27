@@ -46,38 +46,41 @@ plugin or `npm install` the package. Do not guess at other paths.
 2. **If you are a delegated agent and were entrusted with driving a run,
    claim it first — don't just start calling `next`.** This applies when
    you are a teammate (Claude Code's agent-teams feature) or a subagent:
-   you share the spawning session's process and environment, so your own
-   `next` calls stamp *that session* as the driver, not you. Instead: run
-   `headsign claim`, then end your turn. The seal happens at your own turn
-   end — that is the only moment headsign can learn which delegated agent
-   you are — and the hook confirms it in its message, naming the workflow
-   and phase. **Do not run `headsign next` before you have seen that
-   confirmation.** If some other agent got adopted by mistake (it ended a
-   turn while your marker was armed and could name itself), run `headsign
-   claim` again from the agent that should be driving: a new claim re-arms
-   the marker, and that agent is a real contender for it because its own
-   turn end always fires the event that seals. Another agent naming itself
-   first can take this marker too, so re-claim until the confirmation names
-   the agent you meant. A session driving a run on its own does not need
-   `claim` at all — ordinary `next` stamping already works there. Skipping
-   the claim fails silently rather than loudly: a plain `next` from you
-   stamps the spawning session, so every later nudge goes to *it* while
-   your own turns end unheld. And if you need to check whether you are the
-   driver, don't read it off `headsign status` — as a delegated agent, the
-   reliable signal is the hook itself: if your turn ends are being pushed
-   back to `headsign next`, this run is yours to drive. Read which message
-   you got: an ordinary nudge fires only on a positive match, but `Claim
-   confirmed …` means an armed marker just seated you — if you did not run
-   `headsign claim`, you have taken a seat another agent was asking for, so
-   say so and let it claim again. The test only works in this direction and
-   only for delegated agents: ending quietly proves nothing (not having
-   claimed, an exhausted nudge cap, a pause note, or `HEADSIGN_OBSERVER` all
-   end turns quietly), and a plain session gets nudged on a run that stamped
-   no identifier at all. A probe is not free either: one that comes back as
-   an ordinary nudge spends one from the cap, one that passes while your own
-   pause note is armed consumes the note, and one that lands under another
-   agent's armed marker consumes that marker. Probe deliberately, not by
-   habit.
+   you share the spawning session's process and environment, so no command
+   you run can say who you are, and `headsign next` records no driver at
+   all. Instead: run `headsign claim`, then end your turn. The seal happens
+   at your own turn end — that is the only moment headsign can learn which
+   delegated agent you are — and the hook confirms it in its message,
+   naming the workflow and phase. **Do not run `headsign next` before you
+   have seen that confirmation.** If some other agent got adopted by
+   mistake (it ended a turn while your marker was armed and could name
+   itself), run `headsign claim` again from the agent that should be
+   driving: a new claim re-arms the marker, and that agent is a real
+   contender for it because its own turn end always fires the event that
+   seals. Another agent naming itself first can take this marker too, so
+   re-claim until the confirmation names the agent you meant. A session
+   driving a run on its own does not need `claim` at all: while nobody has
+   claimed a run, the hook nudges whichever session stops in its directory,
+   which is exactly the backstop that session wants. Skipping the claim
+   fails silently rather than loudly: the run stays unclaimed, so every
+   later nudge goes to a *session* — usually the idle one that delegated to
+   you — while your own turns end unheld. And if you need to check whether
+   you are the driver, don't read it off `headsign status` — it reports
+   whether some delegated agent holds the run, never whether that agent is
+   you. As a delegated agent, the reliable signal is the hook itself: if
+   your turn ends are being pushed back to `headsign next`, this run is
+   yours to drive. Read which message you got: an ordinary nudge fires only
+   on a positive match, but `Claim confirmed …` means an armed marker just
+   seated you — if you did not run `headsign claim`, you have taken a seat
+   another agent was asking for, so say so and let it claim again. The test
+   only works in this direction and only for delegated agents: ending
+   quietly proves nothing (not having claimed, an exhausted nudge cap, a
+   pause note, or `HEADSIGN_OBSERVER` all end turns quietly), and a session
+   gets nudged on any run nobody has claimed, whether or not it is driving.
+   A probe is not free either: one that comes back as an ordinary nudge
+   spends one from the cap, one that passes while your own pause note is
+   armed consumes the note, and one that lands under another agent's armed
+   marker consumes that marker. Probe deliberately, not by habit.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
 4. **When you have done work you think finishes the phase — or have just

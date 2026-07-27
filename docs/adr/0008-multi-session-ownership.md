@@ -2,6 +2,12 @@
 
 - Status: accepted
 - Date: 2026-07-25
+- Revised: 2026-07-27 (Decisions 1–3, the environment-derived driver stamp
+  and the `Stop` owner match it fed, are retracted by
+  [ADR-0013](0013-claim-only-driver-identity.md): a driver is now sealed by
+  the `SubagentStop` adoption gate or not at all. Decisions 4–6 — the
+  `HEADSIGN_OBSERVER` opt-out, the read-only `status` command, and the
+  discipline that non-drivers call `status` — stand unchanged.)
 
 ## Context
 
@@ -33,129 +39,42 @@ needs to know, structurally, which session is driving a run.
 
 Identifier resolution and observer detection live in a new module,
 `src/session.ts`, that knows only about the environment — not state shape,
-not hook protocol — keeping ADR-0001's thin-harness layering intact.
+not hook protocol — keeping ADR-0001's thin-harness layering intact. (That
+module is gone since ADR-0013: with identifier resolution removed, the one
+remaining env lookup, `isObserver()`, moved in with its only caller,
+`stophook.ts`.)
 
-### 1. Stamp `driver_session` on `start` and `next`
+### 1–3. The environment-derived driver stamp — retracted by ADR-0013
 
-`state.json` gains a `driver_session: string | null` field (ADR-0004).
-`start` stamps it from whatever session identifier the environment resolves
-at that moment (`null` if none does). `next` refreshes it, after its
-lock-protected fresh re-read of state, whenever the environment resolves a
-*positive* identifier that differs from what's stored — never on a negative
-read: if the environment can't produce an identifier, the existing
-`driver_session` is left exactly as it was, so a driver that loses its
-session-id env mid-run never orphans the run to "nobody drives this."
-Ownership therefore always tracks whichever session most recently drove the
-run with a resolvable identifier — including a driver that stepped away and
-simply calls `next` again later; no separate "reclaim" step exists or is
-needed. The PENDING path still stamps (a positive identifier is still
-available and still worth recording) but changes nothing else — attempts
-and iteration counts stay untouched, matching ADR-0002's rule that a
-`ready:` probe is not an evaluation. Ownership transfers are not logged
-(ADR-0004's log stays scoped to real transitions plus `paused`/`stalled`).
-
-### 2. Identifier sources, in priority order — and one is not a public API
-
-| Source | Set by | Resolved when |
-|---|---|---|
-| `HEADSIGN_SESSION_ID` | the user/harness, explicitly | any non-empty value, trimmed |
-| `CLAUDE_CODE_SESSION_ID` | Claude Code, automatically | checked only if the above is unset/empty |
-
-Both `resolveSessionId` and, on the hook side, the stdin `session_id` field
-draw from this precedence (the hook additionally accepts `session_id` from
-the Stop-hook payload before falling back to `HEADSIGN_SESSION_ID` from
-env — see Decision 3).
-
-Two facts, measured against a live Claude Code session (2026-07-25),
-justify leaning on `CLAUDE_CODE_SESSION_ID` at all: it is present in a
-Claude Code session's Bash environment, and its value is identical to the
-`session_id` field the Stop hook receives on stdin for that same session —
-so a `next` call and the Stop hook firing at the end of that turn are
-provably talking about the same session without headsign having to thread
-an identifier through itself. A subagent's Bash tool inherits its parent
-session's `CLAUDE_CODE_SESSION_ID` unchanged, so a driver that delegates
-`headsign next` to a subagent — an ordinary pattern this project's own
-skill uses — does not look like a different driver; the delegated call
-still stamps the same identifier the parent would have.
-
-**Correction (ADR-0009, 2026-07-25):** a third measurement, taken against
-Claude Code's agent-teams feature in two separate environments,
-complicates the first of the two facts above: `CLAUDE_CODE_SESSION_ID`
-turned out to be **process-granular, not session-granular** — a
-teammate's Bash tool inherits the *lead* session's value, not its own.
-The equality this section relies on (env value == the Stop hook's own
-stdin `session_id`) still holds for a lone session; it does not hold once
-more than one session shares a process tree, and Decision 1's env-based
-auto-stamp inherits that failure in exactly that case. The owner-match
-comparison in Decision 3 below — "both sides resolve and disagree → pass
-through" — remains correct exactly as written; what was wrong was one of
-the two *inputs* fed into it, not the comparison itself. See
-[ADR-0009](0009-claim-handshake.md) for the full failure mode (it inverts
-this ADR's protection rather than merely weakening it) and for the
-hook-driven `claim` handshake that supplies a trustworthy stamp in
-exactly the cases this section's assumption breaks down.
-
-**Further correction (ADR-0010, 2026-07-25):** a fourth round of
-measurement pinned the granularity question down completely, and it is
-worse than "the env var is process-granular". A delegated agent — a
-teammate or a subagent — shares the spawning session's process outright
-(same pid, same environment), and its environment contains **no**
-identifier of its own under any name; furthermore its turn end does not
-fire the `Stop` hook at all. So for a delegated agent there is no
-session-granular identifier to be had on either side of this table, and
-the event this ADR's Decision 3 reasons about never happens. The
-identifier that *does* exist for it is `agent_id`, delivered on a
-different event, `SubagentStop`. This ADR's table stays exactly right for
-what it covers — one session, one turn loop, an id resolved from the
-environment — and `driver_source: "env"` is precisely the marker for
-"`driver_session` came from this table". A run whose `driver_source` is
-`"claim"` holds an agent id instead, and nothing in this ADR's resolution
-path applies to it; see [ADR-0010](0010-subagent-stop-identity.md).
-
-`CLAUDE_CODE_SESSION_ID` is **not a documented, public part of Claude
-Code's interface** — it is relied on here only because no public
-equivalent exists today. This decision is made with that risk named, not
-hidden. If a future Claude Code release removes it, renames it, or changes
-what it contains, `resolveSessionId` simply starts returning `null` more
-often; `driver_session` stops being (re)stamped for those sessions, and the
-hook's owner-match step (Decision 3) always finds at least one side
-unresolved and skips the comparison. The system does not fail loudly or
-misbehave — it degrades exactly to its pre-this-ADR behavior: every stop on
-a running run gets nudged, driver and observer alike. That is the safe
-direction to degrade toward, so this decision takes no version pin, no
-compatibility shim, and no attempt to detect the variable beyond a plain
-existence/non-empty check.
-
-### 3. The hook passes through only on a confirmed mismatch
-
-The Stop hook (ADR-0006) gains an owner-match step, evaluated only while
-`status == "running"`: `hookSid` is the stdin payload's `session_id` (a
-non-empty string after trim), falling back to `HEADSIGN_SESSION_ID` from
-env if stdin doesn't carry one; `driver` is `state.driver_session` (valid
-only as a non-empty string). **Only when both resolve, and disagree**, does
-the hook pass through — untouched: no state write, the stop-note (if any)
-is left unconsumed, no output at all. If either side is unresolved — no
-driver has been stamped yet, or this particular stop event carries no
-identifier the hook can read — the comparison is skipped entirely and the
-hook falls through to its pre-existing behavior, unchanged. This keeps the
-new branch on the same side of ADR-0006's fail-open line as everything else
-added there: a new way to let an innocent session go, never a new way to
-block one. An unresolvable identifier is treated as "can't prove this isn't
-the driver," not as "prove it isn't."
-
-**Owner match runs before the exit-note gate, and that order is
-load-bearing.** The exit-note gate (ADR-0006) treats
-`.headsign/tmp/stop-note` as a one-shot resource: the first stop to find it
-non-empty consumes (deletes) it and passes. If a bystander's stop reached
-that gate before ownership was checked, an observer's unrelated
-turn-ending could read and delete a note the *driver* wrote to pause
-deliberately — the driver's own next stop would then find no note, fall
-through to the nudge path, and either get nudged for a pause it already
-declared, or, worse, contribute to exhausting the nudge cap for no real
-reason. Checking ownership first means only a stop that is either the
-driver's, or one the hook cannot rule out as the driver's, ever reaches the
-note at all — a bystander whose identity is confirmed is waved through
-several steps earlier and never touches it.
+> **Retracted 2026-07-27 by
+> [ADR-0013](0013-claim-only-driver-identity.md).** These three decisions
+> were one mechanism: `start` and `next` resolved a session identifier from
+> the environment and stamped it into `state.json` (1); the identifier came
+> from an explicit override variable, else from Claude Code's own session
+> variable, with the hook drawing on the same precedence behind its stdin
+> field (2); and the `Stop` hook passed a stop through when its own
+> identifier and the stamped one both resolved and disagreed (3).
+>
+> It is gone because the identity it could produce was the wrong one. A
+> delegated agent shares its spawning session's process and environment, so
+> the stamp named that session however the run was actually being driven,
+> and the agent's turn end fires no `Stop` at all — measured in
+> [ADR-0010](0010-subagent-stop-identity.md), whose corrections to this
+> section this retraction replaces. The explicit override was worse than
+> unused: the CLI preferred it while the hook preferred its own stdin
+> `session_id`, so setting it made the two sides disagree permanently and
+> quietly disabled the setter's own backstop. Ownership is now sealed in
+> exactly one place, the `SubagentStop` adoption gate (ADR-0010), and
+> `Stop` compares no identifiers at all. ADR-0013 names the variables, and
+> records both what was lost with this mechanism — two sessions in one
+> directory are no longer told apart — and why the remaining path is worth
+> the narrowing; the original text of these sections is in the
+> repository's history.
+>
+> What survives here is the *ordering* argument this section made: the
+> driver check runs before the exit-note gate, so a stop that is not the
+> driver's can never consume the driver's one-shot pause note. Both hooks
+> still keep that order (ADR-0006).
 
 ### 4. `HEADSIGN_OBSERVER` — the manual insurance policy
 
@@ -203,7 +122,7 @@ a different pair of meanings, when it added `PENDING`.
 A session that did not `start` a run, and has not been asked (by a human,
 or by the driving session) to continue one, must not call `headsign next`
 or `headsign abort`. This is taught, not enforced by a lock the CLI owns —
-headsign has no session-authentication layer, and the owner-match/observer
+headsign has no session-authentication layer, and the ownership/observer
 machinery above is a backstop against nudging the wrong session, not
 access control on invoking commands directly. Every place this
 prohibition is stated pairs it with what to do instead: run `headsign
@@ -211,19 +130,21 @@ status` to see what's happening without touching anything.
 
 ## Consequences
 
-- The nudge-cap safety net (ADR-0006) can no longer be exhausted by a
-  bystander's own stops: an observer's stop resolves at `isObserver` or the
-  owner-match pass-through, never reaching the shared `stop_nudges`
-  counter, so a `stalled` line in the log keeps meaning what ADR-0006 says
-  it means — a genuinely stuck or departed session, not an artifact of who
-  else happened to be in the repository.
-- A driver that steps away and comes back reclaims ownership with a single
-  `headsign next` call; there is no separate reclaim command, and no state
-  to reset by hand.
-- A repository or harness where no session identifier ever resolves
-  (`HEADSIGN_SESSION_ID` unset, not running under Claude Code, no
-  `HEADSIGN_OBSERVER`) behaves exactly as it did before this ADR:
-  `driver_session` stays `null`, the owner-match step always finds a side
-  it can't resolve and skips, and every stop on a running run gets nudged.
-  This ADR only ever adds a way to pass more sessions through cleanly; it
-  never adds a new way to block one.
+- The nudge-cap safety net (ADR-0006) is protected from a bystander's own
+  stops wherever headsign knows who the driver is: an observer's stop
+  resolves at `isObserver`, or — on a run a delegated agent has claimed —
+  at the driver pass-through that replaced this ADR's owner match
+  (ADR-0013), never reaching the shared `stop_nudges` counter. A `stalled`
+  line then keeps meaning what ADR-0006 says it means: a genuinely stuck or
+  departed driver, not an artifact of who else happened to be in the
+  repository. On a run nobody has claimed, that protection is
+  `HEADSIGN_OBSERVER` and nothing else — ADR-0013 weighs what retracting
+  the stamp gave up here.
+- Ownership no longer changes by driving: a run is handed over with
+  `headsign claim` (ADR-0010), and there is no state to reset by hand.
+- A repository where nobody has claimed the run behaves exactly as it did
+  before this ADR: no driver is recorded, and every session that stops in
+  the run's directory gets nudged (`SubagentStop`, which needs a positive
+  match, holds no delegated agent there — ADR-0010). This ADR only ever
+  adds a way to pass more sessions through cleanly; it never adds a new way
+  to block one.

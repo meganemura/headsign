@@ -8,6 +8,11 @@
   evaluation is renamed `last_failure` and trimmed to what `status` shows.
   Everything else here — the state shape, per-phase attempts, cwd-only
   resolution, the lock, and `.headsign/log` — stands.)
+- Revised: 2026-07-27 (the two ownership fields become one:
+  [ADR-0013](0013-claim-only-driver-identity.md) retired the
+  environment-derived driver stamp, so the stored driver is always an agent
+  id sealed by the `SubagentStop` hook and the field that used to say which
+  mechanism wrote it is gone. The state shape below is updated in place.)
 
 ## Context
 
@@ -38,8 +43,7 @@ implement grants a fresh budget".
   },
   "end_reason": null,
   "stop_nudges": 0,
-  "driver_session": null,
-  "driver_source": null
+  "driver_agent": null
 }
 ```
 
@@ -50,33 +54,19 @@ two fields it dropped).
 
 `stop_nudges` belongs to the Stop hook's loop guard, not to attempts
 semantics — its lifecycle is owned and explained by ADR-0006. Likewise
-`driver_session` — which session (`start`/`next`) most recently drove this
-run, or `null` if none resolved one — belongs to multi-session ownership,
-not to this ADR's attempts model; its resolution, stamping rule, and
-the Stop hook's use of it are owned and explained by ADR-0008. Alongside it,
-`driver_source: "env" | "claim" | null` (ADR-0009) records *how*
-`driver_session` was last stamped — `"env"` for the ordinary env-based
-auto-stamp `start`/`next` perform, `"claim"` for an adoption via
-`headsign claim`, and `null` whenever `driver_session` itself is `null`.
+`driver_agent` — the delegated agent driving this run, or `null` while
+nobody has claimed it — belongs to run ownership, not to this ADR's
+attempts model; who may write it, and what each stop-boundary hook does
+with it, are owned and explained by ADR-0010 and ADR-0013. The name says
+what the field holds: the `SubagentStop` adoption gate is its only writer,
+and an agent id is the only thing that gate has to write.
 
-Since ADR-0010, `driver_source` also determines **what kind of identifier**
-`driver_session` holds, one to one: `"env"` means a session id (which only
-a `Stop` firing can match), `"claim"` means an *agent* id sealed by a
-`SubagentStop` firing (which only a `SubagentStop` firing can match), and
-`null` means neither. No separate field records this — a second source of
-truth for something the first already fixes can only ever disagree with
-it. Readers that merely record or display `driver_session` need not care;
-readers that *compare* it against an identifier of their own must check
-`driver_source` first to know whether the comparison is even meaningful
-(ADR-0010).
-
-Consumers treat only the exact string `"claim"` as sticky (immune to being
-silently overwritten by a later env-based stamp); any other value —
-missing, `"env"`, or a corrupt/legacy value — is ordinary and overwritable,
-the same tolerant-reader idiom already applied to `driver_session` and
-`stop_nudges`. A `state.json` written before either field existed lacks
-both keys entirely; readers apply the same missing-means-`null` latitude to
-both.
+A `state.json` written before this field carried that name lacks the key
+entirely, and one written by 0.2.0 carries the two fields it replaced.
+Readers apply the usual missing-means-`null` latitude, and must get it
+right in one specific way: a missing key reads back as `undefined`, so the
+test is "a non-empty string", not "not `null`" — the same tolerant-reader
+idiom `stop_nudges` already gets.
 
 `end_reason` stores why a run ended for the terminal states that carry a
 reason (`escalated`, `aborted`), so `next` can reprint the outcome
@@ -214,7 +204,7 @@ stop-boundary hook: `paused` and `stalled` from whichever of `Stop` /
 `SubagentStop` is evaluating the driver's own stop, and `claimed` only
 from `SubagentStop`, the sole hook that can seal a claim (ADR-0010).
 Unlike the other two, `claimed`'s detail field is empty: the identifier
-just adopted already lives in `driver_session`, and the log does not
+just adopted already lives in `driver_agent`, and the log does not
 repeat it. This stays a targeted exception rather than reopening "log
 everything the hook does" (see ADR-0006, ADR-0009, and ADR-0010 for the
 full designs).

@@ -467,33 +467,32 @@ verdict left intact for the `next` that actually finds it.
 ### The backstop
 
 Skills are instructions, not guarantees. Two stop-boundary hooks read
-`.headsign/state.json`; while a run is `running`, whichever one fires for
+`.headsign/state.json`; while a run is `running`, the hook that fires for
 the run's **driver** blocks that turn from ending and points it back to
-`headsign next`. A turn that can be *shown* not to be the driver's — its
-identifier resolves and disagrees with the stamped one — passes straight
-through instead, unless a `claim` marker is armed and it is the first
-delegated agent to stop that can name itself, which seats it (see
+`headsign next`. A turn that isn't the driver's passes straight through
+instead — except while a `claim` marker is armed, where the first delegated
+agent to stop that can name itself is seated as the new driver (see
 [Multiple sessions](#multiple-sessions)). Escalated, aborted, and completed
 runs pass through too; those are correct endings.
 
-The two hooks resolve the "can't tell" case in opposite directions, on
-purpose. If either end fails to produce an identifier — the stopping turn's
-or the stamped one's — `Stop` still nudges: a session stopping in the run's
-own directory is probably its driver, and missing the real one is worse
-than one stray reminder. `SubagentStop` passes instead, because most
-delegated agents stopping nearby are reviewers and workers with no role in
-the run at all, and holding one of those hostage is worse than a missed
-reminder.
+Which turns those are depends on whether anyone has claimed the run, and
+the two hooks answer an unclaimed one in opposite directions, on purpose.
+`Stop` nudges: a session stopping in the run's own directory is probably
+driving it, and missing the real driver is worse than one stray reminder.
+`SubagentStop` passes, because most delegated agents stopping nearby are
+reviewers and workers with no role in the run at all, and holding one of
+those hostage is worse than a missed reminder.
 
-One case never reaches that question: once a run's driver was seated by
-`headsign claim`, what's stamped is an agent identifier, so `Stop`
-passes every session through unconditionally without comparing anything —
-no session can be that agent. See
-[Multiple sessions](#multiple-sessions).
+Once a run's driver *has* been seated by `headsign claim`, what's recorded
+is an agent identifier, so `Stop` passes every session through
+unconditionally — no session can be that agent — and `SubagentStop` holds
+that one agent and no other. That is the whole of the ownership question
+either hook asks; neither compares session identifiers, and headsign
+records none. See [Multiple sessions](#multiple-sessions).
 
-Two hooks, because a driver can be either kind of turn loop: `Stop` fires
-when a session's turn ends, `SubagentStop` when a delegated agent's does.
-A delegated agent never fires `Stop` at all, so without the second hook it
+Two hooks, because a turn can end in two ways: `Stop` fires when a
+session's turn ends, `SubagentStop` when a delegated agent's does. A
+delegated agent never fires `Stop` at all, so without the second hook it
 would have no backstop — and, worse, the run would keep pushing the
 session that merely spawned it (see
 [Multiple sessions](#multiple-sessions)).
@@ -538,39 +537,40 @@ A repository often has more than one Claude Code session open on it at
 once — a lead session plus teammates, or a subagent working alongside the
 session that spawned it. Only one of them should ever be answering
 `headsign next` for a given run; headsign calls that one the **driver**.
-Everyone else is an **observer**. The distinction exists because the Stop
-hook (above) used to nudge *every* session that stopped while a run was
-`running`, driver and observer alike — an observer that obeyed the nudge
-could burn a retry or advance a phase it had no business touching, and
-every blocked stop, from any session, consumed the same shared nudge-cap
-counter, so a handful of bystander turn-endings alone could exhaust it and
-silently disable the backstop for the real driver. See
-[ADR-0008](docs/adr/0008-multi-session-ownership.md) for the full design
-and the field feedback that drove it.
+Everyone else is an **observer**. The distinction matters because the
+stop-boundary hooks (above) push a driver that tries to stop mid-run back
+to `headsign next`: a session that obeys a nudge meant for someone else can
+burn a retry or advance a phase it had no business touching, and every
+blocked stop, whoever made it, spends one from the same nudge cap. See
+[ADR-0008](docs/adr/0008-multi-session-ownership.md) for the field feedback
+that drove the design, and
+[ADR-0013](docs/adr/0013-claim-only-driver-identity.md) for what it has
+since been narrowed to.
 
-`start` and `next` stamp `driver_session` in `.headsign/state.json` from
-whichever session identifier the environment resolves at the time (never
-overwriting it with "nothing" if the environment can't resolve one), so
-ownership always tracks whichever session most recently drove the run. The
-Stop hook compares its own idea of who just stopped against that stamp and
-lets a confirmed non-driver's stop pass straight through — untouched, no
-nudge, no state write — while falling back to its previous behavior
-whenever either side can't be resolved, so the change never creates a new
-way to block an innocent session, only new ways to let one go.
-`HEADSIGN_OBSERVER` (below) is the manual override for environments where
-no identifier resolves at all.
+There is one way a run learns who drives it, and one kind of driver it can
+learn about: a **delegated agent** that ran `headsign claim` and then ended
+its turn (below). Nothing else records a driver — `start` and `next` stamp
+no one, and no environment variable names anyone. Until a run is claimed,
+headsign does not know who is driving it, and acts on that: every session
+that ends a turn in the run's directory is nudged, and no delegated agent
+is. Once a run is claimed, that agent's turn ends are the only ones held,
+and every session's stop passes.
 
-That automatic stamping is the whole story whenever the driver is a
-*session* — one session working alone, or several in separate terminals.
-Nothing needs claiming there. The one case it can't cover is a run driven
-by an agent the session **delegated** it to, which is what `headsign
+Those two behaviors cover the two shapes a run takes. A session driving its
+own run needs no claiming: it is nudged because nobody else has claimed the
+run, which is exactly the backstop it wants. A run handed to a delegated
+agent does need claiming, because that agent shares its spawning session's
+process and can't otherwise be told apart from it — that is what `headsign
 claim` is for (below).
 
-Because ownership simply follows whoever last drove the run, a driver that
-stepped away and comes back reclaims it with a single `headsign next` —
-there's no separate reclaim step. Every other session — teammates, a
-subagent that wasn't delegated the run, or any session that never ran
-`headsign start` — should reach for `headsign status` instead.
+What this deliberately does *not* do is tell two **sessions** apart. A run
+belongs to the directory it lives in — one worktree, one run — so a second
+session watching that same directory is nudged like any other while the run
+is unclaimed. `HEADSIGN_OBSERVER` (below) is how such a session opts out,
+and it is the only manual control headsign offers here. Every session that
+isn't driving — teammates, a subagent that wasn't delegated the run, or any
+session that never ran `headsign start` — should reach for `headsign
+status` instead of `next`.
 
 ### `headsign status`
 
@@ -584,7 +584,7 @@ workflow: feature-dev
 --- last failure: unit tests (bundle exec rspec, exit 1) ---
 Failures:
   1) Billing::Invoice#total ...
-driver: this session, or an agent it delegated to
+driver: not delegated yet — no agent has claimed this run
 ```
 
 ```
@@ -603,27 +603,22 @@ reason: review rejected 3 times
 The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
 capitalized like `next`'s tokens, but it's a *report*, not a verdict:
 `status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
-judges anything. The `driver:` line (shown only while `RUNNING`) reads
-`this session, or an agent it delegated to` when your own resolved
-identifier matches the stamped driver, `another session` when both resolve
-but disagree, and `unknown` whenever either side can't be resolved. After a
-`headsign claim` handoff (below), it instead reads `driver: a delegated
-agent` — `status` deliberately does not guess this-session-or-another for a
-claimed run, because what's stored then isn't a session identifier at all,
-and the same resolution gap that makes `claim` necessary in the first place
-is exactly what stops the CLI from telling whether that agent is the caller.
-The line states the fact it has, and nothing more.
+judges anything. The `driver:` line (shown only while `RUNNING`) has two
+readings: `not delegated yet — no agent has claimed this run`, and `a
+delegated agent` once a `headsign claim` handoff (below) has been sealed.
 
-That first reading is wordy on purpose. A delegated agent shares its
-spawning session's identifier, so a match narrows the driver down to *that
-session or any agent under it* and stops there — it cannot tell one of them
-from another. `status` compares identifiers the environment hands it, and no
-such identifier separates a session from what it delegated to — that gap is
-exactly why `headsign claim` exists.
+It says nothing about whether *you* are that agent, and cannot: the
+identifier on file comes from a hook, and no command can resolve the
+caller's own agent identity to compare against it — the same gap that makes
+`claim` necessary in the first place. What the line is for is confirming
+that a handoff landed. `claim` takes two beats and can fail quietly, so one
+`headsign status` after the confirmation is how anyone — the delegating
+session, the user, a passing observer — checks that the run really did
+change hands.
 
 **If you are a delegated agent, end your turn and watch what happens: being
 pushed back to `headsign next` means this run is yours to drive.**
-`SubagentStop` holds an agent when it matches the stamped driver, and
+`SubagentStop` holds an agent when it matches the recorded driver, and
 otherwise only to seal a claim — so read *which* message you got, starting
 with its opening words. Both name the workflow and phase, both tell you to
 run `headsign next`, and both end with the same pause and abort advice, so
@@ -646,11 +641,10 @@ else's* claim marker is armed consumes the marker — that is the `Claim
 confirmed` case above, and the other agent has to claim again. Spend the
 probe deliberately rather than habitually.
 
-For a *session*, the same test is weaker. The owner check only rules a stop
-out on identifier grounds when both identifiers resolve and disagree, so on
-a run where none was ever stamped, every session in the directory is
-nudged, driver or not. Being held there says the run is running, not that
-you own it.
+For a *session*, the same test proves nothing at all. `Stop` rules a stop
+out only when a delegated agent holds the run, so while nobody has claimed
+it, every session in the directory is nudged, driver or not. Being held
+there says the run is running, not that you own it.
 
 Exit code follows a deliberately different contract from `next`'s: `status`
 exits 0 whenever `.headsign/state.json` could be read at all — an
@@ -663,50 +657,51 @@ run's own state from line 1, not from the exit code.
 ### Delegating who drives: `headsign claim`
 
 A **delegated agent** — a teammate under Claude Code's agent-teams
-feature, or a subagent — is the one driver the automatic stamping above
-cannot handle. Such an agent shares its spawning session's process
-outright (same pid, same environment) and carries no identifier of its
-own anywhere its Bash tool can reach, so its `headsign next` calls stamp
-the *spawning session's* identifier. Simply asking it to drive the run
-therefore records the wrong driver, quietly.
+feature, or a subagent — is the one driver headsign can record, and the
+only one it can tell apart from anybody else. Such an agent shares its
+spawning session's process outright (same pid, same environment) and
+carries no identifier of its own anywhere its Bash tool can reach, so no
+command it runs can say who it is. The one moment it *can* be named is its
+own turn end, which Claude Code reports to a hook with an identifier for
+that agent specifically.
 
-The damage from skipping the claim is not just a misleading field. Once a
-delegated agent's plain `headsign next` has stamped the spawning session,
-every nudge that run produces goes to *that* session — which is typically
-sitting idle, waiting on the delegation — while the agent actually doing
-the work ends its turns unheld. The backstop stays armed and points at the
-wrong party, and nothing in either one's output says so. So when you hand a
-run to a delegated agent, that agent's first headsign command is `headsign
-claim`, never `headsign next`.
+Skipping the claim fails quietly rather than loudly. An agent that just
+starts calling `headsign next` records nothing, so the run stays unclaimed:
+every nudge it produces goes to whichever *session* stops in the
+directory — typically the one sitting idle, waiting on the delegation —
+while the agent actually doing the work ends its turns unheld. The backstop
+stays armed and points at the wrong party, and nothing in either one's
+output says so. So when you hand a run to a delegated agent, that agent's
+first headsign command is `headsign claim`, never `headsign next`.
 
-`headsign claim` fixes that by letting a hook do the stamping, because
+`headsign claim` fixes that by letting a hook do the recording, because
 Claude Code tells the hook what the agent's own environment cannot. Two
 beats:
 
 1. From the agent you want driving the run, run `headsign claim`. It arms
-   a one-shot marker and tells you to end your turn — it stamps nothing
+   a one-shot marker and tells you to end your turn — it records nothing
    itself.
 2. End that turn. **That agent's own turn end is where the seal
    happens** (Claude Code fires a `SubagentStop` hook for it, carrying an
    identifier for that agent specifically): headsign writes it into
-   `driver_session`/`driver_source` in `.headsign/state.json`, records a
-   `claimed` line in `.headsign/log`, and confirms it in the hook's
-   message. Wait for that confirmation before running `headsign next` —
-   it is how you know the right agent got seated.
+   `driver_agent` in `.headsign/state.json`, records a `claimed` line in
+   `.headsign/log`, and confirms it in the hook's message. Wait for that
+   confirmation before running `headsign next` — it is how you know the
+   right agent got seated.
 
 A typical delegation: "please drive this run" → the delegated agent runs
 `headsign claim` and ends its turn → the confirmation arrives → it
-proceeds with `headsign next`. Ownership claimed this way is sticky: an
-unrelated `next` call from the same shared environment cannot silently
-reclaim it the way plain env-based stamping could. A session's own stop
-never adopts a claim at all, so the session that handed the work off
-cannot take the seat by stopping first.
+proceeds with `headsign next`. Nothing can quietly displace that agent
+afterwards: no command records a driver, a session's own stop never adopts
+a claim, and only another `headsign claim` arms the marker again. So the
+session that handed the work off cannot take the seat back by stopping
+first, or by running `next` itself.
 
 Being the driver also brings the backstop with it: once seated, that
 agent's own turn endings are pushed back to `headsign next` while the run
 is `running`, and pausing with a stop-note or ending with `headsign
 abort` works from there exactly as it does for a session. An agent that is
-neither the stamped driver nor the first to name itself under an armed claim
+neither the recorded driver nor the first to name itself under an armed claim
 marker is never held — a reviewer subagent, or an agent working on
 something else entirely, stops normally.
 
@@ -725,9 +720,12 @@ race that remains are in
 
 | Variable | Set by | Meaning |
 |---|---|---|
-| `HEADSIGN_SESSION_ID` | you, explicitly | The session identifier headsign uses for driver ownership. Works with any harness — export a stable, per-session value and headsign uses it. Checked first. |
-| `CLAUDE_CODE_SESSION_ID` | Claude Code, automatically | Used only if `HEADSIGN_SESSION_ID` isn't set. This is **not** a documented, public part of Claude Code's interface — headsign relies on it only because no public equivalent exists today. If a future release removes or changes it, headsign simply stops resolving a driver identifier automatically: `driver_session` stops being stamped, and the Stop hook falls back to nudging every stop on a running run, driver and observer alike — exactly the behavior a repository had before this feature existed. Nothing breaks; the feature just stops narrowing who gets nudged. |
-| `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of driver ownership. The manual opt-out for a session you know is only observing — especially useful when no session identifier resolves at all. |
+| `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. |
+
+That is the whole list: headsign reads no session or agent identifier from
+the environment, because nothing there can name a delegated agent — see
+[ADR-0013](docs/adr/0013-claim-only-driver-identity.md), which retired the
+two variables that used to appear here.
 
 **The rule:** a session that hasn't run `headsign start` and hasn't been
 asked to drive the run should reach for `headsign status`, never `headsign
