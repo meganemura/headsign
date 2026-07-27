@@ -1,10 +1,11 @@
 # Example workflows
 
-Ready-made `workflow.yaml` files for common roles, each written by that
-role's discipline and validated against the shipped CLI. Copy the ones you
-want into your repository's `.headsign/` directory (one workflow per file),
-adapt the `run:` commands to your project's tooling (marked with swap-me /
-SWAP comments), and start one with:
+Ready-made workflow files, all validated against the shipped CLI: a minimal
+one under the default file name, and one per common role, each written by
+that role's discipline. Copy the ones you want into your repository's
+`.headsign/` directory (one workflow per file), adapt the `run:` commands to
+your project's tooling (marked with swap-me / SWAP comments), and start one
+with:
 
 ```
 headsign start              # .headsign/workflow.yaml
@@ -13,12 +14,11 @@ headsign start tdd-feature  # .headsign/tdd-feature.yaml
 
 | File | Role | Shape |
 |---|---|---|
-| [workflow.yaml](workflow.yaml) | headsign's own development (the default here) | implement (CI-mirroring gates) → review soft gate |
+| [workflow.yaml](workflow.yaml) | the smallest useful workflow, under the default file name | implement (typecheck + tests) → review soft gate |
 | [tdd-feature.yaml](tdd-feature.yaml) | test-first feature developer | spec → red (test must exist AND fail) → green → refactor → review |
 | [bugfix.yaml](bugfix.yaml) | on-call bug fixer | reproduce (failing regression test, path recorded) → fix (repro + full suite) → harden (root-cause note) |
 | [docs.yaml](docs.yaml) | technical writer | outline (audience named) → draft → style (mechanical lint) → reader review |
 | [release.yaml](release.yaml) | release engineer | prepare (versions/changelog/clean tree) → verify (CI mirror) → approve (human GO file) → ship (tag at HEAD) |
-| [triage.yaml](triage.yaml) | headsign's own feedback intake (pull-based queue) | triage (judge one ticket; a no-work run ends clean) → implement → review → respond |
 | [router.yaml](router.yaml) | request intake that dispatches one of three kinds of work | classify (agent writes one word) → fix-bug / write-docs / implement → review (rejection re-enters classify) |
 | [sweep.yaml](sweep.yaml) | one mechanical change applied across many files (codemod, migration) | survey (build the work queue) → apply one item → verify → record (round again while the queue has work) → report |
 
@@ -31,9 +31,6 @@ Things these examples demonstrate beyond the Quick start:
   phase)
 - why some loop-backs are deliberately not wired, with the reasoning kept
   in comments (bugfix `fix`)
-- gating a phase on a run-local completion marker with `ready:` — the agent
-  declares "I am done here" rather than the queue being probed — and ending
-  a run with nothing to do cleanly via `on_fail: "$end"` (triage)
 - branching a pass three ways with a list-form `on_pass`, where the agent
   writes down its judgment and the `when:` predicates pick an edge that was
   declared in the file (router)
@@ -42,13 +39,10 @@ Things these examples demonstrate beyond the Quick start:
   leaves for `report` when it doesn't, so the loop ends because the work
   ran out, not because a limit was hit
 
-This repository dogfoods headsign: `.headsign` at the repo root is a
-symlink to this directory, so `headsign start` here runs the
-`headsign-dev` workflow, `headsign start release` runs the release one,
-`headsign start triage` runs one feedback ticket end to end, and
-`headsign start router` runs the branching one.
-The `.gitignore` in this directory keeps run state (`state.json`, `lock`,
-`log`, `tmp/`) out of the repository.
+These files are the ones headsign ships for you to copy. The workflows this
+repository actually runs on itself live separately, in `.headsign/` at the
+repo root — they read this project's own paths and tooling, which is exactly
+what makes them the wrong thing to hand anyone else.
 
 ## The shapes, drawn
 
@@ -114,18 +108,6 @@ flowchart TD
   approve -- "pass" --> ship["ship"]
   approve -- "fail" --> escalate["escalate"]
   ship -- "pass" --> done["$end"]
-```
-
-**triage.yaml** — two ways to end: nothing to do exits at the first gate.
-
-```mermaid
-flowchart TD
-  triage["triage"] -- "pass" --> implement["implement"]
-  triage -- "fail (nothing to do)" --> done["$end"]
-  implement -- "pass" --> review["review"]
-  review -- "pass" --> respond["respond"]
-  review -- "fail" --> implement
-  respond -- "pass" --> done
 ```
 
 **router.yaml** — the branch: `when:` picks one of three kinds of work.

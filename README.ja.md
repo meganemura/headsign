@@ -285,7 +285,8 @@ run が `running` の間に、その run の駆動者が止まろうとすると
 `headsign start <name>` で選ぶと `.headsign/<name>.yaml` を使います。
 明示的なパスを指定したい場合は `--workflow <path>` を使います。
 ロール別の実例(TDD 開発、バグ修正、ドキュメント執筆、リリース)は [example.headsign/](example.headsign/) にあります。
-このリポジトリ自身の `.headsign` はそこへのシンボリックリンクです。
+このリポジトリは headsign を自分自身に対して、自前の `.headsign/` から走らせています。
+そこにあるワークフローはこのプロジェクトのパスと道具を読むため、サンプルとは分けてあります。
 
 無引数の `headsign validate`(name も `--workflow` も指定しない場合)は、現在の run が実際に使っているワークフローを検証します。
 `.headsign/state.json` が存在すれば(status を問わず)、固定のデフォルトファイルではなく、その run 自身の `workflow_path` を検証対象にします。

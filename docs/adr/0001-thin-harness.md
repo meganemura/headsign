@@ -33,6 +33,10 @@ that matters: the transition decision.
    blank lines excluded), since this repo's dense AI-friendly comments push
    raw `wc -l` noticeably higher. Every feature proposal must answer "does a
    thin harness need this?" — if the budget breaks, the design is wrong.
+   (Amended by [ADR-0016](0016-explainability-as-the-fitness-function.md):
+   the number is retired — it was passed twice over without stopping a single
+   proposal — and replaced by an explainability sweep that names the function
+   it fails on. The question every proposal must answer is unchanged.)
 4. **Thin Harness, Fat Skills.** Intelligence lives in SKILL.md (procedure)
    and gate commands (user-authored shell). The CLI is a state transition
    machine and nothing else.
@@ -58,5 +62,7 @@ that matters: the transition decision.
 
 - Feature requests that need orchestration, parallelism, or expression
   languages are answered by "compose with other tools", not by growth here.
-- The 500-line budget is enforced in review; it is a design smell detector,
-  not a hard compiler limit.
+- The 500-line budget was enforced in review as a design smell detector, not
+  a hard compiler limit. It is retired by
+  [ADR-0016](0016-explainability-as-the-fitness-function.md), which records
+  what a detector that never fires actually measures.

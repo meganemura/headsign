@@ -312,8 +312,9 @@ Multiple workflows can live as separate files under `.headsign/` (one
 workflow per file); pick one with `headsign start <name>` (→
 `.headsign/<name>.yaml`), or pass `--workflow <path>` for an explicit path.
 Ready-made examples for several roles — TDD features, bug fixing, docs,
-releases — live in [example.headsign/](example.headsign/); this repo's own
-`.headsign` is a symlink to it.
+releases — live in [example.headsign/](example.headsign/). This repository
+runs headsign on itself from its own `.headsign/`, kept separate from the
+examples because those workflows read this project's paths and tooling.
 
 A bare `headsign validate` (no name, no `--workflow`) checks whichever
 workflow the current run is actually using: if `.headsign/state.json`

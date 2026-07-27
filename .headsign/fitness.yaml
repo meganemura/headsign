@@ -1,0 +1,317 @@
+# fitness.yaml — headsign's own fitness function: can each function in src/ be
+# explained to a middle-school reader?
+#
+# It replaces a number. The ~500-code-line guideline stopped detecting
+# anything: src/ went past 2x it and no one stopped, while every design
+# problem we actually found was found because an explanation had gone long.
+# So the sweep asks for the explanation directly. A failure here does not say
+# "the codebase is fat" — it says "THIS function is too complicated", and
+# names it. See docs/adr/0016-explainability-as-the-fitness-function.md.
+#
+# The shape:
+#
+#   inventory ──> explain ──> judge ─┬─ APPROVED ─────────> record
+#                     ↑              ├─ third try ────────> record (as a miss)
+#                     └──────────────┴─ otherwise ────────> explain
+#   record ─┬─ queue not empty ──> explain
+#           └─ empty ──> learn ──> improve ──> report ──> $end
+#
+# Conventions this workflow relies on (own them, they are not headsign's).
+# Everything lives under .headsign/tmp/, which the next `headsign start`
+# empties:
+#   queue        — the functions still to explain, `module.ts:name`, one per
+#                  line, written by `inventory` and shortened by `record`.
+#   current      — the ONE function this lap claimed, copied verbatim from
+#                  the head of the queue.
+#   tries        — one line per explanation attempt at the CURRENT function;
+#                  `record` clears it as it moves on to the next.
+#   explain.md   — this attempt's explanation. The judge reads this and
+#                  nothing else.
+#   verdict      — APPROVED / REJECTED, written by the judge itself.
+#   done         — functions whose explanation was approved.
+#   unexplained  — functions that ran out of tries. Data, not a stop.
+#   lessons.md   — what `learn` took from the sweep.
+#   summary.md   — `report`'s write-up.
+#
+# The failure discipline: a function nobody could explain does NOT stop the
+# run. It is recorded and the sweep goes on, so what reaches a person reads
+# "these 3 of 71 could not be explained" rather than "we got stuck on the
+# first one" — and the learning phases run either way. `report`'s
+# `on_fail: escalate` is the actual verdict of this fitness function.
+
+version: 0.1
+name: explainability-fitness
+entry: inventory
+
+phases:
+  # ── inventory ────────────────────────────────────────────────────────────
+  # Build the list before explaining anything. A list written while
+  # explaining is shaped by the explaining: the functions that turned out
+  # awkward quietly stop getting listed.
+  inventory:
+    description: >
+      List every function in `src/*.ts` in `.headsign/tmp/queue`, one per
+      line, written as `module.ts:name` (for example `engine.ts:step`) — no
+      blank lines, no numbering, no other content. Include nested and
+      non-exported functions; they are where complexity hides. Do not start
+      explaining anything in this phase.
+    # Cleared on entry, which for the entry phase means on `headsign start`:
+    # a queue or a ledger left over from an earlier sweep would make this run
+    # chew through the wrong functions and report counts it never earned.
+    clear:
+      - .headsign/tmp/queue
+      - .headsign/tmp/done
+      - .headsign/tmp/unexplained
+      - .headsign/tmp/tries
+    gate:
+      checks:
+        - name: queue has at least one function
+          # "is there a line with a non-space character on it", not `test -s`,
+          # which would accept a file of blank lines and keep the loop turning
+          # forever. This exact command is `record`'s `when:` too: the loop
+          # ends on the same condition that let it start.
+          run: "grep -q '[^[:space:]]' .headsign/tmp/queue"
+    on_pass: explain
+    max_attempts: 3
+
+  # ── explain ──────────────────────────────────────────────────────────────
+  # One function, one explanation, one attempt. Re-entered from `judge` when
+  # the judge said REJECTED, which is why the try counter is NOT cleared here.
+  explain:
+    description: >
+      Claim the head of the queue — `head -n 1 .headsign/tmp/queue >
+      .headsign/tmp/current` — and explain that one function to a
+      middle-school reader in `.headsign/tmp/explain.md`. Read
+      `.headsign/notes/explaining-well.md` first and follow it; that file is
+      the standard, and it grows every run. Then record this attempt:
+      `echo try >> .headsign/tmp/tries`. Write the explanation for someone
+      who will never see the source — the judge is not allowed to look at it
+      either. If you find yourself unable to say a clause plainly, that
+      clause is the finding; say what makes it hard rather than dressing it
+      in a bigger word.
+    # Cleared on every entry, and every way in is a real transition (from
+    # inventory, from judge's rejection edge, from record's loop-back), so
+    # neither the claim nor last lap's prose can carry over: each attempt has
+    # to say out loud which function it is on and write its own explanation.
+    clear: [.headsign/tmp/current, .headsign/tmp/explain.md]
+    # Paired with `clear:` so an early `headsign next` answers PENDING and
+    # costs nothing, instead of failing a gate on a file that does not exist.
+    ready: "test -s .headsign/tmp/explain.md"
+    gate:
+      checks:
+        - name: exactly one function claimed
+          run: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/current)" -eq 1'
+        - name: an explanation was written
+          run: "test -s .headsign/tmp/explain.md"
+        - name: this attempt is counted
+          # Without this the try counter can silently stay empty, and then
+          # `judge`'s "third try" edge never fires: a function nobody can
+          # explain would bounce between explain and judge until
+          # max_total_iterations stopped the whole sweep. The counter is what
+          # makes the give-up edge reachable, so it is checked, not trusted.
+          run: "test -s .headsign/tmp/tries"
+    on_pass: judge
+    max_attempts: 5
+
+  # ── judge ────────────────────────────────────────────────────────────────
+  # THE JUDGE WRITES THE VERDICT FILE ITSELF. The working agent does not
+  # transcribe a reported verdict here — transcription puts the pen back in
+  # the writer's hand, and a writer at try 3 of 3 can approve its own prose.
+  # This is the middle rung of docs/adr/0007-verdict-authorship.md: the
+  # working agent COULD overwrite the file afterwards, but it did not write
+  # it, and that is a different thing from authoring it.
+  #
+  # No `claude -p`: the judge is a subagent of this session, so it costs no
+  # extra process, no extra API surface, and no assumption about which CLI is
+  # installed. What matters is not the mechanism but that the judgment leaves
+  # this context and comes back as a file the judge wrote.
+  judge:
+    description: >
+      Delegate the verdict. Spawn ONE subagent whose only writable path is
+      `.headsign/tmp/verdict`, and tell it to write its own answer there —
+      do not report the verdict back and copy it down yourself.
+
+      Give the judge exactly this question, unchanged:
+
+      "Read ONLY `.headsign/tmp/explain.md`. Do not open `src/`, and do not
+      use anything you already know about this codebase. Could a reader who
+      has read this explanation and nothing else predict what this function
+      does — what it is given, what it returns or changes, and what it does
+      at the edges (empty input, a missing file, a value nobody declared)?
+      Write your answer to `.headsign/tmp/verdict` and to no other file:
+      APPROVED or REJECTED on a line of its own. If REJECTED, add below it
+      the first sentence where the reader loses the thread, and the one
+      thing they still could not predict."
+
+      Do not soften that question and do not add "is this clear?" to it — a
+      question about clarity gets a polite yes, and a question about
+      prediction gets an answer that can be wrong. If the judge answers
+      REJECTED, you will be sent back to `explain` with its note; you get
+      three attempts at a function before the sweep records it as
+      unexplained and moves on.
+    # Fresh every entry: a verdict from the previous attempt (or the previous
+    # function) would route this lap on evidence about something else.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -s .headsign/tmp/verdict"
+    gate:
+      checks:
+        - name: the judge answered
+          # Stronger than "the file is not empty" on purpose: the routes below
+          # branch on this word, and a file of prose with no verdict line in
+          # it would fall through to the default edge and be counted as a
+          # rejection nobody actually made.
+          run: "grep -qx -e APPROVED -e REJECTED .headsign/tmp/verdict"
+    # Branching sits on the PASS path (docs/adr/0011): answering the judge is
+    # not a failure, so a rejection costs no attempt here and the give-up edge
+    # is a declared destination rather than an exhausted budget.
+    on_pass:
+      - when: "grep -qx APPROVED .headsign/tmp/verdict"
+        to: record
+      # Three attempts is where a function stops being a writing problem and
+      # starts being a design finding. `record` reads the verdict, sees it is
+      # not APPROVED, and files it under unexplained.
+      - when: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/tries)" -ge 3'
+        to: record
+      - to: explain
+    max_attempts: 3
+
+  # ── record ───────────────────────────────────────────────────────────────
+  # The loop's hinge. The gate proves this function really left the queue —
+  # forgetting that is the one mistake that makes this workflow infinite — and
+  # the `when:` asks the queue, not the agent, whether there is another lap.
+  record:
+    description: >
+      File the result for the function in `.headsign/tmp/current`. If
+      `.headsign/tmp/verdict` says APPROVED, append it to
+      `.headsign/tmp/done`; otherwise append it to
+      `.headsign/tmp/unexplained` and put the judge's note about where the
+      reader lost the thread on the lines BELOW it. Either way the function
+      goes on a line of its own, byte-identical to how it appeared in the
+      queue — the gate matches it as a whole line — and then that line comes
+      out of `.headsign/tmp/queue`. An unexplained function is data, not a
+      reason to stop: it is exactly the finding this sweep exists to produce,
+      and `report` is where it reaches a person.
+    # The try counter belongs to one function. Cleared here, on the way to the
+    # next one, rather than in `explain`, which is re-entered once per
+    # attempt and would reset the count it is supposed to be accumulating.
+    clear: [.headsign/tmp/tries]
+    gate:
+      checks:
+        - name: the claimed function left the queue
+          # -F -x so the item is matched as a whole line, literally.
+          run: '! grep -qxF -e "$(head -n 1 .headsign/tmp/current)" .headsign/tmp/queue'
+        - name: the result is on one of the two ledgers
+          # Keeps `report`'s counts honest: once the queue is empty these two
+          # files are the only record of what the sweep covered. Concatenated
+          # rather than handed to grep as two paths: one of the two is
+          # normally absent, and grep reports a missing file as an error
+          # (exit 2), which is not the same answer as "not found" and must
+          # not be read as one.
+          run: 'cat .headsign/tmp/done .headsign/tmp/unexplained 2>/dev/null | grep -qxF -e "$(head -n 1 .headsign/tmp/current)"'
+    on_pass:
+      # Same predicate as inventory's gate. A queue file that has gone missing
+      # exits nonzero too — "not this branch" — and the run takes the default
+      # edge, which is the right answer for a queue that is gone.
+      - when: "grep -q '[^[:space:]]' .headsign/tmp/queue"
+        to: explain
+      - to: learn
+    max_attempts: 3
+
+  # ── learn ────────────────────────────────────────────────────────────────
+  # Reached only once the queue is empty, and reached whether or not anything
+  # went unexplained. The sweep's value is not the tally; it is this.
+  learn:
+    description: >
+      Write to `.headsign/tmp/lessons.md` what this sweep taught, using
+      `.headsign/tmp/done` and `.headsign/tmp/unexplained` as the evidence:
+      which explanations landed and what specifically made them land, which
+      ones the judge threw out and where the reader lost the thread, and
+      which rejections were really about the code rather than the prose.
+      Quote the sentences; a lesson without the case that produced it turns
+      back into a platitude on the next pass.
+    gate:
+      checks:
+        - name: lessons written
+          run: "test -s .headsign/tmp/lessons.md"
+    on_pass: improve
+    max_attempts: 3
+
+  # ── improve ──────────────────────────────────────────────────────────────
+  # The phase that edits the thing it is running inside. ADR-0003: a
+  # `description` is stage direction and only gates decide, so the advice is
+  # what may safely change mid-run — it is read again on the next entry, and
+  # nothing has been decided from it.
+  #
+  # WHY THE TWO-NAME GUARD BELOW IS ENOUGH: `headsign next` re-reads
+  # .headsign/fitness.yaml on every single call, so the only definitions this
+  # run still depends on are the phases it has not entered yet — `improve`
+  # (this one, which it may be asked to re-run) and `report`. Every phase
+  # before them is behind this run for good and can be rewritten freely; the
+  # next `headsign start` picks up the new graph. And a rewrite that breaks
+  # the file is not a silent loss: `next` fails to load it and exits 3 with
+  # the validation errors, leaving state.json exactly as it was, so the run
+  # resumes as soon as the file parses again.
+  improve:
+    description: >
+      Fold `.headsign/tmp/lessons.md` into `.headsign/notes/*.md` — usually
+      `explaining-well.md`, with the concrete examples attached. You may also
+      edit this workflow, `.headsign/fitness.yaml`, with two exceptions: DO
+      NOT change the definition of the `improve` phase or the definition of
+      the `report` phase. Those are the two this run has still to walk
+      through; everything before them is behind it and is yours to change. If
+      what you want is a structural change — a new phase, a different graph,
+      a gate that would need discussion — do not apply it. Write the proposal
+      into `.headsign/notes/` and let a person take it.
+    gate:
+      checks:
+        # Two checks rather than one alternation, so a failure names which of
+        # the two went missing. Both are asked because this run needs both.
+        - name: this run can still finish — improve is still defined
+          run: "grep -qE '^  improve:' .headsign/fitness.yaml"
+        - name: this run can still finish — report is still defined
+          run: "grep -qE '^  report:' .headsign/fitness.yaml"
+    on_pass: report
+    max_attempts: 3
+
+  # ── report ───────────────────────────────────────────────────────────────
+  # The fitness verdict itself, and the only phase that can fail the sweep.
+  # `on_fail: escalate` hands it to a person on the first failure — which is
+  # the point: "these functions cannot be explained" is a design judgment, and
+  # retrying the report would only reword it.
+  report:
+    description: >
+      Write `.headsign/tmp/summary.md`: how many functions the sweep covered,
+      which ones went unexplained, and for each of those, where the reader
+      lost the thread and what you think the underlying design problem is.
+      Name the functions — the value of this sweep over a line count is that
+      it can point. Copy the summary somewhere durable before you finish;
+      `.headsign/tmp/` does not survive the next `headsign start`. If the
+      unexplained list is not empty this phase escalates, which is the
+      fitness function failing: the answer is to simplify the functions it
+      names, not to write a better explanation of them.
+    gate:
+      checks:
+        - name: summary written
+          run: "test -s .headsign/tmp/summary.md"
+        - name: nothing left unexplained
+          # A sweep where nothing went unexplained never creates the file, and
+          # a missing file makes grep exit 2 — an error, not a "no". Piping
+          # through `cat` turns the absent file into an empty stream, so the
+          # check answers the question it was asked rather than inverting a
+          # read failure into a pass.
+          run: "! cat .headsign/tmp/unexplained 2>/dev/null | grep -q '[^[:space:]]'"
+    on_pass: $end
+    # No max_attempts: `on_fail: escalate` ends the run on the first failure,
+    # so an attempt budget here could never be spent (validate rejects the
+    # pair).
+    on_fail: escalate
+
+limits:
+  # Not "how many phases are there" but "how many gate evaluations does the
+  # whole sweep cost". src/ holds roughly seventy functions today; each costs
+  # three (explain, judge, record) when the first explanation lands, five when
+  # it takes two tries, and the four one-off phases cost one each. So this is
+  # a runaway backstop with headroom for a normal share of rejections, not a
+  # budget — and a sweep this size is a long run by design. Narrow what
+  # `inventory` lists if you want to cover one module at a time.
+  max_total_iterations: 300

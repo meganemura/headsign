@@ -11,6 +11,38 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **`example.headsign/workflow.yaml` is now a generic minimal sample**
+  (`name: minimal`) rather than headsign's own development loop. It is still
+  the file `headsign start` picks when given no name, and still the smallest
+  useful shape — implement behind gates, then a review phase — but its checks
+  are placeholders marked swap-me instead of this repository's build and
+  version-lockstep commands. `example.headsign/triage.yaml` has left the
+  examples entirely: it resolves a private feedback repository through
+  `git config --global headsign.feedbackDir`, which made it a workflow only
+  this project could run. Both moves come from separating the two
+  directories — `example.headsign/` is what ships to be copied, and this
+  repository's own workflows now live in a real `.headsign/` directory
+  instead of a symlink to the examples. See
+  [ADR-0016](docs/adr/0016-explainability-as-the-fitness-function.md).
+- **ADR-0007's gate-hardness scale is restated around authorship.** A gate is
+  measured (nothing is authored) or judged, and a judged gate sits on one of
+  three tiers according to *who writes the verdict file*: the check starts
+  the judge and no file survives; the judge writes the file itself; or the
+  judge reports and the working agent transcribes. The old wording
+  introduced the top tier through its `claude -p` example and was read as a
+  recommendation to run that command — the tiers are now stated by
+  authorship, with `claude -p` demoted to one way of reaching the top one.
+  The middle tier's limit is written down rather than implied: a working
+  agent can still overwrite a verdict file it did not write.
+- **The ~500-code-line guideline for `src/` is retired.** It never fired:
+  `src/` passed twice the number without stopping a feature proposal, while
+  the design problems actually found in this project's last eight ADRs all
+  announced themselves as an explanation that would not come out straight.
+  What replaces it is a workflow, not a number — `.headsign/fitness.yaml`
+  asks whether each function in `src/*.ts` can be explained to a
+  middle-school reader, and reports the ones that could not by name.
+  `docs/architecture.md` now carries the measured size as a dated
+  observation rather than a target.
 - **Breaking: `version:` must now be `0.1`, not `1`.** Every workflow file
   needs that line changed, and `headsign validate` says so with `version
   must be 0.1 (the schema is pre-1.0 and still changing; a file written for

@@ -88,12 +88,12 @@ phases:
   review:
     description: >
       Spawn a read-only reviewer subagent (Read/Grep/Glob) to check the
-      diff against docs/architecture.md's module boundaries, the line-count
-      guideline, README EN/JA parity — and the public-repo rule above: the
-      diff and its commit messages must contain nothing that identifies the
-      feedback source. Have it REPORT exactly APPROVED or REJECTED with
-      reasons, then write that verdict verbatim to .headsign/tmp/verdict
-      yourself.
+      diff against docs/architecture.md's module boundaries,
+      .headsign/notes/what-headsign-protects.md, README EN/JA parity — and
+      the public-repo rule above: the diff and its commit messages must
+      contain nothing that identifies the feedback source. Have it REPORT
+      exactly APPROVED or REJECTED with reasons, then write that verdict
+      verbatim to .headsign/tmp/verdict yourself.
     clear: [.headsign/tmp/verdict]
     ready: "test -f .headsign/tmp/verdict"
     gate:

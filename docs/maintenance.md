@@ -28,13 +28,33 @@ without its rebuilt bundle.
   (です・ます) for body prose, no interpuncts for enumerations.
 - If a behavioral guarantee changed, amend the ADR that owns it (index:
   [docs/adr/README.md](adr/README.md)) in the same change. Docs that state
-  numbers (line counts in `architecture.md`) get refreshed when they drift.
-- The ~500-code-line guideline (comments and blanks excluded) is a smell
-  detector, not a cap. Recount occasionally:
+  numbers (the dated line count in `architecture.md`) get refreshed when they
+  drift.
 
-  ```
-  for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
-  ```
+## The fitness check
+
+The 500-code-line guideline is retired
+([ADR-0016](adr/0016-explainability-as-the-fitness-function.md)); what stands
+in its place is a sweep that asks whether each function in `src/*.ts` can be
+explained to a middle-school reader:
+
+```
+headsign start fitness
+```
+
+One lap per function: explain it, hand the explanation to a judge that reads
+nothing else, record the result, move on. Functions nobody could explain do
+not stop the run — they are collected and reported at the end, so what
+reaches you is "these three could not be explained", named. That report is
+the fitness verdict, and it escalates when the list isn't empty. The answer
+to a failure is to simplify the function it names, not to write a better
+explanation of it. Run it after a stretch of feature work, or whenever a
+review keeps needing long paragraphs to say what a change does.
+
+`headsign start grilling` is the other one this repository runs on itself:
+it takes a list of open design questions and forces each through a plain
+explanation and a round of naive "why?"s before anyone gets asked. Most
+questions close there.
 
 ## Feedback triage loop
 
@@ -53,8 +73,9 @@ directory through that config value, so a machine that hasn't set it
 simply has no tickets to triage.
 
 **Running the loop.** `headsign start triage` (that's
-`example.headsign/triage.yaml`, reached through this repository's
-`.headsign` symlink). One run judges **one** ticket: read it, fill its
+`.headsign/triage.yaml`, one of this repository's own workflows — it reads a
+per-machine git config value, so it is not shipped as an example). One run
+judges **one** ticket: read it, fill its
 `Judgment` section with a decision and a reason, move it on, then either
 implement it or end the run. Three is the upper bound once the loop is
 second nature, and that is a cap, not a target — past it you are batching,

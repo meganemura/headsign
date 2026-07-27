@@ -1,0 +1,183 @@
+# grilling.yaml — chew a design question down before asking anyone about it.
+#
+# Most of the questions worth asking a person answer themselves on the way to
+# being said plainly. This workflow makes that the default order: one
+# question at a time, explained to a middle-school reader first, then argued
+# with, and only then handed to a human — and only the ones still standing.
+#
+# The shape:
+#
+#   frame ──> simplify ──> challenge ──> decide ─┬─ questions left ──> simplify
+#                                                └─ empty ──> settle ──> $end
+#
+# Conventions this workflow relies on (own them, they are not headsign's).
+# Everything lives under .headsign/tmp/, which the next `headsign start`
+# empties:
+#   questions        — the open points, one per line, written by `frame` and
+#                      shortened by `decide`.
+#   current-question — the ONE question this lap claimed, copied verbatim
+#                      from the head of the list.
+#   plain.md         — this lap's plain-language explanation of it.
+#   challenge.md     — the naive "why?"s put to that explanation, and the
+#                      answers.
+#   decisions.md     — the settled answers, appended one lap at a time.
+#   plan.md          — `settle`'s write-up.
+
+version: 0.1
+name: design-grilling
+entry: frame
+
+phases:
+  # ── frame ────────────────────────────────────────────────────────────────
+  # The list first, and only the list. A question thought through while the
+  # list is still being written quietly rewrites the list to suit the answer.
+  frame:
+    description: >
+      Write the open points of this design, one per line, in
+      `.headsign/tmp/questions` — no blank lines, no numbering. A line is one
+      question a person could answer yes/no or pick between; "how should the
+      cache work" is a topic, not a question, so split it until each line
+      names a decision. Do not answer anything in this phase.
+    # Cleared on entry, which for the entry phase means on `headsign start`:
+    # a list or a decision log left over from an earlier session would send
+    # this run through questions nobody asked this time.
+    clear: [.headsign/tmp/questions, .headsign/tmp/decisions.md]
+    gate:
+      checks:
+        - name: at least one question framed
+          # "is there a line with a non-space character on it", not `test -s`,
+          # which would accept a file of blank lines and keep the loop turning
+          # forever. This exact command is `decide`'s `when:` too: the loop
+          # ends on the same condition that let it start.
+          run: "grep -q '[^[:space:]]' .headsign/tmp/questions"
+    on_pass: simplify
+    max_attempts: 3
+
+  # ── simplify ─────────────────────────────────────────────────────────────
+  # Explain it before asking about it. This phase and `challenge` are
+  # deliberately two phases, not one: a step that says "now argue with your
+  # own conclusion" is the first step to get skipped when it sits at the
+  # bottom of the instructions that produced the conclusion. Split apart, the
+  # instruction to argue arrives AFTER the conclusion exists, addressed to an
+  # agent that has already committed to it — which is the only moment at
+  # which it does any work.
+  simplify:
+    description: >
+      Claim the head of the list — `head -n 1 .headsign/tmp/questions >
+      .headsign/tmp/current-question` — and, before asking anyone anything,
+      explain that ONE question to a middle-school reader in
+      `.headsign/tmp/plain.md`: what is actually being decided, what the
+      candidate answers are, and what each one costs. Use
+      `.headsign/notes/explaining-well.md` as the standard for the writing.
+      Say where you land and why. Most of the time the answer falls out here,
+      and that is the point of the phase — you are not preparing a question,
+      you are trying to make it unnecessary.
+    # Cleared on every entry, and every way in is a real transition (from
+    # frame, from decide's loop-back), so neither the claim nor the previous
+    # question's prose carries over.
+    clear: [.headsign/tmp/current-question, .headsign/tmp/plain.md]
+    ready: "test -s .headsign/tmp/plain.md"
+    gate:
+      checks:
+        - name: exactly one question claimed
+          run: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/current-question)" -eq 1'
+        - name: a plain-language explanation was written
+          run: "test -s .headsign/tmp/plain.md"
+    on_pass: challenge
+    max_attempts: 3
+
+  # ── challenge ────────────────────────────────────────────────────────────
+  # The phase that exists because it would otherwise be skipped. See the note
+  # above `simplify` for why it is not folded into it.
+  challenge:
+    description: >
+      Put naive "why?" questions to the explanation you just wrote, and write
+      both the questions and your answers to `.headsign/tmp/challenge.md`.
+      Go after the load-bearing words first — every "cannot", "always",
+      "impossible", "obviously", "of course" in `.headsign/tmp/plain.md` is a
+      claim, so ask why each one is true and answer it from the code or the
+      docs rather than from memory. Ask like someone who does not already
+      agree with you. If an answer turns out to be weaker than the claim,
+      that is a result: go back and rewrite `.headsign/tmp/plain.md` before
+      moving on, and say in this file what changed.
+    clear: [.headsign/tmp/challenge.md]
+    ready: "test -s .headsign/tmp/challenge.md"
+    gate:
+      checks:
+        - name: the challenge was written down
+          run: "test -s .headsign/tmp/challenge.md"
+        - name: it contains at least one question
+          # Honest, not smart: it proves something was asked, never that it
+          # was a good question. A file with no question mark in it is a
+          # summary of the explanation, which is what this phase exists not
+          # to be.
+          run: "grep -q -e '?' -e '？' .headsign/tmp/challenge.md"
+    on_pass: decide
+    max_attempts: 3
+
+  # ── decide ───────────────────────────────────────────────────────────────
+  # The loop's hinge, and the only place a person is asked anything.
+  #
+  # Waiting for that person needs no machinery: write one line to
+  # `.headsign/tmp/stop-note` and end the turn. The stop-boundary hook lets
+  # the stop through quietly, records `paused` in `.headsign/log`, and the run
+  # resumes from this phase with `headsign next` once the answer is in.
+  # Deliberately no `ready:` probe here for that reason — the run leaves the
+  # turn rather than polling from inside it.
+  decide:
+    description: >
+      If `.headsign/tmp/plain.md` and `.headsign/tmp/challenge.md` settled
+      the question, record it: append the question line verbatim to
+      `.headsign/tmp/decisions.md` with the decision and the reason under it.
+      If it is genuinely still open, this is the moment to ask a person —
+      state the question in the plain terms you just worked out, offer the
+      candidate answers and what each costs, write `.headsign/tmp/stop-note`
+      and end your turn. Do not guess an answer to keep the run moving. When
+      the answer arrives, record it the same way. Either way, finish by
+      removing the claimed line from `.headsign/tmp/questions` and then run
+      `headsign next`.
+    gate:
+      checks:
+        - name: the claimed question left the list
+          # -F -x so the line is matched whole and literally. This is what
+          # makes the loop finite: a question left on the list comes round
+          # again and again until max_total_iterations stops it.
+          run: '! grep -qxF -e "$(head -n 1 .headsign/tmp/current-question)" .headsign/tmp/questions'
+        - name: its decision is on the record
+          # Concatenated through `cat` so a decisions.md that does not exist
+          # yet is an empty stream rather than a grep error (exit 2), which is
+          # not the same answer as "not found" and must not be read as one.
+          run: 'cat .headsign/tmp/decisions.md 2>/dev/null | grep -qF -e "$(head -n 1 .headsign/tmp/current-question)"'
+    on_pass:
+      # Same predicate as frame's gate. A questions file that has gone missing
+      # exits nonzero too — "not this branch" — and the run takes the default
+      # edge, which is the right answer for a list that is gone.
+      - when: "grep -q '[^[:space:]]' .headsign/tmp/questions"
+        to: simplify
+      - to: settle
+    max_attempts: 5
+
+  # ── settle ───────────────────────────────────────────────────────────────
+  # Reached only once every question has an answer on the record.
+  settle:
+    description: >
+      Write `.headsign/tmp/plan.md` from `.headsign/tmp/decisions.md`: what
+      was agreed, question by question, and the order the work should now be
+      done in, including what is deliberately not being done. Note which
+      answers came from a person and which the explaining produced on its
+      own — the second kind is what tells you whether this loop is earning
+      its keep. Copy it somewhere durable before you finish;
+      `.headsign/tmp/` does not survive the next `headsign start`.
+    gate:
+      checks:
+        - name: the plan was written
+          run: "test -s .headsign/tmp/plan.md"
+    on_pass: $end
+    max_attempts: 3
+
+limits:
+  # Three gate evaluations per question (simplify, challenge, decide), plus
+  # frame and settle once each. So this covers about a dozen questions with
+  # room for the usual retries. A design session with more open points than
+  # that wants splitting, not a bigger number.
+  max_total_iterations: 40

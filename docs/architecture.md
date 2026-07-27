@@ -43,38 +43,26 @@ consumer repository:
 
 ## Module map
 
-Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
-and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at **977 code lines** (raw
-`wc -l` is higher, ~1617, because of those comments) — roughly twice the
-target, after the concurrency lock, ready:/PENDING, the transition log,
-driver ownership, the two stop-boundary hooks, and k-way `on_pass` routing
-landed. Each was individually justified and none is obviously removable,
-which is exactly the shape of drift ADR-0001 says to watch: at 2× the
-guideline, the next feature proposal should face the "does a thin harness
-need this?" question with real suspicion. It came down three times, every
-time because a mechanism was removed rather than because lines were
-trimmed: 1081 → 992 when ADR-0012 dropped the tree-hash cache, 992 → 963
-when ADR-0013 retired the environment-derived driver stamp, and 963 → 950
-when ADR-0014 removed three schema fields nothing authored ever turned
-(phase `env:`, `on_exhausted:`, `on_fail: abort`). The second subtraction
-is the note that used to stand here — that a proposal adding a *third*
-identity mechanism should be answered by consolidating the first two —
-taken up rather than repeated; the third is the counterpart question asked
-of the schema, and the answer was to count uses. It then went back up,
-950 → 977, when ADR-0015 made an unknown key an error: those lines are the
-schema's key table plus the one check that reads it, which is a rule
-covering every field rather than another field. A knob the shipped
-workflows never turn is still where to look next. Recount with:
+Size: `src/` measured **977 code lines** on 2026-07-28 (tests excluded, and
+counting code only — the deliberately dense AI-friendly comments and blank
+lines don't count; raw `wc -l` is ~1617). That is a measurement, not a
+target. ADR-0001's budget of roughly 500 code lines is retired by
+[ADR-0016](adr/0016-explainability-as-the-fitness-function.md): `src/` went
+past twice the number without the guideline stopping a single feature
+proposal, while every design problem actually found in the ADR-0008..0015
+run was found because an explanation would not come out straight. Recount
+when you want the current number:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
 ```
 
-The 500 figure is a guideline, not a hard cap: per ADR-0001 it "is a design
-smell detector, not a hard compiler limit" — a number drifting past it is a
-signal to periodically check for design bloat, not a fact to fix by deleting
-lines.
+What replaced it asks the question the count could not: **can each function
+here be explained to a middle-school reader?** `.headsign/fitness.yaml`
+sweeps `src/*.ts` function by function and fails on the ones nobody can
+explain, by name — so a failure points at a place instead of at a total. The
+question every feature proposal still has to answer is ADR-0001's: does a
+thin harness need this?
 
 | Module | Responsibility | Must NOT know about |
 |---|---|---|
@@ -135,7 +123,7 @@ outside it:
 - [ADR-0004](adr/0004-state-attempts-and-cache.md) — state shape, per-phase attempts, cwd-only resolution, the lock
 - [ADR-0005](adr/0005-distribution-and-toolchain.md) — TypeScript, esbuild single-file bundle, dependency policy
 - [ADR-0006](adr/0006-stop-hook-backstop.md) — stop-boundary hook semantics (both events)
-- [ADR-0007](adr/0007-verdict-authorship.md) — verdict authorship: the gate-hardness scale
+- [ADR-0007](adr/0007-verdict-authorship.md) — verdict authorship: measured vs judged gates, and the three tiers of a judged one
 - [ADR-0008](adr/0008-multi-session-ownership.md) — multi-session runs: driver ownership, observers, `status` (its env stamp retracted by ADR-0013)
 - [ADR-0009](adr/0009-claim-handshake.md) — the claim handshake (superseded by ADR-0010)
 - [ADR-0010](adr/0010-subagent-stop-identity.md) — sealing driver identity on `SubagentStop`
@@ -144,3 +132,4 @@ outside it:
 - [ADR-0013](adr/0013-claim-only-driver-identity.md) — claim-only driver identity: the environment stamp retired, `Stop` compares nothing
 - [ADR-0014](adr/0014-removing-three-unused-knobs.md) — removing three unused knobs: phase `env:`, `on_exhausted:`, `on_fail: abort`
 - [ADR-0015](adr/0015-strict-schema-and-version-0-1.md) — unknown keys rejected, and the schema renumbered to `version: 0.1`
+- [ADR-0016](adr/0016-explainability-as-the-fitness-function.md) — explainability replaces the line budget; the rule for a run that rewrites its own workflow

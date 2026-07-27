@@ -1,49 +1,50 @@
-# workflow.yaml — the default workflow for developing headsign itself.
+# workflow.yaml — the smallest workflow worth running, and the file name
+# `headsign start` picks when you give it no name.
 #
-# This repository dogfoods its own tool: `.headsign` at the repo root is a
-# symlink to this directory, so `headsign start` here runs THIS file. The
-# implement gate mirrors CI exactly — if these four checks pass locally, CI
-# has nothing new to say.
+# Two phases: do the work behind gates that can't be talked round, then have
+# someone other than the writer look at it. Copy this one first if you are
+# not sure which example you want — the role-specific files in this directory
+# are all this shape with more phases in the middle.
+#
+# The gates below are placeholders for YOUR project's commands (marked
+# swap-me). Aim them at the same checks your CI runs: if these pass locally,
+# CI has nothing new to say, which is the whole reason to gate on them here.
 version: 0.1
-name: headsign-dev
+name: minimal
 entry: implement
 
 phases:
   implement:
     description: >
-      Make the change test-first where practical. Keep engine.ts pure and
-      respect the module boundaries in docs/architecture.md. If a behavioral
-      guarantee changed, amend the ADR that owns it in the same change, and
-      keep README.md / README.ja.md in parity. Rebuild the bundle before
-      asking for the verdict.
+      Make the change test-first where practical. Keep it to one coherent
+      piece of work — the review phase below reads a diff, and a diff that
+      does three things gets one verdict for all three. Update whatever
+      documentation states the behaviour you changed, in the same change,
+      before asking for the verdict.
     gate:
       checks:
+        # swap-me: your project's type or static check, e.g.
+        #   mypy . / go vet ./... / cargo check
         - name: typecheck
           run: "npm run typecheck"
+        # swap-me: your project's test command, e.g.
+        #   pytest / go test ./... / bundle exec rspec
         - name: tests
           run: "npm test"
           timeout: 300
-        # The committed bundle is what every user's hook executes; it must be
-        # exactly what src builds to (same check CI runs).
-        - name: bundle matches src
-          run: "npm run build && git diff --quiet -- plugin/dist"
-        # Plugin updates are distributed by version string; a drifted pair
-        # means users silently stop receiving updates.
-        - name: versions in lockstep
-          run: >
-            node -e "const p=require('./package.json').version,
-            q=require('./plugin/.claude-plugin/plugin.json').version;
-            if(p!==q){console.error('version mismatch: '+p+' vs '+q);process.exit(1)}"
     on_pass: review
     max_attempts: 5
 
   review:
     description: >
       Spawn a read-only reviewer subagent (Read/Grep/Glob) to check the diff
-      against docs/architecture.md's module boundaries, the line-count
-      guideline, and README EN/JA parity. Have it REPORT exactly APPROVED or
-      REJECTED with reasons, then write that verdict verbatim to
-      .headsign/tmp/verdict yourself.
+      against whatever standard your project holds itself to — module
+      boundaries, the tests actually covering the change, documentation kept
+      in step. Have it REPORT exactly APPROVED or REJECTED with reasons, then
+      write that verdict verbatim to .headsign/tmp/verdict yourself. That
+      last step is what makes this a soft gate: you are holding the pen
+      (docs/adr/0007), which is fine for a self-check and is not a substitute
+      for someone else reading the change.
     clear: [.headsign/tmp/verdict]
     ready: "test -f .headsign/tmp/verdict"
     gate:
