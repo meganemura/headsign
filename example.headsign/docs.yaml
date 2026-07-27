@@ -11,7 +11,7 @@
 # document and its outline; swap the grep'd section names ("## Overview",
 # "## Examples") for your doc's real required sections and the forbidden-word
 # list for your house style's banned words.
-version: 1
+version: 0.1
 name: docs
 entry: outline
 

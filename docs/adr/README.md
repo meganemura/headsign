@@ -20,6 +20,7 @@ record the reasoning each choice rests on.
 | [0012](0012-removing-the-tree-hash-cache.md) | Removing the tree-hash cache — why the free probe was right before `status` existed, what it hid, `max_attempts` now counting judgments, and `last_failure` |
 | [0013](0013-claim-only-driver-identity.md) | Claim-only driver identity — retiring the environment stamp: why `Stop` now compares nothing, `driver_agent`, the two-valued `driver:` line, and what a single identity path gives up |
 | [0014](0014-removing-three-unused-knobs.md) | Removing three unused knobs — phase `env:` (write it in the shell), `on_exhausted:` (exhaustion always escalates), and `on_fail: abort` (ending a run for good is `headsign abort`'s job) |
+| [0015](0015-strict-schema-and-version-0-1.md) | Rejecting unknown keys and renumbering the schema to `version: 0.1` — why a typo is an error rather than a warning, why no did-you-mean guess, and why a pre-1.0 schema change requires editing the file |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

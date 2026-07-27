@@ -8,6 +8,11 @@
   schema block and the `validate` list below are updated in place; ADR-0014
   records what replaces each. Everything else here — the borrowed and
   refused lists, `clear:`, and `description` being advisory — stands.)
+- Revised: 2026-07-28 ([ADR-0015](0015-strict-schema-and-version-0-1.md)
+  renumbers `version:` from `1` to `0.1` and makes a key the schema does not
+  define an error rather than something `validate` walks past. Both are
+  applied to the schema block and the `validate` list below; the vocabulary
+  itself is unchanged.)
 
 ## Context
 
@@ -60,10 +65,10 @@ order, plus an explicit refusal list.
 
 CI-likeness is for reading familiarity only, never for semantics.
 
-### Schema (v1)
+### Schema (pre-1.0)
 
 ```yaml
-version: 1              # required, must be 1
+version: 0.1            # required, must be exactly 0.1 (ADR-0015)
 name: feature-dev       # required
 entry: plan             # required, must name a phase
 
@@ -93,12 +98,14 @@ limits:                 # optional
   max_total_iterations: 20  # optional; global runaway backstop
 ```
 
-`headsign validate` enforces: version/name/entry present, entry exists,
-every routing target names a defined phase or an allowed token, checks
-non-empty with `run` strings, timeouts positive, phases reachable from
-entry, `max_attempts` not paired with `on_fail: escalate` (the first
-failure would already end the run, so `max_attempts` could never be
-reached), and `ready`, when present, is a non-empty shell string. `ready`
+`headsign validate` enforces: version exactly `0.1`, name/entry present,
+entry exists, every routing target names a defined phase or an allowed
+token, checks non-empty with `run` strings, timeouts positive, phases
+reachable from entry, `max_attempts` not paired with `on_fail: escalate`
+(the first failure would already end the run, so `max_attempts` could never
+be reached), and `ready`, when present, is a non-empty shell string. It also
+rejects any key not named in the block above, at every level — a misspelled
+`max_atempts` is an error, not a field quietly skipped (ADR-0015). `ready`
 adds no routing edge and takes no part in the reachability check — it
 gates whether the phase's own gate runs at all, it never sends the run
 anywhere (see ADR-0002's transition table for its place in evaluation

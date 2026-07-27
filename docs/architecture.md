@@ -45,15 +45,15 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at **950 code lines** (raw
-`wc -l` is higher, ~1574, because of those comments) — roughly twice the
+blank lines don't count). It currently sits at **977 code lines** (raw
+`wc -l` is higher, ~1617, because of those comments) — roughly twice the
 target, after the concurrency lock, ready:/PENDING, the transition log,
 driver ownership, the two stop-boundary hooks, and k-way `on_pass` routing
 landed. Each was individually justified and none is obviously removable,
 which is exactly the shape of drift ADR-0001 says to watch: at 2× the
 guideline, the next feature proposal should face the "does a thin harness
-need this?" question with real suspicion. It has come down three times,
-every time because a mechanism was removed rather than because lines were
+need this?" question with real suspicion. It came down three times, every
+time because a mechanism was removed rather than because lines were
 trimmed: 1081 → 992 when ADR-0012 dropped the tree-hash cache, 992 → 963
 when ADR-0013 retired the environment-derived driver stamp, and 963 → 950
 when ADR-0014 removed three schema fields nothing authored ever turned
@@ -61,8 +61,11 @@ when ADR-0014 removed three schema fields nothing authored ever turned
 is the note that used to stand here — that a proposal adding a *third*
 identity mechanism should be answered by consolidating the first two —
 taken up rather than repeated; the third is the counterpart question asked
-of the schema, and the answer was to count uses. A knob the shipped
-workflows never turn is where to look next. Recount with:
+of the schema, and the answer was to count uses. It then went back up,
+950 → 977, when ADR-0015 made an unknown key an error: those lines are the
+schema's key table plus the one check that reads it, which is a rule
+covering every field rather than another field. A knob the shipped
+workflows never turn is still where to look next. Recount with:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
@@ -140,3 +143,4 @@ outside it:
 - [ADR-0012](adr/0012-removing-the-tree-hash-cache.md) — removing the tree-hash cache: every `next` judges, `max_attempts` counts judgments
 - [ADR-0013](adr/0013-claim-only-driver-identity.md) — claim-only driver identity: the environment stamp retired, `Stop` compares nothing
 - [ADR-0014](adr/0014-removing-three-unused-knobs.md) — removing three unused knobs: phase `env:`, `on_exhausted:`, `on_fail: abort`
+- [ADR-0015](adr/0015-strict-schema-and-version-0-1.md) — unknown keys rejected, and the schema renumbered to `version: 0.1`

@@ -19,7 +19,7 @@
 #                            REJECTED (same convention as the other
 #                            examples here).
 
-version: 1
+version: 0.1
 name: request-router
 entry: classify
 

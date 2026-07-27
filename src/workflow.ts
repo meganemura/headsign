@@ -24,8 +24,39 @@ export interface Workflow { version: number; name: string; entry: string; phases
 // is a human-directed act — `headsign abort <reason>` — so the only end-the-run token a
 // workflow can declare on failure is `escalate`, which hands the call to a person.
 const ON_FAIL_TOKENS = new Set(["retry", "$end", "escalate"]);
+
+// The only value `version:` may take. Exact match, and it stays exact when this becomes 0.2
+// (ADR-0015): while the schema is pre-1.0 a changed schema must be answered by an explicit
+// edit to the file, not by a file that keeps loading with fields that no longer mean
+// anything. `1` used to be the value and claimed a stability we don't have.
+const SCHEMA_VERSION = 0.1;
+
+// The schema's key set, in one place. Each level's allowed keys are listed here and nowhere
+// else — the validators below read this table instead of repeating it — so adding a field
+// means adding it here, next to the interfaces above, and no second list can fall out of
+// sync with it. Unknown keys are rejected (ADR-0015): a misspelled `max_atempts` that loads
+// silently runs a workflow its author did not write.
+const ALLOWED_KEYS = {
+  top: ["version", "name", "entry", "phases", "limits"],
+  phase: ["description", "clear", "ready", "gate", "on_pass", "on_fail", "max_attempts"],
+  gate: ["checks"],
+  check: ["name", "run", "timeout"],
+  route: ["when", "to", "timeout"],
+  limits: ["max_total_iterations"],
+} as const;
+
 const isMap = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isPosInt = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v) && v > 0;
+
+// `where` is the caller's location prefix (`phase 'plan': `), so a message names the map the
+// key was found in as well as what the schema allows there. No did-you-mean guess is offered:
+// listing the allowed keys is enough, and a guess that misses misdirects (ADR-0015).
+function rejectUnknownKeys(level: keyof typeof ALLOWED_KEYS, m: Record<string, unknown>, where: string, errors: string[]): void {
+  const allowed: readonly string[] = ALLOWED_KEYS[level];
+  for (const key of Object.keys(m)) {
+    if (!allowed.includes(key)) errors.push(`${where}unknown key '${key}' (allowed: ${allowed.join(", ")})`);
+  }
+}
 
 // Warnings are things a run can proceed with; errors are not (they leave `workflow` null).
 // The caller decides who gets to see the warnings: `validate` and `start` print them once,
@@ -45,7 +76,12 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
   if (!isMap(doc)) return { errors: ["workflow must be a YAML mapping"], warnings: [] };
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (doc.version !== 1) errors.push("version must be 1");
+  rejectUnknownKeys("top", doc, "top level: ", errors);
+  if (doc.version !== SCHEMA_VERSION) {
+    errors.push(
+      `version must be ${SCHEMA_VERSION} (the schema is pre-1.0 and still changing; a file written for the old 'version: 1' needs its fields checked against the current schema, not just the number changed)`,
+    );
+  }
   if (typeof doc.name !== "string" || !doc.name) errors.push("name is required");
   if (typeof doc.entry !== "string" || !doc.entry) errors.push("entry is required");
 
@@ -64,8 +100,11 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
 
   if (doc.limits !== undefined) {
     if (!isMap(doc.limits)) errors.push("limits must be a mapping");
-    else if (doc.limits.max_total_iterations !== undefined && !isPosInt(doc.limits.max_total_iterations)) {
-      errors.push("limits.max_total_iterations must be a positive integer");
+    else {
+      rejectUnknownKeys("limits", doc.limits, "limits: ", errors);
+      if (doc.limits.max_total_iterations !== undefined && !isPosInt(doc.limits.max_total_iterations)) {
+        errors.push("limits.max_total_iterations must be a positive integer");
+      }
     }
   }
 
@@ -77,14 +116,17 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
 }
 
 function validatePhase(name: string, p: Record<string, unknown>, names: Set<string>, errors: string[]): void {
+  rejectUnknownKeys("phase", p, `phase '${name}': `, errors);
   if (typeof p.description !== "string" || !p.description) errors.push(`phase '${name}': description is required`);
 
+  if (isMap(p.gate)) rejectUnknownKeys("gate", p.gate, `phase '${name}': gate: `, errors);
   const checks = (p.gate as Record<string, unknown> | undefined)?.checks;
   if (!Array.isArray(checks) || checks.length === 0) {
     errors.push(`phase '${name}': gate.checks is required and must be non-empty`);
   } else {
     checks.forEach((c: unknown, i: number) => {
       const check = isMap(c) ? c : null;
+      if (check) rejectUnknownKeys("check", check, `phase '${name}': gate.checks[${i}]: `, errors);
       if (!check || typeof check.run !== "string" || !check.run) errors.push(`phase '${name}': gate.checks[${i}].run is required`);
       if (check?.timeout !== undefined && !(typeof check.timeout === "number" && check.timeout > 0)) {
         errors.push(`phase '${name}': gate.checks[${i}].timeout must be a positive number`);
@@ -139,6 +181,7 @@ function validateRoutes(name: string, routes: unknown[], names: Set<string>, err
       errors.push(`phase '${name}': on_pass[${i}] must be a mapping with 'to' and an optional 'when'`);
       return;
     }
+    rejectUnknownKeys("route", raw, `phase '${name}': on_pass[${i}]: `, errors);
     if (typeof raw.to !== "string" || !raw.to) errors.push(`phase '${name}': on_pass[${i}].to is required`);
     else if (raw.to === "retry") errors.push(`phase '${name}': on_pass[${i}].to cannot be 'retry'`);
     else if (raw.to !== "$end" && !names.has(raw.to)) errors.push(`phase '${name}': on_pass[${i}].to '${raw.to}' does not name a defined phase`);

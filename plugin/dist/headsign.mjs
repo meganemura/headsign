@@ -7372,8 +7372,23 @@ import path3 from "node:path";
 var import_yaml = __toESM(require_dist(), 1);
 import fs from "node:fs";
 var ON_FAIL_TOKENS = /* @__PURE__ */ new Set(["retry", "$end", "escalate"]);
+var SCHEMA_VERSION = 0.1;
+var ALLOWED_KEYS = {
+  top: ["version", "name", "entry", "phases", "limits"],
+  phase: ["description", "clear", "ready", "gate", "on_pass", "on_fail", "max_attempts"],
+  gate: ["checks"],
+  check: ["name", "run", "timeout"],
+  route: ["when", "to", "timeout"],
+  limits: ["max_total_iterations"]
+};
 var isMap = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isPosInt = (v) => typeof v === "number" && Number.isInteger(v) && v > 0;
+function rejectUnknownKeys(level, m, where, errors) {
+  const allowed = ALLOWED_KEYS[level];
+  for (const key of Object.keys(m)) {
+    if (!allowed.includes(key)) errors.push(`${where}unknown key '${key}' (allowed: ${allowed.join(", ")})`);
+  }
+}
 function load(path4) {
   let doc;
   try {
@@ -7388,7 +7403,12 @@ function validate(doc) {
   if (!isMap(doc)) return { errors: ["workflow must be a YAML mapping"], warnings: [] };
   const errors = [];
   const warnings = [];
-  if (doc.version !== 1) errors.push("version must be 1");
+  rejectUnknownKeys("top", doc, "top level: ", errors);
+  if (doc.version !== SCHEMA_VERSION) {
+    errors.push(
+      `version must be ${SCHEMA_VERSION} (the schema is pre-1.0 and still changing; a file written for the old 'version: 1' needs its fields checked against the current schema, not just the number changed)`
+    );
+  }
   if (typeof doc.name !== "string" || !doc.name) errors.push("name is required");
   if (typeof doc.entry !== "string" || !doc.entry) errors.push("entry is required");
   if (!isMap(doc.phases) || Object.keys(doc.phases).length === 0) {
@@ -7404,21 +7424,27 @@ function validate(doc) {
   }
   if (doc.limits !== void 0) {
     if (!isMap(doc.limits)) errors.push("limits must be a mapping");
-    else if (doc.limits.max_total_iterations !== void 0 && !isPosInt(doc.limits.max_total_iterations)) {
-      errors.push("limits.max_total_iterations must be a positive integer");
+    else {
+      rejectUnknownKeys("limits", doc.limits, "limits: ", errors);
+      if (doc.limits.max_total_iterations !== void 0 && !isPosInt(doc.limits.max_total_iterations)) {
+        errors.push("limits.max_total_iterations must be a positive integer");
+      }
     }
   }
   if (errors.length === 0) warnings.push(...unreachable(doc.entry, phases, names));
   return { errors, warnings };
 }
 function validatePhase(name, p, names, errors) {
+  rejectUnknownKeys("phase", p, `phase '${name}': `, errors);
   if (typeof p.description !== "string" || !p.description) errors.push(`phase '${name}': description is required`);
+  if (isMap(p.gate)) rejectUnknownKeys("gate", p.gate, `phase '${name}': gate: `, errors);
   const checks = p.gate?.checks;
   if (!Array.isArray(checks) || checks.length === 0) {
     errors.push(`phase '${name}': gate.checks is required and must be non-empty`);
   } else {
     checks.forEach((c, i) => {
       const check = isMap(c) ? c : null;
+      if (check) rejectUnknownKeys("check", check, `phase '${name}': gate.checks[${i}]: `, errors);
       if (!check || typeof check.run !== "string" || !check.run) errors.push(`phase '${name}': gate.checks[${i}].run is required`);
       if (check?.timeout !== void 0 && !(typeof check.timeout === "number" && check.timeout > 0)) {
         errors.push(`phase '${name}': gate.checks[${i}].timeout must be a positive number`);
@@ -7459,6 +7485,7 @@ function validateRoutes(name, routes, names, errors) {
       errors.push(`phase '${name}': on_pass[${i}] must be a mapping with 'to' and an optional 'when'`);
       return;
     }
+    rejectUnknownKeys("route", raw, `phase '${name}': on_pass[${i}]: `, errors);
     if (typeof raw.to !== "string" || !raw.to) errors.push(`phase '${name}': on_pass[${i}].to is required`);
     else if (raw.to === "retry") errors.push(`phase '${name}': on_pass[${i}].to cannot be 'retry'`);
     else if (raw.to !== "$end" && !names.has(raw.to)) errors.push(`phase '${name}': on_pass[${i}].to '${raw.to}' does not name a defined phase`);

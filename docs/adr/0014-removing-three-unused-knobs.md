@@ -2,6 +2,13 @@
 
 - Status: accepted
 - Date: 2026-07-27
+- Revised: 2026-07-28 — [ADR-0015](0015-strict-schema-and-version-0-1.md) is
+  the separate record that "Alternatives considered" below says rejecting
+  unknown keys would need, and it changes one claim made here: a file still
+  carrying `env:` or `on_exhausted:` no longer loads with the field ignored.
+  Both now fail `validate` as unknown keys, so all three of this ADR's
+  removals are caught rather than two of them landing quietly. The reasoning
+  for the removals themselves is unaffected.
 - Supersedes: three pieces of vocabulary from
   [ADR-0003](0003-workflow-yaml-vocabulary.md) — the per-phase `env:`
   borrowed from the CI dialect, the `on_exhausted:` field, and `abort` as an

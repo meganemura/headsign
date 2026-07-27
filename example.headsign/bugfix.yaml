@@ -21,7 +21,7 @@
 #                                 fold it into the commit message / PR
 #                                 body before finishing.
 
-version: 1
+version: 0.1
 name: bugfix
 entry: reproduce
 

@@ -4,7 +4,7 @@
 # The `run:` commands below assume Node/TS with vitest and eslint — swap them
 # for your project's actual tooling (jest, npm test, ruff, go test, ...).
 # The shapes (what each gate checks, and why) are the reusable part.
-version: 1
+version: 0.1
 name: tdd-feature
 entry: spec
 

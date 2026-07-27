@@ -121,7 +121,7 @@ mkdir -p .headsign && curl -fsSL -o .headsign/workflow.yaml \
 
 ```yaml
 # .headsign/workflow.yaml
-version: 1
+version: 0.1
 name: feature-dev
 entry: plan
 
@@ -302,6 +302,14 @@ run が存在しない場合は、従来どおり `.headsign/workflow.yaml` に�
 ファイルを書いた本人がまだその場にいるうちに伝えるためです。
 `next` は表示しません。
 毎周回尋ねられるコマンドだからです。
+
+スキーマが定義していないキーは、ファイルのどの階層にあってもエラーです。
+フェーズに `max_atempts: 3` と書かれていれば、試行回数の上限が一切効かないまま走るのではなく、`phase 'implement': unknown key 'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)` で止まります。
+これまでは、この書き間違いは黙って読み飛ばされていました。
+メッセージはその階層が受け付けるキーを列挙するだけで、綴りの推測は出しません。
+同じ考え方は `version:` にも及び、値はちょうど `0.1` でなければなりません。
+スキーマは 1.0 より前で、まだ変わり続けています。
+そのため、古いスキーマ向けに書かれたファイルは、たまたま今も通るフィールドだけで読み込まれるのではなく、フィールドを現在のスキーマと突き合わせて確認するまで止まります([ADR-0015](docs/adr/0015-strict-schema-and-version-0-1.md))。
 
 `next` の答えは、1 行目が機械可読トークン、以降がエージェント向けの指示です。
 

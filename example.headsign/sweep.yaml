@@ -38,7 +38,7 @@
 # next `headsign start` empties tmp/, which costs nothing here — `survey`
 # clears the ledger on entry anyway, so a sweep always begins empty.
 
-version: 1
+version: 0.1
 name: codemod-sweep
 entry: survey
 

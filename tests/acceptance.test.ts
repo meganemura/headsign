@@ -51,7 +51,7 @@ test("plan-gate loop: RETRY names the failing check, ADVANCE once it's fixed; st
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: plan-gate
 entry: plan
 phases:
@@ -104,7 +104,7 @@ test("exhaustion: max_attempts reached escalates; stop-hook then allows the stop
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: exhaustion
 entry: implement
 phases:
@@ -143,7 +143,7 @@ test("review bounce: rejection routes back with attempts retained; approval comp
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: review-bounce
 entry: plan
 phases:
@@ -206,7 +206,7 @@ test("asked twice with nothing changed: the second next is a second real verdict
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: judge-every-time
 entry: build
 phases:
@@ -245,7 +245,7 @@ test("ready:/PENDING: an early next is PENDING (not counted, no state write) unt
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: review-async
 entry: review
 phases:
@@ -301,7 +301,7 @@ test("k-way on_pass: the bundle routes a pass by its when: predicates and names 
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: router
 entry: classify
 phases:

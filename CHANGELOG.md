@@ -11,6 +11,31 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **Breaking: `version:` must now be `0.1`, not `1`.** Every workflow file
+  needs that line changed, and `headsign validate` says so with `version
+  must be 0.1 (the schema is pre-1.0 and still changing; a file written for
+  the old 'version: 1' needs its fields checked against the current schema,
+  not just the number changed)`. The number is the point of the change: `1`
+  read as a promise of compatibility, and this schema has taken breaking
+  changes on consecutive days — including the three fields removed below.
+  While headsign is pre-1.0 the value is matched exactly, `0.2` will be
+  matched exactly too, and no compatibility shim accepts an older one: a
+  file whose version is out of date is stopped so someone reads it against
+  the current schema. See
+  [ADR-0015](docs/adr/0015-strict-schema-and-version-0-1.md).
+- **Breaking: a key the schema doesn't define is now an error.** `validate`
+  used to check the fields it knew and walk past the rest, so `max_atempts:
+  3` loaded, validated, and ran a phase with no attempt budget at all. Every
+  level of the file is now closed — top level, phase, `gate`, a check, an
+  `on_pass` route, `limits` — and an unknown key stops the workflow (exit 3)
+  with the keys that level accepts: `phase 'implement': unknown key
+  'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail,
+  max_attempts)`. It is an error rather than a warning because the author's
+  intent silently doesn't happen; an unreachable phase stays a warning,
+  because a run can proceed with one. No did-you-mean guess is offered — the
+  allowed list is printed instead. One consequence lands on the removals
+  below: a phase still carrying `env:` or `on_exhausted:` is now rejected
+  rather than ignored.
 - A run that reads `ABORTED` was ended by a person. With the two `abort`
   routes removed below, nothing headsign judges can produce that status, so
   `status`'s terminal line and the log's `abort` event now say
@@ -75,8 +100,9 @@ changes), and a patch bump means fixes only.
   you would at a prompt. Every command headsign runs (checks, `ready:`
   probes, and routes' `when:` predicates) now inherits headsign's own
   environment and nothing else. None of the shipped example workflows ever
-  used the field. `env:` is not rejected by `validate`, only ignored, so
-  delete it rather than leaving it in place — see Upgrading. See
+  used the field. A phase still declaring `env:` now fails `validate` as an
+  unknown key, so the field has to come out rather than be left in place —
+  see Upgrading. See
   [ADR-0014](docs/adr/0014-removing-three-unused-knobs.md).
 - **Breaking: `on_exhausted:` is gone; exhausting `max_attempts` always
   answers `ESCALATE`.** The field chose between `escalate` (the default)
@@ -84,14 +110,15 @@ changes), and a patch bump means fixes only.
   workflows spelled out the default. A spent budget is the moment to ask a
   person, which is what `escalate` does and what `abort` — noticing the run
   is stuck and then ending it without telling anyone — did not. Like `env:`,
-  the field is now ignored rather than rejected; an `on_exhausted: abort`
-  left in a file escalates.
+  a leftover `on_exhausted:` is rejected as an unknown key, so a file
+  carrying one is stopped rather than escalating on a field nothing reads.
 - **Breaking: `on_fail: abort` is gone.** `on_fail` now takes `retry` (the
   default), a phase name, `$end`, or `escalate`. Ending a run for good stays
   a person's decision, made with `headsign abort <reason>` — the command is
-  unchanged, and so is the `ABORT` answer token. Unlike the two fields
-  above, this one *is* rejected: a workflow declaring it fails `validate`
-  with exit 3. One consequence of `abort` leaving the token set: a phase
+  unchanged, and so is the `ABORT` answer token. A workflow declaring it
+  fails `validate` with exit 3, as an invalid route rather than an unknown
+  key: `on_fail` is still a field, it is `abort` that is no longer one of
+  its values. One consequence of `abort` leaving the token set: a phase
   actually named `abort` is now a legal `on_fail` target.
 
 ### Upgrading
@@ -104,19 +131,23 @@ was being driven by a delegated agent, have that agent run `headsign
 claim` again. Drop `HEADSIGN_SESSION_ID` from any shell profile or hook
 config that exports it — nothing reads it any more.
 
-Then edit your workflow files, because three removals land there. Delete
-every `on_exhausted:` line: `escalate` is now what exhaustion always does,
-so a line that said `escalate` was already redundant, and one that said
-`abort` will silently escalate instead. Delete every `env:` mapping and
-move its variables into the commands that need them (`run: "FOO=bar npm
-test"`); left in place it is ignored, so a check that quietly stopped
-seeing its variables is the failure to watch for. Replace `on_fail: abort`
-with `on_fail: escalate` (or a phase name) — this one is caught for you,
-since a workflow declaring it fails `headsign validate` with exit 3 and
-will not load. Running `headsign validate` on each of your workflow files
-after the edits is the quickest check. The six answer tokens are the same
-six. Do re-read your slowest gate, too — its cost is now paid on every
-`next` rather than once per change to the working tree.
+Then edit your workflow files, starting with the top line: `version: 1`
+becomes `version: 0.1`. That line is not the only thing that moved, though,
+which is why the error asks you to check the fields too — three of them left
+the schema in this same version. Delete every `on_exhausted:` line:
+`escalate` is now what exhaustion always does, so a line that said
+`escalate` was already redundant, and one that said `abort` no longer has
+anywhere to say it. Delete every `env:` mapping and move its variables into
+the commands that need them (`run: "FOO=bar npm test"`). Replace `on_fail:
+abort` with `on_fail: escalate` (or a phase name).
+
+All three are caught for you now, along with anything else the schema does
+not define: run `headsign validate` on each of your workflow files and fix
+what it names, one `unknown key` line at a time. That is also the check to
+run on a file you thought was fine — a `max_atempts:` that has been quietly
+doing nothing surfaces here rather than in a run. The six answer tokens are
+the same six. Do re-read your slowest gate, too — its cost is now paid on
+every `next` rather than once per change to the working tree.
 
 ## [0.2.0] - 2026-07-27
 

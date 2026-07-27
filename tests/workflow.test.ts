@@ -4,7 +4,7 @@ import * as workflow from "../src/workflow.ts";
 
 function validWorkflow(): Record<string, unknown> {
   return {
-    version: 1,
+    version: 0.1,
     name: "demo",
     entry: "plan",
     phases: {
@@ -270,4 +270,108 @@ test("a phase named by no route at all is still reported unreachable", () => {
   const doc = routedWorkflow();
   phases(doc).orphan = { description: "orphan", gate: { checks: [{ run: "true" }] }, on_pass: "$end" };
   assert.deepEqual(warnings(doc), ["phase 'orphan' is unreachable from entry 'plan'"]);
+});
+
+// --- unknown keys are errors, at every level (ADR-0015) ---
+//
+// Each of these asserts the whole error list, not just a substring: the message has to name
+// the key, say where it was found, and print that level's allowed keys, because those three
+// together are what a reader fixes the file from. No did-you-mean guess is asserted (or
+// produced) — that is the decision, not an omission.
+
+function gate(doc: Record<string, unknown>, phase: string): Record<string, unknown> {
+  return phases(doc)[phase].gate as Record<string, unknown>;
+}
+
+function checks(doc: Record<string, unknown>, phase: string): Record<string, unknown>[] {
+  return gate(doc, phase).checks as Record<string, unknown>[];
+}
+
+test("an unknown top-level key is rejected", () => {
+  const doc = validWorkflow();
+  doc.limit = { max_total_iterations: 5 };
+  assert.deepEqual(errors(doc), ["top level: unknown key 'limit' (allowed: version, name, entry, phases, limits)"]);
+});
+
+// The case the whole rule exists for: before this, the typo loaded, the phase ran with no
+// budget at all, and nothing said so.
+test("a misspelled max_attempts is rejected instead of leaving the phase silently unlimited", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.max_atempts = 3;
+  assert.deepEqual(errors(doc), [
+    "phase 'plan': unknown key 'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)",
+  ]);
+});
+
+test("an unknown gate key is rejected", () => {
+  const doc = validWorkflow();
+  gate(doc, "plan").timeout = 60;
+  assert.deepEqual(errors(doc), ["phase 'plan': gate: unknown key 'timeout' (allowed: checks)"]);
+});
+
+test("an unknown check key is rejected", () => {
+  const doc = validWorkflow();
+  checks(doc, "plan")[0].shell = "bash";
+  assert.deepEqual(errors(doc), ["phase 'plan': gate.checks[0]: unknown key 'shell' (allowed: name, run, timeout)"]);
+});
+
+test("an unknown route key is rejected", () => {
+  const doc = routedWorkflow();
+  routes(doc)[0].if = "true";
+  assert.deepEqual(errors(doc), ["phase 'plan': on_pass[0]: unknown key 'if' (allowed: when, to, timeout)"]);
+});
+
+test("an unknown limits key is rejected", () => {
+  const doc = validWorkflow();
+  doc.limits = { max_total_iterations: 20, max_turns: 20 };
+  assert.deepEqual(errors(doc), ["limits: unknown key 'max_turns' (allowed: max_total_iterations)"]);
+});
+
+test("every unknown key is reported, not only the first one found", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.retries = 2;
+  phases(doc).build.descrption = "typo";
+  assert.deepEqual(errors(doc), [
+    "phase 'plan': unknown key 'retries' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)",
+    "phase 'build': unknown key 'descrption' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)",
+  ]);
+});
+
+// ADR-0014 removed these two fields and said a file still carrying them loads with them
+// ignored. That is no longer true, and this is the pair of leftovers most likely to be sitting
+// in a file written a few days ago.
+test("a phase still declaring the removed env: is rejected, not ignored", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.env = { FOO: "bar" };
+  assert.deepEqual(errors(doc), [
+    "phase 'plan': unknown key 'env' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)",
+  ]);
+});
+
+test("a phase still declaring the removed on_exhausted: is rejected, not ignored", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.on_exhausted = "escalate";
+  assert.deepEqual(errors(doc), [
+    "phase 'plan': unknown key 'on_exhausted' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)",
+  ]);
+});
+
+// --- version: 0.1 (ADR-0015) ---
+
+test("version 0.1 is accepted", () => {
+  const doc = validWorkflow();
+  doc.version = 0.1;
+  assert.deepEqual(errors(doc), []);
+});
+
+// The schema changed under `version: 1`, so a file carrying it needs reading, not a
+// one-character edit. The message has to say that much or it invites the wrong fix.
+test("version: 1 is rejected, and the message asks for the fields to be checked, not just the number changed", () => {
+  const doc = validWorkflow();
+  doc.version = 1;
+  const [message, ...rest] = errors(doc);
+  assert.deepEqual(rest, []);
+  assert.match(message, /version must be 0\.1/);
+  assert.match(message, /'version: 1'/);
+  assert.match(message, /fields checked against the current schema, not just the number changed/);
 });

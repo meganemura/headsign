@@ -148,6 +148,14 @@ plugin or `npm install` the package. Do not guess at other paths.
   test"` — there is no `env:` field), and "end the run here" on failure
   (`on_fail` goes as far as `escalate`, which stops and asks a person, and
   exhausting `max_attempts` always escalates too).
+- **The schema is closed: a key it doesn't define is an error.** `validate`
+  rejects any unknown key at any level and prints what that level allows —
+  `phase 'implement': unknown key 'max_atempts' (allowed: description,
+  clear, ready, gate, on_pass, on_fail, max_attempts)` — so a misspelled
+  field stops the file instead of quietly doing nothing. Fix the key against
+  the list in the message; there is no did-you-mean guess to lean on.
+  `version:` must be exactly `0.1`, and a file written for an older schema
+  needs its fields checked, not just its version line renumbered.
 - **No gate can abort a run — only a person can.** `ABORT` is what
   `headsign abort <reason>` produces, so a run that reads `ABORTED` was
   ended deliberately, by you on the user's instruction or by the user. A

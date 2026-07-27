@@ -141,7 +141,7 @@ Or write one from scratch — it is one YAML file:
 
 ```yaml
 # .headsign/workflow.yaml
-version: 1
+version: 0.1
 name: feature-dev
 entry: plan
 
@@ -331,6 +331,18 @@ half-written phase or an edge you commented out for a minute doesn't stop
 the run you were in the middle of. `start` prints the warnings too, once,
 while the person who wrote the file is still there; `next` doesn't, because
 it is asked every turn.
+
+A key the schema doesn't define is an error, at every level of the file. A
+phase declaring `max_atempts: 3` stops with `phase 'implement': unknown key
+'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail,
+max_attempts)` rather than running a phase that has no attempt budget at
+all — the typo would otherwise have been skipped in silence. The message
+lists the keys that level accepts and offers no did-you-mean guess. The same
+thinking governs `version:`, which must be exactly `0.1`: while the schema
+is pre-1.0 it keeps changing, so a file written for an older one is stopped
+until its fields have been read against the current schema, rather than
+loaded with whatever still happens to fit
+([ADR-0015](docs/adr/0015-strict-schema-and-version-0-1.md)).
 
 `next` answers with a machine-readable first line, then instructions:
 

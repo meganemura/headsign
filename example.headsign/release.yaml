@@ -8,7 +8,7 @@
 # The version-source and build-output checks are wired for THIS repo (a Claude
 # Code plugin that commits its bundle). Two SWAP comments mark the lines a
 # different Node package would adapt.
-version: 1
+version: 0.1
 name: release
 entry: prepare
 

@@ -68,7 +68,7 @@ function envWithout(...keys: string[]): NodeJS.ProcessEnv {
 const NO_OBSERVER_ENV = envWithout("HEADSIGN_OBSERVER");
 
 const TWO_PHASE_WORKFLOW = `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -118,7 +118,7 @@ test("two next calls with nothing changed in between count two attempts and run 
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -154,7 +154,7 @@ test("repeated next calls on an unfixed failure exhaust max_attempts and escalat
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -189,7 +189,7 @@ test("abort on an already-terminal (escalated) run names the actual status inste
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -242,7 +242,7 @@ test("next is idempotent after ESCALATE", () => {
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -295,7 +295,7 @@ test("nested project (cwd inside a larger git repo): the run is driven entirely 
   writeWorkflow(
     projectDir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -404,7 +404,7 @@ test("concurrency: several real `next` processes contending for the lock never l
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -474,7 +474,7 @@ test("next when the current phase was removed/renamed from workflow.yaml mid-run
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -508,6 +508,29 @@ test("validate prints INVALID to stderr for a broken workflow", () => {
   const result = run(["validate", "--workflow", ".headsign/workflow.yaml"], { cwd: dir });
   assert.equal(result.status, 3);
   assert.match(result.stderr, /^INVALID:/);
+});
+
+// A typo'd key is a config error, so it comes out of the same exit-3 door as any other
+// invalid workflow — the point of the end-to-end check is that the line a person actually
+// reads carries the key, the phase, and the keys that level accepts (ADR-0015).
+test("validate rejects a misspelled key and prints the phase, the key, and the allowed keys", () => {
+  const dir = tmpdir();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW.replace("    on_pass: verify", "    on_pass: verify\n    max_atempts: 3"));
+  const result = run(["validate", "--workflow", ".headsign/workflow.yaml"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(
+    result.stderr,
+    /- phase 'build': unknown key 'max_atempts' \(allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts\)/,
+  );
+});
+
+test("validate rejects a workflow still declaring version: 1 and says the fields need checking too", () => {
+  const dir = tmpdir();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW.replace("version: 0.1", "version: 1"));
+  const result = run(["validate", "--workflow", ".headsign/workflow.yaml"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /version must be 0\.1/);
+  assert.match(result.stderr, /not just the number changed/);
 });
 
 // --- help: -h / --help / no args print usage and exit 0 (human convenience, ADR-0002) ---
@@ -654,7 +677,7 @@ test("validate: an explicit name always wins over a run's own workflow_path", ()
     dir,
     "other.yaml",
     `
-version: 1
+version: 0.1
 name: other-demo
 entry: only
 phases:
@@ -680,7 +703,7 @@ test("validate: an explicit --workflow path always wins over a run's own workflo
     dir,
     "other.yaml",
     `
-version: 1
+version: 0.1
 name: other-demo
 entry: only
 phases:
@@ -706,7 +729,7 @@ test("clear-on-ADVANCE: entering a phase deletes its declared artifacts, so a st
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -755,7 +778,7 @@ test("clear-on-START: the entry phase's declared artifacts are deleted by `start
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -781,7 +804,7 @@ test("clear is NOT applied on RETRY: staying in the same phase must not delete i
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -816,7 +839,7 @@ test("clear announcement: a non-empty cleared file on ADVANCE is announced right
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -849,7 +872,7 @@ test("clear announcement: an absent or empty cleared file is not announced", () 
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -882,7 +905,7 @@ test("clear announcement on start: the entry phase's non-empty cleared file is a
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -908,7 +931,7 @@ test("validate rejects a phase's clear entry that is an absolute path", () => {
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -932,7 +955,7 @@ test("validate rejects a phase's clear entry containing a '..' path segment", ()
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -954,7 +977,7 @@ phases:
 // --- ready: / PENDING ---
 
 const READY_REVIEW_WORKFLOW = `
-version: 1
+version: 0.1
 name: demo
 entry: review
 phases:
@@ -1007,7 +1030,7 @@ test("PENDING never routes via on_fail, even when the phase declares one — it 
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: review
 phases:
@@ -1148,7 +1171,7 @@ test("log: an escalate via max_total_iterations appends one escalate line", () =
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -1797,7 +1820,7 @@ test("status: running -> RUNNING <phase> (attempt n/max), workflow line, driver 
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -1848,7 +1871,7 @@ test("status: current phase no longer defined in a (readable) workflow.yaml also
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: otherphase
 phases:
@@ -1950,7 +1973,7 @@ test("status: escalated -> ESCALATED token with reason line, exit 0 (not next's 
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: build
 phases:
@@ -2003,7 +2026,7 @@ test("status: never executes the ready probe or the gate", () => {
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: demo
 entry: review
 phases:
@@ -2106,7 +2129,7 @@ test("--help lists the status command and its RUNNING/COMPLETE/ESCALATED/ABORTED
 // wrote down during the phase; the gate proves it says something legible, and the `when:`
 // predicates read it to pick an edge that was declared here, in the workflow.
 const ROUTER_WORKFLOW = `
-version: 1
+version: 0.1
 name: router
 entry: classify
 phases:
@@ -2194,7 +2217,7 @@ test("routing: a route whose 'to' is $end completes the run", () => {
   const dir = startRouterRun(
     "done",
     `
-version: 1
+version: 0.1
 name: router-end
 entry: classify
 phases:
@@ -2242,7 +2265,7 @@ test("routing: a failing gate never evaluates a when — the fail path is untouc
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: router-fail
 entry: classify
 phases:
@@ -2285,7 +2308,7 @@ test("routing: a when that cannot be evaluated stops the run at exit 3 and moves
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: router-broken
 entry: classify
 phases:
@@ -2345,7 +2368,7 @@ test("routing: a string on_pass is unchanged — no routed line on stdout, no ro
 // --- unreachable phases: a warning now, not an error (ADR-0011) ---
 
 const UNREACHABLE_WORKFLOW = `
-version: 1
+version: 0.1
 name: has-orphan
 entry: build
 phases:
@@ -2397,7 +2420,7 @@ test("a real error still fails validate, and is not softened into a warning", ()
   writeWorkflow(
     dir,
     `
-version: 1
+version: 0.1
 name: broken
 entry: build
 phases:

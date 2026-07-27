@@ -4,7 +4,7 @@
 # symlink to this directory, so `headsign start` here runs THIS file. The
 # implement gate mirrors CI exactly — if these four checks pass locally, CI
 # has nothing new to say.
-version: 1
+version: 0.1
 name: headsign-dev
 entry: implement
 

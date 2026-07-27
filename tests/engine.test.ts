@@ -10,7 +10,7 @@ function wf(phases: Record<string, Partial<Phase> & { on_pass: Phase["on_pass"] 
   for (const [name, p] of Object.entries(phases)) {
     built[name] = { description: name, gate: { checks: [{ run: "true" }] }, ...p } as Phase;
   }
-  return { version: 1, name: "wf", entry: entry ?? Object.keys(phases)[0], phases: built };
+  return { version: 0.1, name: "wf", entry: entry ?? Object.keys(phases)[0], phases: built };
 }
 
 function st(phase: string, overrides: Partial<State> = {}): State {
