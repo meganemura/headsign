@@ -22,7 +22,7 @@ verdict, it only reads it.
 ```
 
 There is no long-running process. Every invocation starts, reads state,
-judges, writes state, exits. Claude's single discipline is: **when in doubt,
+judges, writes state, exits. Claude's single discipline is: **do the work,
 run `headsign next` and obey the first-line token.**
 
 ## Components
@@ -45,16 +45,19 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at **1081 code lines** (raw
-`wc -l` is higher, ~1730, because of those comments) — roughly twice the
-target, after the concurrency lock, the git-root tree-hash fix,
-ready:/PENDING, the transition log, multi-session driver ownership, the two
-stop-boundary hooks, and k-way `on_pass` routing landed. Each was
-individually justified and none is obviously removable, which is exactly the
-shape of drift ADR-0001 says to watch: at 2× the guideline, the next feature
-proposal should face the "does a thin harness need this?" question with real
-suspicion, and a proposal that adds a *third* identity mechanism should
-probably be answered by consolidating the first two instead. Recount with:
+blank lines don't count). It currently sits at **992 code lines** (raw
+`wc -l` is higher, ~1620, because of those comments) — roughly twice the
+target, after the concurrency lock, ready:/PENDING, the transition log,
+multi-session driver ownership, the two stop-boundary hooks, and k-way
+`on_pass` routing landed. Each was individually justified and none is
+obviously removable, which is exactly the shape of drift ADR-0001 says to
+watch: at 2× the guideline, the next feature proposal should face the "does
+a thin harness need this?" question with real suspicion, and a proposal that
+adds a *third* identity mechanism should probably be answered by
+consolidating the first two instead. It came down from 1081 when ADR-0012
+removed the tree-hash cache: subtraction is available, and a feature whose
+justification has moved to another command is where to look for it. Recount
+with:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
@@ -71,7 +74,6 @@ lines.
 | `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types | state.json, gates, git |
 | `src/state.ts` | read/write `state.json` (atomic write); owns the state shape | routing rules, YAML |
 | `src/gate.ts` | run one phase's checks (shell, env, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
-| `src/treehash.ts` | working-tree fingerprint for the attempts cache; all git interaction | everything else |
 | `src/engine.ts` | the transition function: (workflow, state, gate result, resolved route) → (new state, outcome). The ONLY place routing rules live — a resolved route arrives as data and is applied here, never evaluated here | child_process, printing |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block | workflow.yaml, gates |
@@ -86,16 +88,16 @@ unceremonious channel, not part of that contract.
 1. Load `workflow.yaml` (path recorded in state) and `state.json`. Any load
    error → exit 3.
 2. If status is terminal (`complete` / `escalated` / `aborted`), reprint the
-   terminal outcome idempotently and exit. `next` is safe to call at any time.
+   terminal outcome idempotently and exit — a finished run stays finished
+   however many times it is asked.
 3. If `limits.max_total_iterations` is reached → ESCALATE.
-4. Cache check: if the working tree is unchanged since the last **failed**
-   evaluation of this same phase, reprint the cached RETRY without counting
-   an attempt (ADR-0004).
-5. Run the current phase's checks in order; stop at the first failure.
-6. If they all passed and this phase's `on_pass` is a list of routes, run
+4. Run the current phase's checks in order; stop at the first failure.
+   There is no cache in front of this step: every `next` that gets here
+   judges, and a failure costs an attempt (ADR-0012).
+5. If they all passed and this phase's `on_pass` is a list of routes, run
    the routes' `when:` commands in order and resolve which one matched
    (ADR-0011). A `when:` that could not be run at all → exit 3.
-7. Route per the transition table (ADR-0002), persist state, print the
+6. Route per the transition table (ADR-0002), persist state, print the
    outcome, exit with the contract code.
 
 ## Where the intelligence lives
@@ -119,7 +121,7 @@ outside it:
 - [ADR-0001](adr/0001-thin-harness.md) — thin harness: Claude drives, CLI holds state; non-goals
 - [ADR-0002](adr/0002-single-question-and-output-contract.md) — one question (`next`), output contract, transition table
 - [ADR-0003](adr/0003-workflow-yaml-vocabulary.md) — YAML vocabulary: what we borrow, what we refuse
-- [ADR-0004](adr/0004-state-attempts-and-cache.md) — state shape, per-phase attempts, tree-hash cache
+- [ADR-0004](adr/0004-state-attempts-and-cache.md) — state shape, per-phase attempts, cwd-only resolution, the lock
 - [ADR-0005](adr/0005-distribution-and-toolchain.md) — TypeScript, esbuild single-file bundle, dependency policy
 - [ADR-0006](adr/0006-stop-hook-backstop.md) — stop-boundary hook semantics (both events)
 - [ADR-0007](adr/0007-verdict-authorship.md) — verdict authorship: the gate-hardness scale
@@ -127,3 +129,4 @@ outside it:
 - [ADR-0009](adr/0009-claim-handshake.md) — the claim handshake (superseded by ADR-0010)
 - [ADR-0010](adr/0010-subagent-stop-identity.md) — sealing driver identity on `SubagentStop`
 - [ADR-0011](adr/0011-k-way-routing-on-pass.md) — k-way routing on `on_pass`: `when:`/`to:` routes, and unreachable phases as warnings
+- [ADR-0012](adr/0012-removing-the-tree-hash-cache.md) — removing the tree-hash cache: every `next` judges, `max_attempts` counts judgments

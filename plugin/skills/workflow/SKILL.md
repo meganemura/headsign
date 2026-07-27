@@ -80,9 +80,13 @@ plugin or `npm install` the package. Do not guess at other paths.
    habit.
 3. To begin a workflow: `headsign start`. It prints the first phase's
    instructions.
-4. **Whenever you are unsure what to do, think a phase's work is finished, or
-   have just recovered from compaction — run `headsign next` and obey the
-   first-line token.** That one habit is the whole protocol.
+4. **When you have done work you think finishes the phase — or have just
+   recovered from compaction and need to know where the run stands — run
+   `headsign next` and obey the first-line token.** That one habit is the
+   whole protocol. `next` is a judgment, not a peek: it runs the phase's
+   gate, and a failure spends one of that phase's attempts. When you only
+   want to look, run `headsign status` (rule 1) — it judges nothing and
+   costs nothing.
 5. `RETRY` → the output shows exactly which check failed and its last output.
    Fix that, then run `headsign next` again. `ADVANCE` → follow the printed
    instructions of the new phase. If `ADVANCE <phase>` is followed by a line
@@ -149,12 +153,11 @@ plugin or `npm install` the package. Do not guess at other paths.
   rather than guessing a destination; fix the command.
 - **`on_fail: retry` and `on_fail: <this same phase>` are not the same
   thing.** `retry` stays in the phase: you keep working on the same failure,
-  and an unchanged tree reprints the verdict instead of costing an attempt.
-  Naming the phase itself leaves and re-enters it, which prints `ADVANCE`,
-  runs that phase's `clear:` (deleting the files it lists), and drops the
-  cached verdict. Re-entering is right when starting the phase fresh is the
-  point — a stale review verdict has to go — and wrong when the work should
-  simply continue.
+  with the files that phase produced left where they are. Naming the phase
+  itself leaves and re-enters it, which prints `ADVANCE` and runs that
+  phase's `clear:` (deleting the files it lists). Re-entering is right when
+  starting the phase fresh is the point — a stale review verdict has to go
+  — and wrong when the work should simply continue.
 - `headsign status` is a different kind of command, on purpose: it never
   judges, so its first-line vocabulary is separate from `next`'s tokens —
   `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED`, capitalized like a
@@ -164,16 +167,5 @@ plugin or `npm install` the package. Do not guess at other paths.
   and 3 only when there's no run to read. Use it whenever you want to look
   without the risk of touching anything — see the discipline's first rule,
   above, for when that's required rather than optional.
-- `headsign next` is cheap and safe to call at any moment: if nothing changed
-  in the working tree it reprints the last verdict without consuming an
-  attempt.
 - Lock contention from parallel subagents is normal — wait briefly and
   retry once; the error message itself carries the recovery.
-- If `headsign next` keeps printing `(unchanged)` even though you changed
-  something, the change was probably in a git-ignored file *outside*
-  `.headsign/` that the tree-hash doesn't watch (build outputs, coverage
-  reports, …) — everything under `.headsign/` (including `tmp/`) is always
-  watched regardless of `.gitignore`. Touch or save any git-tracked file to
-  force a fresh evaluation, but that forces re-*judgment*, not a free
-  retry: if the gate still fails after the touch, it's a real, counted
-  attempt.

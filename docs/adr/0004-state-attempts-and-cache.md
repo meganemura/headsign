@@ -2,6 +2,12 @@
 
 - Status: accepted
 - Date: 2026-07-23
+- Revised: 2026-07-27 (the cache section is retracted by
+  [ADR-0012](0012-removing-the-tree-hash-cache.md): the cache is gone,
+  every `next` judges, and the state field that recorded the last failed
+  evaluation is renamed `last_failure` and trimmed to what `status` shows.
+  Everything else here — the state shape, per-phase attempts, cwd-only
+  resolution, the lock, and `.headsign/log` — stands.)
 
 ## Context
 
@@ -23,10 +29,8 @@ implement grants a fresh budget".
   "phase": "implement",
   "attempts": { "implement": 2 },
   "total_iterations": 7,
-  "last_eval": {
+  "last_failure": {
     "phase": "implement",
-    "result": "fail",
-    "tree_hash": "…",
     "check": "unit tests",
     "run": "bundle exec rspec",
     "exit_code": 1,
@@ -39,11 +43,16 @@ implement grants a fresh budget".
 }
 ```
 
-`stop_nudges` belongs to the Stop hook's loop guard, not to attempts/cache
+`last_failure` is the failure this run is currently sitting on, and only
+that: it is `null` after a pass, after a fail-route, and in every terminal
+state, and `status` is its only reader (ADR-0012 explains the name and the
+two fields it dropped).
+
+`stop_nudges` belongs to the Stop hook's loop guard, not to attempts
 semantics — its lifecycle is owned and explained by ADR-0006. Likewise
 `driver_session` — which session (`start`/`next`) most recently drove this
 run, or `null` if none resolved one — belongs to multi-session ownership,
-not to this ADR's cache/attempts model; its resolution, stamping rule, and
+not to this ADR's attempts model; its resolution, stamping rule, and
 the Stop hook's use of it are owned and explained by ADR-0008. Alongside it,
 `driver_source: "env" | "claim" | null` (ADR-0009) records *how*
 `driver_session` was last stamped — `"env"` for the ordinary env-based
@@ -100,44 +109,19 @@ This yields both target behaviors: review rejections accumulate to 3 across
 bounces (escalate), while implement — whose gate passed on the way to
 review — re-enters with a clean 0/5 budget.
 
-### The tree-hash cache ("watching `next` doesn't cost attempts")
+### The tree-hash cache — retracted by ADR-0012
 
-Problem: Claude may call `next` mid-work just to see the remaining-work
-list. Those probes must not burn `max_attempts`.
-
-Rule: if the working tree is **unchanged since the last failed evaluation
-of the same phase**, reprint the cached RETRY, and do not increment
-`attempts` or `total_iterations`. Any change → evaluate for real. Only
-changed-tree failures count as attempts.
-
-Fingerprint (`src/treehash.ts`), inside a git repo:
-
-- `HEAD` commit id (so committing counts as a change even with a clean tree),
-- `git status --porcelain -uall` entries (tracked changes + untracked,
-  `.gitignore` respected), each with a content hash of the file,
-- plus every file under `.headsign/` **except `state.json`**, by content.
-
-The `.headsign/` clause exists because that directory is typically
-gitignored, yet gates legitimately read files there (`verdict`,
-`approved`); without it, writing a verdict would look like "no change" and
-`next` would return a stale cached failure. `state.json` is excluded
-because headsign itself rewrites it — including it would make every
-evaluation self-invalidating.
-
-Outside a git repo (or if git fails): no fingerprint, cache disabled, every
-`next` evaluates. Correctness over economy.
-
-Known caveat (documented, accepted): a gate whose outcome depends on state
-outside the repository and outside `.headsign/` (network, wall clock) can
-be cached stale. Such gates are outside headsign's model; touch any file to
-force re-evaluation.
-
-`git status --porcelain` reports paths relative to the git top-level, not
-cwd. `src/treehash.ts` resolves the top-level once (`git rev-parse
---show-toplevel`, falling back to cwd if that fails) and joins status paths
-against it, so a nested project — `.headsign/` living in a subdirectory of a
-larger repo, headsign run from there — hashes the correct files instead of
-silently hashing nothing.
+> **Retracted 2026-07-27 by
+> [ADR-0012](0012-removing-the-tree-hash-cache.md).** This ADR decided that
+> a `next` on a working tree unchanged since the same phase's last failed
+> evaluation would reprint that verdict for free — no gate run, no attempt
+> counted — so that an agent could look at a run without paying for the
+> look. `headsign status` (ADR-0008) answers that need directly, and
+> without a git fingerprint behind it, so the cache is gone: a `next` that
+> reaches a phase's gate evaluates it, and `max_attempts` counts
+> judgments. ADR-0012 records what the mechanism was, why it was right when
+> this ADR chose it, and what it hid; the original text of this section is
+> in the repository's history.
 
 ### Resolution: cwd only, never parent directories
 
@@ -171,8 +155,7 @@ Stale locks self-heal: if the pid inside `lock` is not a live process
 (checked via `process.kill(pid, 0)`, treating `EPERM` as alive and anything
 else as dead — including an unparseable pid), the lock is stolen and the
 acquire retried once. A holder that crashed mid-evaluation therefore cannot
-wedge future runs. The lock is gitignored (`start` ensures this) and
-excluded from the tree-hash the same way `state.json` is — it is
+wedge future runs. The lock is gitignored (`start` ensures this): it is
 headsign-internal and transient, not part of the working tree a gate
 observes.
 
@@ -211,10 +194,9 @@ Four call sites, one line each, for real *transitions*: `start` (truncate,
 then a `start` line), `next`'s iteration-limit branch (an `escalate`
 line), `next`'s real evaluation after `step()` (a `retry` / `advance` /
 `complete` / `escalate` / `abort` line, matching the outcome), and `abort`
-(an `abort` line). A cached (tree-unchanged) RETRY re-display, a
-terminal-state re-display, and a PENDING answer (ADR-0002) are
-deliberately silent — none of the three is a transition, and logging one
-would make the log say something happened when nothing did.
+(an `abort` line). A terminal-state re-display and a PENDING answer
+(ADR-0002) are deliberately silent — neither is a transition, and logging
+one would make the log say something happened when nothing did.
 
 **Explicit exception — the three Stop-boundary events** (`paused` and
 `stalled` added by the exit-note-gate revision of ADR-0006; `claimed`
@@ -248,14 +230,10 @@ phase for an `advance`, the reason for `escalate`/`abort`, the note's
 first line for `paused`, the fixed `nudges=5` for `stalled`, and nothing
 (an empty detail) for `claimed`.
 
-Excluded from the tree-hash cache (`treehash.ts`'s `headsignEntries`
-filter and `statusEntries`'s exclusion set) for the same reason
-`state.json` is: headsign itself appends to it on every real evaluation,
-so leaving it in would make the cache self-invalidating the moment an
-entry got appended to invalidate against. Excluded from
-`.headsign/.gitignore` alongside `state.json`, `lock`, and `tmp/` for the
-same reason those are — it is run-scoped, headsign-internal bookkeeping,
-not a workflow artifact a team would want tracked.
+Listed in `.headsign/.gitignore` alongside `state.json`, `lock`, and
+`tmp/` for the same reason those are — it is run-scoped,
+headsign-internal bookkeeping, not a workflow artifact a team would want
+tracked.
 
 ### start / abort details
 
@@ -267,20 +245,20 @@ not a workflow artifact a team would want tracked.
 - `start` also empties and recreates `.headsign/tmp/`, a run-scoped scratch
   directory for transient artifacts (review verdicts, tickets, notes, and
   — as of the exit-note-gate revision — the Stop hook's `stop-note`; see
-  ADR-0006) so nothing from a previous run leaks into this one. Unlike
-  `state.json` and `lock`, it is not excluded from the tree-hash: gates
-  legitimately read files there, so a write under `.headsign/tmp/` must
-  keep invalidating the cache the same way any other `.headsign/` artifact
-  does.
+  ADR-0006) so nothing from a previous run leaks into this one. Gates
+  legitimately read files there — a review verdict, a route file — so it is
+  scratch space for the workflow, not headsign-internal state the way
+  `state.json` and `lock` are.
 - `abort` records the reason and sets `status: aborted` — a correct,
   human-directed ending, which the Stop hook lets pass.
 
 ## Consequences
 
-- state.json diverges from the handoff sketch (attempts map, `last_eval`);
-  this ADR is the reference for the actual shape.
-- The cache makes `next` safe to call compulsively, which is exactly the
-  discipline the skill teaches.
+- state.json diverges from the handoff sketch (attempts map,
+  `last_failure`); this ADR is the reference for the actual shape.
+- Every `next` on a running phase spends an attempt on a failing gate, so
+  the discipline the skill teaches is `next` after work and `status` to
+  look (ADR-0012, which retracted this ADR's opposite answer).
 - `history` and `version` were removed from state.json: nothing ever read
   them back, so they were write-only bookkeeping (and `history` was the
   only reason `step()` needed a clock at all). If an audit log is wanted

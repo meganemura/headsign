@@ -208,24 +208,21 @@ The note is deleted the moment it is read as a pause signal, not left in
 place. If it weren't consumed, writing it once would be a permanent free
 pass: every future stop, forever, would find the same note still sitting
 there and pause without ever nudging again — silently disabling the
-backstop for the rest of the run. That is exactly the staleness bug a
-stale cached verdict would be (ADR-0004's tree-hash cache exists to avoid
-the analogous problem for gate re-evaluation): a signal that was true once
-must not be read as still true indefinitely. Consumption is what makes the
-note mean "I am pausing *now*", not "I paused once, a while back".
+backstop for the rest of the run. A signal that was true once must not be
+read as still true indefinitely. Consumption is what makes the note mean
+"I am pausing *now*", not "I paused once, a while back".
 
-### Net-zero tree change, cache intact
+### Net zero: pausing leaves nothing behind
 
 Writing the note and then having the hook delete it returns
-`.headsign/tmp/` — and therefore the working tree, since `.headsign/tmp/`
-is inside the tree-hash's watched set (ADR-0004) — to exactly what it was
-before the pause: net zero. Nothing about the phase's last real evaluation
-changed, so the tree-hash cache (ADR-0004's `shouldUseCache`) still
-matches when work resumes. Concretely: pause today, run `headsign next`
-tomorrow morning, and if nothing else changed in the meantime it reprints
-the cached verdict — no attempt was burned by the act of pausing. This is
-the same property the whole cache exists to protect: watching `next`
-(here, watching *the ability to pause cleanly*) must not cost anything.
+`.headsign/tmp/` — and therefore the working tree — to exactly what it was
+before the pause: net zero. No gate ran, no attempt was counted, and the
+phase's own artifacts (a verdict, a route file) are where the work left
+them; the only marks the pause leaves are deliberate ones, the `paused`
+line in `.headsign/log` and the nudge counter reset to 0. Pausing is not a
+judgment, so it costs the run nothing. Resuming is: `headsign next`
+tomorrow morning evaluates the gate afresh, which since ADR-0012 is the
+only kind of `next` there is.
 
 ### The `paused` / `stalled` log events
 
@@ -262,8 +259,7 @@ unstoppable session) on an undocumented field, headsign owns its guard:
 
 - state carries `stop_nudges` (int). The hook increments it on every block
   that isn't resolved by a note.
-- `headsign next` resets it to 0 whenever it **really evaluates** a gate
-  (a cached "tree unchanged" reprint does not reset — no work happened).
+- `headsign next` resets it to 0 whenever it **really evaluates** a gate.
   `headsign start` initializes it to 0. The exit-note gate resets it too
   (above) — a deliberate pause is not evidence of a stuck loop, so it must
   not leave residue behind for a later, unrelated stall to inherit.
@@ -353,6 +349,13 @@ note exists only so a reader following an old link understands what
 changed and why (see "Three actors, one signal", above, for the "why").
 
 ## Misreadings fixed in the tree-hash documents (2026-07-25)
+
+> Both items below are moot since
+> [ADR-0012](0012-removing-the-tree-hash-cache.md) removed the tree-hash
+> cache: there is no fingerprint left to misread, and every `next`
+> evaluates. Kept as the record of a documentation review whose second
+> item — a forced re-evaluation is not a free retry — is now simply how
+> `next` always behaves.
 
 An external review of ADR-0004 and SKILL.md's tree-hash notes surfaced two
 places where the prose read more ambiguously than the code behaves:

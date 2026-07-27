@@ -108,12 +108,12 @@ Notes:
   `limits.max_total_iterations` is the global runaway backstop.
 - Checks run in order and stop at the first failure; its `name` (or `run`
   text) plus a stdout/stderr tail become the RETRY message.
-- The `ready:` probe is evaluated after the tree-hash cache check and
-  before the gate — never inside it, and never inside `step()`. It is
-  itself uncached and uncounted: no `attempts`/`total_iterations` change,
-  `last_eval` and `stop_nudges` are untouched, and `state.json` is not
-  written at all on this path. A phase with no `ready:` behaves exactly as
-  before this ADR's revision — always "ready", straight to the gate.
+- The `ready:` probe is evaluated before the gate — never inside it, and
+  never inside `step()`. It is itself uncounted: no
+  `attempts`/`total_iterations` change, `last_failure` and `stop_nudges`
+  are untouched, and `state.json` is not written at all on this path. A
+  phase with no `ready:` behaves exactly as before this ADR's revision —
+  always "ready", straight to the gate.
 
 ## Consequences
 

@@ -9,7 +9,7 @@ record the reasoning each choice rests on.
 | [0001](0001-thin-harness.md) | Thin harness — Claude drives, the CLI only holds state and judges; the non-goals that keep it small |
 | [0002](0002-single-question-and-output-contract.md) | One question (`headsign next`), the first-line token contract, and the phase transition table |
 | [0003](0003-workflow-yaml-vocabulary.md) | The `workflow.yaml` vocabulary (what's borrowed from CI, what's refused), plus `clear:` and why `description` is advisory |
-| [0004](0004-state-attempts-and-cache.md) | `state.json` shape, per-phase attempts, the tree-hash cache, cwd-only resolution, and the concurrency lock |
+| [0004](0004-state-attempts-and-cache.md) | `state.json` shape, per-phase attempts, cwd-only resolution, and the concurrency lock *(its tree-hash cache retracted by 0012)* |
 | [0005](0005-distribution-and-toolchain.md) | TypeScript + esbuild single-file bundle, and the minimal-dependency policy |
 | [0006](0006-stop-hook-backstop.md) | The Stop-hook backstop — the pause-note exit gate, the nudge counter demoted to insurance, fail-open, and the subdirectory walk-up |
 | [0007](0007-verdict-authorship.md) | Verdict authorship — the gate-hardness scale (hard/semi/soft), why soft gates stay soft, and how to move the pen out of the worker's hand |
@@ -17,6 +17,7 @@ record the reasoning each choice rests on.
 | [0009](0009-claim-handshake.md) | The claim handshake — session identity is hook-side knowledge; `headsign claim`, the Stop hook's adoption gate, and sticky `claimed` ownership *(superseded by 0010)* |
 | [0010](0010-subagent-stop-identity.md) | Sealing driver identity on `SubagentStop` — the event ADR-0009 got wrong; the delegated-agent backstop, and why `driver_source` already says which kind of identifier is stored |
 | [0011](0011-k-way-routing-on-pass.md) | k-way routing on `on_pass` — a list of `when:`/`to:` routes, why a per-check `on_fail` was refused, why a broken `when:` stops the run, and unreachable phases demoted to warnings |
+| [0012](0012-removing-the-tree-hash-cache.md) | Removing the tree-hash cache — why the free probe was right before `status` existed, what it hid, `max_attempts` now counting judgments, and `last_failure` |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

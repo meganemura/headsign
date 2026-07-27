@@ -182,9 +182,9 @@ verb behind the one command ADR-0002 deliberately keeps to a single
 question — `next` already means "I am driving, judge me"; a flag that
 sometimes makes it mean "actually, just tell me" blurs a distinction this
 ADR exists to sharpen, and normalizes exactly the "call `next` just to
-look" habit that a bystander has no standing to do at all (a driver may
-legitimately probe for free thanks to the tree-hash cache; a bystander
-should not be probing the driver's run at all). A separate command name
+look" habit that a bystander has no standing to do at all — and that, since
+ADR-0012 retired the free-probe cache, is not free for the driver either:
+every `next` judges. A separate command name
 keeps the vocabulary honest: `next` always means the caller is driving;
 `status` always means the caller is only watching.
 

@@ -22,7 +22,7 @@ This is not an implementation bug to patch — it is a boundary to name.
 
 1. **What headsign guarantees is the determinism of the *mechanics*:**
    evaluation (checks run, exit codes read), accounting (attempts,
-   iterations, cache), and routing. It never guarantees the *authorship* of
+   iterations), and routing. It never guarantees the *authorship* of
    the artifacts gates read. Who may produce a gate's input is a workflow
    design decision, deliberately left outside the CLI (ADR-0001: the harness
    holds no judgment machinery).

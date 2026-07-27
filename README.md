@@ -18,8 +18,8 @@ say) — that boundary is named, not hidden, in
 [What headsign is not](#what-headsign-is-not) and
 [ADR-0007](docs/adr/0007-verdict-authorship.md).
 
-The whole discipline an agent needs fits in one sentence: **when in doubt, run
-`headsign next` and obey the first line of the answer.**
+The whole discipline an agent needs fits in one sentence: **do the work, run
+`headsign next`, and obey the first line of the answer.**
 
 ```
 $ headsign next
@@ -87,9 +87,10 @@ npx headsign --help
 machinery. For Cursor, a custom harness, or a `CLAUDE.md`, this one rule
 carries most of it:
 
-> Run `npx headsign next` and obey the first line of the answer. Never end
-> the run on anything but `COMPLETE`; to stop deliberately, run
-> `npx headsign abort <reason>`.
+> When you have done work on the current phase, run `npx headsign next` and
+> obey the first line of the answer. To look without judging, run
+> `npx headsign status`. Never end the run on anything but `COMPLETE`; to
+> stop deliberately, run `npx headsign abort <reason>`.
 
 The full discipline is in
 [plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md). Copy
@@ -342,9 +343,13 @@ it is asked every turn.
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
 
-Exit 3 is a configuration/usage error. `next` is idempotent on finished runs,
-and calling it on an unchanged working tree just reprints the last verdict —
-probing never costs an attempt.
+Exit 3 is a configuration/usage error, and `next` is idempotent on finished
+runs. On a running one it is a judgment rather than a peek: it runs the
+phase's gate, and a failure spends an attempt (a phase whose `ready:` probe
+hasn't passed yet answers `PENDING` before the gate runs, as above, and
+spends nothing). Hence the driving session's two-command rule — **did work
+→ `next`; want to look → `status`** — with `status` free to call as often
+as you like (see [Multiple sessions](#multiple-sessions)).
 
 ### Routing (workflow.yaml)
 
@@ -371,15 +376,13 @@ and back into it, which runs everything entering a phase runs:
 |---|---|---|
 | Meaning | stay | leave, then re-enter |
 | `clear:` | not run | runs |
-| tree-hash cache | applies | does not |
 | Answer token | `RETRY` | `ADVANCE` |
 
-So a self-route deletes the artifacts that phase lists under `clear:` and
-drops the cached verdict, meaning the next `headsign next` re-judges rather
-than reprinting. That is exactly what you want when re-entering fresh is the
-point — throwing away a stale review verdict, say — and exactly what you
-don't want when the agent should just keep working on the same failure.
-Reach for `retry` in the second case.
+So a self-route deletes the artifacts that phase lists under `clear:`,
+while `retry` leaves them where the work left them. That is exactly what
+you want when re-entering fresh is the point — throwing away a stale review
+verdict, say — and exactly what you don't want when the agent should just
+keep working on the same failure. Reach for `retry` in the second case.
 
 ### The router pattern
 
@@ -459,10 +462,7 @@ above), a verdict that lands a moment later could be discarded by that
 same early call's next re-entry, silently losing a real review. Give the
 phase a `ready:` probe (e.g. `test -f .headsign/tmp/verdict`) and an early
 `next` answers `PENDING` instead: no attempt spent, `clear:` not run,
-verdict left intact for the `next` that actually finds it. Everything
-under `.headsign/` — including `tmp/`, where the verdict file lives — is
-watched by the tree-hash regardless of `.gitignore`, so a verdict written
-there is always detected, never mistaken for "nothing changed".
+verdict left intact for the `next` that actually finds it.
 
 ### The backstop
 
@@ -502,20 +502,21 @@ session that merely spawned it (see
 `.headsign/tmp/stop-note` and stop again: the hook passes immediately, no
 nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
 has a record. The note is consumed (deleted) the moment it's read, and the
-working tree returns to exactly what it was before — net zero — so the
-cache stays intact: tomorrow, `headsign next` resumes from the same phase
-and, if nothing else changed, reprints the cached verdict rather than
-burning an attempt. `headsign abort <reason>` is the other exit, and it is
-permanent, not a pause: the run can't be resumed, and a fresh `headsign
-start` begins again from the entry phase, replaying every phase's gate
-from scratch. Keeping that replay cheap is a design requirement on the
-workflow, not something headsign does for you: write early phases' gates
-as fast, idempotent checks (does a file exist, does lint pass) rather than
-ones with real side effects or long unrepeatable work, and a fresh start
-after an abort costs almost nothing. A workflow whose early gates are slow
-or non-idempotent makes its own re-runs expensive — that's the workflow
-author's cost to manage, by writing cheap gates, not a cost headsign can
-absorb on its behalf.
+working tree returns to exactly what it was before — net zero, so the pause
+itself costs the run nothing and leaves the phase's artifacts where the
+work left them. Tomorrow, `headsign next` picks the run up at the same
+phase and judges its gate, the way any `next` does. `headsign abort
+<reason>` is the other exit, and it is permanent, not a pause: the run
+can't be resumed, and a fresh `headsign start` begins again from the entry
+phase, replaying every phase's gate from scratch. Keeping that replay cheap
+is a design requirement on the workflow, not something headsign does for
+you: write early phases' gates as fast, idempotent checks (does a file
+exist, does lint pass) rather than ones with real side effects or long
+unrepeatable work, and a fresh start after an abort costs almost nothing.
+The same property pays off every turn, since each `next` runs the gate
+again. A workflow whose early gates are slow or non-idempotent makes its
+own re-runs expensive — that's the workflow author's cost to manage, by
+writing cheap gates, not a cost headsign can absorb on its behalf.
 
 Stopping *without* a note is pushed back — the hook fails open (never
 traps a session) after 5 consecutive nudges with nothing in between that
@@ -847,8 +848,8 @@ Read this before adopting — the boundaries are the design.
 
 What it does hold, it holds mechanically: transitions and attempt accounting
 an agent cannot sweet-talk, run state that survives compaction, a backstop
-that makes quitting silently impossible without leaving a trace, and probing
-that never costs an attempt.
+that makes quitting silently impossible without leaving a trace, and a
+read-only `status` for everyone who only wants to look.
 
 ### Where it sits among neighbors
 

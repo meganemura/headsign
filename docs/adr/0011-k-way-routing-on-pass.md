@@ -69,8 +69,8 @@ would be enough.
 
 **The same key would mean different things depending on where it is
 written.** A phase-level `on_fail` routes a *failure*, and a failure is
-counted: it increments `attempts`, it can exhaust `max_attempts`, it is
-recorded in `last_eval` for the tree-hash cache. A check-level `on_fail`
+counted: it increments `attempts`, it can exhaust `max_attempts`, and it is
+what `last_failure` records for `status` to show. A check-level `on_fail`
 used for routing would be a *successful* branch spelled as a failure — the
 router phase does exactly what it was supposed to do, every time — and it
 would either have to carry that accounting along (a working phase burning
@@ -87,12 +87,11 @@ says the same thing once, forwards.
 ### 3. Attempt accounting is not touched at all
 
 Routing happens on the pass path, and by the time routes are resolved the
-engine has already cleared this phase's `attempts` entry and its
-`last_eval` — that is what passing a gate has always done. So
-`max_attempts`, `on_exhausted`, `last_eval`, and the tree-hash cache keep
-exactly the meaning ADR-0004 gave them: a route decision can neither cost
-an attempt nor grant one, because there is no failure in the neighborhood
-of it.
+engine has already cleared this phase's `attempts` entry and its recorded
+failure — that is what passing a gate has always done. So `max_attempts`,
+`on_exhausted`, and `last_failure` keep exactly the meaning ADR-0004 gave
+them: a route decision can neither cost an attempt nor grant one, because
+there is no failure in the neighborhood of it.
 
 A router phase whose own gate *fails* is an ordinary failing phase: RETRY
 (or whatever its `on_fail` says), attempt counted, routes never consulted.
@@ -109,14 +108,14 @@ because the two are different transitions:
 |---|---|---|
 | Meaning | stay in the phase | leave it and re-enter |
 | `clear:` | not run | runs |
-| tree-hash cache | applies (`last_eval` kept) | does not (`last_eval` cleared) |
+| `last_failure` | recorded (`status` shows it) | cleared |
 | Answer token | `RETRY` | `ADVANCE` |
 
 Both are legitimate and both are used. A self-route re-runs entry effects
 on purpose — it is how a review phase throws away a stale verdict — and
-`retry` deliberately does not, which is what makes probing an unchanged
-tree free. Collapsing them would silently break whichever behavior the
-author was relying on.
+`retry` deliberately does not, which is what lets an agent keep working on
+the same failure with the phase's artifacts intact. Collapsing them would
+silently break whichever behavior the author was relying on.
 
 ### 5. A `when:` that cannot be run stops the run (exit 3)
 

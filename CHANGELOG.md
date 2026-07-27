@@ -9,6 +9,44 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `next` no longer reprints a cached verdict, and
+  `max_attempts` now counts judgments.** Until now, a `next` on a working
+  tree unchanged since that phase's last failure reprinted the old verdict
+  for free — no gate run, no attempt counted. That free probe existed
+  because `next` was once the only way to see where a run stood;
+  `headsign status` (0.2.0) does that job now, read-only and as often as
+  you like. So every `next` on a running phase runs that phase's gate, and
+  every failure it reports spends one attempt: ask twice and your test
+  suite runs twice. The rule that replaces "probing is free" is **did work
+  → `next`; want to look → `status`**. One effect is deliberate: an agent
+  that keeps calling `next` without doing any work now spends the phase's
+  attempts, and once `max_attempts` runs out the run ends the way
+  `on_exhausted` says — `ESCALATE`, by default — where before it consumed
+  nothing and could be abandoned quietly. A `RETRY` line no longer carries the
+  `(unchanged)` marker or its `[cached — …]` note, since neither can happen
+  any more. See
+  [ADR-0012](docs/adr/0012-removing-the-tree-hash-cache.md).
+- **Breaking: `state.json`'s `last_eval` is now `last_failure`**, and has
+  lost `tree_hash` (the cache's field) and `result` (always `"fail"`).
+  What `status` prints as `--- last failure: … ---` is unchanged; that
+  display is the field's only reader and the reason it still exists. A
+  `state.json` written by 0.2.0 is not migrated — see Upgrading.
+- headsign no longer runs `git`. The working-tree fingerprint was its only
+  use of it, so the tool now behaves identically inside a repository,
+  outside one, and in a linked worktree, and `/bin/sh -c` — running the
+  check commands you wrote — is the only kind of process it spawns.
+
+### Upgrading
+
+Finish or abort a run before upgrading, or start it again afterwards: a
+`state.json` from 0.2.0 carries `last_eval`, and this version reads
+`last_failure`. Workflow files are unaffected: nothing in `workflow.yaml`
+changes, and the six answer tokens are the same six. Do re-read your
+slowest gate, though — its cost is now paid on every `next` rather than
+once per change to the working tree.
+
 ## [0.2.0] - 2026-07-27
 
 Two themes: a workflow can now branch more than two ways, and a run can be
