@@ -49,6 +49,20 @@ changes), and a patch bump means fixes only.
   `claim` marker — that is how a claim gets sealed. The plugin registers it
   automatically; the plugin-free `settings.json` snippet in the README now
   shows both hooks.
+- k-way routing on `on_pass`: a phase can now branch to one of several
+  phases instead of exactly one. Write `on_pass` as a list of `when:`/`to:`
+  routes — the `when:` commands run in order once the gate has passed, the
+  first to exit 0 decides the destination, and the last entry (which has no
+  `when:`) is the default — so a triage or intake phase can send the work to
+  whichever phase fits it. `ADVANCE` gains a `--- routed: … ---` line naming
+  the route taken, and `.headsign/log` records the same. A `when:` that
+  cannot be run at all (spawn error, timeout) stops the run with exit 3
+  instead of falling through to the default: the thing being decided is the
+  destination. A plain string `on_pass` behaves exactly as before, down to
+  its output and log lines. A worked example ships as
+  `example.headsign/router.yaml`, whose `classify` phase routes one intake
+  queue into three kinds of work. See
+  [ADR-0011](docs/adr/0011-k-way-routing-on-pass.md).
 - A triage example workflow (`example.headsign/triage.yaml`): headsign's own
   feedback-intake loop, which judges exactly one ticket per run. It doubles
   as a worked example of two patterns — a run-local completion marker as the
@@ -59,6 +73,14 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- A phase unreachable from `entry` is now a **warning** rather than a
+  validation error. `headsign validate` prints it to stderr and still exits
+  0, `start` prints it once per run, and `next` stays silent so the
+  every-turn path isn't noisy. Workflows that headsign previously refused to
+  load for this reason now load and run — including a run wedged mid-flight
+  by a half-written phase or a commented-out edge. `load()` accordingly
+  returns warnings alongside errors. See
+  [ADR-0011](docs/adr/0011-k-way-routing-on-pass.md).
 - The nudge cap (shared by both stop-boundary hooks) is now purely an
   abnormal-case backstop and was raised from 3 to 5; the pause note is the
   intended exit for deliberate stops.

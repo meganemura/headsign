@@ -45,16 +45,16 @@ consumer repository:
 
 Core budget: `src/` targets roughly **500 lines of code** (tests excluded,
 and counting code only — the deliberately dense AI-friendly comments and
-blank lines don't count). It currently sits at **984 code lines** (raw
-`wc -l` is higher, ~1520, because of those comments) — roughly twice the
+blank lines don't count). It currently sits at **1081 code lines** (raw
+`wc -l` is higher, ~1730, because of those comments) — roughly twice the
 target, after the concurrency lock, the git-root tree-hash fix,
-ready:/PENDING, the transition log, multi-session driver ownership, and the
-two stop-boundary hooks landed. Each was individually justified and none is
-obviously removable, which is exactly the shape of drift ADR-0001 says to
-watch: at 2× the guideline, the next feature proposal should face the "does
-a thin harness need this?" question with real suspicion, and a proposal that
-adds a *third* identity mechanism should probably be answered by
-consolidating the first two instead. Recount with:
+ready:/PENDING, the transition log, multi-session driver ownership, the two
+stop-boundary hooks, and k-way `on_pass` routing landed. Each was
+individually justified and none is obviously removable, which is exactly the
+shape of drift ADR-0001 says to watch: at 2× the guideline, the next feature
+proposal should face the "does a thin harness need this?" question with real
+suspicion, and a proposal that adds a *third* identity mechanism should
+probably be answered by consolidating the first two instead. Recount with:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
@@ -70,9 +70,9 @@ lines.
 | `src/cli.ts` | argv parsing, command dispatch, printing, process exit code | routing rules, YAML schema |
 | `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types | state.json, gates, git |
 | `src/state.ts` | read/write `state.json` (atomic write); owns the state shape | routing rules, YAML |
-| `src/gate.ts` | run one phase's checks (shell, env, timeout, output tail) | routing, state, git |
+| `src/gate.ts` | run one phase's checks (shell, env, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
 | `src/treehash.ts` | working-tree fingerprint for the attempts cache; all git interaction | everything else |
-| `src/engine.ts` | the transition function: (workflow, state, gate result) → (new state, outcome). The ONLY place routing rules live | child_process, printing |
+| `src/engine.ts` | the transition function: (workflow, state, gate result, resolved route) → (new state, outcome). The ONLY place routing rules live — a resolved route arrives as data and is applied here, never evaluated here | child_process, printing |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block | workflow.yaml, gates |
 
@@ -92,7 +92,10 @@ unceremonious channel, not part of that contract.
    evaluation of this same phase, reprint the cached RETRY without counting
    an attempt (ADR-0004).
 5. Run the current phase's checks in order; stop at the first failure.
-6. Route per the transition table (ADR-0002), persist state, print the
+6. If they all passed and this phase's `on_pass` is a list of routes, run
+   the routes' `when:` commands in order and resolve which one matched
+   (ADR-0011). A `when:` that could not be run at all → exit 3.
+7. Route per the transition table (ADR-0002), persist state, print the
    outcome, exit with the contract code.
 
 ## Where the intelligence lives
@@ -123,3 +126,4 @@ outside it:
 - [ADR-0008](adr/0008-multi-session-ownership.md) — multi-session runs: driver ownership, observers, `status`
 - [ADR-0009](adr/0009-claim-handshake.md) — the claim handshake (superseded by ADR-0010)
 - [ADR-0010](adr/0010-subagent-stop-identity.md) — sealing driver identity on `SubagentStop`
+- [ADR-0011](adr/0011-k-way-routing-on-pass.md) — k-way routing on `on_pass`: `when:`/`to:` routes, and unreachable phases as warnings

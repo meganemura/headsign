@@ -16,6 +16,7 @@ record the reasoning each choice rests on.
 | [0008](0008-multi-session-ownership.md) | Multi-session runs — driver ownership stamped on `start`/`next`, the Stop hook's owner-match and observer opt-out, and the read-only `status` command |
 | [0009](0009-claim-handshake.md) | The claim handshake — session identity is hook-side knowledge; `headsign claim`, the Stop hook's adoption gate, and sticky `claimed` ownership *(superseded by 0010)* |
 | [0010](0010-subagent-stop-identity.md) | Sealing driver identity on `SubagentStop` — the event ADR-0009 got wrong; the delegated-agent backstop, and why `driver_source` already says which kind of identifier is stored |
+| [0011](0011-k-way-routing-on-pass.md) | k-way routing on `on_pass` — a list of `when:`/`to:` routes, why a per-check `on_fail` was refused, why a broken `when:` stops the run, and unreachable phases demoted to warnings |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

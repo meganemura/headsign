@@ -51,6 +51,11 @@ Fix the failure above, then run `headsign next` again.
 - **Claude stays in charge.** Unlike outer-loop runners that invoke the LLM as
   a subordinate, headsign is a place Claude asks a question, not a process
   that owns Claude.
+- **The harness is not the ceiling.** headsign has no opinion about what your
+  phases are: it ships no view of how work should be shaped. The graph lives
+  in a file, and it can be rewritten between runs — by you, or by your agent.
+  As judgment about how to shape work keeps improving, the thing that changes
+  should be the graph, not the tool it asks.
 
 ## Install (Claude Code plugin)
 
@@ -318,6 +323,14 @@ without having to repeat the name. With no run present, it falls back to
 `.headsign/workflow.yaml`, as before. An explicit `<name>` or
 `--workflow <path>` always wins over both.
 
+`validate` separates errors from **warnings**: an error is a workflow
+headsign refuses to run (exit 3), while a warning is printed to stderr and
+still exits 0. A phase that no route reaches from `entry` is a warning, so a
+half-written phase or an edge you commented out for a minute doesn't stop
+the run you were in the middle of. `start` prints the warnings too, once,
+while the person who wrote the file is still there; `next` doesn't, because
+it is asked every turn.
+
 `next` answers with a machine-readable first line, then instructions:
 
 | First line | Exit | Meaning |
@@ -337,7 +350,7 @@ probing never costs an attempt.
 
 | Field | Values | Default |
 |---|---|---|
-| `on_pass` | phase name, `$end` | — (required) |
+| `on_pass` | phase name, `$end`, or a list of `when:`/`to:` routes — see [The router pattern](#the-router-pattern) | — (required) |
 | `on_fail` | `retry`, phase name, `$end`, `escalate`, `abort` | `retry` |
 | `max_attempts` | positive int; counts failures of this phase since it last passed | unlimited |
 | `on_exhausted` | `escalate`, `abort` | `escalate` |
@@ -345,8 +358,95 @@ probing never costs an attempt.
 
 Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
 `/bin/sh -c` (first failure stops the gate); phases may set `env:`.
-Deliberately absent: `needs:`, `if:`, `${{ }}`, matrices, triggers — routing
-is decided by pass/fail and nothing else.
+Deliberately absent: `needs:`, `${{ }}`, matrices, triggers. A route's
+`when:` is not `if:` in disguise either — it is a shell command judged by
+its exit code, not an expression to evaluate — so every routing decision is
+still an exit code choosing among destinations you wrote down.
+
+Two of `on_fail`'s values look interchangeable and are not. `retry` keeps
+the run where it is; naming the phase itself sends the run out of the phase
+and back into it, which runs everything entering a phase runs:
+
+| | `on_fail: retry` | `on_fail: <this phase>` |
+|---|---|---|
+| Meaning | stay | leave, then re-enter |
+| `clear:` | not run | runs |
+| tree-hash cache | applies | does not |
+| Answer token | `RETRY` | `ADVANCE` |
+
+So a self-route deletes the artifacts that phase lists under `clear:` and
+drops the cached verdict, meaning the next `headsign next` re-judges rather
+than reprinting. That is exactly what you want when re-entering fresh is the
+point — throwing away a stale review verdict, say — and exactly what you
+don't want when the agent should just keep working on the same failure.
+Reach for `retry` in the second case.
+
+### The router pattern
+
+Some phases exist to decide where the work should go — read the request,
+then send it to the phase that fits. Write that with a list-form `on_pass`:
+each entry has a `when:` (a shell command) and a `to:`, and the last entry,
+which carries no `when:`, is the default. A complete one ships as
+[example.headsign/router.yaml](example.headsign/router.yaml); the shape is:
+
+```yaml
+  classify:
+    description: >
+      Read the request and write exactly one of fix-bug, write-docs, or
+      implement to .headsign/tmp/route.
+    clear: [.headsign/tmp/route]
+    ready: "test -s .headsign/tmp/route"
+    gate:
+      checks:
+        - name: the route names a kind this workflow knows
+          run: "grep -qx -e fix-bug -e write-docs -e implement .headsign/tmp/route"
+    on_pass:
+      - when: "grep -qx fix-bug .headsign/tmp/route"
+        to: fix-bug
+      - when: "grep -qx write-docs .headsign/tmp/route"
+        to: write-docs
+      - to: implement          # no when: — the default, and always last
+```
+
+The rules, in full:
+
+- Routes are resolved **after** the gate passes, and never on the failure
+  path. A router phase whose own gate fails is an ordinary failing phase.
+- The `when:` commands run in order, and the **first one to exit 0** wins.
+  If none matches, the last entry's `to:` is used.
+- `when:` inherits the phase's `env:` and takes an optional `timeout:`
+  (seconds, default 120) — the same treatment a check gets.
+- `to:` names a phase or `$end`.
+- `validate` rejects a list whose last entry has a `when:` (nothing would
+  be the default) and one whose earlier entry lacks one (everything after
+  it would be unreachable).
+- If a `when:` **can't be run at all** — it fails to spawn, or times out —
+  headsign stops with exit 3 and transitions nowhere, rather than falling
+  through to the default. A non-zero exit is an answer ("not this one"); a
+  command that never ran is not, and the thing being decided here is where
+  the run goes next.
+
+An `ADVANCE` reached this way gains one line naming the route that was taken
+(`--- routed: when "grep -qx fix-bug .headsign/tmp/route" → fix-bug ---`, or
+`--- routed: default → implement ---`), and that transition's `.headsign/log`
+entry records the same, so a run's history says why it went this way rather
+than that one. A route to `$end` ends the run with the usual `COMPLETE`, and
+a plain string `on_pass` prints and logs exactly what it always did.
+
+**The judgment is the agent's; the transition is headsign's.** The agent
+decides by writing a file; headsign decides by running the commands you
+wrote and reading their exit codes. It never takes a phase name out of the
+agent's output or out of that file: what the agent writes can only pick
+among the destinations the workflow file already declares, and cannot name
+one that isn't there. Something unexpected in the file lands on the default,
+or fails the phase's gate first if you check the file's shape there, as the
+example above does.
+
+**Keep `when:` a cheap predicate, and keep it free of side effects.** Routes
+run on the success path — the fast path through your workflow — and several
+of them can run before one matches. Expensive or consequential work belongs
+in the gate, which runs once and reports what failed; the routes should do
+no more than read the cheap artifact the gate already checked.
 
 ### Async review (when review takes a while)
 
@@ -632,6 +732,49 @@ race that remains are in
 asked to drive the run should reach for `headsign status`, never `headsign
 next` or `headsign abort`.
 
+## Nodes, edges, and state
+
+A workflow file describes a **control graph**: it says where the work goes
+next, and nothing else. It is not a knowledge graph — it holds no facts
+about your domain — and not an execution trace, since it is written before
+the run and the run's own history goes to `.headsign/log`. If you already
+think in graph terms, the vocabulary maps over like this:
+
+| Graph term | In headsign |
+|---|---|
+| node | a phase |
+| edge | `on_pass`, `on_fail` |
+| conditional k-way branch | a list of `when:`/`to:` routes on `on_pass` |
+| the condition an edge is taken under | the gate — shell exit codes |
+| state kept outside the model | `.headsign/state.json` |
+| bounded cycle | `max_attempts`, `limits.max_total_iterations` |
+| handing the decision back to a person | `ESCALATE` |
+| the path a run actually took | `.headsign/log` |
+
+Being a graph is not itself an achievement, so here is a plain scorecard of
+what it adds over a loop that just re-prompts until the model says it's
+done:
+
+- **Independent verification: yes, as far as your checks are independent.**
+  The transition is decided by commands in the workflow file, not by the
+  working agent's own report, and a review phase can put the verdict in a
+  read-only reviewer's hands instead. How far that goes — hard, semi, and
+  soft gates — is [ADR-0007](docs/adr/0007-verdict-authorship.md).
+- **A human approval gate: yes.** `ESCALATE` hands the decision back to a
+  person, and a phase whose gate reads a decision file only a person writes
+  holds the run until they write it (the release workflow in
+  [example.headsign/](example.headsign/) is exactly that).
+- **Parallel branches: no, deliberately.** One active phase per run; a k-way
+  branch chooses one destination and never fans out. Composing parallelism
+  outside a run is covered under
+  [What headsign is not](#what-headsign-is-not).
+
+If your work is a straight line, you don't need branching, and adding it
+buys nothing — a chain of phases is a complete workflow. What the graph is
+still doing for you there is holding the stopping condition: `$end`,
+`max_attempts`, and `limits.max_total_iterations` are what make a loop end
+for a stated reason rather than when someone gets bored of it.
+
 ## What headsign is not
 
 Read this before adopting — the boundaries are the design.
@@ -652,8 +795,17 @@ Read this before adopting — the boundaries are the design.
   cross-run dashboard. Not *managing* worktrees isn't the same as not
   working in one, though: a run started in a worktree stays entirely its
   own — one worktree, one independent run (see
-  [Quick start](#quick-start)). If the harness needs to be clever, the
-  cleverness is in the wrong place.
+  [Quick start](#quick-start)). Branching doesn't change that: a
+  [router](#the-router-pattern) picks one destination, never several, and
+  nothing inside a run ever advances two phases at once. Where you do want
+  work happening in parallel, compose it a level up — one worktree, one
+  run — and have a parent run's join phase gate on what the child runs left
+  behind, whether that's their terminal `.headsign/state.json` or an
+  artifact you had them write; to a gate it is all just files to inspect.
+  Setting those worktrees up, starting the child runs, and cleaning up
+  afterwards stays yours: headsign doesn't create them, coordinate them, or
+  aggregate their state. If the harness needs to be clever, the cleverness
+  is in the wrong place.
 - **It doesn't run on native Windows.** Checks execute via `/bin/sh`
   (POSIX); WSL works fine.
 

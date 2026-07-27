@@ -88,7 +88,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    instructions of the new phase. If `ADVANCE <phase>` is followed by a line
    like `--- gate failed: ... → routed to <phase> ---`, the *previous*
    phase's gate rejected the work and routed you here — read that line, it's
-   why you're back.
+   why you're back. A line like `--- routed: when "<command>" → <phase> ---`
+   (or `--- routed: default → <phase> ---`) means the opposite: the previous
+   phase *passed*, and its `on_pass` routes chose this phase; the quoted
+   command is the condition that matched. Either way, the phase you were
+   sent to is the one printed on line 1 — read the line, don't infer the
+   move.
 6. **Never end the run on your own judgment while the answer is anything
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to
@@ -126,6 +131,30 @@ plugin or `npm install` the package. Do not guess at other paths.
   (unknown command, wrong directory, a workflow that no longer defines the
   current phase, another `next` already running). Fix the invocation, the
   directory, or the workflow file; don't loop-retry on it.
+- **You can write the workflow too, not just run it.** A workflow is one
+  YAML file; `headsign validate --workflow <path>` checks it statically —
+  no gate runs, no state is touched — so drafting or editing one is safe at
+  any time. Errors (exit 3) must be fixed; warnings print to stderr and
+  still exit 0, so a phase nothing routes to yet won't stop the run you are
+  in.
+- **A phase can branch to one of several phases.** Its `on_pass` is then a
+  list instead of a phase name: each entry has a `when:` shell command and a
+  `to:`, the first `when:` that exits 0 decides where the run goes, and the
+  last entry — the one with no `when:` — is the default. Routes are read
+  only after the gate passes. If you are the one writing such a phase, keep
+  every `when:` a cheap, side-effect-free predicate (typically a `grep` of a
+  file the gate already checked): they run on the success path and several
+  may run before one matches, so put the real work in the gate. A `when:`
+  that cannot run at all — bad command, timeout — stops the run with exit 3
+  rather than guessing a destination; fix the command.
+- **`on_fail: retry` and `on_fail: <this same phase>` are not the same
+  thing.** `retry` stays in the phase: you keep working on the same failure,
+  and an unchanged tree reprints the verdict instead of costing an attempt.
+  Naming the phase itself leaves and re-enters it, which prints `ADVANCE`,
+  runs that phase's `clear:` (deleting the files it lists), and drops the
+  cached verdict. Re-entering is right when starting the phase fresh is the
+  point — a stale review verdict has to go — and wrong when the work should
+  simply continue.
 - `headsign status` is a different kind of command, on purpose: it never
   judges, so its first-line vocabulary is separate from `next`'s tokens —
   `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED`, capitalized like a

@@ -28,7 +28,11 @@ order, plus an explicit refusal list.
 - `needs:` / `requires:` — DAG/parallelism is the on-ramp to reinventing
   takt. headsign is a single-active-phase state machine.
 - `${{ }}` expressions and `if:` — expression languages always metastasize.
-  Routing is decided by gate pass/fail, a boolean, nothing else.
+  Every routing decision is a shell exit code, never an expression headsign
+  evaluates itself. ADR-0011 later widened *how many* destinations that can
+  choose between — `on_pass` may list `when:`/`to:` routes — but a `when:`
+  is the same kind of thing a gate check is: a command, judged by its exit
+  status. Nothing here parses a condition.
 - `uses:` / orbs — reuse mechanisms have gravity.
 - `on:` triggers — the trigger is always Claude itself.
 - matrix — no.
@@ -65,7 +69,7 @@ phases:                 # required, at least one
         - name: …       # optional; defaults to the run string
           run: "…"      # required; /bin/sh -c, judged by exit code
           timeout: 300  # optional seconds, default 120
-    on_pass: implement  # required: phase name | $end
+    on_pass: implement  # required: phase name | $end | list of when:/to: routes (ADR-0011)
     on_fail: retry      # optional: retry(default) | phase | $end | escalate | abort
     max_attempts: 3     # optional; absent = unlimited
     on_exhausted: escalate  # optional: escalate(default) | abort
