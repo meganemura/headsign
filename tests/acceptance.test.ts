@@ -40,12 +40,6 @@ function writeFile(dir: string, relPath: string, content: string): void {
   fs.writeFileSync(full, content);
 }
 
-function touchChange(dir: string): void {
-  // A distinct untracked file each call, so the tree-hash cache (ADR-0004) never
-  // swallows the next `next` call as "unchanged" when a real change is intended.
-  fs.writeFileSync(path.join(dir, `touch-${Date.now()}-${Math.random().toString(36).slice(2)}`), "x");
-}
-
 function readState(dir: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8"));
 }
@@ -125,12 +119,12 @@ phases:
   );
   run(["start"], { cwd: dir });
 
-  touchChange(dir);
   const first = run(["next"], { cwd: dir });
   assert.equal(first.status, 1);
   assert.match(first.stdout, /^RETRY 1\/2 implement\n/);
 
-  touchChange(dir);
+  // Nothing is touched between the two calls: asking a second time is a second judgment,
+  // which is what carries this run into exhaustion rather than leaving it stuck.
   const second = run(["next"], { cwd: dir });
   assert.equal(second.status, 2);
   assert.match(second.stdout, /^ESCALATE/);
@@ -205,22 +199,22 @@ phases:
   assert.equal(run(["stop-hook"], { cwd: dir, input: "{}" }).status, 0);
 });
 
-// --- 4. cache: two `next` calls with no tree change between them ---
+// --- 4. two `next` calls with nothing changed between them ---
 
-test("cache: a second next on an unchanged tree reprints (unchanged) and leaves state.json untouched", () => {
+test("asked twice with nothing changed: the second next is a second real verdict, and the gate ran both times", () => {
   const dir = initRepo();
   writeWorkflow(
     dir,
     `
 version: 1
-name: cache-demo
+name: judge-every-time
 entry: build
 phases:
   build:
     description: "Build."
     gate:
       checks:
-        - run: "false"
+        - run: "echo run >> gate-runs.txt; false"
     on_pass: "$end"
 `,
   );
@@ -229,12 +223,12 @@ phases:
   const first = run(["next"], { cwd: dir });
   assert.equal(first.status, 1);
   assert.match(first.stdout, /^RETRY 1 build\n/);
-  const stateAfterFirst = readState(dir);
 
   const second = run(["next"], { cwd: dir }); // no filesystem change since `first`
   assert.equal(second.status, 1);
-  assert.match(second.stdout, /^RETRY 1 build \(unchanged\)\n/);
-  assert.deepEqual(readState(dir), stateAfterFirst); // cached path never rewrites state.json
+  assert.match(second.stdout, /^RETRY 2 build\n/);
+  assert.equal((readState(dir).attempts as Record<string, number>).build, 2);
+  assert.equal(fs.readFileSync(path.join(dir, "gate-runs.txt"), "utf8"), "run\nrun\n");
 });
 
 // --- 6 (remainder): stop-hook with no .headsign/ at all ---

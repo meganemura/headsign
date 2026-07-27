@@ -6,7 +6,6 @@ import path from "node:path";
 import * as workflowMod from "./workflow.ts";
 import * as state from "./state.ts";
 import * as gate from "./gate.ts";
-import * as treehash from "./treehash.ts";
 import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
@@ -95,7 +94,7 @@ function printOutcome(outcome: engine.Outcome, workflowName: string, ctx?: { wf:
     case "COMPLETE":
       return exitAfter(render.complete(workflowName), 0);
     case "RETRY":
-      return exitAfter(render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure, cached: outcome.cached }), 1);
+      return exitAfter(render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure }), 1);
     case "ESCALATE":
       return exitAfter(render.escalate(outcome.reason), 2);
     case "ABORT":
@@ -176,7 +175,7 @@ function cmdStart(args: string[]): void {
   const startSid = session.resolveSessionId(process.env);
   const freshState: state.State = {
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
-    attempts: {}, total_iterations: 0, last_eval: null, end_reason: null, stop_nudges: 0,
+    attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
     driver_session: startSid,
     driver_source: startSid !== null ? "env" : null,
   };
@@ -195,8 +194,8 @@ function cmdStart(args: string[]): void {
   exitAfter(render.start(wf.entry, wf.phases[wf.entry].description, cleared), 0);
 }
 
-// Runs the real evaluation (phase-missing guard, iteration limit, cache check, ready
-// probe, gate, step/writeState) while cmdNext holds the lock. Returns the outcome instead
+// Runs the real evaluation (phase-missing guard, iteration limit, ready probe, gate,
+// step/writeState) while cmdNext holds the lock. Returns the outcome instead
 // of printing it: printOutcome calls process.exit, and the lock must be released before
 // that happens (see releaseLock calls below and in cmdNext's caller). `cleared` is only
 // ever set alongside an ADVANCE outcome.
@@ -216,16 +215,10 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
     return { outcome: limitHit.outcome };
   }
 
-  const hash = treehash.treeHash(cwd);
-  if (engine.shouldUseCache(current, hash)) return { outcome: engine.cachedRetry(wf, current) };
-
   const phase = wf.phases[current.phase];
-  // Ready probe: after the cache check, before the gate. The two are structurally
-  // exclusive — shouldUseCache only ever fires on a previously FAILED, cached verdict
-  // (last_eval), and no verdict can exist yet for a phase that was never ready to judge
-  // in the first place. Not ready -> PENDING without touching state.json at all (no
-  // writeState on this path): "stay put, don't count it" — the cell the transition table
-  // was missing.
+  // Ready probe: before the gate, and the one path that answers without judging. Not
+  // ready -> PENDING without touching state.json at all (no writeState on this path):
+  // "stay put, don't count it" — the cell the transition table was missing.
   if (phase.ready !== undefined && !gate.isReady(phase.ready, cwd, phase.env)) {
     return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
   }
@@ -254,7 +247,7 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
     route = resolution;
   }
 
-  const { state: nextState, outcome } = engine.step(wf, current, gateResult, hash, route);
+  const { state: nextState, outcome } = engine.step(wf, current, gateResult, route);
   let cleared: string[] | undefined;
   if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   state.writeState(cwd, nextState);
@@ -388,10 +381,13 @@ function cmdStatus(): void {
   const phase = wf?.phases[current.phase];
   const attempt = current.attempts[current.phase] ?? 0;
 
-  const lastEval = current.last_eval;
+  // `?? null` rather than reading the field straight: a state.json written before this
+  // field was renamed has no `last_failure` at all, and `undefined !== null` is true — the
+  // guard below would pass and then dereference nothing.
+  const recorded = current.last_failure ?? null;
   const lastFailure =
-    lastEval !== null && lastEval.phase === current.phase
-      ? { check: lastEval.check, run: lastEval.run, exitCode: lastEval.exit_code, timeoutSeconds: lastEval.timeout_seconds, outputTail: lastEval.output_tail }
+    recorded !== null && recorded.phase === current.phase
+      ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail }
       : null;
 
   // Never print the session id itself (nothing here is material for impersonation) —

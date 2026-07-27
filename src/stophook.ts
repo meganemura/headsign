@@ -73,8 +73,9 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-      // Consume the note: leaving it in place would turn a one-time note into a
-      // permanent free pass, the same staleness bug a stale cached verdict would be.
+      // Consume the note: leaving it in place would turn a one-time note into a permanent
+      // free pass — the same staleness a `clear:`-less verdict file has, one answer outliving
+      // the question it was written for.
       fs.rmSync(notePath, { force: true });
       const pausedState = { ...state, stop_nudges: 0 };
       writeState(runDir, pausedState);

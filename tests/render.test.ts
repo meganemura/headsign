@@ -70,7 +70,7 @@ test("the routed line sits where the gate-failed line sits: after the cleared bl
   assert.equal(actual, expected);
 });
 
-test("retry: fresh attempt with maxAttempts shows N/M, no unchanged, no cached note", () => {
+test("retry: an attempt with maxAttempts shows N/M", () => {
   const actual = render.retry({
     check: "tests",
     run: "npm test",
@@ -79,13 +79,12 @@ test("retry: fresh attempt with maxAttempts shows N/M, no unchanged, no cached n
     attempt: 1,
     maxAttempts: 3,
     outputTail: "some output",
-    cached: false,
   });
   const expected = `RETRY 1/3 build\n--- gate failed: tests (npm test, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
   assert.equal(actual, expected);
 });
 
-test("retry: no maxAttempts shows bare attempt number, fresh (not cached)", () => {
+test("retry: no maxAttempts shows a bare attempt number", () => {
   const actual = render.retry({
     check: "tests",
     run: "npm test",
@@ -94,24 +93,8 @@ test("retry: no maxAttempts shows bare attempt number, fresh (not cached)", () =
     attempt: 2,
     maxAttempts: undefined,
     outputTail: "some output",
-    cached: false,
   });
   const expected = `RETRY 2 build\n--- gate failed: tests (npm test, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
-  assert.equal(actual, expected);
-});
-
-test("retry: cached adds (unchanged) to the header and the cached note to the gate-failed line", () => {
-  const actual = render.retry({
-    check: "tests",
-    run: "npm test",
-    exitCode: 1,
-    phase: "build",
-    attempt: 2,
-    maxAttempts: undefined,
-    outputTail: "some output",
-    cached: true,
-  });
-  const expected = `RETRY 2 build (unchanged)\n--- gate failed: tests (npm test, exit 1) [cached — tree unchanged, attempt not counted] ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
   assert.equal(actual, expected);
 });
 
@@ -125,7 +108,6 @@ test("retry: timeout exit code renders the timed-out clause", () => {
     attempt: 2,
     maxAttempts: undefined,
     outputTail: "some output",
-    cached: false,
   });
   const expected = `RETRY 2 build\n--- gate failed: tests (npm test, timed out after 5s) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
   assert.equal(actual, expected);
@@ -315,7 +297,7 @@ function baseState(overrides: Partial<State> = {}): State {
     phase: "build",
     attempts: {},
     total_iterations: 0,
-    last_eval: null,
+    last_failure: null,
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,
@@ -330,13 +312,13 @@ test("logLine: start", () => {
 });
 
 test("logLine: retry", () => {
-  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 1, maxAttempts: 3, failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x" }, cached: false };
+  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 1, maxAttempts: 3, failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x" } };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
   assert.equal(line, `ts retry build a=1 i=1 check="tests" exit=1\n`);
 });
 
 test("logLine: retry with a timeout exit code", () => {
-  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 2, failure: { check: "tests", run: "npm test", exitCode: "timeout" as const, outputTail: "x", timeoutSeconds: 5 }, cached: false };
+  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 2, failure: { check: "tests", run: "npm test", exitCode: "timeout" as const, outputTail: "x", timeoutSeconds: 5 } };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 2 }, total_iterations: 4 }));
   assert.equal(line, `ts retry build a=2 i=4 check="tests" exit=timeout\n`);
 });

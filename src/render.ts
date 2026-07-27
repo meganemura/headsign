@@ -50,11 +50,9 @@ export function pending(phase: string, description: string, ready: string): stri
   );
 }
 
-export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string; cached: boolean }): string {
+export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string }): string {
   const n = o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
-  const unchanged = o.cached ? " (unchanged)" : "";
-  const cachedNote = o.cached ? " [cached — tree unchanged, attempt not counted]" : "";
-  return `RETRY ${n} ${o.phase}${unchanged}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)})${cachedNote} ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
+  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)}) ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
 }
 
 export function complete(name: string): string {
@@ -117,9 +115,9 @@ export function statusRunning(o: {
   // than guess at a limit that can't actually be resolved right now.
   attemptUnknown: boolean;
   workflowName: string;
-  // Only set by the caller when state.last_eval is non-null AND belongs to the current
+  // Only set by the caller when state.last_failure is non-null AND belongs to the current
   // phase (cli.ts's job — render.ts doesn't know the state shape's field names); a
-  // last_eval left over from a since-departed phase must never be shown as if it were
+  // last_failure left over from a since-departed phase must never be shown as if it were
   // about now.
   lastFailure?: (Failure & { outputTail: string }) | null;
   // "a delegated agent" (ADR-0010) is distinct from the other three: it's not a match/

@@ -20,7 +20,7 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     phase: "build",
     attempts: {},
     total_iterations: 0,
-    last_eval: null,
+    last_failure: null,
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,

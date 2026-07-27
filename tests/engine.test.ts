@@ -21,7 +21,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     phase,
     attempts: {},
     total_iterations: 0,
-    last_eval: null,
+    last_failure: null,
     end_reason: null,
     stop_nudges: 0,
     driver_session: null,
@@ -37,7 +37,7 @@ const FAIL = (check = "c", run = "r", exitCode: number | "timeout" = 1): GateRes
 
 test("pass routes to the on_pass phase (ADVANCE)", () => {
   const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
-  const { state, outcome } = engine.step(workflow, st("a"), PASS, "hash1");
+  const { state, outcome } = engine.step(workflow, st("a"), PASS);
   assert.equal(state.phase, "b");
   assert.equal(state.status, "running");
   assert.deepEqual(outcome, { kind: "ADVANCE", phase: "b", description: "b" });
@@ -45,30 +45,31 @@ test("pass routes to the on_pass phase (ADVANCE)", () => {
 
 test("pass to $end completes the workflow", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state, outcome } = engine.step(workflow, st("a"), PASS, null);
+  const { state, outcome } = engine.step(workflow, st("a"), PASS);
   assert.equal(state.status, "complete");
   assert.deepEqual(outcome, { kind: "COMPLETE" });
 });
 
 test("fail defaults to retry", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1), "hashX");
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1));
   assert.equal(state.status, "running");
   assert.equal(state.attempts.a, 1);
-  assert.equal(state.last_eval?.tree_hash, "hashX");
+  assert.deepEqual(state.last_failure, {
+    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", timeout_seconds: undefined,
+  });
   assert.deepEqual(outcome, {
     kind: "RETRY",
     phase: "a",
     attempt: 1,
     maxAttempts: undefined,
     failure: { check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined },
-    cached: false,
   });
 });
 
 test("fail routes to a named phase (ADVANCE with failure note); attempts of the failed phase are retained", () => {
   const workflow = wf({ review: { on_pass: "$end", on_fail: "implement" }, implement: { on_pass: "review" } });
-  const { state, outcome } = engine.step(workflow, st("review", { attempts: { review: 1 } }), FAIL("lint", "eslint", 2), null);
+  const { state, outcome } = engine.step(workflow, st("review", { attempts: { review: 1 } }), FAIL("lint", "eslint", 2));
   assert.equal(state.phase, "implement");
   assert.equal(state.attempts.review, 2);
   assert.deepEqual(outcome, {
@@ -81,7 +82,7 @@ test("fail routes to a named phase (ADVANCE with failure note); attempts of the 
 
 test("fail routes to escalate", () => {
   const workflow = wf({ a: { on_pass: "$end", on_fail: "escalate" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL(), null);
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
   assert.equal(state.status, "escalated");
   assert.equal(state.end_reason, "a: gate failed (on_fail: escalate)");
   assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: gate failed (on_fail: escalate)" });
@@ -89,22 +90,22 @@ test("fail routes to escalate", () => {
 
 test("fail routes to abort", () => {
   const workflow = wf({ a: { on_pass: "$end", on_fail: "abort" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL(), null);
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
   assert.equal(state.status, "aborted");
   assert.deepEqual(outcome, { kind: "ABORT", reason: "a: gate failed (on_fail: abort)" });
 });
 
 test("fail routes to $end (COMPLETE)", () => {
   const workflow = wf({ a: { on_pass: "$end", on_fail: "$end" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL(), null);
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
   assert.equal(state.status, "complete");
   assert.deepEqual(outcome, { kind: "COMPLETE" });
 });
 
 test("exhaustion escalates by default", () => {
   const workflow = wf({ a: { on_pass: "$end", max_attempts: 2 } });
-  const s1 = engine.step(workflow, st("a"), FAIL(), null).state;
-  const { state, outcome } = engine.step(workflow, s1, FAIL(), null);
+  const s1 = engine.step(workflow, st("a"), FAIL()).state;
+  const { state, outcome } = engine.step(workflow, s1, FAIL());
   assert.equal(state.attempts.a, 2);
   assert.equal(state.status, "escalated");
   assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: max_attempts (2) exhausted" });
@@ -112,7 +113,7 @@ test("exhaustion escalates by default", () => {
 
 test("exhaustion aborts when on_exhausted: abort", () => {
   const workflow = wf({ a: { on_pass: "$end", max_attempts: 1, on_exhausted: "abort" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL(), null);
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
   assert.equal(state.status, "aborted");
   assert.deepEqual(outcome, { kind: "ABORT", reason: "a: max_attempts (1) exhausted" });
 });
@@ -122,22 +123,22 @@ test("exhaustion aborts when on_exhausted: abort", () => {
 test("attempts accumulate per-phase across bounces and escalate on the third failure", () => {
   const workflow = wf({ implement: { on_pass: "review" }, review: { on_pass: "$end", on_fail: "implement", max_attempts: 3 } });
   let s = st("implement");
-  ({ state: s } = engine.step(workflow, s, PASS, null));
+  ({ state: s } = engine.step(workflow, s, PASS));
   assert.equal(s.phase, "review");
 
-  ({ state: s } = engine.step(workflow, s, FAIL(), null));
+  ({ state: s } = engine.step(workflow, s, FAIL()));
   assert.equal(s.phase, "implement");
   assert.equal(s.attempts.review, 1);
 
-  ({ state: s } = engine.step(workflow, s, PASS, null));
+  ({ state: s } = engine.step(workflow, s, PASS));
   assert.equal(s.attempts.review, 1);
 
-  ({ state: s } = engine.step(workflow, s, FAIL(), null));
+  ({ state: s } = engine.step(workflow, s, FAIL()));
   assert.equal(s.attempts.review, 2);
   assert.equal(s.status, "running");
 
-  ({ state: s } = engine.step(workflow, s, PASS, null));
-  const { state: finalState, outcome } = engine.step(workflow, s, FAIL(), null);
+  ({ state: s } = engine.step(workflow, s, PASS));
+  const { state: finalState, outcome } = engine.step(workflow, s, FAIL());
   assert.equal(finalState.attempts.review, 3);
   assert.equal(finalState.status, "escalated");
   assert.deepEqual(outcome, { kind: "ESCALATE", reason: "review: max_attempts (3) exhausted" });
@@ -145,7 +146,7 @@ test("attempts accumulate per-phase across bounces and escalate on the third fai
 
 test("attempts are cleared only when that phase's own gate passes", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state } = engine.step(workflow, st("a", { attempts: { a: 5 } }), PASS, null);
+  const { state } = engine.step(workflow, st("a", { attempts: { a: 5 } }), PASS);
   assert.equal(state.attempts.a, undefined);
 });
 
@@ -171,41 +172,41 @@ const ROUTED = { a: { on_pass: [{ when: "w1", to: "b" }, { when: "w2", to: "c" }
 
 test("a matched route sends the pass to that route's target and names the when in routedBy", () => {
   const workflow = wf(ROUTED);
-  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "matched", to: "c", when: "w2" });
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, { kind: "matched", to: "c", when: "w2" });
   assert.equal(state.phase, "c");
   assert.deepEqual(outcome, { kind: "ADVANCE", phase: "c", description: "c", routedBy: { when: "w2" } });
 });
 
 test("a default resolution sends the pass to the default target and marks routedBy as default", () => {
   const workflow = wf(ROUTED);
-  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "default", to: "d" });
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, { kind: "default", to: "d" });
   assert.equal(state.phase, "d");
   assert.deepEqual(outcome, { kind: "ADVANCE", phase: "d", description: "d", routedBy: { default: true } });
 });
 
 test("a route to $end completes the workflow, same as the string form", () => {
   const workflow = wf({ a: { on_pass: [{ when: "w1", to: "b" }, { to: "$end" }] }, b: { on_pass: "$end" } });
-  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "matched", to: "$end", when: "w1" });
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, { kind: "matched", to: "$end", when: "w1" });
   assert.equal(state.status, "complete");
   assert.deepEqual(outcome, { kind: "COMPLETE" });
 });
 
 test("a routed pass clears the phase's attempts like any other pass", () => {
   const workflow = wf(ROUTED);
-  const { state } = engine.step(workflow, st("a", { attempts: { a: 2 } }), PASS, null, { kind: "default", to: "d" });
+  const { state } = engine.step(workflow, st("a", { attempts: { a: 2 } }), PASS, { kind: "default", to: "d" });
   assert.deepEqual(state.attempts, {});
 });
 
 test("a string on_pass ignores any resolution handed to it and adds no routedBy key", () => {
   const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
-  const { state, outcome } = engine.step(workflow, st("a"), PASS, null, { kind: "matched", to: "nowhere", when: "w1" });
+  const { state, outcome } = engine.step(workflow, st("a"), PASS, { kind: "matched", to: "nowhere", when: "w1" });
   assert.equal(state.phase, "b");
   assert.deepEqual(outcome, { kind: "ADVANCE", phase: "b", description: "b" });
 });
 
 test("a failing gate never consults the route list: on_fail decides, and routedBy stays absent", () => {
   const workflow = wf({ ...ROUTED, a: { on_pass: ROUTED.a.on_pass, on_fail: "d" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL("lint", "eslint", 2), null);
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL("lint", "eslint", 2));
   assert.equal(state.phase, "d");
   assert.deepEqual(outcome, {
     kind: "ADVANCE",
@@ -217,45 +218,50 @@ test("a failing gate never consults the route list: on_fail decides, and routedB
 
 test("a k-way pass with no resolution throws rather than guessing a destination", () => {
   const workflow = wf(ROUTED);
-  assert.throws(() => engine.step(workflow, st("a"), PASS, null), /no resolution/);
+  assert.throws(() => engine.step(workflow, st("a"), PASS), /no resolution/);
 });
 
-// --- shouldUseCache / cachedRetry (ADR-0004) ---
+// --- last_failure: written on a retry, cleared everywhere else ---
+// It exists for `status` alone (nothing in step() reads it back), so what matters is that a
+// failure the run has moved past can never be shown as if it were current.
 
-test("shouldUseCache matches only on same phase + fail + equal non-null hash", () => {
-  const failEval = { phase: "a", result: "fail" as const, tree_hash: "h1", check: "c", run: "r", exit_code: 1, output_tail: "o" };
-  assert.equal(engine.shouldUseCache(st("a", { last_eval: failEval }), "h1"), true);
-  assert.equal(engine.shouldUseCache(st("b", { last_eval: failEval }), "h1"), false);
-  assert.equal(engine.shouldUseCache(st("a", { last_eval: failEval }), "h2"), false);
-  assert.equal(engine.shouldUseCache(st("a", { last_eval: failEval }), null), false);
-  assert.equal(engine.shouldUseCache(st("a", { last_eval: null }), "h1"), false);
+const STALE: NonNullable<State["last_failure"]> = { phase: "a", check: "c", run: "r", exit_code: 1, output_tail: "o" };
+
+test("a pass clears last_failure", () => {
+  const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
+  const { state } = engine.step(workflow, st("a", { last_failure: STALE }), PASS);
+  assert.equal(state.last_failure, null);
 });
 
-test("cachedRetry reconstructs a RETRY outcome from last_eval", () => {
-  const workflow = wf({ a: { on_pass: "$end", max_attempts: 3 } });
-  const failEval = { phase: "a", result: "fail" as const, tree_hash: "h1", check: "c", run: "r", exit_code: 1, output_tail: "o" };
-  const outcome = engine.cachedRetry(workflow, st("a", { attempts: { a: 1 }, last_eval: failEval }));
-  assert.deepEqual(outcome, {
-    kind: "RETRY",
-    phase: "a",
-    attempt: 1,
-    maxAttempts: 3,
-    failure: { check: "c", run: "r", exitCode: 1, timeoutSeconds: undefined, outputTail: "o" },
-    cached: true,
-  });
+test("a fail routed to another phase clears last_failure", () => {
+  const workflow = wf({ a: { on_pass: "$end", on_fail: "b" }, b: { on_pass: "$end" } });
+  const { state } = engine.step(workflow, st("a", { last_failure: STALE }), FAIL());
+  assert.equal(state.phase, "b");
+  assert.equal(state.last_failure, null);
+});
+
+test("a terminal outcome (exhaustion, on_fail: escalate, $end) clears last_failure", () => {
+  const exhausting = wf({ a: { on_pass: "$end", max_attempts: 1 } });
+  assert.equal(engine.step(exhausting, st("a", { last_failure: STALE }), FAIL()).state.last_failure, null);
+
+  const escalating = wf({ a: { on_pass: "$end", on_fail: "escalate" } });
+  assert.equal(engine.step(escalating, st("a", { last_failure: STALE }), FAIL()).state.last_failure, null);
+
+  const ending = wf({ a: { on_pass: "$end", on_fail: "$end" } });
+  assert.equal(engine.step(ending, st("a", { last_failure: STALE }), FAIL()).state.last_failure, null);
 });
 
 // --- stop_nudges loop guard (ADR-0006): step() always resets it, since it only runs on a real evaluation ---
 
 test("step() resets stop_nudges to 0 after a real pass evaluation", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state } = engine.step(workflow, st("a", { stop_nudges: 2 }), PASS, null);
+  const { state } = engine.step(workflow, st("a", { stop_nudges: 2 }), PASS);
   assert.equal(state.stop_nudges, 0);
 });
 
 test("step() resets stop_nudges to 0 after a real fail evaluation", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state } = engine.step(workflow, st("a", { stop_nudges: 3 }), FAIL(), null);
+  const { state } = engine.step(workflow, st("a", { stop_nudges: 3 }), FAIL());
   assert.equal(state.stop_nudges, 0);
 });
 
@@ -265,19 +271,19 @@ test("step() resets stop_nudges to 0 after a real fail evaluation", () => {
 
 test("step() carries driver_session through unchanged on a pass (ADVANCE)", () => {
   const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
-  const { state } = engine.step(workflow, st("a", { driver_session: "session-1" }), PASS, null);
+  const { state } = engine.step(workflow, st("a", { driver_session: "session-1" }), PASS);
   assert.equal(state.driver_session, "session-1");
 });
 
 test("step() carries driver_session through unchanged on a fail (RETRY)", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state } = engine.step(workflow, st("a", { driver_session: "session-1" }), FAIL(), null);
+  const { state } = engine.step(workflow, st("a", { driver_session: "session-1" }), FAIL());
   assert.equal(state.driver_session, "session-1");
 });
 
 test("step() carries a null driver_session through unchanged (never invents one)", () => {
   const workflow = wf({ a: { on_pass: "$end" } });
-  const { state } = engine.step(workflow, st("a", { driver_session: null }), PASS, null);
+  const { state } = engine.step(workflow, st("a", { driver_session: null }), PASS);
   assert.equal(state.driver_session, null);
 });
 

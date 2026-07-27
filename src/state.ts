@@ -8,13 +8,19 @@ import path from "node:path";
 
 type Status = "running" | "complete" | "escalated" | "aborted";
 
-export interface LastEval {
-  phase: string; result: "fail"; tree_hash: string | null;
+// Named for what it actually holds: not "the last evaluation" (it is null after a pass, a
+// route, and any terminal outcome — only a *failure* ever lands here) but the last failure
+// headsign observed. The name also matches the one place it surfaces, `status`'s
+// `--- last failure: … ---` block, which is the reason the field exists at all.
+// Not `current_failure`: by the time anyone reads it the agent may have already fixed the
+// failure without running `next`, so headsign can only honestly claim the last one it saw.
+export interface LastFailure {
+  phase: string;
   check: string; run: string; exit_code: number | "timeout"; output_tail: string; timeout_seconds?: number;
 }
 export interface State {
   workflow: string; workflow_path: string; status: Status; phase: string;
-  attempts: Record<string, number>; total_iterations: number; last_eval: LastEval | null;
+  attempts: Record<string, number>; total_iterations: number; last_failure: LastFailure | null;
   end_reason: string | null; stop_nudges: number;
   // Who currently drives this run (ADR-0008/0010). Which *kind* of identifier this holds
   // is decided entirely by driver_source below — read the two together, never this one

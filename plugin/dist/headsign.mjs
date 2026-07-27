@@ -114,17 +114,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path5) {
-      const ctrl = callVisitor(key, node, visitor, path5);
+    function visit_(key, node, visitor, path4) {
+      const ctrl = callVisitor(key, node, visitor, path4);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path5, ctrl);
-        return visit_(key, ctrl, visitor, path5);
+        replaceNode(key, path4, ctrl);
+        return visit_(key, ctrl, visitor, path4);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path5 = Object.freeze(path5.concat(node));
+          path4 = Object.freeze(path4.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path5);
+            const ci = visit_(i, node.items[i], visitor, path4);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -135,13 +135,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path5 = Object.freeze(path5.concat(node));
-          const ck = visit_("key", node.key, visitor, path5);
+          path4 = Object.freeze(path4.concat(node));
+          const ck = visit_("key", node.key, visitor, path4);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path5);
+          const cv = visit_("value", node.value, visitor, path4);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -162,17 +162,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path5) {
-      const ctrl = await callVisitor(key, node, visitor, path5);
+    async function visitAsync_(key, node, visitor, path4) {
+      const ctrl = await callVisitor(key, node, visitor, path4);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path5, ctrl);
-        return visitAsync_(key, ctrl, visitor, path5);
+        replaceNode(key, path4, ctrl);
+        return visitAsync_(key, ctrl, visitor, path4);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path5 = Object.freeze(path5.concat(node));
+          path4 = Object.freeze(path4.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path5);
+            const ci = await visitAsync_(i, node.items[i], visitor, path4);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -183,13 +183,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path5 = Object.freeze(path5.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path5);
+          path4 = Object.freeze(path4.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path4);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path5);
+          const cv = await visitAsync_("value", node.value, visitor, path4);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -216,23 +216,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path5) {
+    function callVisitor(key, node, visitor, path4) {
       if (typeof visitor === "function")
-        return visitor(key, node, path5);
+        return visitor(key, node, path4);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path5);
+        return visitor.Map?.(key, node, path4);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path5);
+        return visitor.Seq?.(key, node, path4);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path5);
+        return visitor.Pair?.(key, node, path4);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path5);
+        return visitor.Scalar?.(key, node, path4);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path5);
+        return visitor.Alias?.(key, node, path4);
       return void 0;
     }
-    function replaceNode(key, path5, node) {
-      const parent = path5[path5.length - 1];
+    function replaceNode(key, path4, node) {
+      const parent = path4[path4.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path5, value) {
+    function collectionFromPath(schema, path4, value) {
       let v = value;
-      for (let i = path5.length - 1; i >= 0; --i) {
-        const k = path5[i];
+      for (let i = path4.length - 1; i >= 0; --i) {
+        const k = path4[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path5) => path5 == null || typeof path5 === "object" && !!path5[Symbol.iterator]().next().done;
+    var isEmptyPath = (path4) => path4 == null || typeof path4 === "object" && !!path4[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path5, value) {
-        if (isEmptyPath(path5))
+      addIn(path4, value) {
+        if (isEmptyPath(path4))
           this.add(value);
         else {
-          const [key, ...rest] = path5;
+          const [key, ...rest] = path4;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path5) {
-        const [key, ...rest] = path5;
+      deleteIn(path4) {
+        const [key, ...rest] = path4;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path5, keepScalar) {
-        const [key, ...rest] = path5;
+      getIn(path4, keepScalar) {
+        const [key, ...rest] = path4;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path5) {
-        const [key, ...rest] = path5;
+      hasIn(path4) {
+        const [key, ...rest] = path4;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path5, value) {
-        const [key, ...rest] = path5;
+      setIn(path4, value) {
+        const [key, ...rest] = path4;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path5, value) {
+      addIn(path4, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path5, value);
+          this.contents.addIn(path4, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path5) {
-        if (Collection.isEmptyPath(path5)) {
+      deleteIn(path4) {
+        if (Collection.isEmptyPath(path4)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path5) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path4) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path5, keepScalar) {
-        if (Collection.isEmptyPath(path5))
+      getIn(path4, keepScalar) {
+        if (Collection.isEmptyPath(path4))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path5, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path4, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path5) {
-        if (Collection.isEmptyPath(path5))
+      hasIn(path4) {
+        if (Collection.isEmptyPath(path4))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path5) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path4) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path5, value) {
-        if (Collection.isEmptyPath(path5)) {
+      setIn(path4, value) {
+        if (Collection.isEmptyPath(path4)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path5), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path4), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path5, value);
+          this.contents.setIn(path4, value);
         }
       }
       /**
@@ -5572,9 +5572,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path5) => {
+    visit.itemAtPath = (cst, path4) => {
       let item = cst;
-      for (const [field, index] of path5) {
+      for (const [field, index] of path4) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5583,23 +5583,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path5) => {
-      const parent = visit.itemAtPath(cst, path5.slice(0, -1));
-      const field = path5[path5.length - 1][0];
+    visit.parentCollection = (cst, path4) => {
+      const parent = visit.itemAtPath(cst, path4.slice(0, -1));
+      const field = path4[path4.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path5, item, visitor) {
-      let ctrl = visitor(item, path5);
+    function _visit(path4, item, visitor) {
+      let ctrl = visitor(item, path4);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path5.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path4.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5610,10 +5610,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path5);
+            ctrl = ctrl(item, path4);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path5) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path4) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs6 = this.flowScalar(this.type);
+              const fs5 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start: start2, key: fs6, sep: [] });
+                map.items.push({ start: start2, key: fs5, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs6);
+                this.stack.push(fs5);
               } else {
-                Object.assign(it, { key: fs6, sep: [] });
+                Object.assign(it, { key: fs5, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs6 = this.flowScalar(this.type);
+              const fs5 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs6, sep: [] });
+                fc.items.push({ start: [], key: fs5, sep: [] });
               else if (it.sep)
-                this.stack.push(fs6);
+                this.stack.push(fs5);
               else
-                Object.assign(it, { key: fs6, sep: [] });
+                Object.assign(it, { key: fs5, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7365,8 +7365,8 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import fs5 from "node:fs";
-import path4 from "node:path";
+import fs4 from "node:fs";
+import path3 from "node:path";
 
 // src/workflow.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -7375,12 +7375,12 @@ var ON_FAIL_TOKENS = /* @__PURE__ */ new Set(["retry", "$end", "escalate", "abor
 var ON_EXHAUSTED_TOKENS = /* @__PURE__ */ new Set(["escalate", "abort"]);
 var isMap = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isPosInt = (v) => typeof v === "number" && Number.isInteger(v) && v > 0;
-function load(path5) {
+function load(path4) {
   let doc;
   try {
-    doc = (0, import_yaml.parse)(fs.readFileSync(path5, "utf8"));
+    doc = (0, import_yaml.parse)(fs.readFileSync(path4, "utf8"));
   } catch (err) {
-    return { workflow: null, errors: [`could not read/parse ${path5}: ${err.message}`], warnings: [] };
+    return { workflow: null, errors: [`could not read/parse ${path4}: ${err.message}`], warnings: [] };
   }
   const { errors, warnings } = validate(doc);
   return errors.length > 0 ? { workflow: null, errors, warnings } : { workflow: doc, errors: [], warnings };
@@ -7659,89 +7659,7 @@ function buildTail(stdout, stderr) {
 ${tail}` : tail;
 }
 
-// src/treehash.ts
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import fs3 from "node:fs";
-import path2 from "node:path";
-function treeHash(cwd) {
-  try {
-    execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  } catch {
-    return null;
-  }
-  const gitRoot = tryOr(
-    () => execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(),
-    cwd
-  );
-  return tryOr(() => sha256([revParseHead(cwd), ...statusEntries(cwd, gitRoot), ...headsignEntries(cwd)].join("\n")), null);
-}
-function revParseHead(cwd) {
-  return tryOr(
-    () => execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(),
-    "no-head"
-  );
-}
-function statusEntries(cwd, gitRoot) {
-  const realCwd = tryOr(() => fs3.realpathSync(cwd), cwd);
-  const excluded = /* @__PURE__ */ new Set([
-    path2.join(realCwd, ".headsign", "state.json"),
-    path2.join(realCwd, ".headsign", "lock"),
-    path2.join(realCwd, ".headsign", "log")
-  ]);
-  const lines = execFileSync("git", ["status", "--porcelain", "-uall"], { cwd, encoding: "utf8" }).split("\n").filter((l) => l.length > 0).sort();
-  const entries = [];
-  for (const line of lines) {
-    const arrow = line.indexOf(" -> ");
-    const filePath = arrow >= 0 ? line.slice(arrow + 4) : line.slice(3);
-    const absPath = path2.join(gitRoot, filePath);
-    if (excluded.has(absPath)) continue;
-    const deleted = line[0] === "D" || line[1] === "D";
-    entries.push(deleted ? line : `${line}:${hashFile(absPath)}`);
-  }
-  return entries;
-}
-function headsignEntries(cwd) {
-  const dir = path2.join(cwd, ".headsign");
-  return listFiles(dir).filter((f) => !["state.json", "lock", "log"].includes(path2.relative(dir, f))).sort().map((f) => `${path2.relative(cwd, f)}:${hashFile(f)}`);
-}
-function listFiles(dir) {
-  const entries = tryOr(() => fs3.readdirSync(dir, { withFileTypes: true }), []);
-  return entries.flatMap((e) => {
-    const full = path2.join(dir, e.name);
-    return e.isDirectory() ? listFiles(full) : e.isFile() ? [full] : [];
-  });
-}
-function hashFile(p) {
-  return tryOr(() => sha256(fs3.readFileSync(p)), "unreadable");
-}
-function tryOr(fn, fallback) {
-  try {
-    return fn();
-  } catch {
-    return fallback;
-  }
-}
-function sha256(data) {
-  return createHash("sha256").update(data).digest("hex");
-}
-
 // src/engine.ts
-function shouldUseCache(state, treeHash2) {
-  const le = state.last_eval;
-  return le !== null && le.result === "fail" && le.phase === state.phase && treeHash2 !== null && le.tree_hash === treeHash2;
-}
-function cachedRetry(workflow, state) {
-  const le = state.last_eval;
-  return {
-    kind: "RETRY",
-    phase: state.phase,
-    attempt: state.attempts[state.phase] ?? 0,
-    maxAttempts: workflow.phases[state.phase].max_attempts,
-    failure: { check: le.check, run: le.run, exitCode: le.exit_code, timeoutSeconds: le.timeout_seconds, outputTail: le.output_tail },
-    cached: true
-  };
-}
 function checkIterationLimit(workflow, state) {
   const limit = workflow.limits?.max_total_iterations;
   if (limit === void 0 || state.total_iterations < limit) return null;
@@ -7758,7 +7676,7 @@ function passTarget(onPass, route) {
   if (route === void 0) throw new Error("step: on_pass is a route list but no resolution was given");
   return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
 }
-function step(workflow, state, gateResult, treeHash2, route) {
+function step(workflow, state, gateResult, route) {
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
   const next = { ...state, attempts: { ...state.attempts } };
@@ -7766,7 +7684,7 @@ function step(workflow, state, gateResult, treeHash2, route) {
   next.stop_nudges = 0;
   if (gateResult.pass) {
     delete next.attempts[phaseName];
-    next.last_eval = null;
+    next.last_failure = null;
     const { to, routedBy } = passTarget(phase.on_pass, route);
     if (to === "$end") {
       next.status = "complete";
@@ -7781,26 +7699,24 @@ function step(workflow, state, gateResult, treeHash2, route) {
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== void 0 && next.attempts[phaseName] >= maxAttempts) {
     const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
-    next.last_eval = null;
+    next.last_failure = null;
     next.end_reason = reason;
     next.status = phase.on_exhausted === "abort" ? "aborted" : "escalated";
     return { state: next, outcome: { kind: next.status === "aborted" ? "ABORT" : "ESCALATE", reason } };
   }
   const onFail = phase.on_fail ?? "retry";
   if (onFail === "retry") {
-    next.last_eval = {
+    next.last_failure = {
       phase: phaseName,
-      result: "fail",
-      tree_hash: treeHash2,
       check: failure.check,
       run: failure.run,
       exit_code: failure.exitCode,
       output_tail: failure.outputTail,
       timeout_seconds: failure.timeoutSeconds
     };
-    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure, cached: false } };
+    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure } };
   }
-  next.last_eval = null;
+  next.last_failure = null;
   if (onFail === "$end") {
     next.status = "complete";
     return { state: next, outcome: { kind: "COMPLETE" } };
@@ -7846,10 +7762,8 @@ This is not a failure. Do the work above so the gate can run, then run \`headsig
 }
 function retry(o) {
   const n = o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
-  const unchanged = o.cached ? " (unchanged)" : "";
-  const cachedNote = o.cached ? " [cached \u2014 tree unchanged, attempt not counted]" : "";
-  return `RETRY ${n} ${o.phase}${unchanged}
---- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)})${cachedNote} ---
+  return `RETRY ${n} ${o.phase}
+--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)}) ---
 ${o.outputTail}
 Fix the failure above, then run \`headsign next\` again.
 `;
@@ -7876,13 +7790,13 @@ function validateOk(name, phaseCount) {
   return `OK: workflow '${name}' (${phaseCount} phases)
 `;
 }
-function validateFail(path5, errors) {
-  return `INVALID: ${path5}
+function validateFail(path4, errors) {
+  return `INVALID: ${path4}
 ${errors.map((e) => `- ${e}
 `).join("")}`;
 }
-function validateWarnings(path5, warnings) {
-  return `WARNING: ${path5}
+function validateWarnings(path4, warnings) {
+  return `WARNING: ${path4}
 ${warnings.map((w) => `- ${w}
 `).join("")}`;
 }
@@ -7969,8 +7883,8 @@ function logDetail(event, prevPhase) {
 }
 
 // src/stophook.ts
-import fs4 from "node:fs";
-import path3 from "node:path";
+import fs3 from "node:fs";
+import path2 from "node:path";
 
 // src/session.ts
 function resolveSessionId(env) {
@@ -7998,9 +7912,9 @@ function resolveHookSessionId(input, env) {
 function findRunDir(startDir) {
   let dir = startDir;
   for (; ; ) {
-    if (fs4.existsSync(statePath(dir))) return dir;
-    if (fs4.existsSync(path3.join(dir, ".git"))) return null;
-    const parent = path3.dirname(dir);
+    if (fs3.existsSync(statePath(dir))) return dir;
+    if (fs3.existsSync(path2.join(dir, ".git"))) return null;
+    const parent = path2.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -8010,13 +7924,13 @@ function pauseAndAbortHint(runDir, startDir) {
   return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
 function noteGateThenNudge(runDir, startDir, state, nowIso) {
-  const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
-  if (fs4.existsSync(notePath)) {
-    const noteRaw = fs4.readFileSync(notePath, "utf8");
+  const notePath = path2.join(runDir, ".headsign", "tmp", "stop-note");
+  if (fs3.existsSync(notePath)) {
+    const noteRaw = fs3.readFileSync(notePath, "utf8");
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-      fs4.rmSync(notePath, { force: true });
+      fs3.rmSync(notePath, { force: true });
       const pausedState = { ...state, stop_nudges: 0 };
       writeState(runDir, pausedState);
       appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
@@ -8065,9 +7979,9 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
     const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
-    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
-    if (fs4.existsSync(claimPath) && agentId !== null) {
-      fs4.rmSync(claimPath, { force: true });
+    const claimPath = path2.join(runDir, ".headsign", "tmp", "claim");
+    if (fs3.existsSync(claimPath) && agentId !== null) {
+      fs3.rmSync(claimPath, { force: true });
       const adoptedState = { ...state, driver_session: agentId, driver_source: "claim", stop_nudges: 0 };
       writeState(runDir, adoptedState);
       appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
@@ -8137,7 +8051,7 @@ function printOutcome(outcome, workflowName, ctx) {
     case "COMPLETE":
       return exitAfter(complete(workflowName), 0);
     case "RETRY":
-      return exitAfter(retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure, cached: outcome.cached }), 1);
+      return exitAfter(retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure }), 1);
     case "ESCALATE":
       return exitAfter(escalate(outcome.reason), 2);
     case "ABORT":
@@ -8152,13 +8066,13 @@ function exitAfter(text, code) {
 }
 function readFileOrEmpty(p) {
   try {
-    return fs5.readFileSync(p, "utf8");
+    return fs4.readFileSync(p, "utf8");
   } catch {
     return "";
   }
 }
 function ensureHeadsignGitignored(cwd) {
-  const gitignorePath = path4.join(cwd, ".headsign", ".gitignore");
+  const gitignorePath = path3.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath);
   let content = original;
   for (const entry of ["state.json", "lock", "log", "tmp/"]) {
@@ -8167,20 +8081,20 @@ function ensureHeadsignGitignored(cwd) {
     content = `${content}${sep}${entry}
 `;
   }
-  if (content !== original) fs5.writeFileSync(gitignorePath, content);
+  if (content !== original) fs4.writeFileSync(gitignorePath, content);
 }
 function clearPhaseArtifacts(cwd, phase) {
   const cleared = [];
   for (const rel of phase.clear ?? []) {
-    const full = path4.join(cwd, rel);
+    const full = path3.join(cwd, rel);
     let removedNonEmptyFile = false;
     try {
-      const st = fs5.statSync(full);
+      const st = fs4.statSync(full);
       removedNonEmptyFile = st.isFile() && st.size > 0;
     } catch {
     }
     try {
-      fs5.rmSync(full, { force: true });
+      fs4.rmSync(full, { force: true });
     } catch {
     }
     if (removedNonEmptyFile) cleared.push(rel);
@@ -8203,7 +8117,7 @@ function cmdStart(args) {
     phase: wf.entry,
     attempts: {},
     total_iterations: 0,
-    last_eval: null,
+    last_failure: null,
     end_reason: null,
     stop_nudges: 0,
     driver_session: startSid,
@@ -8213,9 +8127,9 @@ function cmdStart(args) {
   ensureHeadsignGitignored(cwd);
   initLog(cwd);
   appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "START", workflow: wf.name }, freshState));
-  const tmpDir = path4.join(cwd, ".headsign", "tmp");
-  fs5.rmSync(tmpDir, { recursive: true, force: true });
-  fs5.mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = path3.join(cwd, ".headsign", "tmp");
+  fs4.rmSync(tmpDir, { recursive: true, force: true });
+  fs4.mkdirSync(tmpDir, { recursive: true });
   const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   exitAfter(start(wf.entry, wf.phases[wf.entry].description, cleared), 0);
 }
@@ -8232,8 +8146,6 @@ function evaluateNext(cwd, wf, current) {
     appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), limitHit.outcome, limitHit.state));
     return { outcome: limitHit.outcome };
   }
-  const hash = treeHash(cwd);
-  if (shouldUseCache(current, hash)) return { outcome: cachedRetry(wf, current) };
   const phase = wf.phases[current.phase];
   if (phase.ready !== void 0 && !isReady(phase.ready, cwd, phase.env)) {
     return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
@@ -8250,7 +8162,7 @@ function evaluateNext(cwd, wf, current) {
     }
     route = resolution;
   }
-  const { state: nextState, outcome } = step(wf, current, gateResult, hash, route);
+  const { state: nextState, outcome } = step(wf, current, gateResult, route);
   let cleared;
   if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
   writeState(cwd, nextState);
@@ -8309,9 +8221,9 @@ function cmdClaim() {
   if (current.status !== "running") {
     errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.`);
   }
-  const tmpDir = path4.join(cwd, ".headsign", "tmp");
-  fs5.mkdirSync(tmpDir, { recursive: true });
-  fs5.writeFileSync(path4.join(tmpDir, "claim"), "");
+  const tmpDir = path3.join(cwd, ".headsign", "tmp");
+  fs4.mkdirSync(tmpDir, { recursive: true });
+  fs4.writeFileSync(path3.join(tmpDir, "claim"), "");
   exitAfter(claim(), 0);
 }
 function cmdValidate(args) {
@@ -8331,8 +8243,8 @@ function cmdStatus() {
   const { workflow: wf } = load(current.workflow_path);
   const phase = wf?.phases[current.phase];
   const attempt = current.attempts[current.phase] ?? 0;
-  const lastEval = current.last_eval;
-  const lastFailure = lastEval !== null && lastEval.phase === current.phase ? { check: lastEval.check, run: lastEval.run, exitCode: lastEval.exit_code, timeoutSeconds: lastEval.timeout_seconds, outputTail: lastEval.output_tail } : null;
+  const recorded = current.last_failure ?? null;
+  const lastFailure = recorded !== null && recorded.phase === current.phase ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail } : null;
   let driver;
   if (current.driver_source === "claim") {
     driver = "a delegated agent";

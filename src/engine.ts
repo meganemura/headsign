@@ -3,7 +3,7 @@
 // Must NOT know about: child_process, printing.
 
 import type { Workflow, Route } from "./workflow.ts";
-import type { State, LastEval } from "./state.ts";
+import type { State } from "./state.ts";
 import type { GateResult, CheckFailure, RouteResolution } from "./gate.ts";
 
 type FailureInfo = CheckFailure;
@@ -19,28 +19,13 @@ export type Outcome =
   // to print and log — the engine decides nothing from it.
   | { kind: "ADVANCE"; phase: string; description: string; failure?: FailureInfo & { routedTo: string }; routedBy?: { when: string } | { default: true } }
   | { kind: "COMPLETE" }
-  | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; cached: boolean }
+  | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo }
   | { kind: "ESCALATE"; reason: string }
   | { kind: "ABORT"; reason: string }
   // Constructed only in cli.ts (the `ready` probe, short-circuited before the gate runs —
   // same treatment as the phase-missing guard). step() never produces this: it stays pure
   // and clock-free, with no I/O and no shell probe of its own.
   | { kind: "PENDING"; phase: string; ready: string };
-
-export function shouldUseCache(state: State, treeHash: string | null): boolean {
-  const le = state.last_eval;
-  return le !== null && le.result === "fail" && le.phase === state.phase && treeHash !== null && le.tree_hash === treeHash;
-}
-
-export function cachedRetry(workflow: Workflow, state: State): Outcome {
-  const le = state.last_eval as LastEval; // caller must have checked shouldUseCache first
-  return {
-    kind: "RETRY", phase: state.phase, attempt: state.attempts[state.phase] ?? 0,
-    maxAttempts: workflow.phases[state.phase].max_attempts,
-    failure: { check: le.check, run: le.run, exitCode: le.exit_code, timeoutSeconds: le.timeout_seconds, outputTail: le.output_tail },
-    cached: true,
-  };
-}
 
 export function checkIterationLimit(workflow: Workflow, state: State): { state: State; outcome: Outcome } | null {
   const limit = workflow.limits?.max_total_iterations;
@@ -66,10 +51,10 @@ function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: stri
   return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
 }
 
-// step() is fully deterministic: same (workflow, state, gateResult, treeHash, route) always
-// yields the same output — no clock, no randomness. The shell work behind `route` happened in
-// gate.ts before the call; this function only reads the answer.
-export function step(workflow: Workflow, state: State, gateResult: GateResult, treeHash: string | null, route?: ResolvedRoute): { state: State; outcome: Outcome } {
+// step() is fully deterministic: same (workflow, state, gateResult, route) always yields the
+// same output — no clock, no randomness. The shell work behind `route` happened in gate.ts
+// before the call; this function only reads the answer.
+export function step(workflow: Workflow, state: State, gateResult: GateResult, route?: ResolvedRoute): { state: State; outcome: Outcome } {
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
   const next: State = { ...state, attempts: { ...state.attempts } };
@@ -80,7 +65,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, t
 
   if (gateResult.pass) {
     delete next.attempts[phaseName];
-    next.last_eval = null;
+    next.last_failure = null;
     const { to, routedBy } = passTarget(phase.on_pass, route);
     if (to === "$end") {
       next.status = "complete";
@@ -101,7 +86,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, t
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== undefined && next.attempts[phaseName] >= maxAttempts) {
     const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
-    next.last_eval = null;
+    next.last_failure = null;
     next.end_reason = reason;
     next.status = phase.on_exhausted === "abort" ? "aborted" : "escalated";
     return { state: next, outcome: { kind: next.status === "aborted" ? "ABORT" : "ESCALATE", reason } };
@@ -109,14 +94,16 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, t
 
   const onFail = phase.on_fail ?? "retry";
   if (onFail === "retry") {
-    next.last_eval = {
-      phase: phaseName, result: "fail", tree_hash: treeHash, check: failure.check, run: failure.run,
+    // Recorded purely so `status` can show what the run is currently stuck on; nothing in
+    // this function ever reads it back.
+    next.last_failure = {
+      phase: phaseName, check: failure.check, run: failure.run,
       exit_code: failure.exitCode, output_tail: failure.outputTail, timeout_seconds: failure.timeoutSeconds,
     };
-    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure, cached: false } };
+    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure } };
   }
 
-  next.last_eval = null;
+  next.last_failure = null;
   if (onFail === "$end") {
     next.status = "complete";
     return { state: next, outcome: { kind: "COMPLETE" } };

@@ -37,12 +37,6 @@ function initRepo(): string {
   return dir;
 }
 
-function initRepoNoCommit(): string {
-  const dir = tmpdir();
-  execFileSync("git", ["init", "-q"], { cwd: dir });
-  return dir;
-}
-
 function writeWorkflow(dir: string, yaml: string): void {
   fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
   fs.writeFileSync(path.join(dir, ".headsign", "workflow.yaml"), yaml);
@@ -119,17 +113,70 @@ test("acceptance: start -> next RETRY -> create file -> next ADVANCE -> next COM
   assert.match(completeResult.stdout, /^COMPLETE\n/);
 });
 
-test("cached RETRY on an unchanged tree does not count an attempt", () => {
+// `next` judges every time it is asked: two calls on an untouched tree are two verdicts,
+// two counted attempts, and two runs of the gate. Nothing is memoized between them, so
+// "ask twice, get judged twice" is the whole rule (a reader who only wants to look uses
+// `status`, which runs no gate at all).
+test("two next calls with nothing changed in between count two attempts and run the gate twice", () => {
   const dir = initRepo();
-  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "marker exists"
+          run: "echo run >> gate-runs.txt; test -f marker.txt"
+    on_pass: "$end"
+`,
+  );
+  const gateRuns = (): number => fs.readFileSync(path.join(dir, "gate-runs.txt"), "utf8").split("\n").filter((l) => l.length > 0).length;
   run(["start"], { cwd: dir });
-  run(["next"], { cwd: dir });
-  assert.equal((readState(dir).attempts as Record<string, number>).build, 1);
 
-  const second = run(["next"], { cwd: dir });
-  assert.equal(second.status, 1);
-  assert.match(second.stdout, /^RETRY 1 build \(unchanged\)\n/);
+  const first = run(["next"], { cwd: dir });
+  assert.match(first.stdout, /^RETRY 1 build\n/);
   assert.equal((readState(dir).attempts as Record<string, number>).build, 1);
+  assert.equal(gateRuns(), 1);
+
+  const second = run(["next"], { cwd: dir }); // nothing touched since `first`
+  assert.equal(second.status, 1);
+  assert.match(second.stdout, /^RETRY 2 build\n/);
+  assert.equal((readState(dir).attempts as Record<string, number>).build, 2);
+  assert.equal(readState(dir).total_iterations, 2);
+  assert.equal(gateRuns(), 2, "the gate must run again on the second question, not be answered from a remembered verdict");
+});
+
+// A run that keeps being pushed back without progress therefore reaches max_attempts and
+// lands in front of a human, instead of being retried unbounded.
+test("repeated next calls on an unfixed failure exhaust max_attempts and escalate", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+    max_attempts: 2
+`,
+  );
+  run(["start"], { cwd: dir });
+
+  assert.match(run(["next"], { cwd: dir }).stdout, /^RETRY 1\/2 build\n/);
+  const second = run(["next"], { cwd: dir });
+  assert.equal(second.status, 2);
+  assert.match(second.stdout, /^ESCALATE build: max_attempts \(2\) exhausted\n/);
 });
 
 test("start refuses to clobber a running workflow", () => {
@@ -139,16 +186,6 @@ test("start refuses to clobber a running workflow", () => {
   const second = run(["start"], { cwd: dir });
   assert.equal(second.status, 3);
   assert.match(second.stderr, /^ERROR:/);
-});
-
-test("next in a commit-less git repo does not leak git's raw `fatal:` stderr", () => {
-  const dir = initRepoNoCommit();
-  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
-  const startResult = run(["start"], { cwd: dir });
-  assert.equal(startResult.status, 0);
-
-  const result = run(["next"], { cwd: dir });
-  assert.doesNotMatch(result.stderr, /fatal:/);
 });
 
 test("abort on an already-terminal (escalated) run names the actual status instead of claiming no run is in progress", () => {
@@ -246,9 +283,9 @@ test("abort with no run in progress errors with exit 3 and explains the cwd-only
   assert.match(result.stderr, /does not search parent directories/);
 });
 
-// --- nested project: cwd is a subdirectory of a larger git repo (L1 regression) ---
+// --- nested project: cwd is a subdirectory of a larger git repo ---
 
-test("nested project (cwd inside a larger git repo): fixing a gate-grepped file's content is picked up, not cached as (unchanged)", () => {
+test("nested project (cwd inside a larger git repo): the run is driven entirely by cwd's .headsign/, and a fixed file passes the gate", () => {
   const outer = tmpdir();
   execFileSync("git", ["init", "-q"], { cwd: outer });
   execFileSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-q", "-m", "init", "--allow-empty"], { cwd: outer });
@@ -278,20 +315,16 @@ phases:
   const startResult = run(["start"], { cwd: projectDir });
   assert.equal(startResult.status, 0);
 
-  fs.writeFileSync(path.join(projectDir, "notes.txt"), "TODO: fix this\n"); // dirty, status "M"
+  fs.writeFileSync(path.join(projectDir, "notes.txt"), "TODO: fix this\n");
   const first = run(["next"], { cwd: projectDir });
   assert.equal(first.status, 1);
   assert.match(first.stdout, /^RETRY 1 build\n/);
+  assert.equal(fs.existsSync(path.join(outer, ".headsign")), false, "the enclosing repo root must not acquire a .headsign/ of its own");
 
-  const second = run(["next"], { cwd: projectDir }); // unchanged -> cached
-  assert.equal(second.status, 1);
-  assert.match(second.stdout, /^RETRY 1 build \(unchanged\)\n/);
-
-  fs.writeFileSync(path.join(projectDir, "notes.txt"), "done, no more work\n"); // still "M", content fixed
-  const third = run(["next"], { cwd: projectDir });
-  assert.doesNotMatch(third.stdout, /\(unchanged\)/);
-  assert.match(third.stdout, /^COMPLETE\n/);
-  assert.equal(third.status, 0);
+  fs.writeFileSync(path.join(projectDir, "notes.txt"), "done, no more work\n");
+  const second = run(["next"], { cwd: projectDir });
+  assert.match(second.stdout, /^COMPLETE\n/);
+  assert.equal(second.status, 0);
 });
 
 // --- concurrency lock on `next` (L3) ---
@@ -365,12 +398,7 @@ test("concurrency: several real `next` processes contending for the lock never l
   // Exercises the TOCTOU that FIX-A closed (cmdNext used to evaluate against a state
   // snapshot read *before* acquiring the lock, so a process that acquired the
   // now-free lock late could clobber another process's already-written attempt) and
-  // the steal-readback/owner-only-release hardening from FIX-B. A plain (non-git)
-  // tmpdir is used deliberately: it makes treehash.treeHash() return null, which
-  // disables the tree-hash RETRY cache entirely (ADR-0004) — otherwise a process that
-  // wins the lock after the tree-hash cache is already primed with a matching failure
-  // would exit 1 without touching attempts/total_iterations, which would break the
-  // invariant below for reasons unrelated to the lock.
+  // the steal-readback/owner-only-release hardening from FIX-B.
   //
   // Verified by temporarily reverting FIX-A: without it, this test fails intermittently
   // (attempts/total_iterations end up less than the number of processes that reported a
@@ -435,21 +463,6 @@ test("start creates .headsign/tmp/ and empties any pre-existing contents from a 
   assert.equal(result.status, 0);
   assert.equal(fs.existsSync(tmpDir), true);
   assert.deepEqual(fs.readdirSync(tmpDir), []);
-});
-
-test("a file written under .headsign/tmp/ changes the tree hash, so next re-evaluates instead of reprinting a cached (unchanged) RETRY", () => {
-  const dir = initRepo();
-  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
-  run(["start"], { cwd: dir });
-
-  const first = run(["next"], { cwd: dir });
-  assert.match(first.stdout, /^RETRY 1 build\n/);
-
-  fs.writeFileSync(path.join(dir, ".headsign", "tmp", "note.txt"), "hi\n");
-  const second = run(["next"], { cwd: dir });
-  assert.equal(second.status, 1);
-  assert.doesNotMatch(second.stdout, /\(unchanged\)/);
-  assert.match(second.stdout, /^RETRY 2 build\n/); // a real (counted) evaluation, not a cache hit
 });
 
 test("next when the current phase was removed/renamed from workflow.yaml mid-run exits 3 with an actionable message, not a crash", () => {
@@ -1075,29 +1088,30 @@ test("log: a second start truncates the previous run's log rather than appending
   assert.equal(readLog(dir).length, 1);
 });
 
-test("log: retry/advance/complete append one line each; a cached (unchanged) re-display appends nothing", () => {
+test("log: every retry/advance/complete appends one line, including a repeated retry on an untouched tree", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
   assert.equal(readLog(dir).length, 1); // start
 
-  run(["next"], { cwd: dir }); // real RETRY
+  run(["next"], { cwd: dir }); // RETRY
   assert.equal(readLog(dir).length, 2);
 
-  run(["next"], { cwd: dir }); // unchanged tree -> cached RETRY, no new line
-  assert.equal(readLog(dir).length, 2);
-
-  fs.writeFileSync(path.join(dir, "marker.txt"), "");
-  run(["next"], { cwd: dir }); // real ADVANCE
+  run(["next"], { cwd: dir }); // asked again with nothing changed -> a second, equally real RETRY
   assert.equal(readLog(dir).length, 3);
 
-  run(["next"], { cwd: dir }); // real COMPLETE
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+  run(["next"], { cwd: dir }); // ADVANCE
   assert.equal(readLog(dir).length, 4);
+
+  run(["next"], { cwd: dir }); // COMPLETE
+  assert.equal(readLog(dir).length, 5);
 
   const lines = readLog(dir);
   assert.match(lines[1], /^\S+ retry build a=1 i=1 check="/);
-  assert.match(lines[2], /^\S+ advance verify a=0 i=2 from=build$/);
-  assert.match(lines[3], /^\S+ complete verify a=0 i=3$/);
+  assert.match(lines[2], /^\S+ retry build a=2 i=2 check="/);
+  assert.match(lines[3], /^\S+ advance verify a=0 i=3 from=build$/);
+  assert.match(lines[4], /^\S+ complete verify a=0 i=4$/);
 });
 
 test("log: complete re-display (idempotent next after COMPLETE) appends nothing", () => {
@@ -1554,19 +1568,18 @@ test("next: a legacy state.json missing driver_session entirely still gets stamp
   assert.equal(readState(dir).driver_session, "session-legacy");
 });
 
-test("next: an unchanged (matching) driver_session, combined with a cached retry, writes nothing at all to state.json", () => {
+test("next: an unchanged (matching) driver_session on the PENDING path writes nothing at all to state.json", () => {
   const dir = initRepo();
-  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
   const env = sessionEnv("session-same");
   run(["start"], { cwd: dir, env });
-  run(["next"], { cwd: dir, env }); // real RETRY, stamps driver_session to session-same
   assert.equal(readState(dir).driver_session, "session-same");
 
   const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
-  const second = run(["next"], { cwd: dir, env }); // unchanged tree -> cached retry; same sid -> no stamp write either
-  assert.match(second.stdout, /\(unchanged\)/);
+  const result = run(["next"], { cwd: dir, env }); // not ready -> PENDING; same sid -> no stamp write either
+  assert.match(result.stdout, /^PENDING review\n/);
   const after = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
-  assert.deepEqual(after, before, "same driver + cached retry must not touch state.json at all");
+  assert.deepEqual(after, before, "same driver + PENDING must not touch state.json at all");
 });
 
 test("stop-hook: HEADSIGN_OBSERVER unconditionally passes through while running, without incrementing stop_nudges", () => {
@@ -1943,23 +1956,23 @@ phases:
   assert.match(result.stdout, /^RUNNING build \(attempt 0\/\?\)\n/);
 });
 
-test("status: a matching last_eval renders a last-failure block with the failing check and output tail", () => {
+test("status: a matching last_failure renders a last-failure block with the failing check and output tail", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir, env: NO_SESSION_ENV });
-  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // real RETRY -> last_eval set for phase "build"
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // real RETRY -> last_failure set for phase "build"
 
   const result = run(["status"], { cwd: dir, env: NO_SESSION_ENV });
   assert.match(result.stdout, /--- last failure: marker exists \(test -f marker\.txt, exit 1\) ---\n/);
 });
 
-test("status: a last_eval belonging to a different (stale) phase than the current one is not shown", () => {
+test("status: a last_failure belonging to a different (stale) phase than the current one is not shown", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir, env: NO_SESSION_ENV });
-  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // last_eval.phase = "build", state.phase = "build"
+  run(["next"], { cwd: dir, env: NO_SESSION_ENV }); // last_failure.phase = "build", state.phase = "build"
 
-  // Not reachable via the normal engine flow (see engine.ts: last_eval is always cleared
+  // Not reachable via the normal engine flow (see engine.ts: last_failure is always cleared
   // on any phase change) — simulates a hand-edited/legacy state.json to pin the defensive
   // guard against misreading a stale failure as current.
   const st = readState(dir) as Record<string, unknown>;
@@ -2286,7 +2299,6 @@ test("routing: the branch costs no attempt — the pass cleared the counter, sam
 
   // Two real failures first, so there is an attempt count that routing could plausibly touch.
   assert.equal(run(["next"], { cwd: dir, env: sessionEnv("router-session") }).status, 1);
-  fs.writeFileSync(path.join(dir, "unrelated"), "x"); // move the tree so the cache doesn't answer
   assert.equal(run(["next"], { cwd: dir, env: sessionEnv("router-session") }).status, 1);
   assert.equal((readState(dir).attempts as Record<string, number>).classify, 2);
 
