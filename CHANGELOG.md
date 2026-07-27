@@ -9,37 +9,45 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-27
+
+Two themes: a workflow can now branch more than two ways, and a run can be
+driven by a delegated agent rather than only by the session that started it.
+
 ### Added
 
-- Pause notes: writing one line to `.headsign/tmp/stop-note` lets a session
-  stop immediately and quietly — the stop-boundary hook consumes the note, records a
-  `paused` line in `.headsign/log`, and leaves the run resumable with
-  `headsign next`. Silent exits now always leave a trace.
-- A `stalled` line in `.headsign/log` when the nudge cap is
-  reached, so unattended supervisors can detect an abandoned run
-  (`status == "running"` plus `stalled` in the log).
-- Role-based example workflows in `example.headsign/` (TDD feature, bugfix,
-  docs, release, and headsign's own development workflow); this repository
-  dogfoods them through a `.headsign` symlink.
-- Multi-session driver ownership: `headsign start`/`next` stamp which
-  session is driving a run (`driver_session`, resolved from
-  `HEADSIGN_SESSION_ID` or, automatically under Claude Code,
-  `CLAUDE_CODE_SESSION_ID`), and the Stop hook now recognizes a confirmed
-  non-driver session's stop and passes it through instead of nudging it.
-- `headsign status`: a new, strictly read-only command for a session that
-  isn't driving a run — reports the current phase (or terminal outcome)
-  without running any gate, writing state, or taking the lock. Its exit
-  code never overlaps `next`'s: 0 whenever state is readable (including
-  `ESCALATED`/`ABORTED`), 3 only when there's no run to read.
-- `HEADSIGN_OBSERVER`: set on a session that should never be nudged by the
-  stop-boundary hooks, regardless of driver ownership — the manual opt-out
-  for environments where no session identifier resolves.
-- `headsign claim`: arms a one-shot marker that the claiming agent's own
-  turn end seals — headsign records that agent as the run's driver and
-  confirms it in the hook's message — the reliable way to hand a run to a
-  delegated agent (a teammate under Claude Code's agent-teams feature, or a
-  subagent), whose own environment cannot tell it apart from the session
-  that spawned it. See [ADR-0009](docs/adr/0009-claim-handshake.md) and
+- k-way routing on `on_pass`: a phase can branch to one of several phases
+  instead of exactly one. Write `on_pass` as a list of `when:`/`to:` routes
+  — the `when:` commands run in order once the gate has passed, the first to
+  exit 0 decides the destination, and the last entry (which has no `when:`)
+  is the default. `ADVANCE` gains a `--- routed: … ---` line naming the
+  route taken, and `.headsign/log` records the same. A `when:` that cannot
+  be run at all (spawn error, timeout) stops the run with exit 3 instead of
+  falling through to the default: the thing being decided is the
+  destination. A plain string `on_pass` behaves exactly as before, down to
+  its output and log lines. See
+  [ADR-0011](docs/adr/0011-k-way-routing-on-pass.md).
+- `headsign status`: a strictly read-only command for a session that isn't
+  driving a run — reports the current phase (or terminal outcome) without
+  running any gate, writing state, or taking the lock. Its exit code never
+  overlaps `next`'s: 0 whenever state is readable (including
+  `ESCALATED`/`ABORTED`), 3 only when there's no run to read. Its `driver:`
+  line reports only what it can establish: an environment-based match proves
+  the caller is `this session, or an agent it delegated to` and cannot
+  separate the two, and a run whose driver was seated by `headsign claim`
+  reads `a delegated agent`.
+- Driver ownership for repositories with more than one session open on
+  them. `start`/`next` stamp who is driving (`driver_session`, resolved from
+  `HEADSIGN_SESSION_ID`, or automatically from Claude Code's own session
+  identifier), and a stop by a confirmed non-driver passes through instead
+  of being nudged toward a run it isn't running. See
+  [ADR-0008](docs/adr/0008-multi-session-ownership.md).
+- `headsign claim`, for handing a run to a delegated agent — a teammate
+  under Claude Code's agent-teams feature, or a subagent — whose own
+  environment cannot tell it apart from the session that spawned it. It arms
+  a one-shot marker that the claiming agent's own turn end seals, and the
+  hook confirms the seal in its message. See
+  [ADR-0009](docs/adr/0009-claim-handshake.md) and
   [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
 - A `SubagentStop` hook, giving a delegated agent the same backstop a
   session has always had: while a run is `running`, the agent recorded as
@@ -49,33 +57,23 @@ changes), and a patch bump means fixes only.
   `claim` marker — that is how a claim gets sealed. The plugin registers it
   automatically; the plugin-free `settings.json` snippet in the README now
   shows both hooks.
-- k-way routing on `on_pass`: a phase can now branch to one of several
-  phases instead of exactly one. Write `on_pass` as a list of `when:`/`to:`
-  routes — the `when:` commands run in order once the gate has passed, the
-  first to exit 0 decides the destination, and the last entry (which has no
-  `when:`) is the default — so a triage or intake phase can send the work to
-  whichever phase fits it. `ADVANCE` gains a `--- routed: … ---` line naming
-  the route taken, and `.headsign/log` records the same. A `when:` that
-  cannot be run at all (spawn error, timeout) stops the run with exit 3
-  instead of falling through to the default: the thing being decided is the
-  destination. A plain string `on_pass` behaves exactly as before, down to
-  its output and log lines. A worked example ships as
-  `example.headsign/router.yaml`, whose `classify` phase routes one intake
-  queue into three kinds of work. See
-  [ADR-0011](docs/adr/0011-k-way-routing-on-pass.md).
-- A triage example workflow (`example.headsign/triage.yaml`): headsign's own
-  feedback-intake loop, which judges exactly one ticket per run. It doubles
-  as a worked example of two patterns — a run-local completion marker as the
-  `ready:` condition (a `next` issued before the judging is finished answers
-  `PENDING` instead of spending an attempt) and `on_fail: "$end"` as the
-  clean ending for a run that turns out to have no work to do (a reject, a
-  defer, or an empty inbox).
-- A sweep example workflow (`example.headsign/sweep.yaml`): a queue of
-  mechanical edits applied one item per lap, where `record` routes back to
-  `apply` while the queue still has entries and leaves for `report` once it
-  drains. It is the example of a cycle that ends because the data ran out
-  rather than because a counter tripped, and the top-level README now draws
-  its graph under "Nodes, edges, and state".
+- `HEADSIGN_OBSERVER`: set on a session that should never be nudged by the
+  stop-boundary hooks, regardless of driver ownership — the manual opt-out
+  for environments where no session identifier resolves.
+- Pause notes: writing one line to `.headsign/tmp/stop-note` lets a session
+  stop immediately and quietly — the stop-boundary hook consumes the note,
+  records a `paused` line in `.headsign/log`, and leaves the run resumable
+  with `headsign next`. Silent exits now always leave a trace. A `stalled`
+  line is recorded when the nudge cap is reached instead, so an unattended
+  supervisor can tell an abandoned run (`status == "running"` plus `stalled`
+  in the log) from a deliberate pause.
+- Example workflows in `example.headsign/`, one per shape worth copying:
+  role-based ones (TDD feature, bugfix, docs, release, and headsign's own
+  development workflow), `triage.yaml` for a queue judged one item per run,
+  `router.yaml` for a three-way branch, and `sweep.yaml` for a cycle that
+  ends because the data ran out rather than because a counter tripped. Each
+  is drawn as a flowchart in `example.headsign/README.md`. This repository
+  dogfoods them through a `.headsign` symlink.
 
 ### Changed
 
@@ -84,66 +82,30 @@ changes), and a patch bump means fixes only.
   0, `start` prints it once per run, and `next` stays silent so the
   every-turn path isn't noisy. Workflows that headsign previously refused to
   load for this reason now load and run — including a run wedged mid-flight
-  by a half-written phase or a commented-out edge. `load()` accordingly
-  returns warnings alongside errors. See
-  [ADR-0011](docs/adr/0011-k-way-routing-on-pass.md).
-- The nudge cap (shared by both stop-boundary hooks) is now purely an
-  abnormal-case backstop and was raised from 3 to 5; the pause note is the
-  intended exit for deliberate stops.
-- The `Stop` hook's decision order now checks observer opt-out and driver
-  ownership before the exit-note gate, so a bystander's stop can no longer
-  consume the shared nudge-cap insurance or a driver's pause note — see
-  [ADR-0008](docs/adr/0008-multi-session-ownership.md).
-- `headsign status`'s `driver:` line now shows `a delegated agent` (instead
-  of guessing this-session/another-session) once a run's driver was seated
-  via `headsign claim` — what's stored then isn't a session identifier at
-  all, and the CLI has no reliable way to tell whether that agent is the
-  caller, so it reports the fact it does know instead.
-- `headsign status`'s `driver:` line now states exactly what an
-  environment-based match establishes and no more: it reads `this session,
-  or an agent it delegated to` where it used to read `this session`. A
-  delegated agent resolves the identifier of the session that spawned it,
-  so the comparison cannot separate the two. A delegated agent that wants
-  certainty can end a turn instead: an ordinary nudge back to `headsign
-  next` proves ownership, since `SubagentStop` sends one only on a positive
-  match (a `Claim confirmed` reply is a different thing — the adoption gate
-  seats whoever names itself first under an armed marker). Ending quietly
-  proves nothing: never having claimed, an exhausted nudge cap, a consumed
-  pause note, and `HEADSIGN_OBSERVER` all end turns quietly too. See
-  [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
+  by a half-written phase or a commented-out edge.
+- The stop-boundary nudge cap was raised from 3 to 5 and is now purely an
+  abnormal-case backstop; the pause note is the intended exit for deliberate
+  stops.
 - No-argument `headsign validate` now defaults to the current run's own
   `workflow_path` (from `.headsign/state.json`, whatever its status)
   whenever a run exists, falling back to the plain `.headsign/workflow.yaml`
-  default only when there is no run; an explicit name or `--workflow`
-  still always wins.
-- Git worktrees are now documented as supported within one clear boundary —
+  default only when there is no run; an explicit name or `--workflow` still
+  always wins.
+- Git worktrees are documented as supported within one clear boundary —
   **one worktree, one independent run**: a worktree's `state.json`, lock,
   and log live in that worktree's own `.headsign/`, headsign writes nothing
   under the shared `.git`, and sharing or coordinating state between
   worktrees remains out of scope.
-- `docs/maintenance.md` gained a "Feedback triage loop" section: the
-  `headsign.feedbackDir` prerequisite, one ticket per run and why batching
-  defeats the point, and the rule that nothing identifying a feedback source
-  may enter this public repository.
 
-### Fixed
+### Upgrading
 
-- `headsign claim` handed the run to the wrong driver whenever it was
-  claimed by a delegated agent. A delegated agent's turn end fires no `Stop`
-  hook at all, so the armed marker sat until some *session* stopped —
-  typically the one that had just delegated the work — and that session was
-  recorded as driver instead; re-claiming converged on the same wrong result
-  rather than correcting it. Sealing now happens on the claiming agent's own
-  turn end via the `SubagentStop` hook, which identifies that agent
-  specifically, and `Stop` no longer reads the claim marker at all — so a
-  session can no longer take a seat meant for an agent. See
-  [ADR-0010](docs/adr/0010-subagent-stop-identity.md).
-- If you have been running the development version through a live patch: a
-  run claimed *before* this change carries a driver stamp of the old kind,
-  which neither hook now matches — nothing misfires, but that run's stop
-  backstop is off (no stop is nudged). Run `headsign claim` again from the
-  agent that should be driving, or start a fresh run with `headsign start`,
-  to restore it. Runs claimed after this change need nothing.
+Nothing to do coming from 0.1.0: every 0.1.0 workflow file, and every
+`state.json` a 0.1.0 run left behind, is read unchanged. If instead you have
+been tracking `main` and live-patching an installed plugin, a run claimed
+before the `SubagentStop` change carries a driver stamp neither hook now
+matches — nothing misfires, but that run's stop backstop is off. Run
+`headsign claim` again from the agent that should be driving, or start a
+fresh run.
 
 ## [0.1.0] - 2026-07-25
 

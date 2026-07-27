@@ -1,10 +1,21 @@
 {
   "name": "headsign",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A tiny phase gate for coding agents: your shell checks decide pass/fail (never the LLM), your workflow routes the agent (advance / retry / escalate / done). Claude Code drives, headsign holds the state.",
-  "author": { "name": "meganemura", "url": "https://github.com/meganemura" },
+  "author": {
+    "name": "meganemura",
+    "url": "https://github.com/meganemura"
+  },
   "homepage": "https://github.com/meganemura/headsign",
   "repository": "https://github.com/meganemura/headsign",
   "license": "MIT",
-  "keywords": ["claude-code", "claude-code-plugin", "coding-agent", "phase-gate", "workflow", "state-machine", "cli"]
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "coding-agent",
+    "phase-gate",
+    "workflow",
+    "state-machine",
+    "cli"
+  ]
 }
