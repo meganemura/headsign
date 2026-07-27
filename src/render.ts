@@ -120,22 +120,13 @@ export function statusRunning(o: {
   // last_failure left over from a since-departed phase must never be shown as if it were
   // about now.
   lastFailure?: (Failure & { outputTail: string }) | null;
-  // "a delegated agent" (ADR-0010) is distinct from the other three: it's not a match/
-  // mismatch/unknown judgment against *this* status-invoking session's own id (the recorded
-  // driver is an agent id, which the CLI can't resolve at all — see cmdStatus) but a plain
-  // factual report of who the claim handshake put in the driver seat.
-  //
-  // The match case says "this session, or an agent it delegated to" rather than the shorter
-  // "this session" because that is the whole of what an env-id match guarantees: a delegated
-  // agent inherits the enclosing session's env identifier, so this comparison cannot tell the
-  // two apart and must not claim to. Certainty is available to a *delegated agent* only, and
-  // not from here: SubagentStop sends an ordinary nudge only on a positive match, so an agent
-  // that ends a turn and gets one is the driver (a `Claim confirmed` reply is the adoption
-  // gate, which seats whoever names itself first under an armed marker: it reports a seat
-  // taken, not a seat that was already the reader's). That test does not generalize to this
-  // line's other cases — Stop nudges every session on a run that stamped no identifier —
-  // which is exactly why this line reports the range it can prove instead of a name.
-  driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
+  // Two values, and deliberately neither of them says anything about *who is reading*
+  // (ADR-0013): the recorded driver is an agent id, and only the SubagentStop hook's stdin
+  // ever carries one, so the CLI has no id of its own to compare and must not imply it does.
+  // What this line reports is the one fact the CLI can read off state.json — whether the run
+  // has been claimed — which is exactly the question `headsign claim`'s two-beat handshake
+  // leaves open when it fails quietly (see cmdStatus for why the line is worth keeping).
+  driver: "a delegated agent" | "not delegated yet — no agent has claimed this run";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure

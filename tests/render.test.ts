@@ -201,27 +201,27 @@ test("pending", () => {
 test("statusRunning: max_attempts defined -> n/max, no last-failure block", () => {
   const actual = render.statusRunning({
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
-    workflowName: "demo", lastFailure: null, driver: "this session, or an agent it delegated to",
+    workflowName: "demo", lastFailure: null, driver: "a delegated agent",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: this session, or an agent it delegated to\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n`;
   assert.equal(actual, expected);
 });
 
 test("statusRunning: max_attempts undefined (unlimited) -> bare attempt number", () => {
   const actual = render.statusRunning({
     phase: "build", attempt: 2, maxAttempts: undefined, attemptUnknown: false,
-    workflowName: "demo", lastFailure: null, driver: "unknown",
+    workflowName: "demo", lastFailure: null, driver: "not delegated yet — no agent has claimed this run",
   });
-  const expected = `RUNNING build (attempt 2)\nworkflow: demo\ndriver: unknown\n`;
+  const expected = `RUNNING build (attempt 2)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`;
   assert.equal(actual, expected);
 });
 
 test("statusRunning: attemptUnknown (workflow unreadable or phase missing) -> n/?", () => {
   const actual = render.statusRunning({
     phase: "build", attempt: 4, maxAttempts: 3, attemptUnknown: true,
-    workflowName: "demo", lastFailure: null, driver: "another session",
+    workflowName: "demo", lastFailure: null, driver: "a delegated agent",
   });
-  const expected = `RUNNING build (attempt 4/?)\nworkflow: demo\ndriver: another session\n`;
+  const expected = `RUNNING build (attempt 4/?)\nworkflow: demo\ndriver: a delegated agent\n`;
   assert.equal(actual, expected);
 });
 
@@ -230,9 +230,9 @@ test("statusRunning: a last-failure block lands between the workflow line and th
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
     workflowName: "demo",
     lastFailure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "some output" },
-    driver: "this session, or an agent it delegated to",
+    driver: "a delegated agent",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, exit 1) ---\nsome output\ndriver: this session, or an agent it delegated to\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, exit 1) ---\nsome output\ndriver: a delegated agent\n`;
   assert.equal(actual, expected);
 });
 
@@ -241,30 +241,31 @@ test("statusRunning: a timeout last failure renders the timed-out clause, same a
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
     workflowName: "demo",
     lastFailure: { check: "tests", run: "npm test", exitCode: "timeout", timeoutSeconds: 5, outputTail: "some output" },
-    driver: "this session, or an agent it delegated to",
+    driver: "a delegated agent",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, timed out after 5s) ---\nsome output\ndriver: this session, or an agent it delegated to\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, timed out after 5s) ---\nsome output\ndriver: a delegated agent\n`;
   assert.equal(actual, expected);
 });
 
-test("statusRunning: driver values are printed verbatim as one of the four fixed strings, never a session id", () => {
-  for (const driver of ["this session, or an agent it delegated to", "another session", "unknown", "a delegated agent"] as const) {
+test("statusRunning: driver values are printed verbatim as one of the two fixed strings, never an identifier", () => {
+  for (const driver of ["a delegated agent", "not delegated yet — no agent has claimed this run"] as const) {
     const actual = render.statusRunning({ phase: "build", attempt: 0, attemptUnknown: false, workflowName: "demo", driver });
     assert.match(actual, new RegExp(`driver: ${driver}\\n$`));
   }
 });
 
-// The env-match wording is load-bearing, not cosmetic: a delegated agent inherits the
-// enclosing session's env identifier, so the match case can only narrow the driver down to
-// "this session or something it delegated to". Pinned verbatim so it can't quietly shrink
-// back to a claim the comparison doesn't support.
-test("statusRunning: the env-match driver line names the delegation ambiguity instead of asserting this session alone", () => {
-  const actual = render.statusRunning({
-    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
-    workflowName: "demo", lastFailure: null, driver: "this session, or an agent it delegated to",
-  });
-  assert.equal(actual, `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: this session, or an agent it delegated to\n`);
-  assert.doesNotMatch(actual, /driver: this session\n/);
+// The driver line reports whether the run was claimed, never who is reading it. Pinned
+// verbatim because the tempting shorter wordings ("this session", "you") are exactly the
+// claim ADR-0013 says the CLI cannot make: it has no agent id of its own to compare.
+test("statusRunning: neither driver value makes a claim about who is reading the status", () => {
+  for (const driver of ["a delegated agent", "not delegated yet — no agent has claimed this run"] as const) {
+    const actual = render.statusRunning({
+      phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+      workflowName: "demo", lastFailure: null, driver,
+    });
+    assert.doesNotMatch(actual, /this session/);
+    assert.doesNotMatch(actual, /another session/);
+  }
 });
 
 test("statusTerminal: complete has no reason line", () => {
@@ -300,8 +301,7 @@ function baseState(overrides: Partial<State> = {}): State {
     last_failure: null,
     end_reason: null,
     stop_nudges: 0,
-    driver_session: null,
-    driver_source: null,
+    driver_agent: null,
     ...overrides,
   };
 }
@@ -392,7 +392,7 @@ test("logLine: stalled names the fixed nudges=5 cap", () => {
 });
 
 test("logLine: claimed has no detail — the adopted agent id must never appear in the log line", () => {
-  const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "build", driver_session: "agent-abc", driver_source: "claim" }));
+  const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "build", driver_agent: "agent-abc" }));
   assert.equal(line, `ts claimed build a=0 i=0\n`);
   assert.doesNotMatch(line, /agent-abc/);
 });

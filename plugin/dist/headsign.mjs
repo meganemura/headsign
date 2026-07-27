@@ -7885,29 +7885,13 @@ function logDetail(event, prevPhase) {
 // src/stophook.ts
 import fs3 from "node:fs";
 import path2 from "node:path";
-
-// src/session.ts
-function resolveSessionId(env) {
-  for (const key of ["HEADSIGN_SESSION_ID", "CLAUDE_CODE_SESSION_ID"]) {
-    const raw = env[key];
-    if (typeof raw !== "string") continue;
-    const trimmed = raw.trim();
-    if (trimmed.length > 0) return trimmed;
-  }
-  return null;
-}
+var MAX_STOP_NUDGES = 5;
 function isObserver(env) {
   const raw = env["HEADSIGN_OBSERVER"];
   return typeof raw === "string" && raw.length > 0;
 }
-
-// src/stophook.ts
-var MAX_STOP_NUDGES = 5;
-function resolveHookSessionId(input, env) {
-  const fromStdin = typeof input.session_id === "string" ? input.session_id.trim() : "";
-  if (fromStdin.length > 0) return fromStdin;
-  const fromEnv = typeof env.HEADSIGN_SESSION_ID === "string" ? env.HEADSIGN_SESSION_ID.trim() : "";
-  return fromEnv.length > 0 ? fromEnv : null;
+function recordedDriver(state) {
+  return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
 }
 function findRunDir(startDir) {
   let dir = startDir;
@@ -7958,10 +7942,7 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
-    if (state.driver_source === "claim") return { block: false };
-    const hookSid = resolveHookSessionId(input, env);
-    const driver = typeof state.driver_session === "string" && state.driver_session.length > 0 ? state.driver_session : null;
-    if (hookSid !== null && driver !== null && hookSid !== driver) return { block: false };
+    if (recordedDriver(state) !== null) return { block: false };
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
     return { block: false };
@@ -7982,14 +7963,15 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     const claimPath = path2.join(runDir, ".headsign", "tmp", "claim");
     if (fs3.existsSync(claimPath) && agentId !== null) {
       fs3.rmSync(claimPath, { force: true });
-      const adoptedState = { ...state, driver_session: agentId, driver_source: "claim", stop_nudges: 0 };
+      const adoptedState = { ...state, driver_agent: agentId, stop_nudges: 0 };
       writeState(runDir, adoptedState);
       appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
       const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase})` + (runDir === startDir ? ". Run `headsign next` and follow its verdict." : ` in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + pauseAndAbortHint(runDir, startDir);
       return { block: true, message: adoptionMessage };
     }
-    if (state.driver_source !== "claim") return { block: false };
-    if (agentId === null || state.driver_session !== agentId) return { block: false };
+    const driver = recordedDriver(state);
+    if (driver === null) return { block: false };
+    if (agentId === null || driver !== agentId) return { block: false };
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
     return { block: false };
@@ -8109,7 +8091,6 @@ function cmdStart(args) {
   if (existing && existing.status === "running") {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
-  const startSid = resolveSessionId(process.env);
   const freshState = {
     workflow: wf.name,
     workflow_path: workflowPath,
@@ -8120,8 +8101,7 @@ function cmdStart(args) {
     last_failure: null,
     end_reason: null,
     stop_nudges: 0,
-    driver_session: startSid,
-    driver_source: startSid !== null ? "env" : null
+    driver_agent: null
   };
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -8179,15 +8159,10 @@ function cmdNext() {
   if (!lock.ok) {
     errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
   }
-  let fresh = readState(cwd);
+  const fresh = readState(cwd);
   if (!fresh) {
     releaseLock(cwd);
     errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
-  }
-  const sid = resolveSessionId(process.env);
-  if (sid !== null && fresh.driver_source !== "claim" && fresh.driver_session !== sid) {
-    fresh = { ...fresh, driver_session: sid, driver_source: "env" };
-    writeState(cwd, fresh);
   }
   if (fresh.status !== "running") {
     releaseLock(cwd);
@@ -8245,14 +8220,8 @@ function cmdStatus() {
   const attempt = current.attempts[current.phase] ?? 0;
   const recorded = current.last_failure ?? null;
   const lastFailure = recorded !== null && recorded.phase === current.phase ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail } : null;
-  let driver;
-  if (current.driver_source === "claim") {
-    driver = "a delegated agent";
-  } else {
-    const mySid = resolveSessionId(process.env);
-    const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
-    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session, or an agent it delegated to" : "another session";
-  }
+  const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
+  const driver = driverAgent !== null ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run";
   exitAfter(
     statusRunning({
       phase: current.phase,

@@ -1,8 +1,9 @@
 // Responsibility: stop-boundary hook decisions — stdin JSON -> allow/block (ADR-0006).
-// Two events, two identifier spaces (ADR-0010): `evaluate` answers Stop (a session id) and
-// `evaluateSubagent` answers SubagentStop (an agent id, the only place a delegated agent
-// can be named at all). They share this module so the run lookup, the exit-note gate and
-// the loop guard can be literally the same code for both boundaries.
+// Two events, ONE identifier space (ADR-0013): only SubagentStop's `agent_id` can name a
+// driver, so `evaluateSubagent` is the only half that compares identifiers at all.
+// `evaluate` answers Stop, which carries a session id headsign no longer records anywhere —
+// it decides on run state alone. They share this module so the run lookup, the exit-note
+// gate and the loop guard can be literally the same code for both boundaries.
 // Must NOT know about: workflow.yaml, gate execution.
 
 import fs from "node:fs";
@@ -10,7 +11,6 @@ import path from "node:path";
 import { readState, writeState, statePath, appendLog } from "./state.ts";
 import type { State } from "./state.ts";
 import { logLine } from "./render.ts";
-import { isObserver } from "./session.ts";
 
 interface HookDecision {
   block: boolean;
@@ -19,16 +19,30 @@ interface HookDecision {
 
 const MAX_STOP_NUDGES = 5;
 
-// The hook's own identifier resolution (ADR-0008) — deliberately narrower than
-// session.resolveSessionId: the stdin `session_id` field already *is* Claude Code's
-// CLAUDE_CODE_SESSION_ID (the two are documented to match), so only the explicit
-// HEADSIGN_SESSION_ID override is worth an extra env fallback here; re-checking
-// CLAUDE_CODE_SESSION_ID from env would just re-derive what stdin already gave us.
-function resolveHookSessionId(input: { session_id?: unknown }, env: NodeJS.ProcessEnv): string | null {
-  const fromStdin = typeof input.session_id === "string" ? input.session_id.trim() : "";
-  if (fromStdin.length > 0) return fromStdin;
-  const fromEnv = typeof env.HEADSIGN_SESSION_ID === "string" ? env.HEADSIGN_SESSION_ID.trim() : "";
-  return fromEnv.length > 0 ? fromEnv : null;
+// Manual opt-out (ADR-0008) for a session or agent that is not driving this run — or simply
+// wants to be unconditionally exempt. Any non-empty value passes both stop-boundary hooks —
+// a session that opts out is opting its delegated agents' stops out too — regardless of
+// driver ownership; the value itself is never inspected, presence is the whole signal
+// (documented as `=1`). This lived in its own module while the environment was also where a
+// session identifier came from; ADR-0013 removed that path, and reading one env var for one
+// caller does not earn a module boundary of its own.
+export function isObserver(env: NodeJS.ProcessEnv): boolean {
+  const raw = env["HEADSIGN_OBSERVER"];
+  return typeof raw === "string" && raw.length > 0;
+}
+
+// The recorded driver, read the tolerant way every consumer of state.json reads its
+// fields: a bare `!== null` check would not do, because a legacy state.json carries the old
+// `driver_session` name and this field reads back as undefined — and `undefined !== null`
+// is true, which would send a run nobody claimed down the "someone is driving" path,
+// silently ending the backstop for that run.
+//
+// Tolerating a *missing* field is transitional, not permanent: state.ts's driver_agent
+// declaration is where the criterion for deleting it is written. Tolerating a non-string
+// value is permanent (a hand-edited state.json is always possible), so only the
+// missing-field case goes when that day comes.
+function recordedDriver(state: State): string | null {
+  return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
 }
 
 // Walk up from startDir to find a run's .headsign/state.json, bounded by the enclosing
@@ -58,11 +72,11 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
 
 // The shared tail of both hooks, entered once the caller has stopped ruling the stopper out.
 // The two callers set a different bar for that, on purpose: evaluateSubagent requires a
-// positive match, while evaluate also falls through here when either identifier is missing
-// (ADR-0008's fail-open — absence is not a mismatch), so a Stop that reaches this point is
-// the driver's *or unproven*, never confirmed to be someone else's. Deliberately identical
-// for Stop and SubagentStop (ADR-0010): how you pause, how many reminders you get, and what
-// the nudge says must not depend on which stop-boundary event happened to deliver that fact.
+// positive match against the recorded driver, while evaluate only gets here on a run nobody
+// has claimed — where headsign has no driver to prefer and nudges whoever stopped (ADR-0006's
+// fail-open default). Deliberately identical for Stop and SubagentStop (ADR-0010): how you
+// pause, how many reminders you get, and what the nudge says must not depend on which
+// stop-boundary event happened to deliver that fact.
 function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIso: string): HookDecision {
   // Exit-note gate (ADR-0006): the primary mechanism for a deliberate pause. Checked
   // before the nudge/loop-guard logic below, so a human (or agent) who wants out never
@@ -125,7 +139,9 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
   if (isObserver(env)) return { block: false };
 
   try {
-    const input = JSON.parse(stdinRaw) as { stop_hook_active?: boolean; cwd?: string; session_id?: string };
+    // `session_id` is deliberately absent from this type (ADR-0013): Stop compares no
+    // identifiers at all, so the field is not read, and naming it here would invite one.
+    const input = JSON.parse(stdinRaw) as { stop_hook_active?: boolean; cwd?: string };
 
     // The stdin `cwd` is the hook's authoritative session cwd per Claude Code's Stop-hook
     // docs (it reflects any `cd` during the session); fall back to the invocation cwd for
@@ -149,22 +165,13 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // asked for — the lead's Stop simply fired first. Not looking is the fix: this hook
     // must neither consume nor honor the marker.
 
-    // The stored driver is an agent id sealed via SubagentStop (ADR-0010): a Stop event
-    // carries a session id, which can never be that agent — so this session is, by
-    // construction, not the driver. Return before the comparison below rather than relying
-    // on two unrelated id spaces happening not to collide.
-    if (state.driver_source === "claim") return { block: false };
-
-    // Owner check (ADR-0008): a session whose identifier disagrees with the run's
-    // recorded driver is a bystander, not the one this nudge is meant for — checked here,
-    // BEFORE the exit-note gate below, so a bystander's stop can never consume the actual
-    // driver's one-shot pause note. Only fires when BOTH sides resolve to a positive
-    // identifier: if either is missing, there is nothing to compare, so this falls
-    // through to the unchanged nudge flow (ADR-0006 fail-open — absence must never be
-    // read as a mismatch).
-    const hookSid = resolveHookSessionId(input, env);
-    const driver = typeof state.driver_session === "string" && state.driver_session.length > 0 ? state.driver_session : null;
-    if (hookSid !== null && driver !== null && hookSid !== driver) return { block: false };
+    // The whole of Stop's ownership logic (ADR-0013), and it compares nothing: the only
+    // identifier this run can record is an agent id sealed by SubagentStop, and a Stop is a
+    // *session's* turn end, so a claimed run's stop can never be its driver's. Checked here,
+    // BEFORE the exit-note gate below, so an enclosing session's stop can never consume the
+    // driving agent's one-shot pause note. An unclaimed run keeps the fail-open default:
+    // nobody named a driver, so whoever stopped here gets nudged.
+    if (recordedDriver(state) !== null) return { block: false };
 
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
@@ -198,9 +205,10 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     if (!state) return { block: false }; // race: vanished between findRunDir and here
     if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
 
-    // The agent's own identifier, never an env-derived fallback: HEADSIGN_SESSION_ID and
-    // CLAUDE_CODE_SESSION_ID describe the enclosing session, not this agent, so falling back
-    // to either would seal the wrong identity — exactly the confusion this hook exists to end.
+    // The agent's own identifier, never an env-derived fallback: every env identifier
+    // describes the enclosing session, not this agent, so falling back to one would seal the
+    // wrong identity — exactly the confusion this hook exists to end (and why ADR-0013
+    // deleted the env path rather than leaving it as a tempting second source).
     const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
 
     // Adoption gate (the claim handshake, re-homed here by ADR-0010): a claim marker means
@@ -213,7 +221,7 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
       // Consume the marker: like the stop-note, a claim is a one-shot request — leaving it
       // in place would re-adopt on every future subagent stop, not just this one.
       fs.rmSync(claimPath, { force: true });
-      const adoptedState = { ...state, driver_session: agentId, driver_source: "claim" as const, stop_nudges: 0 };
+      const adoptedState = { ...state, driver_agent: agentId, stop_nudges: 0 };
       writeState(runDir, adoptedState);
       appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
       // Same cwd-only caveat the nudge carries (ADR-0004): when the run was found by walking
@@ -239,17 +247,18 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     // names itself first under an armed marker, deliberately, because no other signal can name
     // a delegated agent (ADR-0010's named race).
     //
-    // driver_source !== "claim" means the run is driven by a *session* (env-stamped by
-    // start/next) — a subagent stopping under it is not that driver, whatever its agent_id.
-    if (state.driver_source !== "claim") return { block: false };
-    // Positive match required, unlike evaluate's owner check. There, an unresolvable
-    // identifier still nudges, because the session that just stopped in the run's own
-    // directory is very likely its driver. Here the opposite prior holds: most subagent
-    // stops belong to reviewers, searchers and workers with no headsign role, so a stop
-    // that cannot name itself is far more likely to be one of those than the driver.
-    // Nudging it would trap a bystander in someone else's run — the one outcome this hook
-    // must never produce — so absence of proof is treated as "not the driver".
-    if (agentId === null || state.driver_session !== agentId) return { block: false };
+    // A run nobody has claimed has no driver to match, so nothing below this line can apply.
+    const driver = recordedDriver(state);
+    if (driver === null) return { block: false };
+    // Positive match required — the only place in headsign where a stop is blocked without
+    // one is the adoption gate above. Stop, by contrast, nudges an unclaimed run's stopper
+    // without proving anything, because the session that stopped in the run's own directory
+    // is very likely its driver. Here the opposite prior holds: most subagent stops belong to
+    // reviewers, searchers and workers with no headsign role, so a stop that cannot name
+    // itself is far more likely to be one of those than the driver. Nudging it would trap a
+    // bystander in someone else's run — the one outcome this hook must never produce — so
+    // absence of proof is treated as "not the driver".
+    if (agentId === null || driver !== agentId) return { block: false };
 
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {

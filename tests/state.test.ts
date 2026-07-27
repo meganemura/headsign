@@ -21,8 +21,7 @@ test("round-trips through write/read", () => {
     last_failure: null,
     end_reason: null,
     stop_nudges: 1,
-    driver_session: null,
-    driver_source: null,
+    driver_agent: null,
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
@@ -32,9 +31,9 @@ test("readState returns null when no state file exists", () => {
   assert.equal(state.readState(tmpdir()), null);
 });
 
-// --- driver_session (ADR-0008) ---
+// --- driver_agent (ADR-0010, renamed by ADR-0013) ---
 
-test("round-trips a non-null driver_session", () => {
+test("round-trips a non-null driver_agent", () => {
   const dir = tmpdir();
   const s: state.State = {
     workflow: "demo",
@@ -46,33 +45,13 @@ test("round-trips a non-null driver_session", () => {
     last_failure: null,
     end_reason: null,
     stop_nudges: 0,
-    driver_session: "session-abc",
-    driver_source: "env",
+    driver_agent: "agent-claimed",
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
 });
 
-test("round-trips a driver_source of \"claim\" (the claim handshake, ADR-0009/0010)", () => {
-  const dir = tmpdir();
-  const s: state.State = {
-    workflow: "demo",
-    workflow_path: ".headsign/workflow.yaml",
-    status: "running",
-    phase: "plan",
-    attempts: {},
-    total_iterations: 0,
-    last_failure: null,
-    end_reason: null,
-    stop_nudges: 0,
-    driver_session: "agent-claimed",
-    driver_source: "claim",
-  };
-  state.writeState(dir, s);
-  assert.deepEqual(state.readState(dir), s);
-});
-
-test("a legacy state.json written without driver_session reads back with the field simply absent (state.ts itself does no validation — tolerance is each consumer's job)", () => {
+test("a legacy state.json carrying the old driver_session/driver_source fields reads back with driver_agent simply absent (state.ts itself does no validation — tolerance is each consumer's job)", () => {
   const dir = tmpdir();
   const legacy = {
     workflow: "demo",
@@ -84,13 +63,16 @@ test("a legacy state.json written without driver_session reads back with the fie
     last_failure: null,
     end_reason: null,
     stop_nudges: 0,
-    // driver_session intentionally omitted, as a pre-ADR-0008 state.json would be.
+    // The pre-ADR-0013 shape: the driver lived under a different name, in a field whose
+    // meaning depended on a companion that no longer exists.
+    driver_session: "session-abc",
+    driver_source: "env",
   };
   fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
   fs.writeFileSync(state.statePath(dir), JSON.stringify(legacy, null, 2) + "\n");
 
   const read = state.readState(dir) as unknown as Record<string, unknown>;
-  assert.equal("driver_session" in read, false);
+  assert.equal("driver_agent" in read, false);
 });
 
 test("acquireLock succeeds on a fresh directory and writes this process's own pid", () => {
@@ -173,8 +155,7 @@ test("atomic write leaves valid JSON and no leftover temp files", () => {
     last_failure: null,
     end_reason: null,
     stop_nudges: 0,
-    driver_session: null,
-    driver_source: null,
+    driver_agent: null,
   };
   state.writeState(dir, s);
   const raw = fs.readFileSync(state.statePath(dir), "utf8");

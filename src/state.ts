@@ -22,28 +22,33 @@ export interface State {
   workflow: string; workflow_path: string; status: Status; phase: string;
   attempts: Record<string, number>; total_iterations: number; last_failure: LastFailure | null;
   end_reason: string | null; stop_nudges: number;
-  // Who currently drives this run (ADR-0008/0010). Which *kind* of identifier this holds
-  // is decided entirely by driver_source below — read the two together, never this one
-  // alone. A state.json written before this field existed simply lacks it; readers must
-  // treat anything that isn't a string (missing, or a legacy/corrupt non-string value) as
-  // null, the same tolerant idiom stophook.ts already uses for stop_nudges.
-  driver_session: string | null;
-  // The one field that says which identifier space driver_session lives in, and therefore
-  // which stop-boundary hook may compare against it (ADR-0010 Decision 2 — this pairing is
-  // why no separate "kind" field exists):
+  // Who currently drives this run: the agent id sealed by the SubagentStop hook's adoption
+  // gate when a delegated agent that ran `headsign claim` ends its own turn (ADR-0010),
+  // or null when nobody has claimed the run.
   //
-  //   "env"   -> driver_session is a SESSION id, auto-stamped by start/next from the
-  //              process env. Only the Stop hook compares against it.
-  //   "claim" -> driver_session is an AGENT id, sealed by the SubagentStop hook when a
-  //              delegated agent that ran `headsign claim` ends its own turn. Only the
-  //              SubagentStop hook compares against it; Stop passes through on sight.
-  //   null    -> driver_session is null too; nobody is stamped, so nobody is compared.
+  // Named `driver_agent`, not the `driver_session` of ADR-0008/0010: the adoption
+  // gate is now the only writer, and what that gate writes is always an agent id.
+  // A session id can no longer land here, so calling the field `session` would be a lie
+  // (ADR-0013). The companion `driver_source` field went with it — one writer means one
+  // identifier space, so there is nothing left to discriminate.
   //
-  // Consumers must treat only the exact string "claim" as sticky (i.e. immune to being
-  // overwritten by the auto-stamp) — anything else, including a missing field on a
-  // pre-claim state.json or a corrupt/legacy value, is plain overwritable, the same
-  // tolerant idiom as the rest of this file's fields.
-  driver_source: "env" | "claim" | null;
+  // A state.json written before this rename simply lacks the field; readers must treat
+  // anything that isn't a string (missing, or a legacy/corrupt non-string value) as null,
+  // the same tolerant idiom stophook.ts already uses for stop_nudges.
+  //
+  // The missing-field half of that tolerance is TRANSITIONAL, and this is the ONE place the
+  // criterion for removing it is written — the two reader sites (stophook.ts's
+  // recordedDriver, cli.ts's cmdStatus) point here instead of restating it. It exists only
+  // so a run already in progress across the rename keeps working; nothing headsign writes
+  // today can produce a state.json without this field. It can go once no run started before
+  // the release that renamed the field can plausibly still be in progress — i.e. that
+  // release has shipped and enough time has passed that any older run has finished, been
+  // aborted, or been abandoned. A run is one work session in one directory, not a long-lived
+  // record, so that window is short: one release cycle is ample. Removing it means dropping
+  // the `typeof … === "string"` guards at both reader sites for a plain null check. The
+  // non-string *corrupt*-value half of the tolerance is not transitional and stays — a
+  // hand-edited state.json is always possible.
+  driver_agent: string | null;
 }
 
 export function statePath(cwd: string): string {

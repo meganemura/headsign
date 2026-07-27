@@ -9,7 +9,6 @@ import * as gate from "./gate.ts";
 import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
-import * as session from "./session.ts";
 
 // Local-time ISO 8601 with a numeric UTC offset, second precision, no milliseconds — e.g.
 // "2026-07-24T23:00:17+09:00". The log's reader is a human or agent writing a run report in
@@ -167,17 +166,14 @@ function cmdStart(args: string[]): void {
     errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
   }
 
-  // Claim ownership at the moment of start (ADR-0008); null when no identifier is
-  // available (unstamped, same as a pre-multi-session state.json — every session
-  // nudges, same as today). driver_source mirrors that: "env" only when an id was
-  // actually available to stamp, otherwise null — a new run always starts with a clean
-  // (non-sticky) driver, never inheriting a previous run's "claim" stickiness.
-  const startSid = session.resolveSessionId(process.env);
+  // A new run always begins undelegated (ADR-0013): the CLI process can never learn who is
+  // running it at agent granularity, so `start` has nothing honest to stamp. Until a
+  // delegated agent claims the run, both stop-boundary hooks fall back to nudging whoever
+  // stopped, which is the same behavior a pre-ownership headsign always had.
   const freshState: state.State = {
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
-    driver_session: startSid,
-    driver_source: startSid !== null ? "env" : null,
+    driver_agent: null,
   };
   state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -274,29 +270,16 @@ function cmdNext(): void {
   // pre-lock read and our own acquisition (loadWorkflowOrExit's YAML parse widens that
   // gap); acting on the stale `current` would silently overwrite that process's attempt
   // increment, which defeats the lock's entire purpose.
-  let fresh = state.readState(cwd);
+  const fresh = state.readState(cwd);
   if (!fresh) {
     state.releaseLock(cwd);
     errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
   }
 
-  // Driver stamp (ADR-0008), right after the fresh re-read under the lock: claim/refresh
-  // ownership so the stop-boundary hooks' owner checks always compare against whoever most
-  // recently called `next`. Only a *positive* identifier overwrites — a caller that
-  // resolved no id (env stripped mid-run) must never orphan an existing driver — and only
-  // a *changed* value is written, so the common case (same driver calling next
-  // repeatedly) costs nothing extra, preserving PENDING's zero-write guarantee below.
-  // driver_source !== "claim" is the stickiness rule from the claim handshake: once the
-  // SubagentStop hook has seated a delegated agent via `headsign claim` (ADR-0010), this
-  // env-derived auto-stamp must never silently overwrite it — env can only ever produce the
-  // enclosing session's id, which is precisely the identity the claim exists to override.
-  // Only a *new* claim (or a fresh `start`) may replace it. Any other driver_source
-  // (including missing/corrupt) is plain overwritable, same as today.
-  const sid = session.resolveSessionId(process.env);
-  if (sid !== null && fresh.driver_source !== "claim" && fresh.driver_session !== sid) {
-    fresh = { ...fresh, driver_session: sid, driver_source: "env" };
-    state.writeState(cwd, fresh);
-  }
+  // No driver stamping here (ADR-0013). `next` used to record the calling session's env
+  // identifier, which named the enclosing session even when a delegated agent was the
+  // caller — the wrong identity, and never the one the hooks compare against. Driver
+  // ownership now changes in exactly one place: the SubagentStop adoption gate.
 
   if (fresh.status !== "running") {
     state.releaseLock(cwd);
@@ -384,39 +367,35 @@ function cmdStatus(): void {
   // `?? null` rather than reading the field straight: a state.json written before this
   // field was renamed has no `last_failure` at all, and `undefined !== null` is true — the
   // guard below would pass and then dereference nothing.
+  //
+  // Transitional, like the driver_agent guard below. Nothing headsign writes today omits
+  // `last_failure`; this only covers a run that was already in progress when the field was
+  // renamed. It can go once no run predating that rename's release can plausibly still be
+  // running — see state.ts's driver_agent declaration for the full criterion, which applies
+  // unchanged here. Removing it means reading `current.last_failure` directly.
   const recorded = current.last_failure ?? null;
   const lastFailure =
     recorded !== null && recorded.phase === current.phase
       ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail }
       : null;
 
-  // Never print the session id itself (nothing here is material for impersonation) —
-  // only whether it matches the recorded driver, and legacy-tolerant the same way the
-  // Stop hook's own owner check is (non-string driver_session -> null).
+  // Two values, and neither is a judgment about *who is reading* (ADR-0013): the recorded
+  // driver is an agent id, which the CLI can never resolve for itself — only the
+  // SubagentStop hook's stdin carries one. So this line reports the one thing the CLI can
+  // honestly know, whether this run has been claimed at all, and never prints the id itself.
   //
-  // driver_source === "claim" (ADR-0010) skips the match/mismatch judgment entirely: the
-  // recorded driver is then an *agent* id, and the CLI can't resolve one at all (only the
-  // SubagentStop hook's stdin carries it) — a delegated agent whose Bash env shows the
-  // enclosing session's id would otherwise always misjudge "this session"/"another session"
-  // here. Naming the fact ("a delegated agent" drives this run, whether or not that's the
-  // reader) is honest about what the CLI can and can't know.
+  // Why keep the line: `claim` is a two-beat handshake that can fail quietly — the agent
+  // ended its turn without the hook firing, or another agent named itself first. One
+  // `headsign status` is how a human or agent confirms the delegation actually took.
   //
-  // Same honesty on the env path: a match only proves the reader is this session *or an agent
-  // it delegated to*, since a delegated agent inherits the enclosing session's env identifier
-  // and nothing here can separate the two. No wording here can do better: the one test that
-  // proves ownership belongs to SubagentStop (an ordinary nudge fires only on a positive
-  // match), it is available to delegated agents alone, and it reads the message rather than
-  // the mere fact of being held — Stop nudges every session on a run whose identifier was
-  // never stamped, and SubagentStop's adoption gate holds whoever names itself first under
-  // an armed marker.
-  let driver: "this session, or an agent it delegated to" | "another session" | "unknown" | "a delegated agent";
-  if (current.driver_source === "claim") {
-    driver = "a delegated agent";
-  } else {
-    const mySid = session.resolveSessionId(process.env);
-    const driverSid = typeof current.driver_session === "string" && current.driver_session.length > 0 ? current.driver_session : null;
-    driver = mySid === null || driverSid === null ? "unknown" : mySid === driverSid ? "this session, or an agent it delegated to" : "another session";
-  }
+  // Read through the same tolerant idiom the SubagentStop hook uses (stophook.ts's
+  // recordedDriver), rather than a bare `!== null`: a state.json from before the rename has
+  // no `driver_agent` at all, and `undefined !== null` is true — which would report a
+  // delegation that never happened. The missing-field half of that tolerance is transitional
+  // and removable; state.ts's driver_agent declaration says when.
+  const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
+  const driver: "a delegated agent" | "not delegated yet — no agent has claimed this run" =
+    driverAgent !== null ? "a delegated agent" : "not delegated yet — no agent has claimed this run";
 
   exitAfter(
     render.statusRunning({
