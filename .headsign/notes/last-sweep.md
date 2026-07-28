@@ -1,64 +1,61 @@
-# Fitness sweep — `src/gate.ts`
+# Fitness sweep — the module gate.ts
 
-- Date: 2026-07-28
-- Swept set: `src/gate.ts`, four functions. **This certifies that module and
-  nothing wider.**
-- Explained: 4 of 4 — `runGate`, `isReady`, `resolveRoute`, `buildTail`
-- Unexplained: none
-- Rejections along the way: 1 (`buildTail`, cleared on attempt 2)
-- Laps: 18
+## What was swept
 
-**Verdict: `src/gate.ts` passes.** No function in it defeated a plain
-explanation.
+**the module gate.ts** — its boundary, not its parts.
 
-## The one rejection, and why it was not a code finding
+This certifies that one module's boundary and nothing wider. No other module
+in `src/` was looked at, and neither were `gate.ts`'s own functions: a module
+whose boundary explains itself is never opened.
 
-`buildTail` was rejected on its first attempt for two faults, both in the
-writing:
+## The verdict
 
-- It described the truncation marker by its meaning ("a line saying the output
-  was truncated") instead of showing the string, so the returned value could
-  not be predicted.
-- It claimed `(no output)` was "exactly those nine characters". It is eleven.
+**Passed.** Nothing was left unexplained, no module's boundary went unstated,
+and nothing was found to describe more than one job.
 
-The judge's second point is the more useful one: an inaccuracy inside an
-otherwise exact description costs more than vagueness, because the reader can
-no longer tell which half of any sentence to trust. Attempt 2 showed both
-literals verbatim and was approved. Nothing about `buildTail` itself needed to
-change.
+The boundary explanation was approved on its third attempt, after two
+rejections. 11 laps.
 
-## What the pilot verified about the workflow
+## The findings
 
-This was `fitness.yaml`'s first execution — it had been validated and never
-run. Every mechanism it stacks assumptions on behaved as designed:
+### Functions nobody could explain
 
-- **The judge writes its own verdict.** Four subagents, four verdict files
-  written by the judge rather than reported back and transcribed. This is the
-  middle rung of ADR-0007 working as intended, and it was the assumption most
-  worth testing, since it depends on subagent behaviour rather than on
-  anything the YAML can enforce.
-- **`grep -qx -e APPROVED -e REJECTED` matched real judge output** every time,
-  including the rejection, whose note ran to several paragraphs below the
-  verdict word without disturbing the check.
-- **The rejection edge routed back to `explain`** and the try counter reached
-  2 in a real loop.
-- **`clear:` fired where it should**, including `current` and `explain.md` on
-  re-entering `explain` after the rejection, which forced a rewrite from
-  scratch rather than a patch of the sentence the judge complained about.
+None. No function was examined — see the last section.
 
-## What it did not test
+### Modules whose boundary could not be stated
 
-The give-up path. No function reached three attempts, so the `-ge 3` route to
-`record` and the `unexplained` ledger have still never executed. The
-`report`-escalates-on-a-non-empty-list branch is likewise untested.
+None. `gate.ts` was approved before the third rejection that would have sent
+the sweep inside it.
 
-## Open work this pilot does not address
+### Modules that are explainable but do more than one job
 
-Recorded in `.headsign/notes/fitness-budget-plan.md`, from the `design-grilling`
-run that preceded this one. Four gate changes remain unapplied because
-`improve` may not make structural changes: a try counter that can tell a fresh
-attempt from a stale file, a `report` check that the queue was really emptied,
-a durable gated output for `report`, and an `improve` check that the notes
-actually changed. Two non-structural fixes from that plan were applied during
-this run's `improve` phase — `inventory` now asks for one module, and the
-comment under `limits:` states the scope its number assumes.
+None — and this was the case worth watching. `gate.ts`'s row in
+`docs/architecture.md` describes two clauses joined by a semicolon: run the
+phase's checks, *and* resolve which route matched. That is the shape this
+question exists to notice.
+
+It was not flagged, and the reason holds up. One sentence covers both without
+stretching: *runs shell commands on behalf of a phase and reports their exit
+codes, and never decides what those codes mean.* Its second half excludes real
+things — saved state, version control, what a destination name means — which
+is what a purpose too broad to be one job cannot do.
+
+No change is recommended to `gate.ts`. The `docs/architecture.md` row could
+say the unifying sentence rather than the two clauses, but that is a wording
+preference, not a finding.
+
+## What this sweep did not look at
+
+Almost everything.
+
+- **The other six modules** in `src/`: `cli.ts`, `engine.ts`, `render.ts`,
+  `state.ts`, `stophook.ts`, `workflow.ts`. Nothing here says anything about
+  them.
+- **Every function inside `gate.ts`.** Its boundary was approved, so the sweep
+  never went in. An earlier per-function sweep of this same module passed all
+  four of its functions, but that was a different run against an earlier state
+  of the code, and this one does not renew it.
+- **Three parts of the workflow itself**, which have still never run: the
+  descent into a module (`gate.ts` was approved on exactly the attempt where a
+  rejection would have triggered it), and the two ledgers that only the
+  descent and an unfocused verdict can write.

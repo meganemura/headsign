@@ -68,19 +68,28 @@ phases:
   # awkward quietly stop getting listed.
   inventory:
     description: >
-      A run covers ONE module. Ask which one if you were not told; do not
-      queue all of `src/`, and see the note under `limits:` for what that
-      would cost. List every function in that module in
-      `.headsign/tmp/queue`, one per line, written as `module.ts:name` (for
-      example `engine.ts:step`) — no blank lines, no numbering, no other
-      content. Include nested and non-exported functions; they are where
-      complexity hides.
+      Build `.headsign/tmp/queue`: one item per line, no blank lines, no
+      numbering, no other content. There are two shapes of item and the rest
+      of the workflow tells them apart by the colon, so nothing has to
+      remember which kind of run this is:
+
+      - **A module**, written as its basename — `gate.ts`. The sweep asks
+        whether its boundary can be stated; if that fails three times it goes
+        inside on its own.
+      - **A function**, written as `module.ts:name` — `engine.ts:step`.
+
+      **Default to modules**, which is the cheaper walk and the one that tests
+      what `docs/architecture.md` declares. Queue functions instead when you
+      were asked for that specifically — after rewriting a module, say, when
+      you want the parts checked whether or not the boundary explains itself.
+      Do not queue all of `src/`'s functions at once; see the note under
+      `limits:` for what that costs.
 
       Then write what you queued, in one line of plain English, to
-      `.headsign/tmp/scope` — for example `the functions of gate.ts`. That
-      line is the run's scope, and `report` is required to repeat it: the
-      phase that knows what was swept is this one, and a report that
-      reconstructs it later is how a sweep ends up claiming more than it
+      `.headsign/tmp/scope` — `the modules of src/`, or `the functions of
+      gate.ts`. That line is the run's scope, and `report` is required to
+      repeat it: the phase that knows what was swept is this one, and a report
+      that reconstructs it later is how a sweep ends up claiming more than it
       earned.
 
       Do not start explaining anything in this phase.

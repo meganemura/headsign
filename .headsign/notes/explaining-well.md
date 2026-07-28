@@ -90,6 +90,50 @@ because a failed question is a real answer while a question that never ran is
 no answer, and the thing being decided is the destination itself. Both
 approved first time.
 
+### "Optional" is a debt; pay it in the same breath
+
+Every time you write that something is optional, you have promised to say what
+happens when it is left out. A reader who is told a field may be absent, and
+then told the answer is keyed on that field, has to invent the missing case —
+and everything they invent is consistent with what you wrote.
+
+*The cases.* Both rejections in the first module-level sweep were this, and
+neither was a confusing sentence — both were something true that was never
+said, sitting next to something that was.
+
+The explanation pinned one time limit at "an unchangeable 120 seconds" and
+left the other two unstated:
+
+> a caller reasonably assumes time limits are fully specified everywhere. They
+> are not. A check written without seconds, or a slow question in a
+> destination list, has no stated bound
+
+Then it called a label optional and, two paragraphs later, said the failure
+report names the check "by label":
+
+> The command text, an empty name, a position in the list, and the string
+> "undefined" are all consistent with what is written
+
+The fix that worked is structural rather than diligent: **one section that
+enumerates every optional field and every empty input with its answer.** It
+forces each "optional" already written to be settled in a place where a
+missing one is conspicuous. The attempt that added it was approved.
+
+### At module scale, the enemy is omission, not confusion
+
+A boundary explanation can hide something by never mentioning it, and a judge
+who has read only the explanation cannot see a subject that was never raised
+— it can only see the edge of a gap that something else pointed at.
+
+*The case.* The module-level explanation of `gate.ts` **dropped a detail the
+per-function explanation of the same code had got right**: that a check with
+no label is reported by its own command text. At function scale it was
+obvious; at module scale it fell out. The judge caught it only because the
+word "optional" was still there to catch it on.
+
+So do not rely on being thorough. Rely on the shape above, which turns
+completeness into a list somebody can check.
+
 ### Name what the function does not police
 
 Most functions have an edge something else is responsible for. Say so and
@@ -100,6 +144,22 @@ check list passes, an empty readiness command succeeds, a default entry in the
 middle of a list silently orphans everything below it. "Something earlier in
 the program is responsible for refusing this" kept those sentences short and
 kept the explanation about this function.
+
+## Writing about a module rather than a function
+
+Two sentences open a module's explanation: what it is for, and what it
+deliberately does not do. The second is the one that resists faking. A purpose
+can always be stretched to cover a mess — "this handles workflow things" — but
+a thing with no shape has nothing it obviously must not do.
+
+*The case.* `gate.ts` was a deliberate test of that, because its row in
+`docs/architecture.md` is two clauses joined by a semicolon: run the phase's
+checks, *and* resolve which route matched. It was not flagged as unfocused,
+and the reason is instructive rather than lenient. The unifying sentence held
+— *runs shell commands on behalf of a phase and reports their exit codes, and
+never decides what those codes mean* — and its exclusion half excluded real
+things: state, version control, what a destination name means. A vaguer
+purpose could not have produced that list.
 
 ## An observation, not yet a rule
 
