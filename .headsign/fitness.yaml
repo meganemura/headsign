@@ -11,10 +11,18 @@
 # The shape:
 #
 #   inventory ──> explain ──> judge ─┬─ APPROVED ─────────> record
-#                     ↑              ├─ third try ────────> record (as a miss)
+#                     ↑              ├─ third attempt ────> record (as a miss)
 #                     └──────────────┴─ otherwise ────────> explain
 #   record ─┬─ queue not empty ──> explain
 #           └─ empty ──> learn ──> improve ──> report ──> $end
+#
+# The judge answers one of three words, and `record` files by the last one:
+# APPROVED (nothing surprising, one job), UNFOCUSED (explainable, but several
+# jobs in one place), REJECTED (a caller could be surprised). UNFOCUSED does
+# not end the attempts — a writer who failed to state a purpose that does
+# exist looks exactly the same from where the judge stands, so it goes back to
+# `explain` like a rejection and is only filed if it is still the answer at
+# the third attempt.
 #
 # Conventions this workflow relies on (own them, they are not headsign's).
 # Everything lives under .headsign/tmp/, which the next `headsign start`
@@ -27,13 +35,17 @@
 #                  written by `inventory` and repeated by `report`.
 #   explain.md   — this attempt's explanation. The judge reads this and
 #                  nothing else.
-#   verdict      — APPROVED / REJECTED for THIS attempt, written by the judge
-#                  itself and cleared before each new one.
+#   verdict      — APPROVED / REJECTED / UNFOCUSED for THIS attempt, written
+#                  by the judge itself and cleared before each new one.
 #   verdicts     — every verdict the judge has written about the CURRENT item,
 #                  appended, with its note. Its count is the attempt number;
 #                  `record` clears it as it moves on to the next item.
 #   done         — items whose explanation was approved.
-#   unexplained  — functions that ran out of attempts. Data, not a stop.
+#   unexplained  — items that ran out of attempts. Data, not a stop.
+#   unfocused    — items the judge could read but that describe more than one
+#                  job. A finding about shape rather than about clarity.
+#   unstated     — modules whose boundary defeated every attempt (written by
+#                  the descent, which is not built yet).
 #   lessons.md   — what `learn` took from the sweep.
 #   summary.md   — `report`'s write-up.
 #
@@ -118,9 +130,27 @@ phases:
       `.headsign/notes/explaining-well.md` first and follow it; that file is
       the standard, and it grows every run. Write the explanation for someone
       who will never see the source — the judge is not allowed to look at it
-      either. If you find yourself unable to say a clause plainly, that
-      clause is the finding; say what makes it hard rather than dressing it
-      in a bigger word.
+      either.
+
+      **Open with two sentences: what this item is for, and what it
+      deliberately does not do.** Then describe everything a caller can
+      observe, and nothing they cannot. Observable includes what comes back,
+      what is written to disk, what is printed, what happens on odd input, how
+      long it waits, which way it fails when the world breaks — and the
+      arrangement a caller can detect, such as checks running in order and
+      stopping at the first failure. Not observable, and therefore out: which
+      private helpers exist, what calls what, internal step order nobody can
+      detect, data that never leaves.
+
+      The second opening sentence is the one that is hard to fake. A purpose
+      can always be made broad enough to cover a mess — "this handles workflow
+      things" — but a thing with no shape has nothing it obviously must not
+      do. If you cannot write that sentence, say so plainly in the
+      explanation; that is a finding, not a gap to paper over.
+
+      If you find yourself unable to say a clause plainly, that clause is the
+      finding too; say what makes it hard rather than dressing it in a bigger
+      word.
 
       If this is not your first attempt at this item, read
       `.headsign/tmp/verdicts` first: it holds every verdict the judge has
@@ -186,25 +216,39 @@ phases:
       write its own answer there — do not report the verdict back and copy it
       down yourself.
 
-      Give the judge exactly this question, unchanged:
+      Give the judge exactly these two questions, unchanged:
 
       "Read ONLY `.headsign/tmp/explain.md`. Do not open `src/`, and do not
-      use anything you already know about this codebase. Could a reader who
-      has read this explanation and nothing else predict what this function
-      does — what it is given, what it returns or changes, and what it does
-      at the edges (empty input, a missing file, a value nobody declared)?
-      Write APPROVED or REJECTED, on a line of its own, to
-      `.headsign/tmp/verdict`, replacing whatever is there. Then APPEND the
-      same word to `.headsign/tmp/verdicts`, on a line of its own, and if
-      REJECTED add below it the first sentence where the reader loses the
-      thread and the one thing they still could not predict. Write to no
-      other file."
+      use anything you already know about this codebase. Answer two
+      questions.
 
-      Do not soften that question and do not add "is this clear?" to it — a
-      question about clarity gets a polite yes, and a question about
-      prediction gets an answer that can be wrong. If the judge answers
-      REJECTED, you will be sent back to `explain`; you get three attempts at
-      an item before the sweep gives up on it.
+      First: could a caller who has read this explanation and nothing else be
+      SURPRISED by anything this item does that they can observe — what comes
+      back, what it writes or prints, what it does on odd input, how it fails?
+      Not 'is it clear' and not 'could they summarise it': could it catch them
+      out.
+
+      Second: does this describe ONE job, or several that happen to live in
+      the same place? The explanation should open with what the item is for
+      and what it deliberately does not do. A purpose broad enough to cover
+      anything is not one job, and you can tell because nothing follows about
+      what it must not do.
+
+      Write one word, on a line of its own, to `.headsign/tmp/verdict`,
+      replacing whatever is there: APPROVED if a caller would not be surprised
+      and this is one job; UNFOCUSED if it is several jobs; REJECTED
+      otherwise. Then APPEND the same word to `.headsign/tmp/verdicts`, on a
+      line of its own, and below it — unless APPROVED — the first sentence
+      where you lost the thread and the one thing you still could not predict,
+      or the jobs you counted. Write to no other file."
+
+      Do not soften those questions and do not add "is this clear?" to them —
+      a question about clarity gets a polite yes, and a question about
+      surprise gets an answer that can be wrong. Neither REJECTED nor
+      UNFOCUSED is the end: both send you back to `explain`, because the
+      second one can also be a writer who failed to state a purpose that
+      exists. You get three attempts at an item; what the judge said last is
+      what gets filed.
     # Fresh every entry: a verdict from the previous attempt (or the previous
     # item) would route this lap on evidence about something else. `verdicts`
     # is deliberately NOT here — it is the log the count is read from.
@@ -217,13 +261,13 @@ phases:
           # branch on this word, and a file of prose with no verdict line in
           # it would fall through to the default edge and be counted as a
           # rejection nobody actually made.
-          run: "grep -qx -e APPROVED -e REJECTED .headsign/tmp/verdict"
+          run: "grep -qx -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdict"
         - name: the answer reached the log
           # `verdict` is fresh this attempt, so requiring the log to end with
           # the same word proves an append happened consistent with it — and
           # fails outright when the log is missing or empty, which is the case
           # that would otherwise leave the count at zero forever.
-          run: 'test "$(grep -x -e APPROVED -e REJECTED .headsign/tmp/verdicts 2>/dev/null | tail -n 1)" = "$(grep -x -e APPROVED -e REJECTED .headsign/tmp/verdict)"'
+          run: 'test "$(grep -x -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdicts 2>/dev/null | tail -n 1)" = "$(grep -x -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdict)"'
     # Branching sits on the PASS path (docs/adr/0011): answering the judge is
     # not a failure, so a rejection costs no attempt here and the give-up edge
     # is a declared destination rather than an exhausted budget.
@@ -233,7 +277,7 @@ phases:
       # Three attempts is where an item stops being a writing problem and
       # starts being a design finding. Counted from the judge's log, not from
       # anything the writer wrote.
-      - when: 'test "$(grep -cx -e APPROVED -e REJECTED .headsign/tmp/verdicts)" -ge 3'
+      - when: 'test "$(grep -cx -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdicts)" -ge 3'
         to: record
       - to: explain
     max_attempts: 3
@@ -244,16 +288,23 @@ phases:
   # the `when:` asks the queue, not the agent, whether there is another lap.
   record:
     description: >
-      File the result for the function in `.headsign/tmp/current`. If
-      `.headsign/tmp/verdict` says APPROVED, append it to
-      `.headsign/tmp/done`; otherwise append it to
-      `.headsign/tmp/unexplained` and put the judge's note about where the
-      reader lost the thread on the lines BELOW it. Either way the function
-      goes on a line of its own, byte-identical to how it appeared in the
-      queue — the gate matches it as a whole line — and then that line comes
-      out of `.headsign/tmp/queue`. An unexplained function is data, not a
-      reason to stop: it is exactly the finding this sweep exists to produce,
-      and `report` is where it reaches a person.
+      File the result for the item in `.headsign/tmp/current`, according to
+      the LAST word in `.headsign/tmp/verdicts` — which is what the judge said
+      about the attempt that got you here:
+
+      - **APPROVED** → append it to `.headsign/tmp/done`.
+      - **UNFOCUSED** → append it to `.headsign/tmp/unfocused`, and put the
+        jobs the judge counted on the lines BELOW it. This is a finding about
+        shape: the item can be explained, and describes more than one thing.
+      - anything else → append it to `.headsign/tmp/unexplained`, with the
+        judge's note about where the reader lost the thread on the lines
+        BELOW it.
+
+      Either way the item goes on a line of its own, byte-identical to how it
+      appeared in the queue — the gate matches it as a whole line — and then
+      that line comes out of `.headsign/tmp/queue`. A finding is data, not a
+      reason to stop: it is exactly what this sweep exists to produce, and
+      `report` is where it reaches a person.
     # The verdict log belongs to one item. Cleared here, on the way to the
     # next one, rather than in `explain` or `judge`, either of which is
     # re-entered once per attempt and would reset the count it is supposed to
@@ -264,14 +315,14 @@ phases:
         - name: the claimed function left the queue
           # -F -x so the item is matched as a whole line, literally.
           run: '! grep -qxF -e "$(head -n 1 .headsign/tmp/current)" .headsign/tmp/queue'
-        - name: the result is on one of the two ledgers
-          # Keeps `report`'s counts honest: once the queue is empty these two
+        - name: the result is on one of the ledgers
+          # Keeps `report`'s counts honest: once the queue is empty these
           # files are the only record of what the sweep covered. Concatenated
-          # rather than handed to grep as two paths: one of the two is
+          # rather than handed to grep as several paths: most of them are
           # normally absent, and grep reports a missing file as an error
           # (exit 2), which is not the same answer as "not found" and must
           # not be read as one.
-          run: 'cat .headsign/tmp/done .headsign/tmp/unexplained 2>/dev/null | grep -qxF -e "$(head -n 1 .headsign/tmp/current)"'
+          run: 'cat .headsign/tmp/done .headsign/tmp/unexplained .headsign/tmp/unfocused 2>/dev/null | grep -qxF -e "$(head -n 1 .headsign/tmp/current)"'
     on_pass:
       # Same predicate as inventory's gate. A queue file that has gone missing
       # exits nonzero too — "not this branch" — and the run takes the default
