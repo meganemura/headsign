@@ -50,11 +50,13 @@ phases:
   # awkward quietly stop getting listed.
   inventory:
     description: >
-      List every function in `src/*.ts` in `.headsign/tmp/queue`, one per
-      line, written as `module.ts:name` (for example `engine.ts:step`) — no
-      blank lines, no numbering, no other content. Include nested and
-      non-exported functions; they are where complexity hides. Do not start
-      explaining anything in this phase.
+      A run covers ONE module. Ask which one if you were not told; do not
+      queue all of `src/`, and see the note under `limits:` for what that
+      would cost. List every function in that module in
+      `.headsign/tmp/queue`, one per line, written as `module.ts:name` (for
+      example `engine.ts:step`) — no blank lines, no numbering, no other
+      content. Include nested and non-exported functions; they are where
+      complexity hides. Do not start explaining anything in this phase.
     # Cleared on entry, which for the entry phase means on `headsign start`:
     # a queue or a ledger left over from an earlier sweep would make this run
     # chew through the wrong functions and report counts it never earned.
@@ -308,10 +310,19 @@ phases:
 
 limits:
   # Not "how many phases are there" but "how many gate evaluations does the
-  # whole sweep cost". src/ holds roughly seventy functions today; each costs
-  # three (explain, judge, record) when the first explanation lands, five when
-  # it takes two tries, and the four one-off phases cost one each. So this is
-  # a runaway backstop with headroom for a normal share of rejections, not a
-  # budget — and a sweep this size is a long run by design. Narrow what
-  # `inventory` lists if you want to cover one module at a time.
+  # whole sweep cost". Each function costs three (explain, judge, record) when
+  # the first explanation lands, five at two tries, seven at three, and the
+  # four one-off phases cost one each.
+  #
+  # THIS NUMBER ASSUMES ONE MODULE PER RUN, which is what `inventory` now asks
+  # for. The largest module in src/ is 23 functions: 73 laps if nothing is
+  # rejected, 165 if every single function burns all three tries. 300 is
+  # comfortably above both, which is what makes it a runaway backstop rather
+  # than a budget.
+  #
+  # Widen the scope and you must raise this number too. All of src/ is ~89
+  # functions — 271 laps before a single rejection, against a ceiling of 300,
+  # so fifteen rejections put an ordinary sweep through the wall. A whole-repo
+  # run wants ~700. Reaching the ceiling no longer ends the run (ADR-0017), so
+  # this is recoverable, but the sweep stops mid-list until someone raises it.
   max_total_iterations: 300
