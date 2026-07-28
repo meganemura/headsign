@@ -181,3 +181,140 @@ Whether the quoted contract should be the source header, the map row, or
 both. Both is more work and catches the case where those two already disagree
 with each other — which is exactly the case that went unnoticed for weeks in
 `cli.ts`.
+
+---
+
+# After five sweeps: what to change, and why
+
+Written 2026-07-29, after the function sweep of `gate.ts`, three module
+sweeps covering all seven modules, and two seam sweeps covering all eleven
+value edges. Items 1–4 above were written *during* that work; this section is
+the view from the end of it. Nothing here is implemented.
+
+## 5. The measured result, and what it says the sweep is
+
+| | |
+|---|---|
+| Laps | ~130 |
+| Judge calls | ~30, at 11–21k tokens each |
+| Bugs found | **1** — the stop hooks writing the record without the lock |
+| Contract declarations added | **17**, across six module headers |
+| Design changes triggered | 1 — moving the lap out of `cli.ts` |
+| Rules accumulated in `explaining-well.md` | 15, each with its case |
+
+**The verdict contributed least. The writing contributed most.** Three pieces
+of evidence, and they point the same way:
+
+- The bug did not come from a verdict. It came from writing the sentence "it
+  assumes nobody is holding the lock" and reading it back.
+- The refactor did not come from a verdict either. `gate.ts` and `cli.ts` were
+  both *approved*, and the misplaced seam surfaced while writing what a
+  boundary explanation has to contain.
+- Of roughly thirty judge calls, nearly every rejection said "you did not
+  write that down". That is a good editor. It is not a measurement.
+
+So the honest description is not a fitness function — which should be cheap,
+repeatable, deterministic, and something you gate on. It is **a forced-writing
+exercise with an adversarial reader**, and it has different economics: most of
+the value lands on the first pass over a piece of code, and re-running mostly
+re-confirms a contract that was already written.
+
+That is not a reason to stop. It is the reason the four changes below are the
+ones worth making.
+
+## 6. The changes chosen
+
+### D. Sweep the diff, not the tree
+
+**What.** The queue is built from what a change touched — the modules edited,
+and the seams whose either end moved — rather than from the whole of `src/`.
+
+**Why.** Cost currently scales with the size of the project and not with the
+size of the change. Eleven seams cost 65 laps whether one line moved or none.
+The single-seam exemption added to the coverage check during the last run was
+the first admission of this; D is the general form.
+
+**Cost.** "What a change touched" has to be computed, and computed
+conservatively — a missed edge is a silently smaller sweep, which is the one
+failure this must not have. Same discipline as `value-edges.sh`: fail loudly
+rather than under-report.
+
+### F. Executable predictions, so the judge stops giving opinions
+
+**What.** The judge writes three falsifiable predictions from the explanation
+— "given an empty list of checks it answers pass", "a check with no label is
+reported by its own command text" — and a runner executes them against the
+code. The verdict is how many came true.
+
+**Why.** Today the question is "could a caller be surprised", and the answer
+is an opinion formed by a reader who cannot check anything. Predictions are
+checkable. This is ADR-0007's ladder: the sweep's gate stops being soft
+because the judgment stops being the LLM's last word.
+
+**Cost.** A prediction has to be runnable, which means a shape for writing one
+and a runner that executes it. That is the largest single piece of work in
+this list, and it is the one that changes what the sweep *is*.
+
+### A. A verdict ledger keyed by content hash
+
+**What.** Each item's verdict is recorded with a hash of what was judged, and
+a later sweep skips items whose hash is unchanged — reporting what it skipped.
+
+**Why.** D needs it: "what a change touched" is only trustworthy if there is a
+record of what the last sweep saw. It is also what keeps B honest, below.
+
+**Not a repeat of ADR-0012.** That removed a tree-hash cache which
+short-circuited a whole run and thereby hid a run that was making no progress.
+This is per-item evidence, and skipping is reported rather than silent.
+
+### B. Keep the explanations
+
+**What.** The explanation is saved rather than deleted with `.headsign/tmp/`.
+
+**Why.** It is the best documentation this project has produced and it has
+been thrown away five times. It is also what F needs: a judge writing
+predictions needs a description thick enough to predict from.
+
+**Why not E — writing the header directly instead.** They are not two ways to
+do one thing; they are answers to different questions. **A header is a
+contract**: normative, terse, in the code. **An explanation is a description**:
+long, exampled, thick enough to predict from. `cli.ts`'s boundary explanation
+ran to a page; its header is five lines. Collapsing them either bloats the
+header — already 27% of `gate.ts` and 24% of `state.ts` — or starves the
+judge, which is fatal under F. And the seam sweep already uses them as two
+things: the explanation *quotes* the contract, so that a mismatch is visible.
+One document cannot quote itself.
+
+**The weakness, and what answers it.** A third document is a third thing that
+can drift — exactly what happened to `cli.ts`'s header, which claimed for
+weeks that it must not know routing rules while holding the ordering. A
+answers it: a saved explanation carries the hash of what it described, so
+after a change it is marked stale rather than quietly wrong.
+
+**What would change this to E.** If the saved explanations turn out never to
+be read. That is an empirical question with no data yet, because they have
+always been deleted. Save them, and if nothing reads them across the next few
+sweeps, collapse to E.
+
+## 7. Considered, not chosen
+
+- **C — mechanical pre-checks** (every exported name appears in the header;
+  a "must NOT know about" naming a module is verified against the imports).
+  Cheap, deterministic, and it would have caught the fourth sharp edge in
+  `engine.ts`. Not chosen only because it is subsumed by F, which checks
+  something stronger. Worth revisiting if F proves too large.
+- **G — invert the audience**: give a fresh agent only the contracts and see
+  whether it can make a correct change. An end-to-end test of the
+  documentation rather than of the prose. Rejected for now as a second
+  expensive mechanism next to F; it measures the same property less directly.
+- **H — drop the pass/fail verdict entirely**, keeping only the writing and
+  the adversarial reading. Tempting, because the verdict's information content
+  measured near zero. Rejected because it collides head-on with what headsign
+  is: gates decide. If F works, the verdict stops being empty and this
+  question goes away.
+- **I — a budget on the contract rather than on the code.** The inverse of
+  ADR-0001's retired line budget: `gate.ts` now spends 19 header lines on 69
+  code lines, and a module needing that much contract may be two modules. Not
+  chosen because one day's data is not enough to set a number, and a number
+  nobody enforces is what ADR-0016 replaced. Recorded because the question is
+  real and the measurement now exists to ask it again later.
