@@ -7555,14 +7555,19 @@ function acquireLock(cwd) {
   fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
   const p = lockPath(cwd);
   const tryCreate = () => {
+    const tmp = path.join(path.dirname(p), `.lock.${process.pid}.tmp`);
     try {
-      const fd = fs2.openSync(p, "wx");
-      fs2.writeSync(fd, String(process.pid));
-      fs2.closeSync(fd);
+      fs2.writeFileSync(tmp, String(process.pid));
+      fs2.linkSync(tmp, p);
       return { ok: true };
     } catch (err) {
       if (err.code !== "EEXIST") throw err;
       return null;
+    } finally {
+      try {
+        fs2.unlinkSync(tmp);
+      } catch {
+      }
     }
   };
   const first = tryCreate();

@@ -159,7 +159,20 @@ without touching state; it does not wait or retry.
 Stale locks self-heal: if the pid inside `lock` is not a live process
 (checked via `process.kill(pid, 0)`, treating `EPERM` as alive and anything
 else as dead — including an unparseable pid), the lock is stolen and the
-acquire retried once. A holder that crashed mid-evaluation therefore cannot
+acquire retried once.
+
+That self-healing rule is why **the lock file must never be observable
+without its pid in it**, and why it is created by writing the pid to a
+private temp file and hard-linking that into place rather than by creating
+the file and then writing to it. `link` still fails with `EEXIST` when the
+lock is held, so exactly one caller wins — but no reader can catch the file
+empty. Creating first and writing second leaves exactly such a moment, and a
+reader arriving in it finds an unparseable pid, concludes the holder is dead,
+and steals a lock the first process is still in the middle of taking. Both
+then believe they hold it, both evaluate, and one's `writeState` silently
+overwrites the other's increment — the very corruption the lock exists to
+prevent. It was not theoretical: it failed the concurrency regression test
+roughly one run in three under load. A holder that crashed mid-evaluation therefore cannot
 wedge future runs. The lock is gitignored (`start` ensures this): it is
 headsign-internal and transient, not part of the working tree a gate
 observes.

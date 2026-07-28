@@ -9,6 +9,21 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two concurrent `headsign next` calls could both evaluate, and one's
+  attempt count could be lost.** The lock was created empty and its pid
+  written a moment later, and a second process arriving in that moment found
+  an unparseable pid, concluded the holder had crashed, and stole a lock the
+  first was still taking. Both then ran the gate and both wrote state, so one
+  increment vanished — the exact corruption the lock exists to prevent. It
+  needed real contention to hit: delegating a run to several subagents at once
+  is the way to meet it, and it failed this repository's own concurrency
+  regression test about one run in three under load. The lock is now created
+  with its pid already inside it, atomically, so no reader can ever see it
+  empty. Stealing a genuinely stale lock is unchanged. See
+  [ADR-0004](docs/adr/0004-state-attempts-and-cache.md).
+
 ### Changed
 
 - **Reaching `limits.max_total_iterations` no longer ends the run.** It still

@@ -96,15 +96,31 @@ export function appendLog(cwd: string, line: string): void {
 export function acquireLock(cwd: string): { ok: true } | { ok: false; pid: number } {
   fs.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
   const p = lockPath(cwd);
+  // Create the lock with its pid ALREADY INSIDE IT, in one atomic step: write the pid to a
+  // private temp file, then hard-link that file into place. `link` fails with EEXIST when the
+  // lock exists, so exactly one caller still wins — and no other process can ever observe the
+  // lock file empty.
+  //
+  // That window was real, not theoretical. Creating the file and then writing the pid leaves
+  // it empty for a moment, and a reader that finds an unparseable lock concludes the holder
+  // is dead and steals it (see below — that steal is what stops a crashed run wedging the
+  // directory forever). So a second process could steal a lock the first was still in the
+  // middle of taking, after which both believed they held it, both evaluated, and one's write
+  // silently overwrote the other's attempt increment. It surfaced as an intermittent failure
+  // in the concurrency regression test, under load, roughly one run in three.
   const tryCreate = (): { ok: true } | null => {
+    const tmp = path.join(path.dirname(p), `.lock.${process.pid}.tmp`);
     try {
-      const fd = fs.openSync(p, "wx");
-      fs.writeSync(fd, String(process.pid));
-      fs.closeSync(fd);
+      fs.writeFileSync(tmp, String(process.pid));
+      fs.linkSync(tmp, p);
       return { ok: true };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       return null;
+    } finally {
+      // The link (or the failure to make one) is the whole result; the temp file has no
+      // further job. Best effort: a leftover would be harmless but pointless.
+      try { fs.unlinkSync(tmp); } catch { /* best effort */ }
     }
   };
 
