@@ -9,6 +9,8 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-29
+
 ### Fixed
 
 - **A stop-boundary hook could erase a running lap's progress.** The hooks
