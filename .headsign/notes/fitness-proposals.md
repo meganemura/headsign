@@ -49,6 +49,9 @@ nobody checks.
 - Have `report` mark exclusions as unverified, so a passing sweep says which
   of its claims nobody checked. Cheapest, and buys honesty rather than
   detection.
+- **Sweep the seams (proposal 4 below).** Written later, and it is the better
+  answer to this one: it verifies exclusions without letting any judge see the
+  code, by making the mismatch appear in the text the judge already reads.
 
 ## 2. The sweep's own working papers do not survive
 
@@ -81,3 +84,100 @@ Possible: a check that every exported name appears somewhere in the
 explanation. Mechanical, cheap, and it would have caught the fourth. It proves
 only that the name was mentioned, not that it was described correctly — which
 is the usual bargain in this workflow, and usually worth taking.
+
+
+## 4. Sweep the seams, not only the files
+
+**The observation that prompted it.** Every fault this sweep failed to find
+was a property of a *pair* of modules, and the sweep's unit is one module:
+
+- `engine.ts`'s four entry points each assumed something — the run is running,
+  the workflow was validated — that only `cli.ts` guaranteed. Both modules
+  were explained honestly. `engine.ts` even said outright that it trusts its
+  caller. Nothing was wrong *inside* either one.
+- `cli.ts`'s approved explanation said it "does not work out where a run goes
+  next", which was false because of what it did relative to `engine.ts`.
+- The seam itself — the order of a lap sitting in the file the map forbids to
+  hold a routing rule — is not visible from either side alone.
+
+**Why that is not a coincidence.** An earlier decision made the exclusion list
+the half that makes a single purpose credible: a purpose stretches to cover a
+mess, but a mess has nothing it obviously must not do. And **an exclusion is
+almost always a statement about somebody else.** "Does not decide where the
+run goes" means *engine.ts decides that*. "Does not read the clock" means
+*the caller passes one in*. So the load-bearing half of every explanation is
+the relational half — and a sweep whose unit is one file can never check it.
+
+### The unit
+
+A **value import edge**, written `caller.ts>callee.ts` — a third item shape
+alongside `module.ts` and `module.ts:name`, told apart by the `>` exactly as
+the colon tells the first two apart.
+
+`src/` has **14** import edges today, of which **11** carry values; the other
+three (`gate→workflow`, `render→engine`, `render→state`) import types only and
+have no behavioural seam to describe. So 11 items, comparable to the 7 of a
+module sweep.
+
+### What the explanation must contain
+
+Three parts, and the third is what makes this work:
+
+1. **What the caller uses the callee for** — the questions it asks and what it
+   does with the answers.
+2. **What the callee assumes the caller has already done.** Every
+   precondition, in plain words: "it assumes the run is still going", "it
+   assumes the workflow was validated", "it assumes the lock is held".
+3. **The callee's own declared contract, quoted verbatim** — its
+   `// Responsibility:` header and its row in `docs/architecture.md`.
+
+### Why a code-blind judge can now catch what it could not
+
+This is the whole trick and it is worth stating on its own. The judge still
+reads only the explanation. But part 2 and part 3 are now *in the same
+document*, so a precondition that the callee never declares is a
+**contradiction in the text**, not a fact about code the judge cannot see.
+
+The judge is asked two questions:
+
+- Is every assumption listed in part 2 covered by the contract quoted in
+  part 3?
+- Does anything in part 1 contradict what part 3 says the callee does not do?
+
+### What can be checked mechanically
+
+Two things, both cheap, and they close the obvious ways to game it:
+
+- **The quotes are real.** `grep -qF` each quoted line against the callee's
+  source. A writer cannot paraphrase the contract into agreement with itself.
+- **The queue covers every value edge.** Derivable from the imports, the same
+  way the descent's floor is derived from the code rather than trusted to the
+  agent.
+
+### What it would have caught today
+
+Both of the misses, and by construction rather than by luck.
+
+- The edge `cli.ts>engine.ts` would have had to say "engine assumes the run is
+  still running" in part 2, and quote a contract in part 3 that says nothing
+  of the kind. The mismatch is on the page.
+- The same explanation would have had to describe, in part 1, that `cli.ts`
+  asks the questions in a fixed order — against a quoted row saying `cli.ts`
+  must not know routing rules.
+
+### Costs, and one discomfort
+
+- 11 items at three laps each, plus retries: comparable to a module sweep, and
+  additional to it rather than instead of it.
+- A third item shape means `inventory` gains a third job. That is the same
+  discomfort recorded when it gained its second, with the same answer: the
+  graph does not change, and each item's shape selects its own branch.
+- It should run **after** the module sweep, not instead of it. A module whose
+  own boundary cannot be stated has no contract worth quoting.
+
+### Open question for a person
+
+Whether the quoted contract should be the source header, the map row, or
+both. Both is more work and catches the case where those two already disagree
+with each other — which is exactly the case that went unnoticed for weeks in
+`cli.ts`.
