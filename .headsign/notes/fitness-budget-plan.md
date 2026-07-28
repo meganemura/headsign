@@ -55,30 +55,29 @@ lap is a worse position than sixteen laps of evidence.
 1. **Finish this grilling run.** No rebuild until it ends — this session
    drives `design-grilling` through the bundle in the plugin cache, and
    rebuilding swaps that CLI underneath a live run.
-2. **The headsign change (decision 6).** `checkIterationLimit` returns
+2. **The headsign change — the ceiling stops being terminal.** `checkIterationLimit` returns
    ESCALATE without the terminal status write; tests for both halves (the wall
    reprints and costs no laps; raising the limit and running `next` resumes the
    same phase); ADR-0002's transition-table row and its
    idempotent-on-terminal-states paragraph, which now has an exception; a new
    ADR recording the three-budget distinction that makes the exception
    principled. Then rebuild and re-sync the plugin bundle.
-3. **The pilot (decision 7).** `headsign start fitness`, told at run time to
+3. **The pilot.** `headsign start fitness`, told at run time to
    queue only `src/gate.ts`. No file edit is needed for that: `inventory`'s
    gate never checks the queue's scope, and its `description` is advisory.
 4. **Apply the six `fitness.yaml` fixes, informed by the pilot.**
-   1. `inventory` says one module per run (decisions 1, 4).
-   2. The comment under `limits:` states the scope 300 assumes (decision 4).
+   1. `inventory` says one module per run.
+   2. The comment under `limits:` states the scope 300 assumes.
    3. `report` writes `.headsign/notes/last-sweep.md`, naming the swept set,
-      gated (decision 2).
-   4. `improve` gains a check that `.headsign/notes/` actually changed
-      (decision 2).
-   5. `report` gains a check that the queue was really emptied (decision 5).
+      gated.
+   4. `improve` gains a check that `.headsign/notes/` actually changed.
+   5. `report` gains a check that the queue was really emptied.
    6. `explain`'s try counter gets a check that can tell a fresh attempt from
-      a stale file (decision 3).
+      a stale file.
    7. Also worth doing on its own merits: `record` appends its finding to the
       durable file as it is produced, so no ending loses it.
 5. **ADR-0016 gets a note** that the swept set is a parameter of the run and
-   `report` certifies that set and nothing wider (decision 1).
+   `report` certifies that set and nothing wider.
 6. **The remaining six modules**, one run each.
 
 ## Deliberately not being done
@@ -103,7 +102,8 @@ Six of seven answers came out of writing the explanation, and each of those
 six changed on contact with the `challenge` phase — not cosmetically. The
 whole-repo lap arithmetic was wrong in the direction that flattered the answer
 I was heading for. `improve`'s gate turned out not to enforce the thing I had
-called already-enforced. The proposal in question 5 turned out to convert a
+called already-enforced. The proposal to route out of the sweep before the budget ran out turned out to
+convert a
 loud failure into a false COMPLETE, which is what made the real hole visible.
 None of those were found by reading the file; they were found by having to say
 a claim plainly and then being made to ask why it was true.

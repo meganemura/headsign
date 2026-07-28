@@ -181,19 +181,43 @@ phases:
 
   # ── settle ───────────────────────────────────────────────────────────────
   # Reached only once every question has an answer on the record.
+  #
+  # WRITE FOR SOMEONE WHO WAS NOT HERE. The question list was framed inside
+  # this run and nobody outside it has ever seen it, so its ordering is
+  # private: "decision 4" names a position in a file the reader does not have.
+  # This is not a style note — it was the one complaint a real reader made
+  # about the first plan this workflow produced, and it made the report
+  # unreadable to the person who had asked for the work.
   settle:
     description: >
       Write `.headsign/tmp/plan.md` from `.headsign/tmp/decisions.md`: what
-      was agreed, question by question, and the order the work should now be
-      done in, including what is deliberately not being done. Note which
-      answers came from a person and which the explaining produced on its
-      own — the second kind is what tells you whether this loop is earning
-      its keep. Copy it somewhere durable before you finish;
+      was agreed, the order the work should now be done in, and what is
+      deliberately not being done.
+
+      Write it for a reader who never saw the question list. **Never refer to
+      an answer by its number or position** — not "decision 4", not "the fifth
+      question", not "as decided above". Name the thing instead: "the attempt
+      counter moves to the judge's side". Each item states its premise before
+      its conclusion: what was true before, what changes, what it costs. A
+      reader who has only this file should be able to act on it.
+
+      Note which answers came from a person and which the explaining produced
+      on its own — the second kind is what tells you whether this loop is
+      earning its keep. Copy the plan somewhere durable before you finish;
       `.headsign/tmp/` does not survive the next `headsign start`.
     gate:
       checks:
         - name: the plan was written
           run: "test -s .headsign/tmp/plan.md"
+        - name: no answer is referred to by its number
+          # Honest, not smart: it proves one form of words is absent, never
+          # that a stranger can read the prose. It is here because that exact
+          # form is what broke the first plan this workflow produced — the
+          # reader who had asked for the work could not tell what "decision 4"
+          # meant, and the numbering was an artifact of a list only the run
+          # ever saw. Everything else about writing for an outsider is in the
+          # description, unenforced; this one part is cheap to check, so it is.
+          run: '! grep -qiE "(decisions?|questions?|問い|決定)[[:space:]]*#?[0-9]" .headsign/tmp/plan.md'
     on_pass: $end
     max_attempts: 3
 

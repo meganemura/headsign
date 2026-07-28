@@ -89,19 +89,19 @@ per-function run is the same workflow started with a queue of functions.
 
 ## The order of work
 
-1. **Fix the attempt counter first (decision 4).** Count the judge's verdicts,
+1. **Fix the attempt counter first — the change that moves it to the judge's side.** Count the judge's verdicts,
    appended. This is a precondition, not a cleanup: every other change assumes
    the descent fires when it should, and today `test -s` cannot tell a fresh
    attempt from a stale file. It also closes the note-history hole the previous
    grilling recorded.
-2. **Rewrite the judge's question (decisions 1, 2, 5)** — surprise, plus one
+2. **Rewrite the judge's question, and the writing rule it mirrors** — surprise, plus one
    job or several — and the writing rule it mirrors. These are the same rule
    and must land together.
-3. **Add `descend` and split the exhaustion route (decisions 3, 6, 7).** Gate
+3. **Add `descend` and split the exhaustion route.** Gate
    it on both halves: the module's functions are queued, and its boundary
    failure is filed.
 4. **`inventory` writes `.headsign/tmp/scope`; `report` is gated on the
-   summary naming it (decision 7).** This also discharges the previous
+   summary naming it.** This also discharges the previous
    grilling's "name the swept set" follow-on.
 5. **Make `report` legible (the accumulated cost).** Three kinds of finding —
    a function that cannot be explained, a module whose boundary cannot be
@@ -133,16 +133,19 @@ in the `challenge` phase, and three changed materially:
 - The cost table was measured in laps, which is the wrong unit for the
   complaint that started this ("it would take quite a while") — most of that
   time is writing, and writing falls by two to four times, not ten.
-- Decision 4's argument inverted. The route is the disinterested participant,
-  *except* that the counter it reads is written by the interested one — and
-  this design gives that participant a motive it did not have before.
-- Decision 5's question was answered "no" and then found a hole on the
-  opposite path, where an honest explanation of an incoherent module passes.
-  Nothing about the question as asked would have surfaced that.
+- The argument about who may trigger the descent inverted. The route is the
+  disinterested participant, *except* that the counter it reads is written by
+  the interested one — and this design gives that participant a motive it did
+  not have before.
+- Asking whether a rejection should be labelled "writing" or "design" was
+  answered "no" — and then found a hole on the opposite path, where an honest
+  explanation of an incoherent module passes. Nothing about the question as
+  asked would have surfaced that.
 
 The `challenge` change made after the last run — attack the groupings, not
-just the load-bearing words — earned itself in decision 5, where the fault was
-that "rejection" had been treated as one kind of event with one kind of cause.
+just the load-bearing words — earned itself on that same question, where the
+fault was that "rejection" had been treated as one kind of event with one kind
+of cause.
 
 One thing this loop did not do: no question went to a person. That is not
 obviously good. The list was framed by the same agent that answered it, and a
