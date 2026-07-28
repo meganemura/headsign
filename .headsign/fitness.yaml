@@ -10,9 +10,11 @@
 #
 # The shape:
 #
-#   inventory ──> explain ──> judge ─┬─ APPROVED ─────────> record
-#                     ↑              ├─ third attempt ────> record (as a miss)
-#                     └──────────────┴─ otherwise ────────> explain
+#   inventory ──> explain ──> judge ─┬─ APPROVED ──────────────> record
+#                     ↑              ├─ 3rd try, a module ─────> descend
+#                     │              ├─ 3rd try, a function ───> record
+#                     │              └─ otherwise ─────────────> explain
+#                     ├──────────────── descend (its parts are queued)
 #   record ─┬─ queue not empty ──> explain
 #           └─ empty ──> learn ──> improve ──> report ──> $end
 #
@@ -44,8 +46,8 @@
 #   unexplained  — items that ran out of attempts. Data, not a stop.
 #   unfocused    — items the judge could read but that describe more than one
 #                  job. A finding about shape rather than about clarity.
-#   unstated     — modules whose boundary defeated every attempt (written by
-#                  the descent, which is not built yet).
+#   unstated     — modules whose boundary defeated every attempt, written by
+#                  `descend` on its way into them.
 #   lessons.md   — what `learn` took from the sweep.
 #   summary.md   — `report`'s write-up.
 #
@@ -237,10 +239,16 @@ phases:
       Write one word, on a line of its own, to `.headsign/tmp/verdict`,
       replacing whatever is there: APPROVED if a caller would not be surprised
       and this is one job; UNFOCUSED if it is several jobs; REJECTED
-      otherwise. Then APPEND the same word to `.headsign/tmp/verdicts`, on a
-      line of its own, and below it — unless APPROVED — the first sentence
-      where you lost the thread and the one thing you still could not predict,
-      or the jobs you counted. Write to no other file."
+      otherwise.
+
+      Then APPEND to `.headsign/tmp/verdicts` a line of exactly this shape,
+      where ITEM is the single line in `.headsign/tmp/current`:
+
+          ### ITEM WORD
+
+      and below it — unless APPROVED — the first sentence where you lost the
+      thread and the one thing you still could not predict, or the jobs you
+      counted. Write to no other file."
 
       Do not soften those questions and do not add "is this clear?" to them —
       a question about clarity gets a polite yes, and a question about
@@ -267,7 +275,7 @@ phases:
           # the same word proves an append happened consistent with it — and
           # fails outright when the log is missing or empty, which is the case
           # that would otherwise leave the count at zero forever.
-          run: 'test "$(grep -x -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdicts 2>/dev/null | tail -n 1)" = "$(grep -x -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdict)"'
+          run: 'test "$(grep -F "### $(head -n 1 .headsign/tmp/current) " .headsign/tmp/verdicts 2>/dev/null | tail -n 1 | awk "{print \$NF}")" = "$(grep -x -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdict)"'
     # Branching sits on the PASS path (docs/adr/0011): answering the judge is
     # not a failure, so a rejection costs no attempt here and the give-up edge
     # is a declared destination rather than an exhausted budget.
@@ -277,7 +285,13 @@ phases:
       # Three attempts is where an item stops being a writing problem and
       # starts being a design finding. Counted from the judge's log, not from
       # anything the writer wrote.
-      - when: 'test "$(grep -cx -e APPROVED -e REJECTED -e UNFOCUSED .headsign/tmp/verdicts)" -ge 3'
+      # A module that ran out of attempts is not filed and forgotten — the
+      # sweep goes inside it. Told apart from a function by the colon: the
+      # queue holds basenames, so `gate.ts` is a module and `gate.ts:runGate`
+      # is a function, and nothing has to remember which mode the run is in.
+      - when: 'test "$(grep -cF "### $(head -n 1 .headsign/tmp/current) " .headsign/tmp/verdicts)" -ge 3 && ! grep -q ":" .headsign/tmp/current'
+        to: descend
+      - when: 'test "$(grep -cF "### $(head -n 1 .headsign/tmp/current) " .headsign/tmp/verdicts)" -ge 3'
         to: record
       - to: explain
     max_attempts: 3
@@ -289,8 +303,8 @@ phases:
   record:
     description: >
       File the result for the item in `.headsign/tmp/current`, according to
-      the LAST word in `.headsign/tmp/verdicts` — which is what the judge said
-      about the attempt that got you here:
+      the last `### <item> <WORD>` line in `.headsign/tmp/verdicts` for that
+      item — which is what the judge said about the attempt that got you here:
 
       - **APPROVED** → append it to `.headsign/tmp/done`.
       - **UNFOCUSED** → append it to `.headsign/tmp/unfocused`, and put the
@@ -305,11 +319,12 @@ phases:
       that line comes out of `.headsign/tmp/queue`. A finding is data, not a
       reason to stop: it is exactly what this sweep exists to produce, and
       `report` is where it reaches a person.
-    # The verdict log belongs to one item. Cleared here, on the way to the
-    # next one, rather than in `explain` or `judge`, either of which is
-    # re-entered once per attempt and would reset the count it is supposed to
-    # be accumulating.
-    clear: [.headsign/tmp/verdicts]
+    # NOTHING is cleared here. An earlier version cleared the verdict log on
+    # the way to the next item, which deleted the judge's note on entry — the
+    # very note this phase is told to file. Keying each log entry by its item
+    # removes the need: the count and the last word are both read for the
+    # current item only, so the log can simply keep growing, and `learn` gets
+    # every note the run ever produced instead of the survivors.
     gate:
       checks:
         - name: the claimed function left the queue
@@ -330,6 +345,71 @@ phases:
       - when: "grep -q '[^[:space:]]' .headsign/tmp/queue"
         to: explain
       - to: learn
+    max_attempts: 3
+
+  # ── descend ──────────────────────────────────────────────────────────────
+  # Reached only when a MODULE ran out of attempts. Three corrected attempts
+  # could not state what this file promises — which is a reason to look
+  # inside, not a verdict on the file. The descent is what decides between the
+  # two things a boundary failure can mean, and it produces a finding either
+  # way:
+  #
+  #   some function inside also fails  → the address narrows to that function
+  #   every function inside is clean   → the parts are fine and the whole is
+  #                                      not, which is a statement about the
+  #                                      module's responsibility rather than
+  #                                      its code. The per-function sweep
+  #                                      cannot produce this one at all: it
+  #                                      has no whole to compare parts against.
+  #
+  # Both halves of the job are checked, because forgetting either one loses a
+  # finding silently — a module that descended without being filed would
+  # vanish from the ledgers and leave a report of functions only.
+  descend:
+    description: >
+      The module in `.headsign/tmp/current` could not state its own boundary
+      in three attempts. Do two things, then run `headsign next`.
+
+      **File the boundary failure.** Append the module, on a line of its own
+      and byte-identical to how it appeared in the queue, to
+      `.headsign/tmp/unstated`, and put the judge's last note about it — from
+      `.headsign/tmp/verdicts` — on the lines BELOW it. Then take that line
+      out of `.headsign/tmp/queue`.
+
+      **Queue its parts.** Append every named function in that module to
+      `.headsign/tmp/queue`, one per line, as `module.ts:name`. Named means a
+      `function` declaration or a named constant holding a function; an
+      anonymous callback written inline is not one — the ledgers are keyed by
+      name, so a thing with no name could be encountered but never recorded,
+      and its behaviour belongs to the function around it anyway.
+
+      This is not a failure and not the end of the module. What the sweep
+      finds inside is the other half of the finding: if every function comes
+      back clean, that pair — parts fine, whole not — is the result, and it
+      says the file's responsibility is wrong rather than its code.
+    gate:
+      checks:
+        - name: the module left the queue
+          run: '! grep -qxF -e "$(head -n 1 .headsign/tmp/current)" .headsign/tmp/queue'
+        - name: the boundary failure is on the record
+          # Piped through `cat` so an absent ledger is an empty stream rather
+          # than a grep error (exit 2), which is not the same answer as "not
+          # found" and must not be read as one.
+          run: 'cat .headsign/tmp/unstated 2>/dev/null | grep -qxF -e "$(head -n 1 .headsign/tmp/current)"'
+        - name: the module's functions are queued, and not just one of them
+          # "is there at least one" would pass on a single entry, and this is
+          # a phase whose work is 23 explanations for `cli.ts` — the agent
+          # doing the queueing is the one who then has to write them. So the
+          # floor comes from the code rather than from the agent: count the
+          # module's top-level named functions with a crude anchored grep and
+          # require at least that many queued.
+          #
+          # Anchored on purpose, so it UNDERCOUNTS — nested and indented
+          # functions are missed, and the agent is asked for those too. A
+          # floor that is certainly reachable is the point; an exact count
+          # would fail honest work over a regex disagreement.
+          run: 'test "$(grep -cF -e "$(head -n 1 .headsign/tmp/current):" .headsign/tmp/queue)" -ge "$(grep -cE "^(export )?(async )?function [A-Za-z_$]|^(export )?const [A-Za-z_$]+ *(:[^=]*)?= *(async )?\(" "src/$(head -n 1 .headsign/tmp/current)")"'
+    on_pass: explain
     max_attempts: 3
 
   # ── learn ────────────────────────────────────────────────────────────────
