@@ -2749,3 +2749,58 @@ test("refusal: start and next on a workflow that does not load answer with the I
   assert.equal(started.stdout, "");
   assert.match(started.stderr, /^INVALID: \.headsign\/workflow\.yaml\n/);
 });
+
+// --- the stop hook and the lock ---
+//
+// A seam sweep asked whether a writer here must hold the lock, and the answer was that
+// nothing made it. `next` holds the lock across a lap that can run a gate for seconds, these
+// hooks fire whenever any turn ends in the same directory, and a hook write replaces the
+// whole record — so a hook landing mid-lap erased that lap's phase transition and attempt
+// increment. These three tests pin the fix from both sides.
+
+test("stop-hook: a lock held by a live process stops the hook writing, and lets the turn end", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const before = readState(dir);
+
+  // A live holder — this test process itself, which is certainly alive.
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), String(process.pid));
+
+  const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(result.status, 0, "a held lock means somebody is judging: the turn may end");
+  assert.deepEqual(readState(dir), before, "not one field of the record may change");
+
+  fs.rmSync(path.join(dir, ".headsign", "lock"));
+});
+
+test("stop-hook: a held lock leaves the pause note unconsumed, so the next turn still pauses", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const notePath = path.join(dir, ".headsign", "tmp", "stop-note");
+  fs.writeFileSync(notePath, "stepping away\n");
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), String(process.pid));
+
+  assert.equal(run(["stop-hook"], { cwd: dir, input: "{}" }).status, 0);
+  assert.ok(fs.existsSync(notePath), "a one-shot note must not be spent while a lap is running");
+
+  // With the lock gone the same note works, which is the point of not eating it.
+  fs.rmSync(path.join(dir, ".headsign", "lock"));
+  assert.equal(run(["stop-hook"], { cwd: dir, input: "{}" }).status, 0);
+  assert.ok(!fs.existsSync(notePath), "and now it is consumed");
+  assert.equal(readState(dir).stop_nudges, 0);
+});
+
+test("stop-hook: a stale lock (dead pid) is no obstacle — the hook steals it and counts", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  // 2^22 is above every default pid_max; nothing is running under it.
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), "4194304");
+
+  const result = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(result.status, 2, "a crashed holder must not disable the backstop");
+  assert.equal(readState(dir).stop_nudges, 1);
+  assert.ok(!fs.existsSync(path.join(dir, ".headsign", "lock")), "and the lock is released again");
+});

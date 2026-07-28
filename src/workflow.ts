@@ -1,4 +1,17 @@
 // Responsibility: load + validate workflow.yaml; owns the schema types (ADR-0003).
+// The path is the caller's to choose and is read as given: turning a bare name into
+// `.headsign/<name>.yaml`, and falling back to the file a run recorded, both happen before
+// the call.
+// NOTHING here throws — not a missing file, not broken YAML, not a file of nonsense. Every
+// problem comes back as text in the error list, and the workflow comes back only when that
+// list is empty, so "no workflow" is how a fatal problem is reported. Warnings come back
+// alongside a perfectly usable workflow and are never shown from here: who sees them is the
+// caller's call (`validate` and `start` print them once, `next` never does, so the hot path
+// of a run stays quiet).
+// Nothing is remembered between calls: the file is read and parsed afresh every time, so a
+// run re-loading it on every lap sees an edit made mid-run on the next lap. That is what
+// makes a workflow rewritable while it is being walked (ADR-0016), and it is a property of
+// this module rather than of its callers.
 // Must NOT know about: state.json, gate execution, git.
 
 import fs from "node:fs";

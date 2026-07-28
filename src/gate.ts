@@ -1,7 +1,17 @@
-// Responsibility: run one phase's gate checks in order, shell + timeout + output tail
-// (ADR-0002/0003), and resolve a k-way `on_pass` by running its `when:` predicates (ADR-0011).
-// Both are "run shell, read exit code" — the routing *rules* still live in engine.ts; this
-// module only reports which branch answered yes.
+// Responsibility: run shell commands on a phase's behalf and report their exit codes. Three
+// callers' questions, not two — the count matters, because the header said "both" for a while
+// and a seam sweep had to point out that the first of the three was declared nowhere:
+//   - is this phase ready to be judged at all (the `ready:` probe)?
+//   - do its gate checks pass, in order, with timeout and output tail (ADR-0002/0003)?
+//   - which branch of a k-way `on_pass` answered yes, by running its `when:` predicates
+//     (ADR-0011)?
+// All three are "run shell, read exit code" — the routing *rules* still live in engine.ts;
+// this module only reports which branch answered yes.
+// Commands run in a directory the caller supplies, taken as given and never checked: a wrong
+// one runs every check somewhere else and the answers come back looking perfectly ordinary.
+// Resolving a branch is only legitimate AFTER the gate has passed, and nothing here enforces
+// that — ask it after a failure and you get a destination for a phase that did not pass. The
+// caller owns that ordering (ADR-0011), which is why it lives in engine.ts and not here.
 // Must NOT know about: state.json, git.
 //
 // Every command here inherits headsign's own environment unmodified (ADR-0014): a phase

@@ -3,6 +3,11 @@
 // (ADR-0002, ADR-0004), and that now includes the ORDER a lap asks its questions in:
 // ADR-0002's transition table calls itself "the whole routing rule set" and puts the ordering
 // inside it, so the ordering is a routing rule by this project's own documents (ADR-0018).
+// Arguments arrive RESOLVED. `start` is handed a workflow path, never a name: turning a bare
+// name into `.headsign/<name>.yaml` and refusing one with a slash in it both happen before
+// the call. "Must NOT know about: argv" below rules out reading the command line; it does not
+// by itself say what shape the values arrive in, which a seam sweep had to point out.
+//
 // The directory is the caller's choice and is taken on trust: every operation works in the
 // directory it is handed, looks for the run only there, never searches upward, and never
 // checks the choice against anything. That is the cwd-only rule the README and the workflow

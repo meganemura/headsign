@@ -1,7 +1,17 @@
 // Responsibility: outcome -> text. The ONLY place the output contract (ADR-0002) is written.
 // Also the only place the .headsign/log line format is written (logLine); state.ts owns
 // that file's I/O, cli.ts owns the timestamp.
-// Must NOT know about: how outcomes were computed (routing rules, state, gates).
+// A log line is composed from the state AFTER the event it describes: the counters printed
+// come straight out of what it is handed, so passing the state from before a transition
+// produces a line that reads correctly and counts wrong, and nothing here would notice.
+// The timestamp arrives as an argument. It originates in cli.ts, the one place headsign reads
+// the clock, and reaches this module either directly or by way of engine.ts or stophook.ts.
+// Must NOT know about: HOW any of it was decided — the routing rules, the gates, or what made
+// a counter the number it is. It is handed the run's state and reads values straight out of
+// it (the phase, the attempt count, the iteration count) precisely because reading is all it
+// does; the exclusion is about the reasoning, not about the data. That wording used to say
+// "must not know about … state", which a seam sweep caught as a contradiction with the line
+// above it.
 
 import type { Outcome } from "./engine.ts";
 import type { State } from "./state.ts";

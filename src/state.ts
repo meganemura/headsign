@@ -1,8 +1,21 @@
 // Responsibility: read/write .headsign/state.json; owns the run-state shape (ADR-0004).
 // Also owns I/O for .headsign/log (a sibling, run-scoped transition log; see ADR-0004) —
-// line formatting itself lives in render.ts's logLine, not here.
+// line formatting itself lives in render.ts's logLine, not here — and "formatting" includes
+// the terminator: an append writes exactly the bytes handed over and adds nothing, so a
+// caller that omits the trailing newline runs its entry into the next one. Owning the file's
+// I/O here does not mean framing its entries.
 // The directory is the caller's choice and is taken on trust: the record and the log are read
 // and written under the directory handed in, never one found by searching upward.
+// Absence and damage are reported differently, on purpose: no record at all comes back as
+// `null` — the ordinary way to learn there is no run here — while a record that will not parse
+// throws. They are not the same situation and a caller that treated them alike would read a
+// damaged run as no run.
+// It also owns the LOCK that serialises concurrent `next` in one directory — taking it,
+// releasing it, and healing one whose holder has died. Releasing only removes the file when
+// the pid inside is still yours, so releasing a lock you never took is harmless; taking one
+// answers either "you have it" or "somebody else does, and here is their pid".
+// A write REPLACES the record; nothing is merged with what was there, so a partial record
+// handed in loses every field it left out.
 // Must NOT know about: routing rules, the workflow YAML schema.
 
 import fs from "node:fs";

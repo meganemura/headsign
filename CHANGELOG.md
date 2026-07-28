@@ -11,6 +11,19 @@ changes), and a patch bump means fixes only.
 
 ### Fixed
 
+- **A stop-boundary hook could erase a running lap's progress.** The hooks
+  write the run's record — consuming a pause note, counting a nudge, sealing a
+  claim — and a write replaces rather than merges. They took no lock, so a
+  hook firing while `next` was mid-lap read the record from before that lap,
+  changed one field, and wrote the whole thing back: the lap's phase
+  transition and its attempt increment were gone. The lock protected `next`
+  from `next` and from nothing else, in a tool built for several agents
+  working in one directory — so meeting this needed nothing unusual, just a
+  turn ending somewhere while a gate was running. Each hook write now takes
+  the lock and re-reads under it; if the lock is held it changes nothing and
+  lets the turn end, and an unconsumed pause note or claim marker waits for
+  the next one. See [ADR-0004](docs/adr/0004-state-attempts-and-cache.md).
+
 - **Two concurrent `headsign next` calls could both evaluate, and one's
   attempt count could be lost.** The lock was created empty and its pid
   written a moment later, and a second process arriving in that moment found

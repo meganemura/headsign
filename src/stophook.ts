@@ -4,17 +4,34 @@
 // `evaluate` answers Stop, which carries a session id headsign no longer records anywhere —
 // it decides on run state alone. They share this module so the run lookup, the exit-note
 // gate and the loop guard can be literally the same code for both boundaries.
+// It takes the LOCK before every write and re-reads the record under it, and if the lock is
+// held it changes nothing and lets the turn end. A write here replaces the whole record, and
+// `next` holds the lock across a lap that can run a gate for seconds, so a hook that wrote
+// from a pre-lock read would erase that lap's transition and its attempt increment.
 // The directory is the ONE exception to headsign's cwd-only rule, and deliberately so: these
 // hooks fire wherever a turn happened to end, so they walk UP from the directory they are
 // given to find a run, stopping at the enclosing repo or worktree root (ADR-0006). Every
 // other module works only in the directory it is handed.
+// It WRITES, which "allow/block" does not suggest and a caller should not have to discover:
+// a stop that is let through because a pause note was found consumes that note, resets the
+// nudge counter and logs `paused`; a stop that is blocked increments the counter and, on the
+// one that trips the cap, logs `stalled`; and a sealed claim writes the driver into the run's
+// record and logs `claimed`. The decision is the return value, but it is never the only
+// effect.
+//
+// Nothing here reads the clock or the environment: both arrive as arguments, the shape
+// render.ts and engine.ts also use. And the payload is not trusted to be JSON — an empty
+// string is an ordinary input (it is what the CLI passes when nothing was piped) and anything
+// unparseable answers "allow", because a hook that cannot read its input must never be the
+// reason a turn cannot end.
 // Must NOT know about: workflow.yaml, gate execution.
 
 import fs from "node:fs";
 import path from "node:path";
-import { readState, writeState, statePath, appendLog } from "./state.ts";
+import { readState, writeState, statePath, appendLog, acquireLock, releaseLock } from "./state.ts";
 import type { State } from "./state.ts";
 import { logLine } from "./render.ts";
+import type { LogEvent } from "./render.ts";
 
 interface HookDecision {
   block: boolean;
@@ -81,6 +98,44 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
 // fail-open default). Deliberately identical for Stop and SubagentStop (ADR-0010): how you
 // pause, how many reminders you get, and what the nudge says must not depend on which
 // stop-boundary event happened to deliver that fact.
+// Every write this module makes goes through here, and the shape is the same each time: take
+// the lock, RE-READ the record under it, apply the change to what was actually on disk, write,
+// release — and if the lock cannot be had, change nothing and let the turn end.
+//
+// It was not always so, and the gap was real. `next` holds the lock across a lap that can run
+// a gate for seconds, and these hooks fire whenever any turn ends in the same directory —
+// which is the ordinary multi-session case headsign is built for, not an exotic one. A hook
+// that read the record before that lap finished, changed one field and wrote the WHOLE record
+// back (writes replace, they do not merge) would erase the lap's phase transition and its
+// attempt increment. The lock protected `next` from `next` and from nothing else. A seam
+// sweep of stophook.ts→state.ts is what asked whether a writer here must hold it.
+//
+// Failing open when the lock is held is not a compromise, it is the right answer twice over.
+// Somebody holding the lock is somebody judging the run, so the run is being driven and needs
+// no reminder; and a hook must never be the reason a turn cannot end.
+function withRunLock(runDir: string, apply: (fresh: State) => { state: State; log?: LogEvent }): boolean {
+  const lock = acquireLock(runDir);
+  if (!lock.ok) return false;
+  try {
+    const fresh = readState(runDir);
+    // Vanished, or ended, between the caller's read and this one: nothing here has anything
+    // left to say about it.
+    if (!fresh || fresh.status !== "running") return false;
+    const { state: nextState, log } = apply(fresh);
+    writeState(runDir, nextState);
+    if (log) appendLog(runDir, logLine(nowIsoOf(log), log, nextState));
+    return true;
+  } finally {
+    releaseLock(runDir);
+  }
+}
+
+// The timestamp rides along with the event so `withRunLock` needs no fourth parameter; it is
+// still the caller's value, read once in cli.ts, never a clock reached for here.
+type StampedLogEvent = LogEvent & { __nowIso: string };
+const stamped = (nowIso: string, event: LogEvent): StampedLogEvent => ({ ...event, __nowIso: nowIso }) as StampedLogEvent;
+const nowIsoOf = (event: LogEvent): string => (event as StampedLogEvent).__nowIso;
+
 function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIso: string): HookDecision {
   // Exit-note gate (ADR-0006): the primary mechanism for a deliberate pause. Checked
   // before the nudge/loop-guard logic below, so a human (or agent) who wants out never
@@ -91,13 +146,15 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-      // Consume the note: leaving it in place would turn a one-time note into a permanent
-      // free pass — the same staleness a `clear:`-less verdict file has, one answer outliving
-      // the question it was written for.
-      fs.rmSync(notePath, { force: true });
-      const pausedState = { ...state, stop_nudges: 0 };
-      writeState(runDir, pausedState);
-      appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
+      // Consume the note INSIDE the lock, and only if the write lands: a note eaten while
+      // another process was mid-lap would be a one-shot pause spent on nothing.
+      const paused = withRunLock(runDir, (fresh) => {
+        fs.rmSync(notePath, { force: true });
+        const pausedState = { ...fresh, stop_nudges: 0 };
+        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
+      });
+      // Either the pause was recorded, or somebody is judging right now — both mean the turn
+      // may end, and an unconsumed note simply pauses the next one instead.
       return { block: false };
     }
   }
@@ -116,12 +173,16 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   if (nudges >= MAX_STOP_NUDGES) return { block: false };
 
   const nextNudges = nudges + 1;
-  const nudgedState = { ...state, stop_nudges: nextNudges };
-  writeState(runDir, nudgedState);
   // The final nudge alone gets a `stalled` log line: 1st-4th nudges (and any pass-through
   // after the cap trips) are deliberately silent (ADR-0004's spam-prevention rule) — only
   // the moment the loop guard actually trips is worth a permanent record.
-  if (nextNudges === MAX_STOP_NUDGES) appendLog(runDir, logLine(nowIso, { kind: "STALLED" }, nudgedState));
+  const counted = withRunLock(runDir, (fresh) => {
+    const nudgedState = { ...fresh, stop_nudges: nextNudges };
+    return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : undefined };
+  });
+  // Nothing was counted because a lap is in progress: that lap is the proof somebody is
+  // steering, which is exactly what a nudge exists to establish. Let the turn end.
+  if (!counted) return { block: false };
 
   // `next`/`abort` stay strictly cwd-only (ADR-0004), so when the run was found via
   // walk-up (runDir !== startDir) the agent must be told where to cd first — cwd-only
@@ -224,10 +285,16 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     if (fs.existsSync(claimPath) && agentId !== null) {
       // Consume the marker: like the stop-note, a claim is a one-shot request — leaving it
       // in place would re-adopt on every future subagent stop, not just this one.
-      fs.rmSync(claimPath, { force: true });
-      const adoptedState = { ...state, driver_agent: agentId, stop_nudges: 0 };
-      writeState(runDir, adoptedState);
-      appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
+      const seated = withRunLock(runDir, (fresh) => {
+        // Consume the marker inside the lock, for the same reason the pause note is: a claim
+        // spent while another process was mid-lap would be a request nobody answered.
+        fs.rmSync(claimPath, { force: true });
+        const adoptedState = { ...fresh, driver_agent: agentId, stop_nudges: 0 };
+        return { state: adoptedState, log: stamped(nowIso, { kind: "CLAIMED" }) };
+      });
+      // A claim that could not be sealed because a lap is running keeps its marker and is
+      // sealed by this agent's next turn end.
+      if (!seated) return { block: false };
       // Same cwd-only caveat the nudge carries (ADR-0004): when the run was found by walking
       // up, the newly seated agent has to be told where to cd before `next` can find it.
       const adoptionMessage =

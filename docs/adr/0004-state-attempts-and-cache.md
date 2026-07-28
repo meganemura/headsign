@@ -145,7 +145,7 @@ the enclosing git worktree/repo root, to find the run so the backstop still
 fires from a subdirectory — `next`/`start`/`abort` themselves stay strictly
 cwd-only (see ADR-0006).
 
-### The `lock` file (serializing concurrent `next`)
+### The `lock` file (serializing every writer of the record)
 
 Delegating work to multiple subagents can produce two concurrent `headsign
 next` calls against the same `.headsign/`. Without serialization both could
@@ -176,6 +176,18 @@ roughly one run in three under load. A holder that crashed mid-evaluation theref
 wedge future runs. The lock is gitignored (`start` ensures this): it is
 headsign-internal and transient, not part of the working tree a gate
 observes.
+
+**The stop-boundary hooks hold it too**, and did not always. They write the
+record — a consumed pause note, a nudge count, a sealed claim — and a write
+replaces rather than merges, so a hook that read the record before a lap
+finished and wrote its own version back erased that lap's phase transition and
+attempt increment. The lock protected `next` from `next` and from nothing
+else, in a program built for several agents in one directory. Each hook write
+now takes the lock, re-reads under it, and applies its change to what was
+actually on disk; if the lock is held it changes nothing and lets the turn end,
+which is right twice over — somebody holding it is somebody judging, so the run
+is already being driven, and a hook must never be why a turn cannot end. An
+unconsumed pause note or claim marker simply waits for the next turn end.
 
 Holding the lock is only useful if the evaluation underneath it acts on
 current state, so `next` re-reads state after acquiring the lock and

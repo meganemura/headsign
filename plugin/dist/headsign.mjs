@@ -8135,6 +8135,22 @@ function pauseAndAbortHint(runDir, startDir) {
   const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
   return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
+function withRunLock(runDir, apply) {
+  const lock = acquireLock(runDir);
+  if (!lock.ok) return false;
+  try {
+    const fresh = readState(runDir);
+    if (!fresh || fresh.status !== "running") return false;
+    const { state: nextState, log } = apply(fresh);
+    writeState(runDir, nextState);
+    if (log) appendLog(runDir, logLine(nowIsoOf(log), log, nextState));
+    return true;
+  } finally {
+    releaseLock(runDir);
+  }
+}
+var stamped = (nowIso, event) => ({ ...event, __nowIso: nowIso });
+var nowIsoOf = (event) => event.__nowIso;
 function noteGateThenNudge(runDir, startDir, state, nowIso) {
   const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
   if (fs4.existsSync(notePath)) {
@@ -8142,19 +8158,22 @@ function noteGateThenNudge(runDir, startDir, state, nowIso) {
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-      fs4.rmSync(notePath, { force: true });
-      const pausedState = { ...state, stop_nudges: 0 };
-      writeState(runDir, pausedState);
-      appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
+      const paused = withRunLock(runDir, (fresh) => {
+        fs4.rmSync(notePath, { force: true });
+        const pausedState = { ...fresh, stop_nudges: 0 };
+        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
+      });
       return { block: false };
     }
   }
   const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
   if (nudges >= MAX_STOP_NUDGES) return { block: false };
   const nextNudges = nudges + 1;
-  const nudgedState = { ...state, stop_nudges: nextNudges };
-  writeState(runDir, nudgedState);
-  if (nextNudges === MAX_STOP_NUDGES) appendLog(runDir, logLine(nowIso, { kind: "STALLED" }, nudgedState));
+  const counted = withRunLock(runDir, (fresh) => {
+    const nudgedState = { ...fresh, stop_nudges: nextNudges };
+    return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : void 0 };
+  });
+  if (!counted) return { block: false };
   const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
   const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
   return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) };
@@ -8190,10 +8209,12 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
     const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
     if (fs4.existsSync(claimPath) && agentId !== null) {
-      fs4.rmSync(claimPath, { force: true });
-      const adoptedState = { ...state, driver_agent: agentId, stop_nudges: 0 };
-      writeState(runDir, adoptedState);
-      appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
+      const seated = withRunLock(runDir, (fresh) => {
+        fs4.rmSync(claimPath, { force: true });
+        const adoptedState = { ...fresh, driver_agent: agentId, stop_nudges: 0 };
+        return { state: adoptedState, log: stamped(nowIso, { kind: "CLAIMED" }) };
+      });
+      if (!seated) return { block: false };
       const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase})` + (runDir === startDir ? ". Run `headsign next` and follow its verdict." : ` in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + pauseAndAbortHint(runDir, startDir);
       return { block: true, message: adoptionMessage };
     }
