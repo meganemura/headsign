@@ -1,67 +1,77 @@
-# Fitness sweep — the five modules of src/ not yet swept: engine.ts, state.ts, workflow.ts, render.ts, stophook.ts
+# Fitness sweep — the 11 value import seams between the modules of src/
 
 ## What was swept
 
-**the five modules of src/ not yet swept: engine.ts, state.ts, workflow.ts,
-render.ts, stophook.ts** — their boundaries, not their parts.
+**the 11 value import seams between the modules of src/** — the relationships,
+not the modules and not their functions.
 
-This certifies those five boundaries and nothing wider. With the two earlier
-sweeps of `gate.ts` and `cli.ts`, every module in `src/` now has a stated
-boundary — but no module's functions have ever been examined by this design,
-because a module whose boundary explains itself is never opened.
+An import edge carries values in 11 of the 14 cases; the other three share
+only types, so nothing is called and nothing is assumed. This certifies those
+11 relationships and nothing else. No module's own boundary and no function
+was examined in this run — those were swept earlier, separately.
 
 ## The verdict
 
-**Passed.** All five approved. Nothing was left unexplained, no boundary went
-unstated, and nothing was found to describe more than one job.
-
-Three needed a second attempt — `engine.ts`, `workflow.ts`, `render.ts`.
-`state.ts` and `stophook.ts` landed first time. 25 laps.
+**Failed**, and the failure is one item: `engine.ts>state.ts` ran out of its
+three attempts. Ten of eleven approved. 65 laps.
 
 ## The findings
 
-### Functions nobody could explain
+### Items nobody could explain
 
-None. No function was examined.
+**`engine.ts>state.ts`** — and the honest reading is that the third rejection
+was about the writing, not the code. The explanation listed "the caller knows
+whether it holds the lock" as an assumption, when the contract explicitly
+disclaims it: releasing a lock you never took is harmless, which is a callee
+saying it does not need the caller to track ownership.
+
+Three real contract gaps were closed on the way there and stand: the lock was
+not declared at all, a write is now declared to REPLACE rather than merge, and
+an append is declared to write exactly the bytes handed over, terminator
+included.
+
+What to do about it: nothing to the code. Re-sweep this one seam and write the
+assumption list more carefully.
 
 ### Modules whose boundary could not be stated
 
-None.
+None — not applicable to a seam sweep.
 
 ### Modules that are explainable but do more than one job
 
-None.
+None — not applicable to a seam sweep.
 
-## Three sharp edges, found while explaining rather than by failing
+## A defect this sweep found, outside the ledgers
 
-These are not failures of the fitness function — every module passed — but
-they were invisible until somebody had to write down what a caller can
-observe. All three are in `engine.ts`, all three were confirmed by running
-them, and **none is reachable through the command line**, which checks a run's
-status first and only ever loads a validated workflow.
+The first bug five sweeps have produced, and it is fixed:
 
-1. **Asking for a finished run's answer, about a run that is still going,
-   returns `ABORT`** with an empty reason. The check looks for "finished",
-   then "escalated", and everything else falls through to abort.
-2. **Stepping a run that has already ended judges it anyway.** The count of
-   judgments goes up, a fresh `RETRY` comes back, and the state handed back
-   still says the run is finished — a state that disagrees with itself.
-3. **A destination naming a phase the workflow does not define throws**, while
-   reaching for the missing phase's instructions.
+**The stop-boundary hooks wrote the run's record without holding the lock.** A
+write replaces rather than merges; `next` holds the lock across a lap that can
+run a gate for seconds; the hooks fire whenever any turn ends in the same
+directory. A hook landing mid-lap erased that lap's phase transition and
+attempt increment. The lock protected `next` from `next` and from nothing
+else, in a tool built for several agents in one directory.
 
-Whether any of them is worth changing is a judgment for a person. The honest
-description is that `engine.ts` is the rules and not the doorman: it trusts
-that its caller has already checked, and today that trust holds everywhere it
-is relied on.
+Fixed: every hook write now takes the lock, re-reads under it, and applies its
+change to what was on disk; a held lock means the hook changes nothing and
+lets the turn end. Three tests pin it. `CHANGELOG.md` carries it as a fix and
+ADR-0004 as the rule.
+
+Nothing in the seam question aimed at concurrency. What surfaced it was the
+instruction to write down what the callee assumes the caller has already done.
+
+## What this sweep changed
+
+Seventeen declarations across six module headers. Every one was already true;
+none changed behaviour. Two were corrections rather than additions —
+`render.ts` claimed it "must NOT know about … state" while reading it, and
+`gate.ts` said "Both" of three jobs.
 
 ## What this sweep did not look at
 
-- **Any function in any module.** All seven boundaries are now stated; none of
-  the roughly 76 named functions inside them has been examined by this design.
-  The earlier per-function sweep of `gate.ts` is the only function-level
-  evidence that exists, and it was a different run against an earlier state of
-  the code.
-- **Three parts of the workflow itself**, still never executed after three
-  sweeps: the descent into a module, and the two ledgers only the descent or
-  an unfocused verdict can write. Twelve approvals and five rejections have
-  not once produced a third rejection for the same item.
+- **Any module's own boundary, and any function.** Those were swept earlier,
+  against earlier states of the code; the seventeen declarations added here
+  are newer than any of those verdicts.
+- **The three type-only edges** — `gate>workflow`, `render>engine`,
+  `render>state`. Deliberate: they share a shape, not a behaviour.
+- **Anything outside `src/`.** No test, no workflow file, no script.

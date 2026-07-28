@@ -179,6 +179,51 @@ middle of a list silently orphans everything below it. "Something earlier in
 the program is responsible for refusing this" kept those sentences short and
 kept the explanation about this function.
 
+## Writing about a seam rather than a module
+
+### Contracts say what a module owns; the gaps are always what it requires
+
+Ownership is easy to write down, because it is what the author was thinking
+about while writing the code. Requirements live in the caller's habits, and
+that is exactly why a unit of one module cannot see them.
+
+*The case.* Seventeen declarations were added across six modules to make
+eleven seams pass. Every one was already true and none changed behaviour, and
+almost every one was a requirement rather than an ownership claim: who chooses
+the directory, what shape the arguments arrive in, that a write replaces
+rather than merges, that an append adds no terminator, that nothing is
+remembered between calls, that a caller must hold the lock.
+
+### Two of them were not gaps but contradictions
+
+Look for these before looking for silence — they are rarer and worse, because
+a reader who believes the contract is actively misled.
+
+*The cases.* `render.ts` declared "must NOT know about … state" while reading
+the state to print its counters; the judge found the collision inside the
+quoted contract itself. `gate.ts` wrote "Both are 'run shell, read exit
+code'" — a word that closes a list at two — while having three jobs, the
+readiness probe named nowhere.
+
+### The bar: could the caller get it wrong and the callee not notice?
+
+Assumptions that are true of every function taking arguments are not
+assumptions worth declaring. "The values are consistent with each other" is
+the ordinary meaning of taking arguments, and no contract anywhere declares
+it.
+
+*The case.* Measured, not asserted. `cli.ts>render.ts` was rejected on one
+attempt for exactly that, and approved on the next with the bar applied.
+Without the bar every seam fails and the report is noise; the first attempt at
+this sweep was folded after three items for that reason.
+
+### Quote the whole field, not the line the gate checks
+
+*The case.* The gate verifies the opening line of each header field verbatim.
+The first seam quoted only those opening lines, was rejected for an assumption
+the contract did declare three lines further down, and argued from words the
+quote did not contain — which the judge noticed and said so.
+
 ## Writing about a module rather than a function
 
 Two sentences open a module's explanation: what it is for, and what it

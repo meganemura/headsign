@@ -1,4 +1,8 @@
-// Responsibility: read/write .headsign/state.json; owns the run-state shape (ADR-0004).
+// Responsibility: read/write .headsign/state.json; owns the run-state shape (ADR-0004) — and
+// owns WHERE the three files live as well as what is in them. It hands out the path of the
+// record, the log and the lock on request, so a caller that needs to test for a run's
+// existence (the stop hooks, walking upward) asks here rather than joining path fragments of
+// its own. Nowhere else in the program spells `.headsign/state.json`.
 // Also owns I/O for .headsign/log (a sibling, run-scoped transition log; see ADR-0004) —
 // line formatting itself lives in render.ts's logLine, not here — and "formatting" includes
 // the terminator: an append writes exactly the bytes handed over and adds nothing, so a
