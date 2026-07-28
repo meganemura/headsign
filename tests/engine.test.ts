@@ -303,3 +303,57 @@ test("terminalOutcome reprints complete/escalated/aborted", () => {
   assert.deepEqual(engine.terminalOutcome(st("a", { status: "escalated", end_reason: "boom" })), { kind: "ESCALATE", reason: "boom" });
   assert.deepEqual(engine.terminalOutcome(st("a", { status: "aborted", end_reason: "stop" })), { kind: "ABORT", reason: "stop" });
 });
+
+// --- preconditions: the three entry points are total ---
+//
+// Every one of these was, until now, a plausible wrong answer rather than a complaint —
+// and every one was unreachable only because cli.ts checks the run's status first and
+// loads only validated workflows. The guard's whole point is that the reason they were
+// unreachable lived in another file.
+
+test("terminalOutcome refuses a run that is still running (it used to answer ABORT)", () => {
+  assert.throws(
+    () => engine.terminalOutcome(st("a", { status: "running" })),
+    /terminalOutcome: run is still running/,
+  );
+});
+
+test("step refuses a run that has already ended (it used to judge it again)", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  for (const status of ["complete", "escalated", "aborted"] as const) {
+    assert.throws(() => engine.step(workflow, st("a", { status }), FAIL()), new RegExp(`step: run is already ${status}`));
+  }
+});
+
+test("checkIterationLimit refuses a run that has already ended", () => {
+  // It would otherwise say "the run is still open: raise limits.max_total_iterations …"
+  // about a run that finished — a false sentence offered as guidance.
+  const workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 1 } };
+  assert.throws(
+    () => engine.checkIterationLimit(workflow, st("a", { status: "complete", total_iterations: 5 })),
+    /checkIterationLimit: run is already complete; ask terminalOutcome instead/,
+  );
+});
+
+test("step names the workflow and the destination when a pass routes to no phase", () => {
+  const workflow = wf({ a: { on_pass: "ghost" } });
+  assert.throws(
+    () => engine.step(workflow, st("a"), PASS),
+    /step: destination 'ghost' does not name a phase in workflow 'wf'/,
+  );
+});
+
+test("step names the destination when a failure route names no phase", () => {
+  const workflow = wf({ a: { on_pass: "$end", on_fail: "ghost" } });
+  assert.throws(
+    () => engine.step(workflow, st("a"), FAIL()),
+    /step: destination 'ghost' does not name a phase in workflow 'wf'/,
+  );
+});
+
+test("the guards leave every normal answer untouched", () => {
+  const workflow = { ...wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } }), limits: { max_total_iterations: 9 } };
+  assert.equal(engine.checkIterationLimit(workflow, st("a")), null);
+  assert.deepEqual(engine.terminalOutcome(st("a", { status: "complete" })), { kind: "COMPLETE" });
+  assert.equal(engine.step(workflow, st("a"), PASS).outcome.kind, "ADVANCE");
+});

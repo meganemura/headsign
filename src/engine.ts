@@ -43,7 +43,47 @@ export type Outcome =
 // ResolvedRoute above: narrow the type rather than make the call site re-check what it knows.
 export type CeilingOutcome = Extract<Outcome, { kind: "ESCALATE" }>;
 
+// The three exported entry points below are TOTAL: every input either produces an answer or
+// is refused by name. That is deliberate, and it is what makes them safe to export.
+//
+// Each one has a precondition — the run is still going, or has already ended, or the
+// workflow was validated — and until this guard existed every one of those was satisfied
+// only by the ORDER OF STATEMENTS IN cli.ts. Nothing here said so, so asking a question out
+// of order produced a plausible wrong answer rather than a complaint: a completed run
+// reported as still open, a finished run judged again, a still-running run called aborted, a
+// missing phase surfacing as a raw TypeError about reading a property of undefined.
+//
+// None of those was reachable through the CLI, which checks status first and loads only
+// validated workflows. That is exactly why they were worth closing: an unreachable wrong
+// answer is one refactor away from a reachable one, and the thing keeping it unreachable was
+// written in another file.
+//
+// Refusals throw rather than returning a value. These are caller mistakes, not run outcomes
+// — an outcome is something a workflow author can route on, and there is no sensible route
+// for "you asked the wrong question". cli.ts's top-level catch turns a throw into
+// `ERROR: …` and exit 3, which is where usage errors already go.
+function refuse(fn: string, problem: string): never {
+  throw new Error(`${fn}: ${problem}`);
+}
+
+// The phase a transition is about to enter must exist. Checked rather than indexed blind:
+// without it a destination naming no phase dies reaching for `.description` on nothing,
+// which names neither the phase nor the workflow. `validate` rejects such a workflow at load
+// time, so this is the second line of defence, not the first.
+function describePhase(workflow: Workflow, phase: string): string {
+  const p = workflow.phases[phase];
+  if (p === undefined) {
+    refuse("step", `destination '${phase}' does not name a phase in workflow '${workflow.name}'`);
+  }
+  return p.description;
+}
+
 export function checkIterationLimit(workflow: Workflow, state: State): CeilingOutcome | null {
+  // A finished run has no allowance left to be over or under, and the reason string below
+  // would tell a reader "the run is still open" about a run that is not.
+  if (state.status !== "running") {
+    refuse("checkIterationLimit", `run is already ${state.status}; ask terminalOutcome instead`);
+  }
   const limit = workflow.limits?.max_total_iterations;
   if (limit === undefined || state.total_iterations < limit) return null;
   // Deliberately one line, no embedded newline: the reason is printed as the rest of
@@ -56,6 +96,11 @@ export function checkIterationLimit(workflow: Workflow, state: State): CeilingOu
 }
 
 export function terminalOutcome(state: State): Outcome {
+  // Without this a run that is still going falls past both arms below and comes back as
+  // ABORT with an empty reason — a still-running run reported as one somebody ended.
+  if (state.status === "running") {
+    refuse("terminalOutcome", "run is still running; there is no terminal outcome to report");
+  }
   if (state.status === "complete") return { kind: "COMPLETE" };
   if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
   return { kind: "ABORT", reason: state.end_reason ?? "" };
@@ -76,6 +121,12 @@ function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: stri
 // same output — no clock, no randomness. The shell work behind `route` happened in gate.ts
 // before the call; this function only reads the answer.
 export function step(workflow: Workflow, state: State, gateResult: GateResult, route?: ResolvedRoute): { state: State; outcome: Outcome } {
+  // Without this an already-ended run is judged again: the iteration count rises, a fresh
+  // RETRY comes back, and the state handed out still says the run finished — a record that
+  // contradicts itself.
+  if (state.status !== "running") {
+    refuse("step", `run is already ${state.status}; nothing left to step`);
+  }
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
   const next: State = { ...state, attempts: { ...state.attempts } };
@@ -95,7 +146,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, r
     next.phase = to;
     // Spread rather than always setting the key: a string-form `on_pass` must produce the
     // byte-identical outcome it produced before k-way routing existed, absent key included.
-    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: workflow.phases[to].description, ...(routedBy && { routedBy }) } };
+    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...(routedBy && { routedBy }) } };
   }
 
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
@@ -143,5 +194,5 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, r
   }
 
   next.phase = onFail; // onFail names a phase to route to
-  return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: workflow.phases[onFail].description, failure: { ...failure, routedTo: onFail } } };
+  return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: describePhase(workflow, onFail), failure: { ...failure, routedTo: onFail } } };
 }

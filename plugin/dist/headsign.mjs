@@ -7676,13 +7676,29 @@ ${tail}` : tail;
 }
 
 // src/engine.ts
+function refuse(fn, problem) {
+  throw new Error(`${fn}: ${problem}`);
+}
+function describePhase(workflow, phase) {
+  const p = workflow.phases[phase];
+  if (p === void 0) {
+    refuse("step", `destination '${phase}' does not name a phase in workflow '${workflow.name}'`);
+  }
+  return p.description;
+}
 function checkIterationLimit(workflow, state) {
+  if (state.status !== "running") {
+    refuse("checkIterationLimit", `run is already ${state.status}; ask terminalOutcome instead`);
+  }
   const limit = workflow.limits?.max_total_iterations;
   if (limit === void 0 || state.total_iterations < limit) return null;
   const reason = `${state.phase}: max_total_iterations (${limit}) reached \u2014 the run is still open: raise limits.max_total_iterations in ${state.workflow_path} and run \`headsign next\` to continue from this phase, or run \`headsign abort <reason>\` to end it`;
   return { kind: "ESCALATE", reason };
 }
 function terminalOutcome(state) {
+  if (state.status === "running") {
+    refuse("terminalOutcome", "run is still running; there is no terminal outcome to report");
+  }
   if (state.status === "complete") return { kind: "COMPLETE" };
   if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
   return { kind: "ABORT", reason: state.end_reason ?? "" };
@@ -7693,6 +7709,9 @@ function passTarget(onPass, route) {
   return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
 }
 function step(workflow, state, gateResult, route) {
+  if (state.status !== "running") {
+    refuse("step", `run is already ${state.status}; nothing left to step`);
+  }
   const phaseName = state.phase;
   const phase = workflow.phases[phaseName];
   const next = { ...state, attempts: { ...state.attempts } };
@@ -7707,7 +7726,7 @@ function step(workflow, state, gateResult, route) {
       return { state: next, outcome: { kind: "COMPLETE" } };
     }
     next.phase = to;
-    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: workflow.phases[to].description, ...routedBy && { routedBy } } };
+    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...routedBy && { routedBy } } };
   }
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
   const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
@@ -7744,7 +7763,7 @@ function step(workflow, state, gateResult, route) {
     return { state: next, outcome: { kind: "ESCALATE", reason } };
   }
   next.phase = onFail;
-  return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: workflow.phases[onFail].description, failure: { ...failure, routedTo: onFail } } };
+  return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: describePhase(workflow, onFail), failure: { ...failure, routedTo: onFail } } };
 }
 
 // src/render.ts
