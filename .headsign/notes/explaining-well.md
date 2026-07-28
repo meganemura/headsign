@@ -119,6 +119,40 @@ enumerates every optional field and every empty input with its answer.** It
 forces each "optional" already written to be settled in a place where a
 missing one is conspicuous. The attempt that added it was approved.
 
+### Describe what the module is told, never why it was told
+
+A cause the module cannot observe is not part of its boundary. Writing one in
+produces a sentence that contradicts the module's own opening, and a reader
+who notices cannot tell which half to believe.
+
+*The case.* `render.ts` reads no files — its explanation says so in the second
+paragraph — and then explained an attempt count printed as `2/?` by saying the
+workflow file "could not be read". The judge:
+
+> This contradicts the opening promise that the module "reads no files and
+> writes none": if it never reads the workflow file, it cannot be the thing
+> that failed to look the limit up
+
+What it is actually handed is a flag meaning "I could not determine the
+limit". The corrected version says exactly that, and adds that the module is
+never told why and does not care.
+
+### When two conditions could both apply, say which is checked first
+
+The same debt as "optional", in a different currency. Describing two outcomes
+in two places, each true under its own condition, leaves a reader unable to
+predict the case where both hold.
+
+*The case.* `render.ts` again, same rejection. One section said an attempt
+count reads `2/?` when a limit could not be determined; another said it reads
+a bare `2` when there is no limit. The judge:
+
+> the same input state, two different outputs, with nothing to tell a caller
+> which one they will get
+
+The fix was one numbered rule with the precedence in it — the flag wins, then
+a limit, then bare — rather than two accurate sentences in separate sections.
+
 ### At module scale, the enemy is omission, not confusion
 
 A boundary explanation can hide something by never mentioning it, and a judge
