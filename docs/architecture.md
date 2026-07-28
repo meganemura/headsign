@@ -43,9 +43,9 @@ consumer repository:
 
 ## Module map
 
-Size: `src/` measured **983 code lines** on 2026-07-28 (tests excluded, and
+Size: `src/` measured **1,113 code lines** on 2026-07-28 (tests excluded, and
 counting code only — the deliberately dense AI-friendly comments and blank
-lines don't count; raw `wc -l` is ~1661). That is a measurement, not a
+lines don't count; raw `wc -l` is ~1945). That is a measurement, not a
 target. ADR-0001's budget of roughly 500 code lines is retired by
 [ADR-0016](adr/0016-explainability-as-the-fitness-function.md): `src/` went
 past twice the number without the guideline stopping a single feature
@@ -66,20 +66,29 @@ thin harness need this?
 
 | Module | Responsibility | Must NOT know about |
 |---|---|---|
-| `src/cli.ts` | argv parsing, command dispatch, printing, process exit code | routing rules, YAML schema |
+| `src/cli.ts` | argv parsing, command dispatch, printing, process exit code — one typed command becomes one `engine.ts` call, and the value it answers with becomes text and a status. Also the one clock read (`localIso(new Date())`), passed down as an argument | routing rules — *including the order `next` asks its questions in* (ADR-0018) — the YAML schema, what any operation does to a run |
 | `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types | state.json, gates, git |
 | `src/state.ts` | read/write `state.json` (atomic write); owns the state shape | routing rules, YAML |
 | `src/gate.ts` | run one phase's checks (shell, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
-| `src/engine.ts` | the transition function: (workflow, state, gate result, resolved route) → (new state, outcome). The ONLY place routing rules live — a resolved route arrives as data and is applied here, never evaluated here | child_process, printing |
+| `src/engine.ts` | one operation on a run — `start`, one lap of `next`, `abort`, `claim`, `status` — carried out and reported as a value. The ONLY place routing rules live, *the order a lap asks its questions in included* (ADR-0018); inside it, `step()` is still the pure transition function (workflow, state, gate result, resolved route) → (new state, outcome), and a resolved route still arrives as data rather than being evaluated here | argv, how an answer is worded, what it exits with, the clock |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, the one env signal headsign reads (ADR-0013) | workflow.yaml, gates |
 
 `render.ts` owns the entire outcome contract (the START/ADVANCE/RETRY/COMPLETE/ESCALATE/ABORT
-strings and `validate`'s output); `cli.ts`'s `ERROR:` messages (exit code 3, for usage/config
-problems like bad argv or a workflow that fails to load) are a separate, deliberately
-unceremonious channel, not part of that contract.
+strings and `validate`'s output); the `ERROR:` messages (exit code 3, for usage/config
+problems like bad argv, a workflow that fails to load, or an operation that refuses) are a
+separate, deliberately unceremonious channel, not part of that contract. `cli.ts` prints
+every one of them, whether it worded the message itself (bad argv) or an `engine.ts` refusal
+handed it the words.
 
 ## Data flow of `headsign next`
+
+Steps 1–6 are one function, `engine.ts`'s `next` — the order below *is* part
+of the routing rules, which is why it lives with them (ADR-0018). It takes
+the concurrency lock after step 1 (parsing YAML is the widest window another
+process could act in, so the parse happens outside the lock) and releases it
+in a `finally`, then hands its answer back to `cli.ts`, which prints it and
+chooses the exit code.
 
 1. Load `workflow.yaml` (path recorded in state) and `state.json`. Any load
    error → exit 3.
@@ -96,8 +105,8 @@ unceremonious channel, not part of that contract.
 5. If they all passed and this phase's `on_pass` is a list of routes, run
    the routes' `when:` commands in order and resolve which one matched
    (ADR-0011). A `when:` that could not be run at all → exit 3.
-6. Route per the transition table (ADR-0002), persist state, print the
-   outcome, exit with the contract code.
+6. Route per the transition table (ADR-0002), persist state, and answer;
+   `cli.ts` prints the outcome and exits with the contract code.
 
 ## Where the intelligence lives
 
@@ -137,3 +146,4 @@ outside it:
 - [ADR-0015](adr/0015-strict-schema-and-version-0-1.md) — unknown keys rejected, and the schema renumbered to `version: 0.1`
 - [ADR-0016](adr/0016-explainability-as-the-fitness-function.md) — explainability replaces the line budget; the rule for a run that rewrites its own workflow
 - [ADR-0017](adr/0017-three-budgets-and-the-recoverable-ceiling.md) — three budgets; the global ceiling escalates without ending the run
+- [ADR-0018](adr/0018-cli-engine-seam.md) — the seam between `cli.ts` and `engine.ts`: the order of a lap is a routing rule, so the five run operations move

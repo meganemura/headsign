@@ -18,6 +18,14 @@
   `limits.max_total_iterations` answer without writing state, so that branch
   logs an event of its own instead of the `escalate` line it used to write.
   The `.headsign/log` section below is updated in place.)
+- Revised: 2026-07-28 (who calls what, not what happens:
+  [ADR-0018](0018-cli-engine-seam.md) moved the five operations that act on a
+  run out of `cli.ts`, so `engine.ts` is now the direct caller for every
+  logged transition and the holder of the lock described below. The clock
+  split this ADR states is unchanged — `cli.ts` still captures
+  `localIso(new Date())` and passes it down — and now has a second module on
+  the receiving end of it. The paragraphs below are updated in place; no line
+  format, log event or lock rule changes.)
 
 ## Context
 
@@ -181,11 +189,12 @@ All I/O for this file lives in `state.ts` (`initLog`/`appendLog`); its line
 format lives in `render.ts` (`logLine`), pure text formatting with no I/O
 of its own; `cli.ts` captures the timestamp (`localIso(new Date())`) —
 still the one place headsign reads the clock — and passes it down to
-whichever caller needs it. `cli.ts` itself is the direct caller for every
-transition below; `stophook.ts` is the other caller (paused/stalled,
-below), and it never calls `new Date()` itself — `cmdStopHook` captures
-`localIso(new Date())` and hands it to `evaluate` as an argument, the same
-clock-stays-in-cli.ts split this ADR already keeps engine.ts out of.
+whichever caller needs it. `engine.ts` is the direct caller for every
+transition below (ADR-0018 moved them there from `cli.ts`); `stophook.ts`
+is the other caller (paused/stalled, below). Neither calls `new Date()`
+itself: `cli.ts` captures `localIso(new Date())` per command and hands it
+over as an argument — `nowIso` for both — which is the same
+clock-stays-in-cli.ts split this ADR has kept from the start.
 
 Four call sites, one line each, for real *transitions*: `start` (truncate,
 then a `start` line), `next`'s iteration-limit branch (a `ceiling` line —

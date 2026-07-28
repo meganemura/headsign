@@ -116,7 +116,7 @@ export function statusRunning(o: {
   attemptUnknown: boolean;
   workflowName: string;
   // Only set by the caller when state.last_failure is non-null AND belongs to the current
-  // phase (cli.ts's job — render.ts doesn't know the state shape's field names); a
+  // phase (engine.ts's job — render.ts doesn't know the state shape's field names); a
   // last_failure left over from a since-departed phase must never be shown as if it were
   // about now.
   lastFailure?: (Failure & { outputTail: string }) | null;
@@ -125,7 +125,7 @@ export function statusRunning(o: {
   // ever carries one, so the CLI has no id of its own to compare and must not imply it does.
   // What this line reports is the one fact the CLI can read off state.json — whether the run
   // has been claimed — which is exactly the question `headsign claim`'s two-beat handshake
-  // leaves open when it fails quietly (see cmdStatus for why the line is worth keeping).
+  // leaves open when it fails quietly (see cli.ts's reportStatus for why the line is kept).
   driver: "a delegated agent" | "not delegated yet — no agent has claimed this run";
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
@@ -140,14 +140,14 @@ export function statusTerminal(status: "complete" | "escalated" | "aborted", wor
   return `${status.toUpperCase()}\nworkflow: ${workflowName}\n${reasonLine}`;
 }
 
-// What a `.headsign/log` line can be about: every real transition cli.ts logs, plus the
+// What a `.headsign/log` line can be about: every real transition engine.ts logs, plus the
 // synthetic `start` event (which isn't an engine.Outcome — `start` never runs step()), plus
 // the two Stop-boundary events (ADR-0004's explicit exception to "transitions only"; owned
-// and appended by stophook.ts, not cli.ts — see ADR-0006). The type is the full
+// and appended by stophook.ts, not engine.ts — see ADR-0006). The type is the full
 // engine.Outcome (PENDING included) rather than a narrower Exclude<>, because
 // engine.step()'s declared return type still carries PENDING even though it never actually
 // produces one — narrowing here would just force an unsafe cast at the one real call site.
-// PENDING has no line format (see logDetail): cli.ts never calls this on the PENDING path
+// PENDING has no line format (see logDetail): engine.ts never calls this on the PENDING path
 // (probes aren't transitions), so it's unreachable in practice, not by type.
 export type LogEvent =
   | { kind: "START"; workflow: string }
@@ -167,8 +167,9 @@ export type LogEvent =
 
 // Pure formatting of one .headsign/log line (state.ts's appendLog/initLog own the I/O).
 // `ts` always originates from cli.ts's local `localIso(new Date())` helper — the one place
-// headsign reads the clock (ADR-0006) — even when the caller is stophook.ts, which never
-// calls `new Date()` itself and instead receives `ts` as `evaluate`'s `nowIso` argument.
+// headsign reads the clock (ADR-0006) — even though neither caller is cli.ts any more:
+// engine.ts and stophook.ts both receive `ts` as a `nowIso` argument and never call
+// `new Date()` themselves.
 // `state` is the resulting state of this transition — the same object passed to state.writeState —
 // so `a=`/`i=`/`<phase>` always match what's on disk after this event. `prevPhase` is the
 // one piece of context that state doesn't carry after the fact (an ADVANCE's `state.phase`
@@ -205,7 +206,7 @@ function eventName(event: LogEvent): string {
     case "CLAIMED":
       return "claimed";
     case "PENDING":
-      // Unreachable: no cli.ts call site ever logs a PENDING outcome. Kept only so this
+      // Unreachable: no call site in engine.ts ever logs a PENDING outcome. Kept only so this
       // switch stays exhaustive against the full engine.Outcome type.
       throw new Error("logLine: PENDING is never logged");
   }

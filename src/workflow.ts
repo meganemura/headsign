@@ -60,7 +60,7 @@ function rejectUnknownKeys(level: keyof typeof ALLOWED_KEYS, m: Record<string, u
 
 // Warnings are things a run can proceed with; errors are not (they leave `workflow` null).
 // The caller decides who gets to see the warnings: `validate` and `start` print them once,
-// `next` never does — see cli.ts.
+// `next` never does — see engine.ts (and cli.ts, which still loads for `validate`).
 export function load(path: string): { workflow: Workflow | null; errors: string[]; warnings: string[] } {
   let doc: unknown;
   try {

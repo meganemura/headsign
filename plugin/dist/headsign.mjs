@@ -1055,8 +1055,8 @@ var require_foldFlowLines = __commonJS({
           split = void 0;
         } else {
           if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
-            const next = text[i + 1];
-            if (next && next !== " " && next !== "\n" && next !== "	")
+            const next2 = text[i + 1];
+            if (next2 && next2 !== " " && next2 !== "\n" && next2 !== "	")
               split = i;
           }
           if (i >= end) {
@@ -1108,18 +1108,18 @@ ${indent}${text.slice(fold + 1, end2)}`;
     }
     function consumeMoreIndentedLines(text, i, indent) {
       let end = i;
-      let start2 = i + 1;
-      let ch = text[start2];
+      let start3 = i + 1;
+      let ch = text[start3];
       while (ch === " " || ch === "	") {
-        if (i < start2 + indent) {
+        if (i < start3 + indent) {
           ch = text[++i];
         } else {
           do {
             ch = text[++i];
           } while (ch && ch !== "\n");
           end = i;
-          start2 = i + 1;
-          ch = text[start2];
+          start3 = i + 1;
+          ch = text[start3];
         }
       }
       return end;
@@ -1150,12 +1150,12 @@ var require_stringifyString = __commonJS({
       const strLen = str.length;
       if (strLen <= limit)
         return false;
-      for (let i = 0, start2 = 0; i < strLen; ++i) {
+      for (let i = 0, start3 = 0; i < strLen; ++i) {
         if (str[i] === "\n") {
-          if (i - start2 > limit)
+          if (i - start3 > limit)
             return true;
-          start2 = i + 1;
-          if (strLen - start2 <= limit)
+          start3 = i + 1;
+          if (strLen - start3 <= limit)
             return false;
         }
       }
@@ -1169,19 +1169,19 @@ var require_stringifyString = __commonJS({
       const minMultiLineLength = ctx.options.doubleQuotedMinMultiLineLength;
       const indent = ctx.indent || (containsDocumentMarker(value) ? "  " : "");
       let str = "";
-      let start2 = 0;
+      let start3 = 0;
       for (let i = 0, ch = json[i]; ch; ch = json[++i]) {
         if (ch === " " && json[i + 1] === "\\" && json[i + 2] === "n") {
-          str += json.slice(start2, i) + "\\ ";
+          str += json.slice(start3, i) + "\\ ";
           i += 1;
-          start2 = i;
+          start3 = i;
           ch = "\\";
         }
         if (ch === "\\")
           switch (json[i + 1]) {
             case "u":
               {
-                str += json.slice(start2, i);
+                str += json.slice(start3, i);
                 const code = json.substr(i + 2, 4);
                 switch (code) {
                   case "0000":
@@ -1215,14 +1215,14 @@ var require_stringifyString = __commonJS({
                       str += json.substr(i, 6);
                 }
                 i += 5;
-                start2 = i + 1;
+                start3 = i + 1;
               }
               break;
             case "n":
               if (implicitKey || json[i + 2] === '"' || json.length < minMultiLineLength) {
                 i += 1;
               } else {
-                str += json.slice(start2, i) + "\n\n";
+                str += json.slice(start3, i) + "\n\n";
                 while (json[i + 2] === "\\" && json[i + 3] === "n" && json[i + 4] !== '"') {
                   str += "\n";
                   i += 2;
@@ -1231,14 +1231,14 @@ var require_stringifyString = __commonJS({
                 if (json[i + 2] === " ")
                   str += "\\";
                 i += 1;
-                start2 = i + 1;
+                start3 = i + 1;
               }
               break;
             default:
               i += 1;
           }
       }
-      str = start2 ? str + json.slice(start2) : json;
+      str = start3 ? str + json.slice(start3) : json;
       return implicitKey ? str : foldFlowLines.foldFlowLines(str, indent, foldFlowLines.FOLD_QUOTED, getFoldOptions(ctx, false));
     }
     function singleQuotedString(value, ctx) {
@@ -1317,10 +1317,10 @@ ${indent}`) + "'";
         else
           break;
       }
-      let start2 = value.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
-      if (start2) {
-        value = value.substring(start2.length);
-        start2 = start2.replace(/\n+/g, `$&${indent}`);
+      let start3 = value.substring(0, startNlPos < startEnd ? startNlPos + 1 : startEnd);
+      if (start3) {
+        value = value.substring(start3.length);
+        start3 = start3.replace(/\n+/g, `$&${indent}`);
       }
       const indentSize = indent ? "2" : "1";
       let header = (startWithSpace ? indentSize : "") + chomp;
@@ -1338,14 +1338,14 @@ ${indent}`) + "'";
             literalFallback = true;
           };
         }
-        const body = foldFlowLines.foldFlowLines(`${start2}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
+        const body = foldFlowLines.foldFlowLines(`${start3}${foldedValue}${end}`, indent, foldFlowLines.FOLD_BLOCK, foldOptions);
         if (!literalFallback)
           return `>${header}
 ${indent}${body}`;
       }
       value = value.replace(/\n+/g, `$&${indent}`);
       return `|${header}
-${indent}${start2}${value}${end}`;
+${indent}${start3}${value}${end}`;
     }
     function plainString(item, ctx, onComment, onChompKeep) {
       const { type, value } = item;
@@ -1976,23 +1976,23 @@ ${indent}${line}` : "\n";
         lines.push(str);
         linesAtValue = lines.length;
       }
-      const { start: start2, end } = flowChars;
+      const { start: start3, end } = flowChars;
       if (lines.length === 0) {
-        return start2 + end;
+        return start3 + end;
       } else {
         if (!reqNewline) {
           const len = lines.reduce((sum, line) => sum + line.length + 2, 2);
           reqNewline = ctx.options.lineWidth > 0 && len > ctx.options.lineWidth;
         }
         if (reqNewline) {
-          let str = start2;
+          let str = start3;
           for (const line of lines)
             str += line ? `
 ${indentStep}${indent}${line}` : "\n";
           return `${str}
 ${indent}${end}`;
         } else {
-          return `${start2}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
+          return `${start3}${fcPadding}${lines.join(" ")}${fcPadding}${end}`;
         }
       }
     }
@@ -3773,7 +3773,7 @@ ${pointer}
 var require_resolve_props = __commonJS({
   "node_modules/yaml/dist/compose/resolve-props.js"(exports) {
     "use strict";
-    function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
+    function resolveProps(tokens, { flow, indicator, next: next2, offset, onError, parentIndent, startOnNewline }) {
       let spaceBefore = false;
       let atNewline = startOnNewline;
       let hasSpace = startOnNewline;
@@ -3787,7 +3787,7 @@ var require_resolve_props = __commonJS({
       let newlineAfterProp = null;
       let comma = null;
       let found = null;
-      let start2 = null;
+      let start3 = null;
       for (const token of tokens) {
         if (reqSpace) {
           if (token.type !== "space" && token.type !== "newline" && token.type !== "comma")
@@ -3802,7 +3802,7 @@ var require_resolve_props = __commonJS({
         }
         switch (token.type) {
           case "space":
-            if (!flow && (indicator !== "doc-start" || next?.type !== "flow-collection") && token.source.includes("	")) {
+            if (!flow && (indicator !== "doc-start" || next2?.type !== "flow-collection") && token.source.includes("	")) {
               tab = token;
             }
             hasSpace = true;
@@ -3839,7 +3839,7 @@ var require_resolve_props = __commonJS({
             if (token.source.endsWith(":"))
               onError(token.offset + token.source.length - 1, "BAD_ALIAS", "Anchor ending in : is ambiguous", true);
             anchor = token;
-            start2 ?? (start2 = token.offset);
+            start3 ?? (start3 = token.offset);
             atNewline = false;
             hasSpace = false;
             reqSpace = true;
@@ -3848,7 +3848,7 @@ var require_resolve_props = __commonJS({
             if (tag)
               onError(token, "MULTIPLE_TAGS", "A node can have at most one tag");
             tag = token;
-            start2 ?? (start2 = token.offset);
+            start3 ?? (start3 = token.offset);
             atNewline = false;
             hasSpace = false;
             reqSpace = true;
@@ -3881,10 +3881,10 @@ var require_resolve_props = __commonJS({
       }
       const last = tokens[tokens.length - 1];
       const end = last ? last.offset + last.source.length : offset;
-      if (reqSpace && next && next.type !== "space" && next.type !== "newline" && next.type !== "comma" && (next.type !== "scalar" || next.source !== "")) {
-        onError(next.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
+      if (reqSpace && next2 && next2.type !== "space" && next2.type !== "newline" && next2.type !== "comma" && (next2.type !== "scalar" || next2.source !== "")) {
+        onError(next2.offset, "MISSING_CHAR", "Tags and anchors must be separated from the next token by white space");
       }
-      if (tab && (atNewline && tab.indent <= parentIndent || next?.type === "block-map" || next?.type === "block-seq"))
+      if (tab && (atNewline && tab.indent <= parentIndent || next2?.type === "block-map" || next2?.type === "block-seq"))
         onError(tab, "TAB_AS_INDENT", "Tabs are not allowed as indentation");
       return {
         comma,
@@ -3896,7 +3896,7 @@ var require_resolve_props = __commonJS({
         tag,
         newlineAfterProp,
         end,
-        start: start2 ?? end
+        start: start3 ?? end
       };
     }
     exports.resolveProps = resolveProps;
@@ -3998,8 +3998,8 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep, value } = collItem;
-        const keyProps = resolveProps.resolveProps(start2, {
+        const { start: start3, key, sep, value } = collItem;
+        const keyProps = resolveProps.resolveProps(start3, {
           indicator: "explicit-key-ind",
           next: key ?? sep?.[0],
           offset,
@@ -4026,14 +4026,14 @@ var require_resolve_block_map = __commonJS({
             continue;
           }
           if (keyProps.newlineAfterProp || utilContainsNewline.containsNewline(key)) {
-            onError(key ?? start2[start2.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
+            onError(key ?? start3[start3.length - 1], "MULTILINE_IMPLICIT_KEY", "Implicit keys need to be on a single line");
           }
         } else if (keyProps.found?.indent !== bm.indent) {
           onError(offset, "BAD_INDENT", startColMsg);
         }
         ctx.atKey = true;
         const keyStart = keyProps.end;
-        const keyNode = key ? composeNode(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start2, null, keyProps, onError);
+        const keyNode = key ? composeNode(ctx, key, keyProps, onError) : composeEmptyNode(ctx, keyStart, start3, null, keyProps, onError);
         if (ctx.schema.compat)
           utilFlowIndentCheck.flowIndentCheck(bm.indent, key, onError);
         ctx.atKey = false;
@@ -4103,8 +4103,8 @@ var require_resolve_block_seq = __commonJS({
         ctx.atKey = false;
       let offset = bs.offset;
       let commentEnd = null;
-      for (const { start: start2, value } of bs.items) {
-        const props = resolveProps.resolveProps(start2, {
+      for (const { start: start3, value } of bs.items) {
+        const props = resolveProps.resolveProps(start3, {
           indicator: "seq-item-ind",
           next: value,
           offset,
@@ -4125,7 +4125,7 @@ var require_resolve_block_seq = __commonJS({
             continue;
           }
         }
-        const node = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, start2, null, props, onError);
+        const node = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, start3, null, props, onError);
         if (ctx.schema.compat)
           utilFlowIndentCheck.flowIndentCheck(bs.indent, value, onError);
         offset = node.range[2];
@@ -4209,8 +4209,8 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i = 0; i < fc.items.length; ++i) {
         const collItem = fc.items[i];
-        const { start: start2, key, sep, value } = collItem;
-        const props = resolveProps.resolveProps(start2, {
+        const { start: start3, key, sep, value } = collItem;
+        const props = resolveProps.resolveProps(start3, {
           flow: fcName,
           indicator: "explicit-key-ind",
           next: key ?? sep?.[0],
@@ -4250,7 +4250,7 @@ var require_resolve_flow_collection = __commonJS({
             onError(props.start, "MISSING_CHAR", `Missing , between ${fcName} items`);
           if (props.comment) {
             let prevItemComment = "";
-            loop: for (const st of start2) {
+            loop: for (const st of start3) {
               switch (st.type) {
                 case "comma":
                 case "space":
@@ -4283,7 +4283,7 @@ var require_resolve_flow_collection = __commonJS({
         } else {
           ctx.atKey = true;
           const keyStart = props.end;
-          const keyNode = key ? composeNode(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start2, null, props, onError);
+          const keyNode = key ? composeNode(ctx, key, props, onError) : composeEmptyNode(ctx, keyStart, start3, null, props, onError);
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
@@ -4446,10 +4446,10 @@ var require_resolve_block_scalar = __commonJS({
     "use strict";
     var Scalar = require_Scalar();
     function resolveBlockScalar(ctx, scalar, onError) {
-      const start2 = scalar.offset;
+      const start3 = scalar.offset;
       const header = parseBlockScalarHeader(scalar, ctx.options.strict, onError);
       if (!header)
-        return { value: "", type: null, comment: "", range: [start2, start2, start2] };
+        return { value: "", type: null, comment: "", range: [start3, start3, start3] };
       const type = header.mode === ">" ? Scalar.Scalar.BLOCK_FOLDED : Scalar.Scalar.BLOCK_LITERAL;
       const lines = scalar.source ? splitLines(scalar.source) : [];
       let chompStart = lines.length;
@@ -4462,10 +4462,10 @@ var require_resolve_block_scalar = __commonJS({
       }
       if (chompStart === 0) {
         const value2 = header.chomp === "+" && lines.length > 0 ? "\n".repeat(Math.max(1, lines.length - 1)) : "";
-        let end2 = start2 + header.length;
+        let end2 = start3 + header.length;
         if (scalar.source)
           end2 += scalar.source.length;
-        return { value: value2, type, comment: header.comment, range: [start2, end2, end2] };
+        return { value: value2, type, comment: header.comment, range: [start3, end2, end2] };
       }
       let trimIndent = scalar.indent + header.indent;
       let offset = scalar.offset + header.length;
@@ -4546,8 +4546,8 @@ var require_resolve_block_scalar = __commonJS({
         default:
           value += "\n";
       }
-      const end = start2 + header.length + scalar.source.length;
-      return { value, type, comment: header.comment, range: [start2, end, end] };
+      const end = start3 + header.length + scalar.source.length;
+      return { value, type, comment: header.comment, range: [start3, end, end] };
     }
     function parseBlockScalarHeader({ offset, props }, strict, onError) {
       if (props[0].type !== "block-scalar-header") {
@@ -4743,20 +4743,20 @@ var require_resolve_flow_scalar = __commonJS({
           res += fold;
           i = offset;
         } else if (ch === "\\") {
-          let next = source[++i];
-          const cc = escapeCodes[next];
+          let next2 = source[++i];
+          const cc = escapeCodes[next2];
           if (cc)
             res += cc;
-          else if (next === "\n") {
-            next = source[i + 1];
-            while (next === " " || next === "	")
-              next = source[++i + 1];
-          } else if (next === "\r" && source[i + 1] === "\n") {
-            next = source[++i + 1];
-            while (next === " " || next === "	")
-              next = source[++i + 1];
-          } else if (next === "x" || next === "u" || next === "U") {
-            const length = next === "x" ? 2 : next === "u" ? 4 : 8;
+          else if (next2 === "\n") {
+            next2 = source[i + 1];
+            while (next2 === " " || next2 === "	")
+              next2 = source[++i + 1];
+          } else if (next2 === "\r" && source[i + 1] === "\n") {
+            next2 = source[++i + 1];
+            while (next2 === " " || next2 === "	")
+              next2 = source[++i + 1];
+          } else if (next2 === "x" || next2 === "u" || next2 === "U") {
+            const length = next2 === "x" ? 2 : next2 === "u" ? 4 : 8;
             res += parseCharCode(source, i + 1, length, onError);
             i += length;
           } else {
@@ -4766,10 +4766,10 @@ var require_resolve_flow_scalar = __commonJS({
           }
         } else if (ch === " " || ch === "	") {
           const wsStart = i;
-          let next = source[i + 1];
-          while (next === " " || next === "	")
-            next = source[++i + 1];
-          if (next !== "\n" && !(next === "\r" && source[i + 2] === "\n"))
+          let next2 = source[i + 1];
+          while (next2 === " " || next2 === "	")
+            next2 = source[++i + 1];
+          if (next2 !== "\n" && !(next2 === "\r" && source[i + 2] === "\n"))
             res += i > wsStart ? source.slice(wsStart, i + 1) : ch;
         } else {
           res += ch;
@@ -5068,7 +5068,7 @@ var require_compose_doc = __commonJS({
     var composeNode = require_compose_node();
     var resolveEnd = require_resolve_end();
     var resolveProps = require_resolve_props();
-    function composeDoc(options, directives, { offset, start: start2, value, end }, onError) {
+    function composeDoc(options, directives, { offset, start: start3, value, end }, onError) {
       const opts = Object.assign({ _directives: directives }, options);
       const doc = new Document.Document(void 0, opts);
       const ctx = {
@@ -5078,7 +5078,7 @@ var require_compose_doc = __commonJS({
         options: doc.options,
         schema: doc.schema
       };
-      const props = resolveProps.resolveProps(start2, {
+      const props = resolveProps.resolveProps(start3, {
         indicator: "doc-start",
         next: value ?? end?.[0],
         offset,
@@ -5091,7 +5091,7 @@ var require_compose_doc = __commonJS({
         if (value && (value.type === "block-map" || value.type === "block-seq") && !props.hasNewline)
           onError(props.end, "MISSING_CHAR", "Block collection cannot start on same line with directives-end marker");
       }
-      doc.contents = value ? composeNode.composeNode(ctx, value, props, onError) : composeNode.composeEmptyNode(ctx, props.end, start2, null, props, onError);
+      doc.contents = value ? composeNode.composeNode(ctx, value, props, onError) : composeNode.composeEmptyNode(ctx, props.end, start3, null, props, onError);
       const contentEnd = doc.contents.range[2];
       const re = resolveEnd.resolveEnd(end, contentEnd, false, onError);
       if (re.comment)
@@ -5540,9 +5540,9 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep, value }) {
+    function stringifyItem({ start: start3, key, sep, value }) {
       let res = "";
-      for (const st of start2)
+      for (const st of start3)
         res += st.source;
       if (key)
         res += stringifyToken(key);
@@ -5771,9 +5771,9 @@ var require_lexer = __commonJS({
           this.lineEndPos = null;
         }
         this.atEnd = !incomplete;
-        let next = this.next ?? "stream";
-        while (next && (incomplete || this.hasChars(1)))
-          next = yield* this.parseNext(next);
+        let next2 = this.next ?? "stream";
+        while (next2 && (incomplete || this.hasChars(1)))
+          next2 = yield* this.parseNext(next2);
       }
       atLineEnd() {
         let i = this.pos;
@@ -5796,8 +5796,8 @@ var require_lexer = __commonJS({
           while (ch === " ")
             ch = this.buffer[++indent + offset];
           if (ch === "\r") {
-            const next = this.buffer[indent + offset + 1];
-            if (next === "\n" || !next && !this.atEnd)
+            const next2 = this.buffer[indent + offset + 1];
+            if (next2 === "\n" || !next2 && !this.atEnd)
               return offset + indent + 1;
           }
           return ch === "\n" || indent >= this.indentNext || !ch && !this.atEnd ? offset + indent : -1;
@@ -5834,8 +5834,8 @@ var require_lexer = __commonJS({
       peek(n) {
         return this.buffer.substr(this.pos, n);
       }
-      *parseNext(next) {
-        switch (next) {
+      *parseNext(next2) {
+        switch (next2) {
           case "stream":
             return yield* this.parseStream();
           case "line-start":
@@ -6024,8 +6024,8 @@ var require_lexer = __commonJS({
             this.flowKey = true;
             return yield* this.parseQuotedScalar();
           case ":": {
-            const next = this.charAt(1);
-            if (this.flowKey || isEmpty(next) || next === ",") {
+            const next2 = this.charAt(1);
+            if (this.flowKey || isEmpty(next2) || next2 === ",") {
               this.flowKey = false;
               yield* this.pushCount(1);
               yield* this.pushSpaces(true);
@@ -6104,10 +6104,10 @@ var require_lexer = __commonJS({
               indent = 0;
               break;
             case "\r": {
-              const next = this.buffer[i2 + 1];
-              if (!next && !this.atEnd)
+              const next2 = this.buffer[i2 + 1];
+              if (!next2 && !this.atEnd)
                 return this.setNext("block-scalar");
-              if (next === "\n")
+              if (next2 === "\n")
                 break;
             }
             // fallthrough
@@ -6169,21 +6169,21 @@ var require_lexer = __commonJS({
         let ch;
         while (ch = this.buffer[++i]) {
           if (ch === ":") {
-            const next = this.buffer[i + 1];
-            if (isEmpty(next) || inFlow && flowIndicatorChars.has(next))
+            const next2 = this.buffer[i + 1];
+            if (isEmpty(next2) || inFlow && flowIndicatorChars.has(next2))
               break;
             end = i;
           } else if (isEmpty(ch)) {
-            let next = this.buffer[i + 1];
+            let next2 = this.buffer[i + 1];
             if (ch === "\r") {
-              if (next === "\n") {
+              if (next2 === "\n") {
                 i += 1;
                 ch = "\n";
-                next = this.buffer[i + 1];
+                next2 = this.buffer[i + 1];
               } else
                 end = i;
             }
-            if (next === "#" || inFlow && flowIndicatorChars.has(next))
+            if (next2 === "#" || inFlow && flowIndicatorChars.has(next2))
               break;
             if (ch === "\n") {
               const cs = this.continueScalar(i + 1);
@@ -6332,8 +6332,8 @@ var require_line_counter = __commonJS({
             return { line: low + 1, col: 1 };
           if (low === 0)
             return { line: 0, col: offset };
-          const start2 = this.lineStarts[low - 1];
-          return { line: low, col: offset - start2 + 1 };
+          const start3 = this.lineStarts[low - 1];
+          return { line: low, col: offset - start3 + 1 };
         };
       }
     };
@@ -6713,7 +6713,7 @@ var require_parser = __commonJS({
       *scalar(scalar) {
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
-          const start2 = getFirstKeyStartProps(prev);
+          const start3 = getFirstKeyStartProps(prev);
           let sep;
           if (scalar.end) {
             sep = scalar.end;
@@ -6725,7 +6725,7 @@ var require_parser = __commonJS({
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep }]
+            items: [{ start: start3, key: scalar, sep }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -6800,7 +6800,7 @@ var require_parser = __commonJS({
         if (this.indent >= map.indent) {
           const atMapIndent = !this.onKeyLine && this.indent === map.indent;
           const atNextItem = atMapIndent && (it.sep || it.explicitKey) && this.type !== "seq-item-ind";
-          let start2 = [];
+          let start3 = [];
           if (atNextItem && it.sep && !it.value) {
             const nl = [];
             for (let i = 0; i < it.sep.length; ++i) {
@@ -6820,14 +6820,14 @@ var require_parser = __commonJS({
               }
             }
             if (nl.length >= 2)
-              start2 = it.sep.splice(nl[1]);
+              start3 = it.sep.splice(nl[1]);
           }
           switch (this.type) {
             case "anchor":
             case "tag":
               if (atNextItem || it.value) {
-                start2.push(this.sourceToken);
-                map.items.push({ start: start2 });
+                start3.push(this.sourceToken);
+                map.items.push({ start: start3 });
                 this.onKeyLine = true;
               } else if (it.sep) {
                 it.sep.push(this.sourceToken);
@@ -6840,8 +6840,8 @@ var require_parser = __commonJS({
                 it.start.push(this.sourceToken);
                 it.explicitKey = true;
               } else if (atNextItem || it.value) {
-                start2.push(this.sourceToken);
-                map.items.push({ start: start2, explicitKey: true });
+                start3.push(this.sourceToken);
+                map.items.push({ start: start3, explicitKey: true });
               } else {
                 this.stack.push({
                   type: "block-map",
@@ -6858,12 +6858,12 @@ var require_parser = __commonJS({
                   if (includesToken(it.start, "newline")) {
                     Object.assign(it, { key: null, sep: [this.sourceToken] });
                   } else {
-                    const start3 = getFirstKeyStartProps(it.start);
+                    const start4 = getFirstKeyStartProps(it.start);
                     this.stack.push({
                       type: "block-map",
                       offset: this.offset,
                       indent: this.indent,
-                      items: [{ start: start3, key: null, sep: [this.sourceToken] }]
+                      items: [{ start: start4, key: null, sep: [this.sourceToken] }]
                     });
                   }
                 } else if (it.value) {
@@ -6873,10 +6873,10 @@ var require_parser = __commonJS({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start2, key: null, sep: [this.sourceToken] }]
+                    items: [{ start: start3, key: null, sep: [this.sourceToken] }]
                   });
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
-                  const start3 = getFirstKeyStartProps(it.start);
+                  const start4 = getFirstKeyStartProps(it.start);
                   const key = it.key;
                   const sep = it.sep;
                   sep.push(this.sourceToken);
@@ -6886,10 +6886,10 @@ var require_parser = __commonJS({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep }]
+                    items: [{ start: start4, key, sep }]
                   });
-                } else if (start2.length > 0) {
-                  it.sep = it.sep.concat(start2, this.sourceToken);
+                } else if (start3.length > 0) {
+                  it.sep = it.sep.concat(start3, this.sourceToken);
                 } else {
                   it.sep.push(this.sourceToken);
                 }
@@ -6897,7 +6897,7 @@ var require_parser = __commonJS({
                 if (!it.sep) {
                   Object.assign(it, { key: null, sep: [this.sourceToken] });
                 } else if (it.value || atNextItem) {
-                  map.items.push({ start: start2, key: null, sep: [this.sourceToken] });
+                  map.items.push({ start: start3, key: null, sep: [this.sourceToken] });
                 } else if (includesToken(it.sep, "map-value-ind")) {
                   this.stack.push({
                     type: "block-map",
@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs5 = this.flowScalar(this.type);
+              const fs6 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start: start2, key: fs5, sep: [] });
+                map.items.push({ start: start3, key: fs6, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs5);
+                this.stack.push(fs6);
               } else {
-                Object.assign(it, { key: fs5, sep: [] });
+                Object.assign(it, { key: fs6, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -6941,7 +6941,7 @@ var require_parser = __commonJS({
                     return;
                   }
                 } else if (atMapIndent) {
-                  map.items.push({ start: start2 });
+                  map.items.push({ start: start3 });
                 }
                 this.stack.push(bv);
                 return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs5 = this.flowScalar(this.type);
+              const fs6 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs5, sep: [] });
+                fc.items.push({ start: [], key: fs6, sep: [] });
               else if (it.sep)
-                this.stack.push(fs5);
+                this.stack.push(fs6);
               else
-                Object.assign(it, { key: fs5, sep: [] });
+                Object.assign(it, { key: fs6, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7078,7 +7078,7 @@ var require_parser = __commonJS({
             yield* this.step();
           } else if (this.type === "map-value-ind" && parent.type !== "flow-collection") {
             const prev = getPrevProps(parent);
-            const start2 = getFirstKeyStartProps(prev);
+            const start3 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
             const sep = fc.end.splice(1, fc.end.length);
             sep.push(this.sourceToken);
@@ -7086,7 +7086,7 @@ var require_parser = __commonJS({
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep }]
+              items: [{ start: start3, key: fc, sep }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -7145,35 +7145,35 @@ var require_parser = __commonJS({
           case "explicit-key-ind": {
             this.onKeyLine = true;
             const prev = getPrevProps(parent);
-            const start2 = getFirstKeyStartProps(prev);
-            start2.push(this.sourceToken);
+            const start3 = getFirstKeyStartProps(prev);
+            start3.push(this.sourceToken);
             return {
               type: "block-map",
               offset: this.offset,
               indent: this.indent,
-              items: [{ start: start2, explicitKey: true }]
+              items: [{ start: start3, explicitKey: true }]
             };
           }
           case "map-value-ind": {
             this.onKeyLine = true;
             const prev = getPrevProps(parent);
-            const start2 = getFirstKeyStartProps(prev);
+            const start3 = getFirstKeyStartProps(prev);
             return {
               type: "block-map",
               offset: this.offset,
               indent: this.indent,
-              items: [{ start: start2, key: null, sep: [this.sourceToken] }]
+              items: [{ start: start3, key: null, sep: [this.sourceToken] }]
             };
           }
         }
         return null;
       }
-      atIndentedComment(start2, indent) {
+      atIndentedComment(start3, indent) {
         if (this.type !== "comment")
           return false;
         if (this.indent <= indent)
           return false;
-        return start2.every((st) => st.type === "newline" || st.type === "space");
+        return start3.every((st) => st.type === "newline" || st.type === "space");
       }
       *documentEnd(docEnd) {
         if (this.type !== "doc-mode") {
@@ -7365,8 +7365,7 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import fs4 from "node:fs";
-import path3 from "node:path";
+import fs5 from "node:fs";
 
 // src/workflow.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -7604,6 +7603,10 @@ function isAlive(pid) {
   }
 }
 
+// src/engine.ts
+import fs3 from "node:fs";
+import path2 from "node:path";
+
 // src/gate.ts
 import { spawnSync } from "node:child_process";
 var DEFAULT_TIMEOUT_SECONDS = 120;
@@ -7673,97 +7676,6 @@ function buildTail(stdout, stderr) {
   if (tail.length === 0) return "(no output)";
   return truncated ? `\u2026 (output truncated)
 ${tail}` : tail;
-}
-
-// src/engine.ts
-function refuse(fn, problem) {
-  throw new Error(`${fn}: ${problem}`);
-}
-function describePhase(workflow, phase) {
-  const p = workflow.phases[phase];
-  if (p === void 0) {
-    refuse("step", `destination '${phase}' does not name a phase in workflow '${workflow.name}'`);
-  }
-  return p.description;
-}
-function checkIterationLimit(workflow, state) {
-  if (state.status !== "running") {
-    refuse("checkIterationLimit", `run is already ${state.status}; ask terminalOutcome instead`);
-  }
-  const limit = workflow.limits?.max_total_iterations;
-  if (limit === void 0 || state.total_iterations < limit) return null;
-  const reason = `${state.phase}: max_total_iterations (${limit}) reached \u2014 the run is still open: raise limits.max_total_iterations in ${state.workflow_path} and run \`headsign next\` to continue from this phase, or run \`headsign abort <reason>\` to end it`;
-  return { kind: "ESCALATE", reason };
-}
-function terminalOutcome(state) {
-  if (state.status === "running") {
-    refuse("terminalOutcome", "run is still running; there is no terminal outcome to report");
-  }
-  if (state.status === "complete") return { kind: "COMPLETE" };
-  if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
-  return { kind: "ABORT", reason: state.end_reason ?? "" };
-}
-function passTarget(onPass, route) {
-  if (typeof onPass === "string") return { to: onPass };
-  if (route === void 0) throw new Error("step: on_pass is a route list but no resolution was given");
-  return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
-}
-function step(workflow, state, gateResult, route) {
-  if (state.status !== "running") {
-    refuse("step", `run is already ${state.status}; nothing left to step`);
-  }
-  const phaseName = state.phase;
-  const phase = workflow.phases[phaseName];
-  const next = { ...state, attempts: { ...state.attempts } };
-  next.total_iterations += 1;
-  next.stop_nudges = 0;
-  if (gateResult.pass) {
-    delete next.attempts[phaseName];
-    next.last_failure = null;
-    const { to, routedBy } = passTarget(phase.on_pass, route);
-    if (to === "$end") {
-      next.status = "complete";
-      return { state: next, outcome: { kind: "COMPLETE" } };
-    }
-    next.phase = to;
-    return { state: next, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...routedBy && { routedBy } } };
-  }
-  next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
-  const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
-  const failure = { check, run, exitCode, outputTail, timeoutSeconds };
-  const maxAttempts = phase.max_attempts;
-  if (maxAttempts !== void 0 && next.attempts[phaseName] >= maxAttempts) {
-    const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
-    next.last_failure = null;
-    next.end_reason = reason;
-    next.status = "escalated";
-    return { state: next, outcome: { kind: "ESCALATE", reason } };
-  }
-  const onFail = phase.on_fail ?? "retry";
-  if (onFail === "retry") {
-    next.last_failure = {
-      phase: phaseName,
-      check: failure.check,
-      run: failure.run,
-      exit_code: failure.exitCode,
-      output_tail: failure.outputTail,
-      timeout_seconds: failure.timeoutSeconds
-    };
-    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure } };
-  }
-  next.last_failure = null;
-  if (onFail === "$end") {
-    next.status = "complete";
-    return { state: next, outcome: { kind: "COMPLETE" } };
-  }
-  if (onFail === "escalate") {
-    const reason = `${phaseName}: gate failed (on_fail: escalate)`;
-    next.status = "escalated";
-    next.end_reason = reason;
-    return { state: next, outcome: { kind: "ESCALATE", reason } };
-  }
-  next.phase = onFail;
-  return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: describePhase(workflow, onFail), failure: { ...failure, routedTo: onFail } } };
 }
 
 // src/render.ts
@@ -7848,10 +7760,10 @@ workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
 `;
 }
-function statusTerminal(status, workflowName, endReason) {
+function statusTerminal(status2, workflowName, endReason) {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}
 ` : "";
-  return `${status.toUpperCase()}
+  return `${status2.toUpperCase()}
 workflow: ${workflowName}
 ${reasonLine}`;
 }
@@ -7922,9 +7834,280 @@ function logDetail(event, prevPhase) {
   }
 }
 
+// src/engine.ts
+function refuse(fn, problem) {
+  throw new Error(`${fn}: ${problem}`);
+}
+function describePhase(workflow, phase) {
+  const p = workflow.phases[phase];
+  if (p === void 0) {
+    refuse("step", `destination '${phase}' does not name a phase in workflow '${workflow.name}'`);
+  }
+  return p.description;
+}
+function checkIterationLimit(workflow, state) {
+  if (state.status !== "running") {
+    refuse("checkIterationLimit", `run is already ${state.status}; ask terminalOutcome instead`);
+  }
+  const limit = workflow.limits?.max_total_iterations;
+  if (limit === void 0 || state.total_iterations < limit) return null;
+  const reason = `${state.phase}: max_total_iterations (${limit}) reached \u2014 the run is still open: raise limits.max_total_iterations in ${state.workflow_path} and run \`headsign next\` to continue from this phase, or run \`headsign abort <reason>\` to end it`;
+  return { kind: "ESCALATE", reason };
+}
+function terminalOutcome(state) {
+  if (state.status === "running") {
+    refuse("terminalOutcome", "run is still running; there is no terminal outcome to report");
+  }
+  if (state.status === "complete") return { kind: "COMPLETE" };
+  if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
+  return { kind: "ABORT", reason: state.end_reason ?? "" };
+}
+function passTarget(onPass, route) {
+  if (typeof onPass === "string") return { to: onPass };
+  if (route === void 0) throw new Error("step: on_pass is a route list but no resolution was given");
+  return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
+}
+function step(workflow, state, gateResult, route) {
+  if (state.status !== "running") {
+    refuse("step", `run is already ${state.status}; nothing left to step`);
+  }
+  const phaseName = state.phase;
+  const phase = workflow.phases[phaseName];
+  const next2 = { ...state, attempts: { ...state.attempts } };
+  next2.total_iterations += 1;
+  next2.stop_nudges = 0;
+  if (gateResult.pass) {
+    delete next2.attempts[phaseName];
+    next2.last_failure = null;
+    const { to, routedBy } = passTarget(phase.on_pass, route);
+    if (to === "$end") {
+      next2.status = "complete";
+      return { state: next2, outcome: { kind: "COMPLETE" } };
+    }
+    next2.phase = to;
+    return { state: next2, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...routedBy && { routedBy } } };
+  }
+  next2.attempts[phaseName] = (next2.attempts[phaseName] ?? 0) + 1;
+  const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
+  const failure = { check, run, exitCode, outputTail, timeoutSeconds };
+  const maxAttempts = phase.max_attempts;
+  if (maxAttempts !== void 0 && next2.attempts[phaseName] >= maxAttempts) {
+    const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
+    next2.last_failure = null;
+    next2.end_reason = reason;
+    next2.status = "escalated";
+    return { state: next2, outcome: { kind: "ESCALATE", reason } };
+  }
+  const onFail = phase.on_fail ?? "retry";
+  if (onFail === "retry") {
+    next2.last_failure = {
+      phase: phaseName,
+      check: failure.check,
+      run: failure.run,
+      exit_code: failure.exitCode,
+      output_tail: failure.outputTail,
+      timeout_seconds: failure.timeoutSeconds
+    };
+    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], maxAttempts, failure } };
+  }
+  next2.last_failure = null;
+  if (onFail === "$end") {
+    next2.status = "complete";
+    return { state: next2, outcome: { kind: "COMPLETE" } };
+  }
+  if (onFail === "escalate") {
+    const reason = `${phaseName}: gate failed (on_fail: escalate)`;
+    next2.status = "escalated";
+    next2.end_reason = reason;
+    return { state: next2, outcome: { kind: "ESCALATE", reason } };
+  }
+  next2.phase = onFail;
+  return { state: next2, outcome: { kind: "ADVANCE", phase: onFail, description: describePhase(workflow, onFail), failure: { ...failure, routedTo: onFail } } };
+}
+var NO_RUN_HERE_MESSAGE = "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
+function readFileOrEmpty(p) {
+  try {
+    return fs3.readFileSync(p, "utf8");
+  } catch {
+    return "";
+  }
+}
+function ensureHeadsignGitignored(cwd) {
+  const gitignorePath = path2.join(cwd, ".headsign", ".gitignore");
+  const original = readFileOrEmpty(gitignorePath);
+  let content = original;
+  for (const entry of ["state.json", "lock", "log", "tmp/"]) {
+    if (content.split("\n").some((l) => l.trim() === entry)) continue;
+    const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+    content = `${content}${sep}${entry}
+`;
+  }
+  if (content !== original) fs3.writeFileSync(gitignorePath, content);
+}
+function clearPhaseArtifacts(cwd, phase) {
+  const cleared = [];
+  for (const rel of phase.clear ?? []) {
+    const full = path2.join(cwd, rel);
+    let removedNonEmptyFile = false;
+    try {
+      const st = fs3.statSync(full);
+      removedNonEmptyFile = st.isFile() && st.size > 0;
+    } catch {
+    }
+    try {
+      fs3.rmSync(full, { force: true });
+    } catch {
+    }
+    if (removedNonEmptyFile) cleared.push(rel);
+  }
+  return cleared;
+}
+function start2(cwd, workflowPath, nowIso) {
+  const loaded = load(workflowPath);
+  const wf = loaded.workflow;
+  if (!wf) return { warnings: null, result: { kind: "WORKFLOW_INVALID", workflowPath, errors: loaded.errors } };
+  const warnings = loaded.warnings.length > 0 ? { workflowPath, warnings: loaded.warnings } : null;
+  const existing = readState(cwd);
+  if (existing && existing.status === "running") {
+    return {
+      warnings,
+      result: {
+        kind: "REFUSED",
+        message: `a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`
+      }
+    };
+  }
+  const freshState = {
+    workflow: wf.name,
+    workflow_path: workflowPath,
+    status: "running",
+    phase: wf.entry,
+    attempts: {},
+    total_iterations: 0,
+    last_failure: null,
+    end_reason: null,
+    stop_nudges: 0,
+    driver_agent: null
+  };
+  writeState(cwd, freshState);
+  ensureHeadsignGitignored(cwd);
+  initLog(cwd);
+  appendLog(cwd, logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
+  const tmpDir = path2.join(cwd, ".headsign", "tmp");
+  fs3.rmSync(tmpDir, { recursive: true, force: true });
+  fs3.mkdirSync(tmpDir, { recursive: true });
+  const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared } };
+}
+function next(cwd, nowIso) {
+  const current = readState(cwd);
+  if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
+  if (current.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+  const loaded = load(current.workflow_path);
+  if (!loaded.workflow) return { kind: "WORKFLOW_INVALID", workflowPath: current.workflow_path, errors: loaded.errors };
+  const wf = loaded.workflow;
+  const lock = acquireLock(cwd);
+  if (!lock.ok) {
+    return { kind: "REFUSED", message: `another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.` };
+  }
+  try {
+    const fresh = readState(cwd);
+    if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
+    if (fresh.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(fresh), workflowName: fresh.workflow };
+    return evaluateNext(cwd, wf, fresh, nowIso);
+  } finally {
+    releaseLock(cwd);
+  }
+}
+function evaluateNext(cwd, wf, current, nowIso) {
+  if (!wf.phases[current.phase]) {
+    return {
+      kind: "REFUSED",
+      message: `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
+    };
+  }
+  const limitOutcome = checkIterationLimit(wf, current);
+  if (limitOutcome) {
+    appendLog(cwd, logLine(nowIso, { kind: "CEILING", reason: limitOutcome.reason }, current));
+    return { kind: "ANSWERED", outcome: limitOutcome, workflowName: wf.name, wf };
+  }
+  const phase = wf.phases[current.phase];
+  if (phase.ready !== void 0 && !isReady(phase.ready, cwd)) {
+    return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
+  }
+  const gateResult = runGate(phase.gate.checks, cwd);
+  let route;
+  if (gateResult.pass && Array.isArray(phase.on_pass)) {
+    const resolution = resolveRoute(phase.on_pass, cwd);
+    if (resolution.kind === "error") {
+      return {
+        kind: "REFUSED",
+        message: `phase '${current.phase}': could not evaluate the on_pass condition \`${resolution.when}\` (${resolution.reason}). The gate passed, but headsign will not guess where to go: fix that condition in '${current.workflow_path}' and run \`headsign next\` again. The run has not moved.`
+      };
+    }
+    route = resolution;
+  }
+  const { state: nextState, outcome } = step(wf, current, gateResult, route);
+  let cleared;
+  if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
+  writeState(cwd, nextState);
+  appendLog(cwd, logLine(nowIso, outcome, nextState, current.phase));
+  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared };
+}
+function abort2(cwd, reason, nowIso) {
+  const current = readState(cwd);
+  if (!current) {
+    return {
+      kind: "REFUSED",
+      message: "no run in progress to abort here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root)."
+    };
+  }
+  if (current.status !== "running") {
+    return { kind: "REFUSED", message: `run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.` };
+  }
+  const nextState = { ...current, status: "aborted", end_reason: reason || null };
+  writeState(cwd, nextState);
+  appendLog(cwd, logLine(nowIso, { kind: "ABORT", reason }, nextState));
+  return { kind: "ABORTED", reason };
+}
+function claim2(cwd) {
+  const current = readState(cwd);
+  if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
+  if (current.status !== "running") {
+    return { kind: "REFUSED", message: `run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.` };
+  }
+  const tmpDir = path2.join(cwd, ".headsign", "tmp");
+  fs3.mkdirSync(tmpDir, { recursive: true });
+  fs3.writeFileSync(path2.join(tmpDir, "claim"), "");
+  return { kind: "CLAIMED" };
+}
+function status(cwd) {
+  const current = readState(cwd);
+  if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
+  if (current.status !== "running") {
+    return { kind: "TERMINAL", status: current.status, workflowName: current.workflow, endReason: current.end_reason };
+  }
+  const { workflow: wf } = load(current.workflow_path);
+  const phase = wf?.phases[current.phase];
+  const attempt = current.attempts[current.phase] ?? 0;
+  const recorded = current.last_failure ?? null;
+  const lastFailure = recorded !== null && recorded.phase === current.phase ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail } : null;
+  const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
+  return {
+    kind: "RUNNING",
+    phase: current.phase,
+    attempt,
+    maxAttempts: phase?.max_attempts,
+    attemptUnknown: phase === void 0,
+    workflowName: current.workflow,
+    lastFailure,
+    delegated: driverAgent !== null
+  };
+}
+
 // src/stophook.ts
-import fs3 from "node:fs";
-import path2 from "node:path";
+import fs4 from "node:fs";
+import path3 from "node:path";
 var MAX_STOP_NUDGES = 5;
 function isObserver(env) {
   const raw = env["HEADSIGN_OBSERVER"];
@@ -7936,9 +8119,9 @@ function recordedDriver(state) {
 function findRunDir(startDir) {
   let dir = startDir;
   for (; ; ) {
-    if (fs3.existsSync(statePath(dir))) return dir;
-    if (fs3.existsSync(path2.join(dir, ".git"))) return null;
-    const parent = path2.dirname(dir);
+    if (fs4.existsSync(statePath(dir))) return dir;
+    if (fs4.existsSync(path3.join(dir, ".git"))) return null;
+    const parent = path3.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
@@ -7948,13 +8131,13 @@ function pauseAndAbortHint(runDir, startDir) {
   return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
 function noteGateThenNudge(runDir, startDir, state, nowIso) {
-  const notePath = path2.join(runDir, ".headsign", "tmp", "stop-note");
-  if (fs3.existsSync(notePath)) {
-    const noteRaw = fs3.readFileSync(notePath, "utf8");
+  const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
+  if (fs4.existsSync(notePath)) {
+    const noteRaw = fs4.readFileSync(notePath, "utf8");
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-      fs3.rmSync(notePath, { force: true });
+      fs4.rmSync(notePath, { force: true });
       const pausedState = { ...state, stop_nudges: 0 };
       writeState(runDir, pausedState);
       appendLog(runDir, logLine(nowIso, { kind: "PAUSED", note: firstLine }, pausedState));
@@ -8000,9 +8183,9 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
     const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
-    const claimPath = path2.join(runDir, ".headsign", "tmp", "claim");
-    if (fs3.existsSync(claimPath) && agentId !== null) {
-      fs3.rmSync(claimPath, { force: true });
+    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
+    if (fs4.existsSync(claimPath) && agentId !== null) {
+      fs4.rmSync(claimPath, { force: true });
       const adoptedState = { ...state, driver_agent: agentId, stop_nudges: 0 };
       writeState(runDir, adoptedState);
       appendLog(runDir, logLine(nowIso, { kind: "CLAIMED" }, adoptedState));
@@ -8037,7 +8220,6 @@ function errorExit(message) {
   return stderrExit(`ERROR: ${message}
 `, 3);
 }
-var NO_RUN_HERE_MESSAGE = "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
 function resolveWorkflowPath(args, defaultPath = ".headsign/workflow.yaml") {
   const flagIdx = args.indexOf("--workflow");
   let flagValue;
@@ -8086,207 +8268,106 @@ function exitAfter(text, code) {
   process.stdout.write(text);
   return process.exit(code);
 }
-function readFileOrEmpty(p) {
+function readStdin() {
   try {
-    return fs4.readFileSync(p, "utf8");
+    return fs5.readFileSync(0, "utf8");
   } catch {
     return "";
   }
 }
-function ensureHeadsignGitignored(cwd) {
-  const gitignorePath = path3.join(cwd, ".headsign", ".gitignore");
-  const original = readFileOrEmpty(gitignorePath);
-  let content = original;
-  for (const entry of ["state.json", "lock", "log", "tmp/"]) {
-    if (content.split("\n").some((l) => l.trim() === entry)) continue;
-    const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-    content = `${content}${sep}${entry}
-`;
+function reportStart(result) {
+  if (result.warnings) process.stderr.write(validateWarnings(result.warnings.workflowPath, result.warnings.warnings));
+  switch (result.result.kind) {
+    case "WORKFLOW_INVALID":
+      return stderrExit(validateFail(result.result.workflowPath, result.result.errors), 3);
+    case "REFUSED":
+      return errorExit(result.result.message);
+    case "STARTED":
+      return exitAfter(start(result.result.phase, result.result.description, result.result.cleared), 0);
   }
-  if (content !== original) fs4.writeFileSync(gitignorePath, content);
 }
-function clearPhaseArtifacts(cwd, phase) {
-  const cleared = [];
-  for (const rel of phase.clear ?? []) {
-    const full = path3.join(cwd, rel);
-    let removedNonEmptyFile = false;
-    try {
-      const st = fs4.statSync(full);
-      removedNonEmptyFile = st.isFile() && st.size > 0;
-    } catch {
-    }
-    try {
-      fs4.rmSync(full, { force: true });
-    } catch {
-    }
-    if (removedNonEmptyFile) cleared.push(rel);
+function reportNext(result) {
+  switch (result.kind) {
+    case "WORKFLOW_INVALID":
+      return stderrExit(validateFail(result.workflowPath, result.errors), 3);
+    case "REFUSED":
+      return errorExit(result.message);
+    case "ANSWERED":
+      return printOutcome(result.outcome, result.workflowName, result.wf ? { wf: result.wf, cleared: result.cleared } : void 0);
   }
-  return cleared;
+}
+function reportAbort(result) {
+  switch (result.kind) {
+    case "REFUSED":
+      return errorExit(result.message);
+    case "ABORTED":
+      return exitAfter(abort(result.reason), 2);
+  }
+}
+function reportClaim(result) {
+  switch (result.kind) {
+    case "REFUSED":
+      return errorExit(result.message);
+    case "CLAIMED":
+      return exitAfter(claim(), 0);
+  }
+}
+function reportStatus(result) {
+  switch (result.kind) {
+    case "REFUSED":
+      return errorExit(result.message);
+    case "TERMINAL":
+      return exitAfter(statusTerminal(result.status, result.workflowName, result.endReason), 0);
+    case "RUNNING":
+      return exitAfter(
+        statusRunning({
+          phase: result.phase,
+          attempt: result.attempt,
+          maxAttempts: result.maxAttempts,
+          attemptUnknown: result.attemptUnknown,
+          workflowName: result.workflowName,
+          lastFailure: result.lastFailure,
+          driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run"
+        }),
+        0
+      );
+  }
 }
 function cmdStart(args) {
-  const workflowPath = resolveWorkflowPath(args);
-  const wf = loadWorkflowOrExit(workflowPath, true);
-  const cwd = process.cwd();
-  const existing = readState(cwd);
-  if (existing && existing.status === "running") {
-    errorExit(`a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`);
-  }
-  const freshState = {
-    workflow: wf.name,
-    workflow_path: workflowPath,
-    status: "running",
-    phase: wf.entry,
-    attempts: {},
-    total_iterations: 0,
-    last_failure: null,
-    end_reason: null,
-    stop_nudges: 0,
-    driver_agent: null
-  };
-  writeState(cwd, freshState);
-  ensureHeadsignGitignored(cwd);
-  initLog(cwd);
-  appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "START", workflow: wf.name }, freshState));
-  const tmpDir = path3.join(cwd, ".headsign", "tmp");
-  fs4.rmSync(tmpDir, { recursive: true, force: true });
-  fs4.mkdirSync(tmpDir, { recursive: true });
-  const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  exitAfter(start(wf.entry, wf.phases[wf.entry].description, cleared), 0);
-}
-function evaluateNext(cwd, wf, current) {
-  if (!wf.phases[current.phase]) {
-    releaseLock(cwd);
-    errorExit(
-      `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
-    );
-  }
-  const limitOutcome = checkIterationLimit(wf, current);
-  if (limitOutcome) {
-    appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "CEILING", reason: limitOutcome.reason }, current));
-    return { outcome: limitOutcome };
-  }
-  const phase = wf.phases[current.phase];
-  if (phase.ready !== void 0 && !isReady(phase.ready, cwd)) {
-    return { outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready } };
-  }
-  const gateResult = runGate(phase.gate.checks, cwd);
-  let route;
-  if (gateResult.pass && Array.isArray(phase.on_pass)) {
-    const resolution = resolveRoute(phase.on_pass, cwd);
-    if (resolution.kind === "error") {
-      releaseLock(cwd);
-      errorExit(
-        `phase '${current.phase}': could not evaluate the on_pass condition \`${resolution.when}\` (${resolution.reason}). The gate passed, but headsign will not guess where to go: fix that condition in '${current.workflow_path}' and run \`headsign next\` again. The run has not moved.`
-      );
-    }
-    route = resolution;
-  }
-  const { state: nextState, outcome } = step(wf, current, gateResult, route);
-  let cleared;
-  if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
-  writeState(cwd, nextState);
-  appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), outcome, nextState, current.phase));
-  return { outcome, cleared };
+  return reportStart(start2(process.cwd(), resolveWorkflowPath(args), localIso(/* @__PURE__ */ new Date())));
 }
 function cmdNext() {
-  const cwd = process.cwd();
-  const current = readState(cwd);
-  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
-  if (current.status !== "running") printOutcome(terminalOutcome(current), current.workflow);
-  const wf = loadWorkflowOrExit(current.workflow_path);
-  const lock = acquireLock(cwd);
-  if (!lock.ok) {
-    errorExit(`another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.`);
-  }
-  const fresh = readState(cwd);
-  if (!fresh) {
-    releaseLock(cwd);
-    errorExit("the run ended while acquiring the lock; re-run `headsign next`.");
-  }
-  if (fresh.status !== "running") {
-    releaseLock(cwd);
-    printOutcome(terminalOutcome(fresh), fresh.workflow);
-  }
-  const { outcome, cleared } = evaluateNext(cwd, wf, fresh);
-  releaseLock(cwd);
-  printOutcome(outcome, wf.name, { wf, cleared });
+  return reportNext(next(process.cwd(), localIso(/* @__PURE__ */ new Date())));
 }
 function cmdAbort(args) {
-  const cwd = process.cwd();
-  const current = readState(cwd);
-  if (!current) {
-    errorExit(
-      "no run in progress to abort here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root)."
-    );
-  }
-  if (current.status !== "running") {
-    errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to abort.`);
-  }
-  const reason = args.join(" ");
-  const nextState = { ...current, status: "aborted", end_reason: reason || null };
-  writeState(cwd, nextState);
-  appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "ABORT", reason }, nextState));
-  exitAfter(abort(reason), 2);
+  return reportAbort(abort2(process.cwd(), args.join(" "), localIso(/* @__PURE__ */ new Date())));
 }
 function cmdClaim() {
-  const cwd = process.cwd();
-  const current = readState(cwd);
-  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
-  if (current.status !== "running") {
-    errorExit(`run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.`);
-  }
-  const tmpDir = path3.join(cwd, ".headsign", "tmp");
-  fs4.mkdirSync(tmpDir, { recursive: true });
-  fs4.writeFileSync(path3.join(tmpDir, "claim"), "");
-  exitAfter(claim(), 0);
+  return reportClaim(claim2(process.cwd()));
+}
+function cmdStatus() {
+  return reportStatus(status(process.cwd()));
 }
 function cmdValidate(args) {
   const current = readState(process.cwd());
   const defaultPath = current !== null ? current.workflow_path : ".headsign/workflow.yaml";
   const workflowPath = resolveWorkflowPath(args, defaultPath);
   const wf = loadWorkflowOrExit(workflowPath, true);
-  exitAfter(validateOk(wf.name, Object.keys(wf.phases).length), 0);
-}
-function cmdStatus() {
-  const cwd = process.cwd();
-  const current = readState(cwd);
-  if (!current) errorExit(NO_RUN_HERE_MESSAGE);
-  if (current.status !== "running") {
-    exitAfter(statusTerminal(current.status, current.workflow, current.end_reason), 0);
-  }
-  const { workflow: wf } = load(current.workflow_path);
-  const phase = wf?.phases[current.phase];
-  const attempt = current.attempts[current.phase] ?? 0;
-  const recorded = current.last_failure ?? null;
-  const lastFailure = recorded !== null && recorded.phase === current.phase ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail } : null;
-  const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
-  const driver = driverAgent !== null ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run";
-  exitAfter(
-    statusRunning({
-      phase: current.phase,
-      attempt,
-      maxAttempts: phase?.max_attempts,
-      attemptUnknown: phase === void 0,
-      workflowName: current.workflow,
-      lastFailure,
-      driver
-    }),
-    0
-  );
+  return exitAfter(validateOk(wf.name, Object.keys(wf.phases).length), 0);
 }
 function cmdStopHook() {
-  const raw = readFileOrEmpty(0);
+  const raw = readStdin();
   const decision = evaluate(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()), process.env);
   if (decision.block) stderrExit(`${decision.message}
 `, 2);
-  process.exit(0);
+  return process.exit(0);
 }
 function cmdSubagentStopHook() {
-  const raw = readFileOrEmpty(0);
+  const raw = readStdin();
   const decision = evaluateSubagent(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()), process.env);
   if (decision.block) stderrExit(`${decision.message}
 `, 2);
-  process.exit(0);
+  return process.exit(0);
 }
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
 

@@ -38,7 +38,7 @@ export interface State {
   //
   // The missing-field half of that tolerance is TRANSITIONAL, and this is the ONE place the
   // criterion for removing it is written — the two reader sites (stophook.ts's
-  // recordedDriver, cli.ts's cmdStatus) point here instead of restating it. It exists only
+  // recordedDriver, engine.ts's status) point here instead of restating it. It exists only
   // so a run already in progress across the rename keeps working; nothing headsign writes
   // today can produce a state.json without this field. It can go once no run started before
   // the release that renamed the field can plausibly still be in progress — i.e. that
@@ -80,7 +80,7 @@ export function logPath(cwd: string): string {
 }
 
 // Truncates (or creates) the run-transition log. Called once, by `start`, so each run's
-// log begins empty — call sites and exact line format are owned by render.ts/cli.ts.
+// log begins empty — call sites and exact line format are owned by render.ts/engine.ts.
 export function initLog(cwd: string): void {
   fs.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
   fs.writeFileSync(logPath(cwd), "");

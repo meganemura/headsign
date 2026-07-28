@@ -2563,3 +2563,189 @@ phases:
   assert.match(result.stderr, /^INVALID: /);
   assert.match(result.stderr, /on_pass 'nowhere' does not name a defined phase/);
 });
+
+// --- every refusal of the five commands that moved into engine.ts (ADR-0018) ---
+//
+// One test per refusal `start` / `next` / `abort` / `claim` / `status` can produce, each
+// asserting the WHOLE `ERROR: …` line, an empty stdout, and exit 3. Whole line and exit code
+// together, because the two fail apart: until ADR-0018 each of these was an `errorExit` inside
+// the command's own body, and now it is a value the command returns for a switch in cli.ts to
+// map back. A refusal that never reaches that switch prints its message and exits 0 — the
+// message assertions alone would pass, and every script that reads the status would be lied
+// to. The compiler holds the mapping (a missed arm makes a `never`-returning function's end
+// reachable); these tests hold the words and the code the mapping produces.
+//
+// Not covered here, for stated reasons: `next`'s "the run ended while acquiring the lock"
+// needs state.json to vanish inside the window between the pre-lock read and the acquire,
+// which no CLI-level test can arrange; and the on_pass-resolution refusal has its own test
+// above ("routing: a when that cannot be evaluated…"), which already asserts the message, the
+// untouched state, and the released lock.
+
+const NO_RUN_HERE_LINE =
+  "ERROR: no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories — " +
+  "run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.\n";
+
+const SOLO_WORKFLOW = `
+version: 0.1
+name: solo
+entry: only
+phases:
+  only:
+    description: "Do the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`;
+
+test("refusal: start with a run already in progress -> whole ERROR line, nothing on stdout, exit 3", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, SOLO_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  const result = run(["start"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    "ERROR: a headsign run is already in progress (phase: only). Run `headsign next` to continue, or `headsign abort` to stop it.\n",
+  );
+});
+
+test("refusal: next with no run here -> whole ERROR line, nothing on stdout, exit 3", () => {
+  const result = run(["next"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, NO_RUN_HERE_LINE);
+});
+
+test("refusal: next when the lock is held by a live process -> whole ERROR line, nothing on stdout, exit 3", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, SOLO_WORKFLOW);
+  run(["start"], { cwd: dir });
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), String(process.pid));
+
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    `ERROR: another \`headsign next\` is running in this repo (pid ${process.pid}); wait for it to finish, or remove .headsign/lock if it is stale.\n`,
+  );
+  // The lock belongs to the holder: a refused `next` must not delete it on its way out.
+  assert.equal(fs.readFileSync(path.join(dir, ".headsign", "lock"), "utf8"), String(process.pid));
+  fs.unlinkSync(path.join(dir, ".headsign", "lock"));
+});
+
+// Also the lock half of the early-return question: this refusal happens *under* the lock,
+// after the acquire, so it is the path that proves the release is structural rather than
+// remembered — nothing on it calls release itself.
+test("refusal: next when the workflow no longer defines the run's phase -> whole ERROR line, exit 3, lock released, run untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const stateBefore = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const logBefore = fs.readFileSync(path.join(dir, ".headsign", "log"));
+
+  // Still a valid workflow — it simply no longer has the phase this run is standing on.
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: verify
+phases:
+  verify:
+    description: "Verify the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    "ERROR: workflow '.headsign/workflow.yaml' no longer defines phase 'build', which this run is currently on. " +
+      "Restore that phase in the workflow file, or run `headsign abort <reason>` to end this run.\n",
+  );
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released on an early return too");
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "state.json")), stateBefore, "state.json must be byte-identical");
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "log")), logBefore, "nothing happened, so nothing is logged");
+});
+
+test("refusal: abort with no run here -> whole ERROR line, nothing on stdout, exit 3", () => {
+  const result = run(["abort", "because"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(
+    result.stderr,
+    "ERROR: no run in progress to abort here. headsign uses the .headsign/ directory in the current directory and does not search parent " +
+      "directories — run it from the directory that owns the workflow (usually the repo or git-worktree root).\n",
+  );
+});
+
+test("refusal: abort on a run that already ended -> whole ERROR line naming the status, exit 3", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, SOLO_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir });
+
+  const result = run(["abort", "too late"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "ERROR: run for workflow 'solo' is already complete; nothing to abort.\n");
+});
+
+test("refusal: claim with no run here -> whole ERROR line, nothing on stdout, exit 3", () => {
+  const result = run(["claim"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, NO_RUN_HERE_LINE);
+});
+
+test("refusal: claim on a run that already ended -> whole ERROR line naming the status, exit 3", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, SOLO_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["abort", "done here"], { cwd: dir });
+
+  const result = run(["claim"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "ERROR: run for workflow 'solo' is already aborted; nothing to claim.\n");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "tmp", "claim")), false, "a refused claim arms nothing");
+});
+
+test("refusal: status with no run here -> whole ERROR line, nothing on stdout, exit 3", () => {
+  const result = run(["status"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, NO_RUN_HERE_LINE);
+});
+
+// The other half of the same move: a workflow that does not load is refused too, but through
+// the other channel — render.ts's `INVALID:` block, not a one-line `ERROR:` — and both
+// commands that load one have to keep that distinction after handing the errors back.
+test("refusal: start and next on a workflow that does not load answer with the INVALID block, not ERROR:, and still exit 3", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, SOLO_WORKFLOW);
+  run(["start"], { cwd: dir });
+  writeWorkflow(dir, "version: 0.1\nname: solo\nentry: only\nphases: {}\n");
+
+  const next = run(["next"], { cwd: dir });
+  assert.equal(next.status, 3);
+  assert.equal(next.stdout, "");
+  assert.match(next.stderr, /^INVALID: \.headsign\/workflow\.yaml\n/);
+  assert.doesNotMatch(next.stderr, /^ERROR:/);
+
+  // `start` loads before it looks at the run, so the still-running run here is not what it
+  // answers about: the file that does not load is.
+  const started = run(["start"], { cwd: dir });
+  assert.equal(started.status, 3);
+  assert.equal(started.stdout, "");
+  assert.match(started.stderr, /^INVALID: \.headsign\/workflow\.yaml\n/);
+});

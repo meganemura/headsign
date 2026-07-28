@@ -23,6 +23,7 @@ record the reasoning each choice rests on.
 | [0015](0015-strict-schema-and-version-0-1.md) | Rejecting unknown keys and renumbering the schema to `version: 0.1` — why a typo is an error rather than a warning, why no did-you-mean guess, and why a pre-1.0 schema change requires editing the file |
 | [0016](0016-explainability-as-the-fitness-function.md) | Explainability replaces the line budget — why the count never fired, failures recorded rather than stopping the sweep, notes vs graph, and the rule for a run that rewrites its own workflow |
 | [0017](0017-three-budgets-and-the-recoverable-ceiling.md) | Three budgets, one of which can fire on a healthy run — `limits.max_total_iterations` escalates without ending the run, the `ceiling` log event, and why the other two escalations stay terminal |
+| [0018](0018-cli-engine-seam.md) | The `cli.ts`/`engine.ts` seam — the order a lap asks its questions in is a routing rule, so `start`/`next`/`abort`/`claim`/`status` move; refusals become an exhaustively-switched kind, the lock is released in a `finally`, and `engine.ts` stops claiming to be pure |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless
