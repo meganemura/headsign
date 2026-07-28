@@ -113,7 +113,9 @@ plugin or `npm install` the package. Do not guess at other paths.
    resumed. To *pause* rather than end — stepping away to resume later —
    write one line explaining why to `.headsign/tmp/stop-note` and stop
    again: the stop-boundary hook passes immediately, and `headsign next`
-   picks the run back up later from the same phase. `ESCALATE` means stop
+   picks the run back up later from the same phase. The hook consumes the
+   note, so one note covers one turn end — if the wait runs over several
+   exchanges, write it again before each turn that ends still waiting. `ESCALATE` means stop
    working and ask the user for direction. One `ESCALATE` does not end the
    run: the one whose reason reads `max_total_iterations (<n>) reached`
    leaves the run `running`, so the user can raise that limit and have you

@@ -551,7 +551,8 @@ nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
 has a record. The note is consumed (deleted) the moment it's read, and the
 working tree returns to exactly what it was before — net zero, so the pause
 itself costs the run nothing and leaves the phase's artifacts where the
-work left them. Tomorrow, `headsign next` picks the run up at the same
+work left them. One note covers one turn end, so a wait that runs over
+several exchanges needs the note written again before each of them. Tomorrow, `headsign next` picks the run up at the same
 phase and judges its gate, the way any `next` does. `headsign abort
 <reason>` is the other exit, and it is permanent, not a pause: the run
 can't be resumed, and a fresh `headsign start` begins again from the entry

@@ -89,6 +89,14 @@ phases:
   # ── challenge ────────────────────────────────────────────────────────────
   # The phase that exists because it would otherwise be skipped. See the note
   # above `simplify` for why it is not folded into it.
+  #
+  # The instruction to attack groupings was added after a run where this phase
+  # verified every individual claim and still missed the mistake: three
+  # different budgets — a counter of successful laps, a counter of gate
+  # failures, and a counter of both — had been reasoned about as one kind of
+  # thing, and every sentence written about them was true. The question that
+  # broke it came from a person, and it was not "why is that true" but "is
+  # that really the same thing as the others".
   challenge:
     description: >
       Put naive "why?" questions to the explanation you just wrote, and write
@@ -96,10 +104,15 @@ phases:
       Go after the load-bearing words first — every "cannot", "always",
       "impossible", "obviously", "of course" in `.headsign/tmp/plain.md` is a
       claim, so ask why each one is true and answer it from the code or the
-      docs rather than from memory. Ask like someone who does not already
-      agree with you. If an answer turns out to be weaker than the claim,
-      that is a result: go back and rewrite `.headsign/tmp/plain.md` before
-      moving on, and say in this file what changed.
+      docs rather than from memory. Then go after the groupings, which hide
+      better than the words do: wherever the explanation says "these are all
+      X" or reasons about several things at once, ask whether they are really
+      the same kind of thing. A claim can be true of every member of a
+      category that should never have been one category. Ask like someone who
+      does not already agree with you. If an answer turns out to be weaker
+      than the claim, that is a result: go back and rewrite
+      `.headsign/tmp/plain.md` before moving on, and say in this file what
+      changed.
     clear: [.headsign/tmp/challenge.md]
     ready: "test -s .headsign/tmp/challenge.md"
     gate:
@@ -124,6 +137,12 @@ phases:
   # resumes from this phase with `headsign next` once the answer is in.
   # Deliberately no `ready:` probe here for that reason — the run leaves the
   # turn rather than polling from inside it.
+  #
+  # ONE NOTE COVERS ONE TURN END. The hook consumes the file, so a wait that
+  # spans several turns — they ask a question back, you answer, the turn ends
+  # again — needs the note written again each time. Measured, not assumed: the
+  # second turn end of a wait in this repo was nudged because the file from
+  # the first was already gone.
   decide:
     description: >
       If `.headsign/tmp/plain.md` and `.headsign/tmp/challenge.md` settled
@@ -132,10 +151,13 @@ phases:
       If it is genuinely still open, this is the moment to ask a person —
       state the question in the plain terms you just worked out, offer the
       candidate answers and what each costs, write `.headsign/tmp/stop-note`
-      and end your turn. Do not guess an answer to keep the run moving. When
-      the answer arrives, record it the same way. Either way, finish by
-      removing the claimed line from `.headsign/tmp/questions` and then run
-      `headsign next`.
+      and end your turn. Asking always means pausing — never ask and keep
+      working in the same turn, and never guess an answer to keep the run
+      moving. Write the note again before every turn that ends still waiting:
+      the hook consumes it, so one note covers one turn end, and a wait that
+      takes three exchanges needs three notes. When the answer arrives, record
+      it the same way. Either way, finish by removing the claimed line from
+      `.headsign/tmp/questions` and then run `headsign next`.
     gate:
       checks:
         - name: the claimed question left the list
