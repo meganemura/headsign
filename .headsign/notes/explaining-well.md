@@ -161,6 +161,30 @@ never decides what those codes mean* — and its exclusion half excluded real
 things: state, version control, what a destination name means. A vaguer
 purpose could not have produced that list.
 
+### A big module does not have a big boundary
+
+Do not size the explanation by the file. `cli.ts` is the largest module in
+`src/` — 490 lines, about twenty named functions, and **zero exports**, so
+nothing in the language marks what is observable. It was approved on the
+**first attempt**, in a page.
+
+The reason is worth carrying: a caller of `cli.ts` is a person typing a
+command, so the surface is six commands, one directory, six first-line words
+with their exit codes, a second vocabulary for one of them, one shape of
+failure, and the files one command rewrites. The twenty functions never come
+up, because a caller cannot see one.
+
+Where a contract has already been written down somewhere — here, ADR-0002 —
+the explanation's job is to *find* it, not to invent it. Sizing the effort by
+the line count is how a writer talks themselves into touring the internals.
+
+Three moves made it land first time, all borrowed from earlier rejections
+rather than invented: the optional-and-empty section written up front; the two
+vocabularies stated as deliberate ("on purpose", both times) so a reader does
+not read one as a mistake; and the destructive step named plainly — `start`
+deletes the whole scratch directory, written as "anything you left there is
+gone" rather than "the directory is reinitialised".
+
 ## An observation, not yet a rule
 
 The two functions that needed a justification paragraph to become predictable
