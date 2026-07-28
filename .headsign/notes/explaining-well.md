@@ -205,6 +205,25 @@ quoted contract itself. `gate.ts` wrote "Both are 'run shell, read exit
 code'" — a word that closes a list at two — while having three jobs, the
 readiness probe named nowhere.
 
+### Say why an assumption is absent, not just which ones are present
+
+A reader cannot tell a considered omission from an oversight, and neither can
+a judge. If something looks like an assumption and is deliberately not listed,
+name it and say which reason applies: the contract *disclaims* it rather than
+requiring it, or it fails the bar below.
+
+*The case.* `engine.ts>state.ts` was filed after three attempts, and nothing
+about the code was wrong — the third explanation claimed "the caller knows
+whether it holds the lock" as an assumption when the contract explicitly says
+releasing a lock you never took is harmless, which is a callee saying it does
+not need the caller to keep track. Re-swept with that claim removed and the
+two deliberate omissions named, it was approved on the first attempt, four
+laps.
+
+So an "unexplained" verdict has two quite different causes and a report must
+say which: a contract that cannot carry what the caller relies on, or a writer
+who misdescribed what the caller relies on.
+
 ### The bar: could the caller get it wrong and the callee not notice?
 
 Assumptions that are true of every function taking arguments are not

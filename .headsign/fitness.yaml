@@ -125,12 +125,21 @@ phases:
           # forever. This exact command is `record`'s `when:` too: the loop
           # ends on the same condition that let it start.
           run: "grep -q '[^[:space:]]' .headsign/tmp/queue"
-        - name: if seams are queued, every value edge is queued
+        - name: a sweep of seams covers every value edge
           # The floor comes from the imports, not from the phase that has to
           # write the explanations — the same reason `descend`'s floor is
-          # counted out of the source. Vacuously true for a sweep with no
-          # seams in it, so a module or function run is unaffected.
-          run: '! grep -q ">" .headsign/tmp/queue || test "$(.headsign/bin/value-edges.sh | grep -vxF -f .headsign/tmp/queue | wc -l)" -eq 0'
+          # counted out of the source. Vacuously true for a run with no seams
+          # in it, so a module or function run is unaffected.
+          #
+          # Exempt when exactly ONE seam is queued, because that is a targeted
+          # re-sweep of an item a previous run filed, and the thing this check
+          # guards against cannot happen there: the risk is a sweep PRESENTED
+          # as complete while quietly covering less, and a one-item run cannot
+          # be presented that way — `inventory` writes the scope, `report` is
+          # gated on repeating it, and both will say one seam. Without the
+          # exemption, fixing one finding would cost re-sweeping ten items
+          # already approved, which is how a check stops being worth obeying.
+          run: '! grep -q ">" .headsign/tmp/queue || test "$(grep -c ">" .headsign/tmp/queue)" -eq 1 || test "$(.headsign/bin/value-edges.sh | grep -vxF -f .headsign/tmp/queue | wc -l)" -eq 0'
         - name: the scope is written down
           # Checked here rather than trusted, because `report`'s scope check
           # fails OPEN without it: `grep -qF -e "$(cat scope)"` on a missing
