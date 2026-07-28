@@ -13,6 +13,11 @@
   environment-derived driver stamp, so the stored driver is always an agent
   id sealed by the `SubagentStop` hook and the field that used to say which
   mechanism wrote it is gone. The state shape below is updated in place.)
+- Revised: 2026-07-28 (the log gains a fourth non-`step()` event, `ceiling`:
+  [ADR-0017](0017-three-budgets-and-the-recoverable-ceiling.md) made
+  `limits.max_total_iterations` answer without writing state, so that branch
+  logs an event of its own instead of the `escalate` line it used to write.
+  The `.headsign/log` section below is updated in place.)
 
 ## Context
 
@@ -183,12 +188,26 @@ below), and it never calls `new Date()` itself — `cmdStopHook` captures
 clock-stays-in-cli.ts split this ADR already keeps engine.ts out of.
 
 Four call sites, one line each, for real *transitions*: `start` (truncate,
-then a `start` line), `next`'s iteration-limit branch (an `escalate`
-line), `next`'s real evaluation after `step()` (a `retry` / `advance` /
+then a `start` line), `next`'s iteration-limit branch (a `ceiling` line —
+see below), `next`'s real evaluation after `step()` (a `retry` / `advance` /
 `complete` / `escalate` / `abort` line, matching the outcome), and `abort`
 (an `abort` line). A terminal-state re-display and a PENDING answer
 (ADR-0002) are deliberately silent — neither is a transition, and logging
 one would make the log say something happened when nothing did.
+
+**Explicit exception — `ceiling`** (added by
+[ADR-0017](0017-three-budgets-and-the-recoverable-ceiling.md), which made
+`limits.max_total_iterations` stop ending the run): the iteration-limit
+branch no longer transitions anything — it writes no state at all — but it
+is logged anyway, because the run being stopped at the wall and a person
+being asked is the event, and nothing else records it. It is not written as
+`escalate`: that word means "the run ended by escalation" for its two
+remaining producers, and this run is still `running`, so reusing it would
+let a reader take a log that stops here for a log of a run that ended.
+Repeated `next` calls at the wall repeat the line, deliberately — each is a
+real request that was really refused, and how long the run stood there is
+part of what the log is for. Unlike the terminal re-display above, nothing
+about it says something happened when nothing did.
 
 **Explicit exception — the three Stop-boundary events** (`paused` and
 `stalled` added by the exit-note-gate revision of ADR-0006; `claimed`
@@ -218,9 +237,9 @@ writing a run report in the user's own timezone, and a numeric offset keeps
 the line unambiguous without forcing a mental UTC conversion — and
 `<detail>` supplies whatever the event needs beyond those shared fields —
 the workflow name for `start`, the failing check for `retry`, the origin
-phase for an `advance`, the reason for `escalate`/`abort`, the note's
-first line for `paused`, the fixed `nudges=5` for `stalled`, and nothing
-(an empty detail) for `claimed`.
+phase for an `advance`, the reason for `escalate`/`abort`/`ceiling`, the
+note's first line for `paused`, the fixed `nudges=5` for `stalled`, and
+nothing (an empty detail) for `claimed`.
 
 Listed in `.headsign/.gitignore` alongside `state.json`, `lock`, and
 `tmp/` for the same reason those are — it is run-scoped,

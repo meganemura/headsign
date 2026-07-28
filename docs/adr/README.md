@@ -22,6 +22,7 @@ record the reasoning each choice rests on.
 | [0014](0014-removing-three-unused-knobs.md) | Removing three unused knobs — phase `env:` (write it in the shell), `on_exhausted:` (exhaustion always escalates), and `on_fail: abort` (ending a run for good is `headsign abort`'s job) |
 | [0015](0015-strict-schema-and-version-0-1.md) | Rejecting unknown keys and renumbering the schema to `version: 0.1` — why a typo is an error rather than a warning, why no did-you-mean guess, and why a pre-1.0 schema change requires editing the file |
 | [0016](0016-explainability-as-the-fitness-function.md) | Explainability replaces the line budget — why the count never fired, failures recorded rather than stopping the sweep, notes vs graph, and the rule for a run that rewrites its own workflow |
+| [0017](0017-three-budgets-and-the-recoverable-ceiling.md) | Three budgets, one of which can fire on a healthy run — `limits.max_total_iterations` escalates without ending the run, the `ceiling` log event, and why the other two escalations stay terminal |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

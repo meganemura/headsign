@@ -8,6 +8,13 @@
   escalates. The table below is updated in place. The output contract is
   untouched — `ABORT` is still one of the six tokens, produced by
   `headsign abort` and reprinted idempotently by `next`.)
+- Revised: 2026-07-28 —
+  [ADR-0017](0017-three-budgets-and-the-recoverable-ceiling.md) makes the
+  `limits.max_total_iterations` row non-terminal: it still answers
+  `ESCALATE` (exit 2), but writes no state, so the run stays `running` and
+  can be continued by raising the limit. The table row and the
+  idempotent-on-terminal-states paragraph below are updated in place. The
+  six tokens are unchanged.
 
 ## Context
 
@@ -92,6 +99,16 @@ COMPLETE (exit 0); after escalation/abort it reprints that outcome (exit 2).
 This is what makes "when in doubt, run `headsign next`" safe advice,
 including right after `/compact`.
 
+One producer of ESCALATE does not make a run terminal, and so is not covered
+by that rule: reaching `limits.max_total_iterations` answers ESCALATE while
+leaving `status: running`
+([ADR-0017](0017-three-budgets-and-the-recoverable-ceiling.md)). Asking again
+reprints the same answer, unchanged and uncounted, until a person either
+raises the limit — after which `next` resumes the same phase — or ends the
+run with `headsign abort`. The safety of "when in doubt, run `headsign next`"
+is what the rule above exists for, and it survives here for the same reason:
+the ceiling answers without moving the run.
+
 ### Transition table (the whole routing rule set)
 
 Evaluated on `headsign next` for the current phase P:
@@ -102,7 +119,7 @@ Evaluated on `headsign next` for the current phase P:
 | gate passes | `on_pass` (required) | phase name, `$end` | ADVANCE to phase / COMPLETE |
 | gate fails, attempts < max | `on_fail` (default `retry`) | `retry`, phase name, `$end`, `escalate` | RETRY / ADVANCE(with failure note) / COMPLETE / ESCALATE |
 | gate fails, attempts ≥ `max_attempts` | — (fixed) | — | ESCALATE |
-| `limits.max_total_iterations` reached | — | — | ESCALATE (checked before evaluating) |
+| `limits.max_total_iterations` reached | — | — | ESCALATE, run stays `running` (checked before evaluating; ADR-0017) |
 
 Notes:
 
@@ -111,7 +128,9 @@ Notes:
   needs to know where to go; that keeps a routing effect from costing a
   token of its own.
 - `max_attempts` absent means unlimited per-phase retries;
-  `limits.max_total_iterations` is the global runaway backstop.
+  `limits.max_total_iterations` is the global runaway backstop. It is a wall,
+  not an ending: the run stops in front of it, spends no iteration doing so,
+  and continues if someone raises the number (ADR-0017).
 - Checks run in order and stop at the first failure; its `name` (or `run`
   text) plus a stdout/stderr tail become the RETRY message.
 - The `ready:` probe is evaluated before the gate — never inside it, and

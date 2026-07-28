@@ -337,7 +337,7 @@ exit 3 は設定または使用方法のエラーで、終了済みの run に�
 | `on_pass` | フェーズ名、`$end`、または `when:` / `to:` のルートの並び([ルーターパターン](#ルーターパターン)を参照) | なし(必須) |
 | `on_fail` | `retry`、フェーズ名、`$end`、`escalate` | `retry` |
 | `max_attempts` | 正の整数。そのフェーズが最後に通過してからの失敗回数を数える。使い切ったときの答えは常に `ESCALATE` | 無制限 |
-| `limits.max_total_iterations` | 正の整数。全体の暴走防止 | なし |
+| `limits.max_total_iterations` | 正の整数。全体の暴走防止。到達したときの答えは `ESCALATE` ですが、run は**終わりません**(下記) | なし |
 
 チェックは CI で見慣れた `- name:` / `run:` / `timeout:` のステップで、`/bin/sh -c` で実行されます(最初の失敗でゲートは打ち切られます)。
 headsign が実行するコマンドはすべて headsign 自身の環境をそのまま引き継ぎます。
@@ -352,6 +352,27 @@ headsign が実行するコマンドはすべて headsign 自身の環境をそ�
 `ABORT` は `headsign abort <reason>` から出ます。
 これは人間の判断であり、その理由も記録されます。
 つまり aborted で終わった run は、必ず誰かが意図して終わらせたものです。
+
+**`ESCALATE` に至る三つの経路のうち、二つは run を終わらせますが、天井は終わらせません。**
+フェーズの `max_attempts` を使い切ったときと、`on_fail: escalate` のルートを通ったときは、どちらも「何かがおかしい」ことを意味します。
+エージェントがそのフェーズのゲートを満たせていないということなので、run はそこで終わります。
+`limits.max_total_iterations` への到達が意味するのは別のことです。
+この run は誰かが書いた数より大きかった、というだけで、何も悪いことをしていない run でも起こりえます。
+そのため答えは `ESCALATE`(exit 2、人に尋ねている)のままですが、run は `running` のまま残り、メッセージがその答え方を書きます。
+
+```
+$ headsign next
+ESCALATE build: max_total_iterations (15) reached — the run is still open: raise limits.max_total_iterations in .headsign/workflow.yaml and run `headsign next` to continue from this phase, or run `headsign abort <reason>` to end it
+Human judgment needed. Report the situation to the user and ask for instructions.
+```
+
+workflow ファイルの数を上げれば、`headsign next` は同じフェーズから run を拾い直します。
+そのときの試行回数も `.headsign/tmp/` もそのままです。
+これ以上の周回に値しないと判断したなら、`headsign abort <reason>` で終わらせてください。
+この検査はゲートより手前で走るので、壁の前に立っている run は、何度尋ねられても周回も試行も消費しません。
+暴走防止はそのままですし、`headsign status` の答えも `RUNNING` のままです([ADR-0017](docs/adr/0017-three-budgets-and-the-recoverable-ceiling.md))。
+run が本当にまだ終わっていない以上、停止境界のフックは駆動役を `headsign next` へ押し戻し続けます。
+天井を報告して席を立つエージェントは、その前に一時停止のメモを書いてください([バックストップ](#バックストップ)を参照)。
 
 `on_fail` の値には、入れ替えても同じに見えて実際には違うものが二つあります。
 `retry` は run をその場に留めます。
@@ -705,6 +726,8 @@ flowchart TD
 これが手直しの辺です。
 分岐を持つのは `record` で、`when:` のチェックはキューに項目が残っている間は循環を回し続け、無くなれば既定のルートが `report` へ抜けます。
 つまりここでの停止条件はカウンタではなくデータの方で、`limits.max_total_iterations` はその上に置いたバックストップ、キューがいつまでも尽きない場合に人間へ escalate するためのものです。
+長いキューは詰まったキューではないので、この escalate は run を終わらせず開いたままにします。
+数を上げれば、掃引は止まったところから続きます。
 
 グラフであること自体は手柄ではないので、モデルが「終わった」と言うまで再投入し続けるだけのループに対してグラフが何を足しているのかを、正直に採点しておきます。
 

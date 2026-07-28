@@ -11,6 +11,28 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **Reaching `limits.max_total_iterations` no longer ends the run.** It still
+  answers `ESCALATE` (exit 2), but writes nothing: the run stays `running`
+  (`headsign status` says so), and raising the limit in the workflow file and
+  running `headsign next` continues from the same phase, with the same
+  attempts and the same `.headsign/tmp/`. The message now says how:
+
+  ```
+  ESCALATE build: max_total_iterations (15) reached — the run is still open: raise limits.max_total_iterations in .headsign/workflow.yaml and run `headsign next` to continue from this phase, or run `headsign abort <reason>` to end it
+  ```
+
+  The reason it is the only escalation that can be answered this
+  way: `max_attempts` exhausted and `on_fail: escalate` mean an agent cannot
+  satisfy a gate, while the global ceiling counts every lap and can fire on a
+  run doing nothing wrong — it says the run was bigger than the number
+  someone typed, which is a thing a person can answer. Those two escalations
+  are unchanged and still end the run for good, as does `headsign abort`. The
+  runaway protection is unchanged too: the ceiling is still checked before the
+  gate, so a run standing at it spends no iteration and no attempt however
+  many times it is asked. In `.headsign/log` the event is now written as
+  `ceiling` rather than `escalate`, so a log that stops there can't be read as
+  a run that ended. See
+  [ADR-0017](docs/adr/0017-three-budgets-and-the-recoverable-ceiling.md).
 - **`example.headsign/workflow.yaml` is now a generic minimal sample**
   (`name: minimal`) rather than headsign's own development loop. It is still
   the file `headsign start` picks when given no name, and still the smallest

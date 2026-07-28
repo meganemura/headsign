@@ -27,11 +27,32 @@ export type Outcome =
   // and clock-free, with no I/O and no shell probe of its own.
   | { kind: "PENDING"; phase: string; ready: string };
 
-export function checkIterationLimit(workflow: Workflow, state: State): { state: State; outcome: Outcome } | null {
+// The global ceiling: a wall the run stops in front of, not an ending (ADR-0017). It returns
+// an outcome and NO state, which is the whole of the change — nothing here writes
+// `status: "escalated"`, so the run stays `running` and a person who decides it was merely
+// bigger than declared can raise the limit and continue with `headsign next`. Of the three
+// ESCALATE producers this is the only one that can fire on a run doing nothing wrong; the
+// two that mean something is actually wrong (`max_attempts` exhausted, `on_fail: escalate`)
+// stay terminal in step().
+//
+// The reason names the way out, because a wall nobody can see over is one a person cannot
+// act on. `state.workflow_path` is where the limit is written, and reading it keeps this
+// function as pure as it was — no clock, no I/O.
+// The ESCALATE arm of Outcome, named because checkIterationLimit only ever produces that one
+// and the caller reads its `reason` (the wider union has arms without one). Same idiom as
+// ResolvedRoute above: narrow the type rather than make the call site re-check what it knows.
+export type CeilingOutcome = Extract<Outcome, { kind: "ESCALATE" }>;
+
+export function checkIterationLimit(workflow: Workflow, state: State): CeilingOutcome | null {
   const limit = workflow.limits?.max_total_iterations;
   if (limit === undefined || state.total_iterations < limit) return null;
-  const reason = `${state.phase}: max_total_iterations (${limit}) reached`;
-  return { state: { ...state, status: "escalated", end_reason: reason }, outcome: { kind: "ESCALATE", reason } };
+  // Deliberately one line, no embedded newline: the reason is printed as the rest of
+  // ESCALATE's line-1 token line (ADR-0002) and written into one `.headsign/log` record,
+  // and a newline would split both of those in two.
+  const reason =
+    `${state.phase}: max_total_iterations (${limit}) reached — the run is still open: raise limits.max_total_iterations in ` +
+    `${state.workflow_path} and run \`headsign next\` to continue from this phase, or run \`headsign abort <reason>\` to end it`;
+  return { kind: "ESCALATE", reason };
 }
 
 export function terminalOutcome(state: State): Outcome {

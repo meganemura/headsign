@@ -141,9 +141,26 @@ test("attempts are cleared only when that phase's own gate passes", () => {
 test("checkIterationLimit escalates once total_iterations reaches the limit", () => {
   const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
   const result = engine.checkIterationLimit(workflow, st("a", { total_iterations: 5 }));
-  assert.equal(result?.state.status, "escalated");
-  assert.equal(result?.state.end_reason, "a: max_total_iterations (5) reached");
-  assert.deepEqual(result?.outcome, { kind: "ESCALATE", reason: "a: max_total_iterations (5) reached" });
+  assert.equal(result?.kind, "ESCALATE");
+  assert.match(result!.reason, /^a: max_total_iterations \(5\) reached/);
+});
+
+// The whole of ADR-0017: the ceiling answers, and changes nothing. A returned state is what
+// used to end the run here, so its absence from the return type is the guarantee.
+test("checkIterationLimit returns an outcome only — it produces no new state", () => {
+  const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
+  const result = engine.checkIterationLimit(workflow, st("a", { total_iterations: 5, driver_agent: "agent-1" }));
+  assert.deepEqual(Object.keys(result!).sort(), ["kind", "reason"]);
+});
+
+test("the ceiling's reason names both ways forward: raising the limit where it is written, and abort", () => {
+  const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
+  const result = engine.checkIterationLimit(workflow, st("a", { total_iterations: 5, workflow_path: ".headsign/fitness.yaml" }));
+  assert.match(result!.reason, /raise limits\.max_total_iterations in \.headsign\/fitness\.yaml/);
+  assert.match(result!.reason, /run `headsign next` to continue/);
+  assert.match(result!.reason, /headsign abort <reason>/);
+  // One line: the reason is the tail of ESCALATE's token line and of one log record.
+  assert.doesNotMatch(result!.reason, /\n/);
 });
 
 test("checkIterationLimit is null below the limit or when unconfigured", () => {
@@ -274,11 +291,10 @@ test("step() carries a null driver_agent through unchanged (never invents one)",
   assert.equal(state.driver_agent, null);
 });
 
-test("checkIterationLimit's escalated state carries driver_agent through unchanged", () => {
-  const workflow: Workflow = { ...wf({ a: { on_pass: "$end" } }), limits: { max_total_iterations: 5 } };
-  const result = engine.checkIterationLimit(workflow, st("a", { total_iterations: 5, driver_agent: "agent-1" }));
-  assert.equal(result?.state.driver_agent, "agent-1");
-});
+// The third member of this cluster — that checkIterationLimit's escalated state kept
+// driver_agent — is gone with the state it asserted about (ADR-0017): the ceiling now
+// returns no state, which the "produces no new state" test above covers for every field at
+// once.
 
 // --- terminal idempotency ---
 

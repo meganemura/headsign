@@ -1069,6 +1069,146 @@ test("PENDING does not reset stop_nudges — it never runs step(), so the loop g
   assert.equal(readState(dir).stop_nudges, 2);
 });
 
+// --- the global ceiling: limits.max_total_iterations (ADR-0017) ---
+
+// A one-phase workflow whose gate always fails, so every `next` below is a counted RETRY
+// until the ceiling stops answering them. The limit is a parameter because raising it is
+// half of what these tests are about.
+const CEILING_WORKFLOW = (limit: number): string => `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+limits:
+  max_total_iterations: ${limit}
+`;
+
+test("ceiling: ESCALATE is answered, but the run stays running — status is unchanged on disk", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
+  run(["start"], { cwd: dir });
+  assert.equal(run(["next"], { cwd: dir }).status, 1); // RETRY, total_iterations -> 1
+
+  const result = run(["next"], { cwd: dir });
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /^ESCALATE build: max_total_iterations \(1\) reached/);
+  const after = readState(dir);
+  assert.equal(after.status, "running");
+  assert.equal(after.end_reason, null);
+  assert.equal(after.phase, "build");
+});
+
+test("ceiling: the reason says how to continue and how to end it", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir });
+
+  const line1 = run(["next"], { cwd: dir }).stdout.split("\n")[0];
+  assert.match(line1, /raise limits\.max_total_iterations in \.headsign\/workflow\.yaml/);
+  assert.match(line1, /run `headsign next` to continue/);
+  assert.match(line1, /`headsign abort <reason>` to end it/);
+});
+
+test("ceiling: asking again reprints the wall and spends no iteration or attempt", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir }); // RETRY: i=1, a=1
+  const atWall = readState(dir);
+
+  for (let i = 0; i < 3; i++) {
+    const result = run(["next"], { cwd: dir });
+    assert.equal(result.status, 2);
+    assert.match(result.stdout, /^ESCALATE/);
+  }
+  const after = readState(dir);
+  assert.equal(after.total_iterations, atWall.total_iterations);
+  assert.deepEqual(after.attempts, atWall.attempts);
+  assert.equal(after.status, "running");
+});
+
+test("ceiling: raising the limit and running next resumes the same phase, gate and all", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir }); // RETRY 1: i=1, a=1
+  assert.match(run(["next"], { cwd: dir }).stdout, /^ESCALATE/);
+
+  // What a person does after reading the reason: edit the number, ask again.
+  writeWorkflow(dir, CEILING_WORKFLOW(5));
+  const resumed = run(["next"], { cwd: dir });
+  assert.equal(resumed.status, 1);
+  assert.match(resumed.stdout, /^RETRY 2 build\n/); // same phase, its gate really ran again
+  const after = readState(dir);
+  assert.equal(after.total_iterations, 2);
+  assert.equal(after.phase, "build");
+});
+
+test("ceiling: `headsign status` reports RUNNING, not ESCALATED", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir });
+  run(["next"], { cwd: dir }); // the wall
+
+  const result = run(["status"], { cwd: dir });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^RUNNING build \(attempt 1\)\n/);
+  assert.doesNotMatch(result.stdout, /ESCALATED/);
+});
+
+// The line ADR-0017 draws: the two escalations that mean something is wrong still end the
+// run. Without these, "the ceiling is recoverable" could quietly become "escalation is".
+test("regression: exhausting max_attempts still ends the run for good", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+    max_attempts: 1
+`,
+  );
+  run(["start"], { cwd: dir });
+  const escalated = run(["next"], { cwd: dir });
+  assert.equal(escalated.status, 2);
+  assert.match(escalated.stdout, /^ESCALATE build: max_attempts \(1\) exhausted/);
+  assert.equal(readState(dir).status, "escalated");
+
+  const again = run(["next"], { cwd: dir });
+  assert.equal(again.status, 2);
+  assert.match(again.stdout, /^ESCALATE build: max_attempts \(1\) exhausted/);
+  assert.match(run(["status"], { cwd: dir }).stdout, /^ESCALATED\n/);
+});
+
+test("regression: `headsign abort` still ends the run for good", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(5));
+  run(["start"], { cwd: dir });
+  assert.equal(run(["abort", "not worth it"], { cwd: dir }).status, 2);
+  assert.equal(readState(dir).status, "aborted");
+
+  const again = run(["next"], { cwd: dir });
+  assert.equal(again.status, 2);
+  assert.match(again.stdout, /^ABORT not worth it\n/);
+  assert.match(run(["status"], { cwd: dir }).stdout, /^ABORTED\n/);
+});
+
 // --- .headsign/log ---
 
 test("log: start truncates/creates the log with exactly one start line naming the workflow", () => {
@@ -1166,25 +1306,9 @@ test("log: PENDING appends nothing", () => {
   assert.equal(readLog(dir).length, before);
 });
 
-test("log: an escalate via max_total_iterations appends one escalate line", () => {
+test("log: hitting max_total_iterations appends one ceiling line, not an escalate one", () => {
   const dir = initRepo();
-  writeWorkflow(
-    dir,
-    `
-version: 0.1
-name: demo
-entry: build
-phases:
-  build:
-    description: "Build."
-    gate:
-      checks:
-        - run: "false"
-    on_pass: "$end"
-limits:
-  max_total_iterations: 1
-`,
-  );
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
   run(["start"], { cwd: dir });
   const first = run(["next"], { cwd: dir }); // real RETRY, total_iterations -> 1
   assert.equal(first.status, 1);
@@ -1195,7 +1319,9 @@ limits:
   assert.match(result.stdout, /^ESCALATE/);
   const lines = readLog(dir);
   assert.equal(lines.length, before + 1);
-  assert.match(lines[lines.length - 1], /^\S+ escalate build a=1 i=1 reason="/);
+  // `ceiling`, because this run has not ended (ADR-0017) and `escalate` is the word for one
+  // that has. i=1 is unchanged from the RETRY above: the wall costs no iteration.
+  assert.match(lines[lines.length - 1], /^\S+ ceiling build a=1 i=1 reason="/);
 });
 
 // --- stop hook (ADR-0006) ---

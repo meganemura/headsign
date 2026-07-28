@@ -363,6 +363,15 @@ test("logLine: escalate", () => {
   assert.equal(line, `ts escalate build a=3 i=3 reason="build: max_attempts (3) exhausted"\n`);
 });
 
+// The ceiling gets its own word (ADR-0017): it prints as ESCALATE but ends nothing, and a
+// reader of the log must be able to tell it from the two escalations that do end a run.
+test("logLine: ceiling has its own event word and carries the reason like an ending does", () => {
+  const reason = "build: max_total_iterations (5) reached — the run is still open: raise it and run `headsign next`";
+  const line = render.logLine("ts", { kind: "CEILING", reason }, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 5 }));
+  assert.equal(line, `ts ceiling build a=1 i=5 reason="${reason}"\n`);
+  assert.doesNotMatch(line, /escalate/);
+});
+
 test("logLine: abort", () => {
   const outcome = { kind: "ABORT" as const, reason: "changed my mind" };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", total_iterations: 2 }));

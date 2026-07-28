@@ -7679,8 +7679,8 @@ ${tail}` : tail;
 function checkIterationLimit(workflow, state) {
   const limit = workflow.limits?.max_total_iterations;
   if (limit === void 0 || state.total_iterations < limit) return null;
-  const reason = `${state.phase}: max_total_iterations (${limit}) reached`;
-  return { state: { ...state, status: "escalated", end_reason: reason }, outcome: { kind: "ESCALATE", reason } };
+  const reason = `${state.phase}: max_total_iterations (${limit}) reached \u2014 the run is still open: raise limits.max_total_iterations in ${state.workflow_path} and run \`headsign next\` to continue from this phase, or run \`headsign abort <reason>\` to end it`;
+  return { kind: "ESCALATE", reason };
 }
 function terminalOutcome(state) {
   if (state.status === "complete") return { kind: "COMPLETE" };
@@ -7860,6 +7860,8 @@ function eventName(event) {
       return "escalate";
     case "ABORT":
       return "abort";
+    case "CEILING":
+      return "ceiling";
     case "PAUSED":
       return "paused";
     case "STALLED":
@@ -7884,6 +7886,9 @@ function logDetail(event, prevPhase) {
       return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}` : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":
+    // Same `reason="…"` shape as the two endings: only the event word separates them, so a
+    // reader who knows one line format knows all three.
+    case "CEILING":
       return `reason="${event.reason}"`;
     case "PAUSED":
       return `note="${event.note}"`;
@@ -8136,11 +8141,10 @@ function evaluateNext(cwd, wf, current) {
       `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
     );
   }
-  const limitHit = checkIterationLimit(wf, current);
-  if (limitHit) {
-    writeState(cwd, limitHit.state);
-    appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), limitHit.outcome, limitHit.state));
-    return { outcome: limitHit.outcome };
+  const limitOutcome = checkIterationLimit(wf, current);
+  if (limitOutcome) {
+    appendLog(cwd, logLine(localIso(/* @__PURE__ */ new Date()), { kind: "CEILING", reason: limitOutcome.reason }, current));
+    return { outcome: limitOutcome };
   }
   const phase = wf.phases[current.phase];
   if (phase.ready !== void 0 && !isReady(phase.ready, cwd)) {

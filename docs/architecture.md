@@ -43,9 +43,9 @@ consumer repository:
 
 ## Module map
 
-Size: `src/` measured **977 code lines** on 2026-07-28 (tests excluded, and
+Size: `src/` measured **983 code lines** on 2026-07-28 (tests excluded, and
 counting code only — the deliberately dense AI-friendly comments and blank
-lines don't count; raw `wc -l` is ~1617). That is a measurement, not a
+lines don't count; raw `wc -l` is ~1661). That is a measurement, not a
 target. ADR-0001's budget of roughly 500 code lines is retired by
 [ADR-0016](adr/0016-explainability-as-the-fitness-function.md): `src/` went
 past twice the number without the guideline stopping a single feature
@@ -86,7 +86,10 @@ unceremonious channel, not part of that contract.
 2. If status is terminal (`complete` / `escalated` / `aborted`), reprint the
    terminal outcome idempotently and exit — a finished run stays finished
    however many times it is asked.
-3. If `limits.max_total_iterations` is reached → ESCALATE.
+3. If `limits.max_total_iterations` is reached → ESCALATE, without writing
+   state: the run stays `running`, so raising the limit and asking again
+   resumes the same phase (ADR-0017). Checked before the gate, so standing at
+   that wall costs no iteration.
 4. Run the current phase's checks in order; stop at the first failure.
    There is no cache in front of this step: every `next` that gets here
    judges, and a failure costs an attempt (ADR-0012).
@@ -133,3 +136,4 @@ outside it:
 - [ADR-0014](adr/0014-removing-three-unused-knobs.md) — removing three unused knobs: phase `env:`, `on_exhausted:`, `on_fail: abort`
 - [ADR-0015](adr/0015-strict-schema-and-version-0-1.md) — unknown keys rejected, and the schema renumbered to `version: 0.1`
 - [ADR-0016](adr/0016-explainability-as-the-fitness-function.md) — explainability replaces the line budget; the rule for a run that rewrites its own workflow
+- [ADR-0017](adr/0017-three-budgets-and-the-recoverable-ceiling.md) — three budgets; the global ceiling escalates without ending the run

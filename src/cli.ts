@@ -204,11 +204,23 @@ function evaluateNext(cwd: string, wf: workflowMod.Workflow, current: state.Stat
     );
   }
 
-  const limitHit = engine.checkIterationLimit(wf, current);
-  if (limitHit) {
-    state.writeState(cwd, limitHit.state);
-    state.appendLog(cwd, render.logLine(localIso(new Date()), limitHit.outcome, limitHit.state));
-    return { outcome: limitHit.outcome };
+  // The ceiling (ADR-0017): answered as ESCALATE, but no writeState — the run stays
+  // `running`, so raising `limits.max_total_iterations` and running `next` again resumes
+  // this very phase. Short-circuited before the gate, so the wall costs no iteration
+  // either; that is what keeps a runaway from advancing by being asked repeatedly.
+  const limitOutcome = engine.checkIterationLimit(wf, current);
+  if (limitOutcome) {
+    // Logged as `ceiling`, not `escalate`: the log's job is to let a later reader tell a run
+    // that ended from one that was merely stopped at the wall, and reusing the ending's word
+    // for a run still open is exactly the confusion to avoid (see render.ts's LogEvent).
+    // `current` is passed unchanged because nothing was written — the line reports the state
+    // that is on disk, same as every other log line does.
+    //
+    // Repeated `next` calls at the wall therefore repeat this line. That is deliberate: each
+    // one is a real request that was really refused, and hiding the repetition would make the
+    // log understate how long the run sat here.
+    state.appendLog(cwd, render.logLine(localIso(new Date()), { kind: "CEILING", reason: limitOutcome.reason }, current));
+    return { outcome: limitOutcome };
   }
 
   const phase = wf.phases[current.phase];

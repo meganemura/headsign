@@ -371,7 +371,7 @@ as you like (see [Multiple sessions](#multiple-sessions)).
 | `on_pass` | phase name, `$end`, or a list of `when:`/`to:` routes — see [The router pattern](#the-router-pattern) | — (required) |
 | `on_fail` | `retry`, phase name, `$end`, `escalate` | `retry` |
 | `max_attempts` | positive int; counts failures of this phase since it last passed. Running out always answers `ESCALATE` | unlimited |
-| `limits.max_total_iterations` | positive int; global runaway backstop | none |
+| `limits.max_total_iterations` | positive int; global runaway backstop. Reaching it answers `ESCALATE` but does **not** end the run — see below | none |
 
 Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
 `/bin/sh -c` (first failure stops the gate). Every command headsign runs
@@ -388,6 +388,33 @@ say `escalate` (stop and ask a person) but never "stop", and exhausting
 `max_attempts` always escalates. `ABORT` comes from `headsign abort
 <reason>`, which is a person's decision and records their reason — so an
 aborted run is always one somebody ended on purpose.
+
+**Two of the three ways a run reaches `ESCALATE` end it; the ceiling does
+not.** Exhausting a phase's `max_attempts` and taking an `on_fail: escalate`
+route both mean something is wrong — the agent can't satisfy a gate — and
+both end the run for good. Reaching `limits.max_total_iterations` means
+something else: the run turned out to be bigger than the number someone
+typed, which can be true of a run doing nothing wrong. So it answers
+`ESCALATE` (exit 2, a person is being asked) while leaving the run
+`running`, and its message says how to answer:
+
+```
+$ headsign next
+ESCALATE build: max_total_iterations (15) reached — the run is still open: raise limits.max_total_iterations in .headsign/workflow.yaml and run `headsign next` to continue from this phase, or run `headsign abort <reason>` to end it
+Human judgment needed. Report the situation to the user and ask for instructions.
+```
+
+Raise the number in the workflow file and `headsign next` picks the run up
+at the same phase, with its attempts and its `.headsign/tmp/` intact; decide
+it isn't worth more laps and `headsign abort <reason>` ends it. The check
+runs before the gate, so a run standing at that wall spends no iteration and
+no attempt however many times it is asked — the runaway protection is
+unchanged, and `headsign status` still reports `RUNNING`
+([ADR-0017](docs/adr/0017-three-budgets-and-the-recoverable-ceiling.md)).
+Because the run really is unfinished, the stop-boundary hook still nudges
+its driver back to `headsign next`: an agent that reports the ceiling to you
+and steps away should write its pause note first (see
+[The backstop](#the-backstop)).
 
 Two of `on_fail`'s values look interchangeable and are not. `retry` keeps
 the run where it is; naming the phase itself sends the run out of the phase
@@ -805,7 +832,9 @@ turns the cycle for as long as the queue still has entries, and its default
 route leaves for `report` once it doesn't. So the stopping condition here is
 the data rather than a counter, and `limits.max_total_iterations` sits above
 the whole thing as the backstop that escalates to a person if the queue
-never drains.
+never drains. A long queue is not a stuck one, which is why that escalation
+leaves the run open rather than ending it: raise the number and the sweep
+carries on from where it stopped.
 
 Being a graph is not itself an achievement, so here is a plain scorecard of
 what it adds over a loop that just re-prompts until the model says it's

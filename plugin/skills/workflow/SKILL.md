@@ -114,7 +114,13 @@ plugin or `npm install` the package. Do not guess at other paths.
    write one line explaining why to `.headsign/tmp/stop-note` and stop
    again: the stop-boundary hook passes immediately, and `headsign next`
    picks the run back up later from the same phase. `ESCALATE` means stop
-   working and ask the user for direction.
+   working and ask the user for direction. One `ESCALATE` does not end the
+   run: the one whose reason reads `max_total_iterations (<n>) reached`
+   leaves the run `running`, so the user can raise that limit and have you
+   continue from the same phase. Report it and wait for their direction like
+   any other escalation — but because the run is still open, the hook will
+   push you back to `headsign next`, so write the pause note above before
+   you stop.
 7. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then

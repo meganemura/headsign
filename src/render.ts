@@ -152,6 +152,12 @@ export function statusTerminal(status: "complete" | "escalated" | "aborted", wor
 export type LogEvent =
   | { kind: "START"; workflow: string }
   | Outcome
+  // The global ceiling (ADR-0017). A synthetic event rather than the ESCALATE outcome it is
+  // printed as, because `escalate` in this file means "the run ended by escalation" for its
+  // two other producers, and this one ends nothing: the run stays `running` and may continue
+  // after someone raises the limit. Logging it as `escalate` would make every reader of a log
+  // that stops here — and of one that carries on past it — read an ending that never happened.
+  | { kind: "CEILING"; reason: string }
   | { kind: "PAUSED"; note: string }
   | { kind: "STALLED" }
   // The claim handshake's adoption event (ADR-0009/0010) — a third hook-boundary exception
@@ -190,6 +196,8 @@ function eventName(event: LogEvent): string {
       return "escalate";
     case "ABORT":
       return "abort";
+    case "CEILING":
+      return "ceiling";
     case "PAUSED":
       return "paused";
     case "STALLED":
@@ -223,6 +231,9 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
         : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":
+    // Same `reason="…"` shape as the two endings: only the event word separates them, so a
+    // reader who knows one line format knows all three.
+    case "CEILING":
       return `reason="${event.reason}"`;
     case "PAUSED":
       return `note="${event.note}"`;
