@@ -193,11 +193,36 @@ phases:
          "it assumes the workflow was validated", "it assumes the lock is
          held". This is the part worth taking time over — a precondition
          nobody writes down is how a wrong answer stays reachable.
-      3. **The callee's own declared contract, quoted verbatim** — copy its
-         `// Responsibility:` line and its `// Must NOT know about:` line out
-         of its source, unaltered. Do not paraphrase them; a paraphrase drifts
-         toward agreeing with what you just wrote, which is the one thing this
-         part exists to prevent.
+
+         **The bar, and it is not optional.** An assumption belongs here when
+         **the caller could get it wrong and the callee would carry on as
+         though it were right** — something about the run, the filesystem, or
+         the world. It does NOT belong here when it is true of every function
+         that takes arguments at all: "the values passed in are consistent
+         with each other", "the string really is a path", "the number is not
+         nonsense". Those are the ordinary meaning of taking arguments, and no
+         contract declares them.
+
+         Get this wrong in the generous direction and every seam in any
+         codebase fails, because no contract anywhere declares that its inputs
+         must make sense — the sweep then reports noise instead of findings.
+         That is not hypothetical: it is what happened on this workflow's
+         first seam run, where an approved seam had been rejected on the
+         previous attempt for exactly that kind of assumption.
+      3. **The callee's own declared contract, quoted verbatim** — copy the
+         whole of its `// Responsibility:` and `// Must NOT know about:`
+         fields out of its source, unaltered. **Both wrap onto continuation
+         lines; copy those too**, and copy any further paragraph of the same
+         header block that states a property the module keeps. Quoting only
+         the opening line of each field is not enough: on this workflow's
+         first seam run it produced a rejection for an assumption the contract
+         did in fact declare, three lines further down, and an argument built
+         on words the quote did not contain.
+
+         Do not paraphrase. A paraphrase drifts toward agreeing with what you
+         just wrote, which is the one thing this part exists to prevent — and
+         the gate checks the opening line of each field verbatim precisely so
+         that it cannot.
 
       Part 3 is what lets a judge that has never seen the code catch a
       mismatch: with the assumptions and the declared contract in the same
