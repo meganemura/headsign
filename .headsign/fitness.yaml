@@ -23,13 +23,17 @@
 #                  line, written by `inventory` and shortened by `record`.
 #   current      — the ONE function this lap claimed, copied verbatim from
 #                  the head of the queue.
-#   tries        — one line per explanation attempt at the CURRENT function;
-#                  `record` clears it as it moves on to the next.
+#   scope        — one line of plain English saying what this run swept,
+#                  written by `inventory` and repeated by `report`.
 #   explain.md   — this attempt's explanation. The judge reads this and
 #                  nothing else.
-#   verdict      — APPROVED / REJECTED, written by the judge itself.
-#   done         — functions whose explanation was approved.
-#   unexplained  — functions that ran out of tries. Data, not a stop.
+#   verdict      — APPROVED / REJECTED for THIS attempt, written by the judge
+#                  itself and cleared before each new one.
+#   verdicts     — every verdict the judge has written about the CURRENT item,
+#                  appended, with its note. Its count is the attempt number;
+#                  `record` clears it as it moves on to the next item.
+#   done         — items whose explanation was approved.
+#   unexplained  — functions that ran out of attempts. Data, not a stop.
 #   lessons.md   — what `learn` took from the sweep.
 #   summary.md   — `report`'s write-up.
 #
@@ -76,7 +80,7 @@ phases:
       - .headsign/tmp/unexplained
       - .headsign/tmp/unstated
       - .headsign/tmp/unfocused
-      - .headsign/tmp/tries
+      - .headsign/tmp/verdicts
     gate:
       checks:
         - name: queue has at least one function
@@ -96,20 +100,33 @@ phases:
     max_attempts: 3
 
   # ── explain ──────────────────────────────────────────────────────────────
-  # One function, one explanation, one attempt. Re-entered from `judge` when
-  # the judge said REJECTED, which is why the try counter is NOT cleared here.
+  # One item, one explanation, one attempt. Re-entered from `judge` when the
+  # judge said REJECTED.
+  #
+  # THIS PHASE NO LONGER COUNTS ANYTHING. It used to append to a `tries` file
+  # that the give-up route read — which put the counter in the hands of the
+  # participant with an interest in reaching the give-up. That was harmless
+  # while giving up meant filing one function and moving on; it stops being
+  # harmless when it means escaping a third rewrite of a long document. The
+  # count now comes from the judge's side (see `judge`), which has no stake in
+  # whether the writing continues.
   explain:
     description: >
       Claim the head of the queue — `head -n 1 .headsign/tmp/queue >
-      .headsign/tmp/current` — and explain that one function to a
-      middle-school reader in `.headsign/tmp/explain.md`. Read
+      .headsign/tmp/current` — and explain that one item to a middle-school
+      reader in `.headsign/tmp/explain.md`. Read
       `.headsign/notes/explaining-well.md` first and follow it; that file is
-      the standard, and it grows every run. Then record this attempt:
-      `echo try >> .headsign/tmp/tries`. Write the explanation for someone
+      the standard, and it grows every run. Write the explanation for someone
       who will never see the source — the judge is not allowed to look at it
       either. If you find yourself unable to say a clause plainly, that
       clause is the finding; say what makes it hard rather than dressing it
       in a bigger word.
+
+      If this is not your first attempt at this item, read
+      `.headsign/tmp/verdicts` first: it holds every verdict the judge has
+      written about it, in order, with the note attached to each. The same
+      clause defeating two rewrites is worth more than the latest complaint
+      about it.
     # Cleared on every entry, and every way in is a real transition (from
     # inventory, from judge's rejection edge, from record's loop-back), so
     # neither the claim nor last lap's prose can carry over: each attempt has
@@ -124,13 +141,6 @@ phases:
           run: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/current)" -eq 1'
         - name: an explanation was written
           run: "test -s .headsign/tmp/explain.md"
-        - name: this attempt is counted
-          # Without this the try counter can silently stay empty, and then
-          # `judge`'s "third try" edge never fires: a function nobody can
-          # explain would bounce between explain and judge until
-          # max_total_iterations stopped the whole sweep. The counter is what
-          # makes the give-up edge reachable, so it is checked, not trusted.
-          run: "test -s .headsign/tmp/tries"
     on_pass: judge
     max_attempts: 5
 
@@ -146,11 +156,35 @@ phases:
   # extra process, no extra API surface, and no assumption about which CLI is
   # installed. What matters is not the mechanism but that the judgment leaves
   # this context and comes back as a file the judge wrote.
+  #
+  # THE JUDGE ALSO KEEPS THE COUNT, in `.headsign/tmp/verdicts`, appended and
+  # never cleared until the sweep moves to the next item. Two files, both
+  # written by the judge, doing two jobs that must not be merged:
+  #
+  #   verdict   — cleared on entry, so its presence proves THIS attempt was
+  #               judged. A judge that produces nothing fails the gate loudly
+  #               instead of letting a stale answer route the lap.
+  #   verdicts  — the running log. Its count of verdict words is the attempt
+  #               number the give-up route reads, and its notes are what
+  #               attempt 3 gets to read before rewriting.
+  #
+  # Why the count moved here: it used to live in a `tries` file appended by
+  # `explain`, which is the writer's own phase — the participant with an
+  # interest in reaching the give-up. One extra `echo` bought an escape from a
+  # third rewrite, and the check on it (`test -s`) could not tell a fresh line
+  # from a stale file. The judge has no stake in whether the writing goes on.
+  #
+  # What is still trusted rather than proven: a judge that writes `verdict`
+  # and forgets to append to `verdicts` stalls the count. The gate below
+  # catches it whenever the two disagree, which is always on the first attempt
+  # and whenever the answer changed — not when a second REJECTED follows a
+  # first. Honest, not smart: the motive is gone, the possibility is not.
   judge:
     description: >
-      Delegate the verdict. Spawn ONE subagent whose only writable path is
-      `.headsign/tmp/verdict`, and tell it to write its own answer there —
-      do not report the verdict back and copy it down yourself.
+      Delegate the verdict. Spawn ONE subagent whose only writable paths are
+      `.headsign/tmp/verdict` and `.headsign/tmp/verdicts`, and tell it to
+      write its own answer there — do not report the verdict back and copy it
+      down yourself.
 
       Give the judge exactly this question, unchanged:
 
@@ -159,19 +193,21 @@ phases:
       has read this explanation and nothing else predict what this function
       does — what it is given, what it returns or changes, and what it does
       at the edges (empty input, a missing file, a value nobody declared)?
-      Write your answer to `.headsign/tmp/verdict` and to no other file:
-      APPROVED or REJECTED on a line of its own. If REJECTED, add below it
-      the first sentence where the reader loses the thread, and the one
-      thing they still could not predict."
+      Write APPROVED or REJECTED, on a line of its own, to
+      `.headsign/tmp/verdict`, replacing whatever is there. Then APPEND the
+      same word to `.headsign/tmp/verdicts`, on a line of its own, and if
+      REJECTED add below it the first sentence where the reader loses the
+      thread and the one thing they still could not predict. Write to no
+      other file."
 
       Do not soften that question and do not add "is this clear?" to it — a
       question about clarity gets a polite yes, and a question about
       prediction gets an answer that can be wrong. If the judge answers
-      REJECTED, you will be sent back to `explain` with its note; you get
-      three attempts at a function before the sweep records it as
-      unexplained and moves on.
+      REJECTED, you will be sent back to `explain`; you get three attempts at
+      an item before the sweep gives up on it.
     # Fresh every entry: a verdict from the previous attempt (or the previous
-    # function) would route this lap on evidence about something else.
+    # item) would route this lap on evidence about something else. `verdicts`
+    # is deliberately NOT here — it is the log the count is read from.
     clear: [.headsign/tmp/verdict]
     ready: "test -s .headsign/tmp/verdict"
     gate:
@@ -182,16 +218,22 @@ phases:
           # it would fall through to the default edge and be counted as a
           # rejection nobody actually made.
           run: "grep -qx -e APPROVED -e REJECTED .headsign/tmp/verdict"
+        - name: the answer reached the log
+          # `verdict` is fresh this attempt, so requiring the log to end with
+          # the same word proves an append happened consistent with it — and
+          # fails outright when the log is missing or empty, which is the case
+          # that would otherwise leave the count at zero forever.
+          run: 'test "$(grep -x -e APPROVED -e REJECTED .headsign/tmp/verdicts 2>/dev/null | tail -n 1)" = "$(grep -x -e APPROVED -e REJECTED .headsign/tmp/verdict)"'
     # Branching sits on the PASS path (docs/adr/0011): answering the judge is
     # not a failure, so a rejection costs no attempt here and the give-up edge
     # is a declared destination rather than an exhausted budget.
     on_pass:
       - when: "grep -qx APPROVED .headsign/tmp/verdict"
         to: record
-      # Three attempts is where a function stops being a writing problem and
-      # starts being a design finding. `record` reads the verdict, sees it is
-      # not APPROVED, and files it under unexplained.
-      - when: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/tries)" -ge 3'
+      # Three attempts is where an item stops being a writing problem and
+      # starts being a design finding. Counted from the judge's log, not from
+      # anything the writer wrote.
+      - when: 'test "$(grep -cx -e APPROVED -e REJECTED .headsign/tmp/verdicts)" -ge 3'
         to: record
       - to: explain
     max_attempts: 3
@@ -212,10 +254,11 @@ phases:
       out of `.headsign/tmp/queue`. An unexplained function is data, not a
       reason to stop: it is exactly the finding this sweep exists to produce,
       and `report` is where it reaches a person.
-    # The try counter belongs to one function. Cleared here, on the way to the
-    # next one, rather than in `explain`, which is re-entered once per
-    # attempt and would reset the count it is supposed to be accumulating.
-    clear: [.headsign/tmp/tries]
+    # The verdict log belongs to one item. Cleared here, on the way to the
+    # next one, rather than in `explain` or `judge`, either of which is
+    # re-entered once per attempt and would reset the count it is supposed to
+    # be accumulating.
+    clear: [.headsign/tmp/verdicts]
     gate:
       checks:
         - name: the claimed function left the queue
