@@ -29,8 +29,12 @@
 # Conventions this workflow relies on (own them, they are not headsign's).
 # Everything lives under .headsign/tmp/, which the next `headsign start`
 # empties:
-#   queue        — the functions still to explain, `module.ts:name`, one per
-#                  line, written by `inventory` and shortened by `record`.
+#   queue        — what is still to explain, one item per line, written by
+#                  `inventory` and shortened by `record`. Three shapes, told
+#                  apart by punctuation so nothing has to remember the mode:
+#                    module.ts            a module's boundary
+#                    module.ts:name       one function
+#                    caller.ts>callee.ts  the seam between two modules
 #   current      — the ONE function this lap claimed, copied verbatim from
 #                  the head of the queue.
 #   scope        — one line of plain English saying what this run swept,
@@ -43,7 +47,8 @@
 #                  appended, with its note. Its count is the attempt number;
 #                  `record` clears it as it moves on to the next item.
 #   done         — items whose explanation was approved.
-#   unexplained  — items that ran out of attempts. Data, not a stop.
+#   unexplained  — items that ran out of attempts, of any shape. Data, not
+#                  a stop. The item name says which kind it was.
 #   unfocused    — items the judge could read but that describe more than one
 #                  job. A finding about shape rather than about clarity.
 #   unstated     — modules whose boundary defeated every attempt, written by
@@ -77,6 +82,14 @@ phases:
         whether its boundary can be stated; if that fails three times it goes
         inside on its own.
       - **A function**, written as `module.ts:name` — `engine.ts:step`.
+      - **A seam**, written as `caller.ts>callee.ts` — `cli.ts>engine.ts`. The
+        sweep asks whether the two modules agree about who is responsible for
+        what. Queue seams only after both modules' own boundaries have been
+        approved: a module that cannot state its boundary has no contract
+        worth quoting. Value imports only — run
+        `.headsign/bin/value-edges.sh` for the list, and queue **all** of it,
+        because an `import type` shares a shape rather than a behaviour and
+        has no seam to describe.
 
       **Default to modules**, which is the cheaper walk and the one that tests
       what `docs/architecture.md` declares. Queue functions instead when you
@@ -112,6 +125,12 @@ phases:
           # forever. This exact command is `record`'s `when:` too: the loop
           # ends on the same condition that let it start.
           run: "grep -q '[^[:space:]]' .headsign/tmp/queue"
+        - name: if seams are queued, every value edge is queued
+          # The floor comes from the imports, not from the phase that has to
+          # write the explanations — the same reason `descend`'s floor is
+          # counted out of the source. Vacuously true for a sweep with no
+          # seams in it, so a module or function run is unaffected.
+          run: '! grep -q ">" .headsign/tmp/queue || test "$(.headsign/bin/value-edges.sh | grep -vxF -f .headsign/tmp/queue | wc -l)" -eq 0'
         - name: the scope is written down
           # Checked here rather than trusted, because `report`'s scope check
           # fails OPEN without it: `grep -qF -e "$(cat scope)"` on a missing
@@ -163,6 +182,28 @@ phases:
       finding too; say what makes it hard rather than dressing it in a bigger
       word.
 
+      **If the item is a seam** (`caller.ts>callee.ts`), the shape is
+      different, because what is being explained is a relationship rather than
+      a thing. Three parts, in this order:
+
+      1. **What the caller uses the callee for** — the questions it asks and
+         what it does with the answers.
+      2. **What the callee assumes the caller has already done.** Every
+         precondition, in plain words: "it assumes the run is still going",
+         "it assumes the workflow was validated", "it assumes the lock is
+         held". This is the part worth taking time over — a precondition
+         nobody writes down is how a wrong answer stays reachable.
+      3. **The callee's own declared contract, quoted verbatim** — copy its
+         `// Responsibility:` line and its `// Must NOT know about:` line out
+         of its source, unaltered. Do not paraphrase them; a paraphrase drifts
+         toward agreeing with what you just wrote, which is the one thing this
+         part exists to prevent.
+
+      Part 3 is what lets a judge that has never seen the code catch a
+      mismatch: with the assumptions and the declared contract in the same
+      document, an assumption the callee never declares is a contradiction on
+      the page rather than a fact about code nobody can look at.
+
       If this is not your first attempt at this item, read
       `.headsign/tmp/verdicts` first: it holds every verdict the judge has
       written about it, in order, with the note attached to each. The same
@@ -182,6 +223,15 @@ phases:
           run: 'test "$(grep -c "[^[:space:]]" .headsign/tmp/current)" -eq 1'
         - name: an explanation was written
           run: "test -s .headsign/tmp/explain.md"
+        # The two quote checks below are the only mechanical defence this
+        # workflow has against an explanation that agrees with itself. They
+        # prove the callee's own words are present, never that they were read
+        # honestly — honest, not smart, like every other check here. Both are
+        # vacuously true unless the item is a seam.
+        - name: a seam quotes the callee's declared responsibility verbatim
+          run: '! grep -q ">" .headsign/tmp/current || grep -m1 "^// Responsibility:" "src/$(sed "s/.*>//" .headsign/tmp/current)" | grep -qFf - .headsign/tmp/explain.md'
+        - name: a seam quotes the callee's declared exclusions verbatim
+          run: '! grep -q ">" .headsign/tmp/current || grep -m1 "^// Must NOT know about:" "src/$(sed "s/.*>//" .headsign/tmp/current)" | grep -qFf - .headsign/tmp/explain.md'
     on_pass: judge
     max_attempts: 5
 
@@ -259,6 +309,31 @@ phases:
       thread and the one thing you still could not predict, or the jobs you
       counted. Write to no other file."
 
+      **If the item is a seam** (`caller.ts>callee.ts`), ask this instead —
+      the shape above is about one thing, and a seam is about two:
+
+      "Read ONLY `.headsign/tmp/explain.md`. Do not open `src/`, and do not
+      use anything you already know about this codebase. It describes what one
+      module uses another for, what the second assumes the first has already
+      done, and — quoted verbatim — what the second says it is responsible for
+      and what it says it must not know about. Answer two questions. First: is
+      every assumption listed covered by the quoted contract, or does the
+      explanation rely on something the callee never declares? Second: does
+      anything the caller is said to rely on contradict what the callee says
+      it must not know about? Write one word on a line of its own to
+      `.headsign/tmp/verdict`, replacing whatever is there: APPROVED if every
+      assumption is declared and nothing contradicts; REJECTED otherwise. Then
+      APPEND to `.headsign/tmp/verdicts` a line of exactly this shape, where
+      ITEM is the single line in `.headsign/tmp/current`:
+
+          ### ITEM WORD
+
+      and below it — unless APPROVED — the assumption that is not declared, or
+      the contradiction, quoting both sides. Write to no other file."
+
+      UNFOCUSED has no meaning for a seam; a seam is not a thing that can have
+      one job or several.
+
       Do not soften those questions and do not add "is this clear?" to them —
       a question about clarity gets a polite yes, and a question about
       surprise gets an answer that can be wrong. Neither REJECTED nor
@@ -295,10 +370,12 @@ phases:
       # starts being a design finding. Counted from the judge's log, not from
       # anything the writer wrote.
       # A module that ran out of attempts is not filed and forgotten — the
-      # sweep goes inside it. Told apart from a function by the colon: the
-      # queue holds basenames, so `gate.ts` is a module and `gate.ts:runGate`
-      # is a function, and nothing has to remember which mode the run is in.
-      - when: 'test "$(grep -cF "### $(head -n 1 .headsign/tmp/current) " .headsign/tmp/verdicts)" -ge 3 && ! grep -q ":" .headsign/tmp/current'
+      # sweep goes inside it. Told apart by punctuation: the queue holds
+      # basenames, so `gate.ts` is a module, `gate.ts:runGate` is a function,
+      # and `cli.ts>engine.ts` is a seam. Only a module has parts to descend
+      # into — a seam that cannot be explained is filed like a function, since
+      # there is nothing inside a relationship to go and look at.
+      - when: 'test "$(grep -cF "### $(head -n 1 .headsign/tmp/current) " .headsign/tmp/verdicts)" -ge 3 && ! grep -q ":" .headsign/tmp/current && ! grep -q ">" .headsign/tmp/current'
         to: descend
       - when: 'test "$(grep -cF "### $(head -n 1 .headsign/tmp/current) " .headsign/tmp/verdicts)" -ge 3'
         to: record
@@ -507,8 +584,9 @@ phases:
          module and nothing wider.
       2. **The verdict**: passed, or failed and how many of each kind of
          finding.
-      3. **The findings**, one section per kind, in this order: functions
-         nobody could explain, modules whose boundary could not be stated,
+      3. **The findings**, one section per kind, in this order: items nobody
+         could explain (each names its own kind — a function, or a seam
+         between two modules), modules whose boundary could not be stated,
          modules that are explainable but do more than one job. Every entry
          names the thing, says where the reader lost the thread, and says what
          you think should change. An entry a person cannot act on is not an
