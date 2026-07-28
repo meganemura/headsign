@@ -1,6 +1,8 @@
 // Responsibility: read/write .headsign/state.json; owns the run-state shape (ADR-0004).
 // Also owns I/O for .headsign/log (a sibling, run-scoped transition log; see ADR-0004) —
 // line formatting itself lives in render.ts's logLine, not here.
+// The directory is the caller's choice and is taken on trust: the record and the log are read
+// and written under the directory handed in, never one found by searching upward.
 // Must NOT know about: routing rules, the workflow YAML schema.
 
 import fs from "node:fs";

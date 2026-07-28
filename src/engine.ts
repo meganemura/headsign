@@ -3,6 +3,10 @@
 // (ADR-0002, ADR-0004), and that now includes the ORDER a lap asks its questions in:
 // ADR-0002's transition table calls itself "the whole routing rule set" and puts the ordering
 // inside it, so the ordering is a routing rule by this project's own documents (ADR-0018).
+// The directory is the caller's choice and is taken on trust: every operation works in the
+// directory it is handed, looks for the run only there, never searches upward, and never
+// checks the choice against anything. That is the cwd-only rule the README and the workflow
+// skill explain to users, and until a seam sweep asked, it was stated in neither.
 // Must NOT know about: argv, stdout/stderr, exit codes. Every answer and every refusal leaves
 // here as data, and cli.ts alone decides how to say it and what to exit with. (The one text
 // this module composes is a `.headsign/log` line, through render.logLine, which owns that

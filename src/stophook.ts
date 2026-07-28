@@ -4,6 +4,10 @@
 // `evaluate` answers Stop, which carries a session id headsign no longer records anywhere —
 // it decides on run state alone. They share this module so the run lookup, the exit-note
 // gate and the loop guard can be literally the same code for both boundaries.
+// The directory is the ONE exception to headsign's cwd-only rule, and deliberately so: these
+// hooks fire wherever a turn happened to end, so they walk UP from the directory they are
+// given to find a run, stopping at the enclosing repo or worktree root (ADR-0006). Every
+// other module works only in the directory it is handed.
 // Must NOT know about: workflow.yaml, gate execution.
 
 import fs from "node:fs";
