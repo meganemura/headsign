@@ -9,55 +9,111 @@
 > for agent loops: each iteration, the agent asks where it's bound; headsign
 > runs the gates and answers — proceed, retry, or terminus.
 
-**headsign is a tiny phase gate for coding agents.** Claude Code drives the
-work and keeps the conversation; headsign holds the workflow state and decides
-phase transitions. Transitions are always deterministic — shell exit codes
-and the routing you wrote, never the LLM's say-so. One honest caveat comes
-with that: what a check *reads* can still be LLM-authored (a review verdict,
-say) — that boundary is named, not hidden, in
-[What headsign is not](#what-headsign-is-not) and
-[ADR-0007](docs/adr/0007-verdict-authorship.md).
+**headsign is a tiny phase gate for coding agents.** Your agent does the work
+and keeps the conversation; headsign holds the run's state and decides whether
+the work may move to the next phase. The whole discipline an agent needs fits
+in one sentence: **do the work, run `headsign next`, and obey the first line of
+the answer.**
 
-The whole discipline an agent needs fits in one sentence: **do the work, run
-`headsign next`, and obey the first line of the answer.**
+It holds that one decision and deliberately nothing else. headsign has no
+opinion about what your phases are, and none about how the agent gets a phase
+done: if it wants to hand a step to three subagents, or run two things at once,
+that is its call to make, not this tool's to grant. The shape of the work lives
+in a file you can rewrite between runs — by hand, or by the agent — and that is
+where the improvement is going to come from. Judgment about how to shape agent
+work is getting better quickly, and it is getting better on the agent's side of
+the line: the loop your agent designs for your repository will beat the one a
+harness author guessed at from outside it. A harness that encoded today's
+answer would become the ceiling. So the graph is yours to change, and the tool
+it asks stays still.
 
+## TL;AR — Too Long; Agents Read.
+
+Whether this is for you is easier to judge with a picture of your own
+repository in it. Paste the block below into your coding agent. It reads the
+repository, works out the phases itself, draws the loop, and stops there —
+it runs nothing, installs nothing, and changes no file.
+
+```text
+You are looking at a repository. I am considering headsign, a phase gate for
+agent work: an agent does the work, then asks a small CLI whether the work may
+advance to the next phase, and the answer comes from shell exit codes rather
+than from the agent's own report.
+
+Design what that loop would look like *here*, and draw it. This is a read-only
+reading of the repository: run nothing, install nothing, change no file.
+
+1. Inventory the mechanical signals this repository already has — commands that
+   can prove something about the state of the work. Look wherever this project
+   keeps them: package.json scripts, Rakefile or Makefile targets, CI workflow
+   definitions, and the contributing docs. Write down the exact commands, and
+   roughly how long the slowest takes. Separately, note any rule the repository
+   states only in prose — "never commit a secret", "every migration is
+   reversible" — that a shell one-liner could decide. Those are commands nobody
+   has written yet, and you may have to write them.
+
+   If there is nothing here a shell command can judge — no tests, no type
+   check, no lint, no build — stop and say so, and do not draw a loop. Without
+   a mechanical signal there is nothing for a gate to hold, and a picture drawn
+   anyway would be a guess wearing the clothes of a design.
+
+2. Read the recently merged pull requests (skip dependency bumps and chores)
+   and work out the typical unit of work here. If there are no merged pull
+   requests — plenty of repositories commit straight to the main branch — read
+   the recent commit history instead; it is the same evidence kept elsewhere.
+   Split that unit of work into phases yourself — as many as it takes, usually
+   two to five — each ending in something a command can check.
+
+3. Draw the loop. Any notation you like; ASCII or mermaid is fine. It has to
+   show:
+   - every phase, and the edges between them;
+   - on each edge, the shell command whose exit code decides it. Where the
+     repository already has that command, copy it literally. Where you built
+     one out of a rule the repository only states in prose, write it out and
+     mark it as composed — I need to know which lines to check against the
+     repository and which to check by running them. Either way, running it is
+     how I find out whether you were right;
+   - the edge taken when a gate fails and the work goes back for rework;
+   - one branch: a point where the run picks one of several destinations, and
+     the shell command that picks.
+
+   Rules the picture has to obey. Exactly one phase is active at a time.
+   A branch takes exactly one of the edges written down, and there is no join:
+   nothing fans out and nothing waits. A phase's failures can be capped, and
+   when the cap runs out the run stops and asks a person.
+
+4. Under the picture, list what in that unit of work no shell command can
+   judge — a design call, a UX decision — and say, for each, whether it should
+   be sliced into something checkable, carried by a review phase whose gate
+   reads a verdict file, or left to the human reviewing the pull request.
+
+Stop at the picture. Do not install headsign and do not start a run.
+
+Reply in the language the user is speaking.
 ```
-$ headsign next
-RETRY 2/5 implement
---- gate failed: unit tests (bundle exec rspec, exit 1) ---
-Failures:
-  1) Billing::Invoice#total ...
-Fix the failure above, then run `headsign next` again.
-```
+
+If the answer comes back "there is nothing here to gate on", believe it. That
+is the answer, and it is worth more than a diagram.
 
 ## Why
 
-- **Thin harness, fat skills.** The intelligence lives in your workflow's gate
-  commands (shell you write) and the skill that teaches the loop discipline.
-  The CLI is a state machine — no long-running process; each invocation reads
-  state, judges, writes state, exits.
-- **Deterministic transitions.** Tools that let the LLM signal "phase done" in
-  its own output can't guarantee the one decision that matters. Here the
-  checks' exit codes decide pass/fail and your routing decides the move — an
-  agent cannot talk its way through a failing gate.
-- **One question, one driver.** No `gate`, no dashboard. `next` both judges
-  and, on failure, prints the remaining-work list — the failing check and its
-  output — and it's the *driving* session's question, not a menu everyone
-  in the repository gets to pick from. `status` is the observer's: read-only,
-  it never judges or transitions anything. `claim` doesn't judge either — it
-  hands driver ownership to a delegated agent via a stop-boundary hook, for
-  the one moment a run needs to change hands on purpose (see
-  [Multiple sessions](#multiple-sessions)).
-- **Claude stays in charge.** Unlike outer-loop runners that invoke the LLM as
-  a subordinate, headsign is a place Claude asks a question, not a process
-  that owns Claude.
-- **The harness is not the ceiling.** headsign has no opinion about what your
-  phases are: it ships no view of how work should be shaped. The graph lives
-  in a file, and it can be rewritten between runs — by you, or by your agent.
-  As judgment about how to shape work keeps improving, the thing that changes
-  should be the graph, not the tool it asks.
+An agent will tell you a job is finished when it isn't. Not out of malice: a
+model ending its turn has no way to check itself, so "implemented it, tests
+should pass" is the same sentence whether they pass or not — and everything
+downstream is built on that sentence. headsign replaces it with an exit code.
 
-## Install (Claude Code plugin)
+**The transition is not the agent's to declare.** When the agent asks where the
+work goes next, headsign runs the phase's checks — ordinary shell commands you
+wrote — and the answer follows from what they exit with. An agent cannot talk
+its way past a failing gate, because nothing it says is read. One honest caveat
+comes with that: what a check *reads* can still be LLM-authored (a review
+verdict, say). That boundary is named, not hidden — see
+[What headsign is not](#what-headsign-is-not) and
+[ADR-0007](docs/adr/0007-verdict-authorship.md).
+
+## Install
+
+In Claude Code, as a plugin:
 
 ```
 /plugin marketplace add meganemura/headsign
@@ -65,890 +121,186 @@ Fix the failure above, then run `headsign next` again.
 ```
 
 The plugin ships three things: the bundled CLI (no npm install, no build), a
-`workflow` skill teaching the discipline, and the stop-boundary hooks that
-keep the agent from silently quitting mid-workflow.
+`workflow` skill teaching the loop discipline, and the stop-boundary hooks that
+keep an agent from silently quitting mid-run.
 
-### Using without the plugin
-
-The plugin is just one way headsign ships, packaged for Claude Code. The
-tool itself is the CLI: gate judgment, state, `PENDING`, locking, logging
-all live in it, and it works from any agent — or by hand at a terminal. The plugin adds exactly
-two things on top: the `workflow` skill and the stop-boundary hook
-backstop. Both have plugin-free equivalents below.
-
-**Install the CLI.** The bundle is committed, so there is nothing to build:
+Anywhere else — another agent, a custom harness, or your own hands at a
+terminal — install the CLI:
 
 ```
 npm install -D headsign
 npx headsign --help
 ```
 
-**Teach your agent the discipline.** The skill is plain instructions, not
-machinery. For Cursor, a custom harness, or a `CLAUDE.md`, this one rule
-carries most of it:
+The CLI is the tool; the plugin is packaging. Either way it is a Node program:
+the plugin spares you the install and the build, not the runtime, so Node ≥ 20
+has to be present wherever `headsign` is invoked — including a CI job, or a
+harness in a Ruby, Go, or Python repository whose toolchain is otherwise none
+of Node's business. Teaching a non-Claude-Code agent the discipline, and
+installing the hook backstop without the plugin, are in
+[docs/workflow-reference.md](docs/workflow-reference.md).
 
-> When you have done work on the current phase, run `npx headsign next` and
-> obey the first line of the answer. To look without judging, run
-> `npx headsign status`. Never end the run on anything but `COMPLETE`; to
-> stop deliberately, run `npx headsign abort <reason>`.
+## What a loop looks like
 
-The full discipline is in
-[plugin/skills/workflow/SKILL.md](plugin/skills/workflow/SKILL.md). Copy
-what you need into your agent's rules, or install it as a standalone skill
-with the GitHub CLI (a preview `gh` feature that lets you pick which agent
-to install into):
-
-```
-gh skill install meganemura/headsign workflow
-```
-
-Claude Code users can also drop it into `.claude/skills/` as a project
-skill. A skill obtained any of these ways runs outside the plugin and can't
-find its bundled CLI, so install the package as above and it falls back to
-`npx headsign`.
-
-**Optional: the backstop without the plugin.** Add this to
-`.claude/settings.json`:
-
-```json
-{ "hooks": {
-  "Stop": [ { "hooks": [
-    { "type": "command", "command": "npx", "args": ["headsign", "stop-hook"] }
-  ] } ],
-  "SubagentStop": [ { "hooks": [
-    { "type": "command", "command": "npx", "args": ["headsign", "subagent-stop-hook"] }
-  ] } ]
-} }
-```
-
-`Stop` covers the session itself; `SubagentStop` covers an agent the
-session delegated the run to (see [Multiple sessions](#multiple-sessions)).
-Register just the first if you never delegate a run: with no `headsign
-claim` in play, the second never acts.
-
-## Quick start
-
-In a hurry? Grab a ready-made workflow and adapt its `run:` commands:
+This repository runs headsign on itself. One of its workflows sweeps the
+modules of `src/` and asks, of each, whether it can be explained to a
+middle-school reader by a writer who then has to face a judge that never sees
+the code; anything that survives three attempts unexplained is filed as a
+design finding rather than a writing failure. The subject is peculiar. The
+subject is not the point — the shape is:
 
 ```
-mkdir -p .headsign && curl -fsSL -o .headsign/workflow.yaml \
-  https://raw.githubusercontent.com/meganemura/headsign/main/example.headsign/tdd-feature.yaml
+  inventory ──> explain ──> judge ─┬─ approved ──────────────> record
+                    ↑              ├─ 3rd try, a module ─────> descend
+                    │              ├─ 3rd try, a function ───> record
+                    │              └─ otherwise ─────────────> explain
+                    └──────────────  descend, once its parts are queued
+
+  record ─┬─ queue not empty ──> explain
+          └─ queue empty ─────> learn ──> improve ──> report ──> end
 ```
 
-Or write one from scratch — it is one YAML file:
-
-1. Commit a workflow to your repository:
-
-```yaml
-# .headsign/workflow.yaml
-version: 0.1
-name: feature-dev
-entry: plan
-
-phases:
-  plan:
-    description: Write the spec to docs/spec.md, including acceptance criteria.
-    gate:
-      checks:
-        - name: spec exists
-          run: "test -s docs/spec.md"
-        - name: acceptance criteria present
-          run: "grep -q '## Acceptance' docs/spec.md"
-    on_pass: implement
-    max_attempts: 3
-
-  implement:
-    description: Implement per the spec, test-first.
-    gate:
-      checks:
-        - name: unit tests
-          run: "bundle exec rspec"
-          timeout: 300
-    on_pass: review
-    max_attempts: 5
-
-  review:
-    description: >
-      Have a read-only reviewer subagent report APPROVED or REJECTED, then
-      write that verdict yourself to .headsign/tmp/verdict.
-    clear: [.headsign/tmp/verdict]
-    ready: "test -f .headsign/tmp/verdict"
-    gate:
-      checks:
-        - name: review approved
-          run: "grep -qx APPROVED .headsign/tmp/verdict"
-    on_pass: $end
-    on_fail: implement     # rejection loops back
-    max_attempts: 3        # three rejections → escalate to the human
-
-limits:
-  max_total_iterations: 20
-```
-
-The `run:` commands above are examples. Replace `bundle exec rspec` with whatever your project actually uses (`npm test`, `pytest`, `go test ./...`, …); a check is just a shell command judged by its exit code.
-
-> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust. The same goes for `.headsign/state.json` and `.headsign/lock`: a cloned repository can contain a committed state file or lock, so a `.headsign/` you didn't create is untrusted input, just like the workflow. The same holds on a team: a change to `.headsign/` arrives on a teammate's PR and runs automatically in your loop, so weigh it as heavily as a change to CI configuration.
-
-2. Ask Claude to start the workflow. It runs `headsign start`, works the
-   phase, and keeps asking `headsign next` until the answer is `COMPLETE` —
-   or `ESCALATE`, which means the decision comes back to you.
-
-Run state lives in `.headsign/state.json` (auto-gitignored). Because all
-state is external, the loop survives context compaction: recovery is just
-`headsign next`.
-
-`headsign start`, `next`, and `abort` resolve `.headsign/` in the current
-directory only — they never search parent directories — so run them from the
-repo or git-worktree root; each worktree then keeps its own independent run.
-The exceptions are the stop-boundary hooks, which walk up to find the run's
-`.headsign/` (bounded by the worktree root) so the backstop still fires when
-the turn ended in a subdirectory. That walk only goes up, though, so from
-a directory above the run — a monorepo root, say — the hook won't find it and
-stays silent; keep the session at the workflow's directory or below.
-
-**One worktree, one run** is the whole of headsign's worktree support, and it
-holds by construction: a linked worktree's `state.json`, lock, and log all
-live in that worktree's own `.headsign/`, and headsign writes nothing under
-the shared `.git` directory — so two worktrees of the same repository can each
-drive a loop, at their own phase, without either one disturbing the other.
-Anything past that is out of scope: worktrees never share run state, and
-headsign neither coordinates the runs in them nor aggregates them into one
-view. A run belongs to the directory it was started in.
-
-## Instructions vs. the gate
-
-A phase's `description` is where you write what the agent should do in that
-phase — including "use the `/foo` skill" or "have a read-only reviewer
-subagent check it"; headsign hands it to Claude verbatim. A workflow
-*choreographs* skills and subagent work into a gated sequence — it doesn't
-*orchestrate* them, and it never forces which skill the agent uses. Only the
-gate is enforced: the checks' exit codes are the sole thing that verifies the
-result. To require a skill's use, gate its output (e.g. `grep` the file that
-skill produces). A review/soft-gate phase should list its verdict file (e.g.
-`.headsign/tmp/verdict`) under that phase's `clear:` so a verdict left over
-from a previous pass can't be mistaken for the current one — headsign
-deletes it on entry, and Claude writes a fresh one after the read-only
-reviewer subagent reports its verdict. And when the judgment itself must
-live outside the working agent's hands, make the check the judge — e.g.
-`claude -p '… Reply exactly APPROVED or REJECTED.' | grep -qx APPROVED`
-keeps the transition deterministic while the pen changes hands; trade-offs
-in [ADR-0007](docs/adr/0007-verdict-authorship.md).
-
-A phase is only as meaningful as what its gate can check in shell. A test
-gate proves nothing broke, not that the feature is done — judging "done" is
-what a review gate is for, which is why the Quick start workflow above
-carries both. Work a shell command can't judge — a design call, a UX
-decision — needs either slicing into units a check can verify, or a
-review-style soft gate to carry it. Size your phases to what the gate can
-actually check, not to how the work naturally breaks down. And a review phase
-is the agent's own review discipline, not a substitute for a human reviewing
-the resulting PR.
-
-## How a run flows
-
-Three roles turn the loop: the agent (Claude) does the work and drives;
-**headsign** runs the current phase's gate and answers with a token; the
-**checks** are ordinary shell, so the verdict is deterministic. Each turn,
-Claude obeys the token — `RETRY` means fix the reported failure and ask
-again, `ADVANCE` means move to the printed phase, a fail-route (`gate failed
-→ routed to …`) sends the work back, and `COMPLETE` ends the run. One pass
-through the Quick start workflow:
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Claude
-    participant H as headsign
-    participant S as gate checks
-
-    C->>H: headsign start
-    H-->>C: START plan (the phase's instructions)
-    Note over C: writes docs/spec.md
-    C->>H: headsign next
-    H->>S: run plan's checks
-    S-->>H: exit 1 (spec incomplete)
-    H-->>C: RETRY 1/3 plan (failing check + output)
-    Note over C: fixes the spec
-    C->>H: headsign next
-    H->>S: run plan's checks
-    S-->>H: exit 0
-    H-->>C: ADVANCE implement
-    Note over C: implements, test-first
-    C->>H: headsign next
-    H->>S: bundle exec rspec
-    S-->>H: exit 0
-    H-->>C: ADVANCE review (clears .headsign/tmp/verdict)
-    Note over C: read-only reviewer reports REJECTED.<br/>Claude writes it to .headsign/tmp/verdict
-    C->>H: headsign next
-    H->>S: grep -qx APPROVED .headsign/tmp/verdict
-    S-->>H: exit 1 (REJECTED)
-    H-->>C: ADVANCE implement (gate failed → routed back)
-    Note over C: reworks. implement re-passes and<br/>ADVANCE review clears the verdict again.<br/>reviewer now reports APPROVED, Claude writes it
-    C->>H: headsign next
-    H->>S: grep -qx APPROVED .headsign/tmp/verdict
-    S-->>H: exit 0
-    H-->>C: COMPLETE
-```
-
-Every arrow from headsign is driven by a shell exit code, never the LLM's
-own say-so. The stop-boundary hooks (not shown) are the backstop: if the
-run's driver tries to stop while the run is `running`, it's pointed back to
-`headsign next`.
-
-## The contract
-
-Six commands; a driving session routinely uses one:
-
-| Command | Role |
-|---|---|
-| `headsign start [name] [--workflow path]` | initialize state, print the entry phase's instructions |
-| `headsign next` | **the only question a driving session asks.** Run the current gate, transition, answer |
-| `headsign abort [reason]` | record a human-directed stop |
-| `headsign validate [name] [--workflow path]` | static check of the workflow file |
-| `headsign status` | read-only view of the current run, for a session that isn't driving it — see [Multiple sessions](#multiple-sessions) |
-| `headsign claim` | hand driver ownership to a delegated agent via the `SubagentStop` hook — for delegating who drives a run; see [Multiple sessions](#multiple-sessions) |
-
-Multiple workflows can live as separate files under `.headsign/` (one
-workflow per file); pick one with `headsign start <name>` (→
-`.headsign/<name>.yaml`), or pass `--workflow <path>` for an explicit path.
-Ready-made examples for several roles — TDD features, bug fixing, docs,
-releases — live in [example.headsign/](example.headsign/). This repository
-runs headsign on itself from its own `.headsign/`, kept separate from the
-examples because those workflows read this project's paths and tooling.
-
-A bare `headsign validate` (no name, no `--workflow`) checks whichever
-workflow the current run is actually using: if `.headsign/state.json`
-exists — whatever its status — it validates that run's own
-`workflow_path`, not just a fixed default file, so validating a run
-started with `headsign start <name>` checks the right `.headsign/<name>.yaml`
-without having to repeat the name. With no run present, it falls back to
-`.headsign/workflow.yaml`, as before. An explicit `<name>` or
-`--workflow <path>` always wins over both.
-
-`validate` separates errors from **warnings**: an error is a workflow
-headsign refuses to run (exit 3), while a warning is printed to stderr and
-still exits 0. A phase that no route reaches from `entry` is a warning, so a
-half-written phase or an edge you commented out for a minute doesn't stop
-the run you were in the middle of. `start` prints the warnings too, once,
-while the person who wrote the file is still there; `next` doesn't, because
-it is asked every turn.
-
-A key the schema doesn't define is an error, at every level of the file. A
-phase declaring `max_atempts: 3` stops with `phase 'implement': unknown key
-'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail,
-max_attempts)` rather than running a phase that has no attempt budget at
-all — the typo would otherwise have been skipped in silence. The message
-lists the keys that level accepts and offers no did-you-mean guess. The same
-thinking governs `version:`, which must be exactly `0.1`: while the schema
-is pre-1.0 it keeps changing, so a file written for an older one is stopped
-until its fields have been read against the current schema, rather than
-loaded with whatever still happens to fit
-([ADR-0015](docs/adr/0015-strict-schema-and-version-0-1.md)).
-
-`next` answers with a machine-readable first line, then instructions:
-
-| First line | Exit | Meaning |
-|---|---|---|
-| `ADVANCE <phase>` | 0 | gate passed (or fail-routed) — new phase instructions follow |
-| `RETRY n[/max] <phase>` | 1 | gate failed — failing check + output tail follow |
-| `PENDING <phase>` | 1 | the gate can't be judged yet (`ready:`) — attempt not counted; do the work, then `next` again |
-| `COMPLETE` | 0 | terminus |
-| `ESCALATE <reason>` | 2 | human judgment needed |
-| `ABORT <reason>` | 2 | run was aborted |
-
-Exit 3 is a configuration/usage error, and `next` is idempotent on finished
-runs. On a running one it is a judgment rather than a peek: it runs the
-phase's gate, and a failure spends an attempt (a phase whose `ready:` probe
-hasn't passed yet answers `PENDING` before the gate runs, as above, and
-spends nothing). Hence the driving session's two-command rule — **did work
-→ `next`; want to look → `status`** — with `status` free to call as often
-as you like (see [Multiple sessions](#multiple-sessions)).
-
-### Routing (workflow.yaml)
-
-| Field | Values | Default |
-|---|---|---|
-| `on_pass` | phase name, `$end`, or a list of `when:`/`to:` routes — see [The router pattern](#the-router-pattern) | — (required) |
-| `on_fail` | `retry`, phase name, `$end`, `escalate` | `retry` |
-| `max_attempts` | positive int; counts failures of this phase since it last passed. Running out always answers `ESCALATE` | unlimited |
-| `limits.max_total_iterations` | positive int; global runaway backstop. Reaching it answers `ESCALATE` but does **not** end the run — see below | none |
-
-Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
-`/bin/sh -c` (first failure stops the gate). Every command headsign runs
-inherits headsign's own environment; a check that needs a variable sets it
-in its own `run:` string (`run: "FOO=bar npm test"`), the same way you would
-at a prompt. Deliberately absent: `needs:`, `${{ }}`, matrices, triggers,
-and a per-phase `env:`. A route's `when:` is not `if:` in disguise either —
-it is a shell command judged by its exit code, not an expression to
-evaluate — so every routing decision is still an exit code choosing among
-destinations you wrote down.
-
-Neither a gate nor a budget can end a run as `ABORT`: a failure route can
-say `escalate` (stop and ask a person) but never "stop", and exhausting
-`max_attempts` always escalates. `ABORT` comes from `headsign abort
-<reason>`, which is a person's decision and records their reason — so an
-aborted run is always one somebody ended on purpose.
-
-**Two of the three ways a run reaches `ESCALATE` end it; the ceiling does
-not.** Exhausting a phase's `max_attempts` and taking an `on_fail: escalate`
-route both mean something is wrong — the agent can't satisfy a gate — and
-both end the run for good. Reaching `limits.max_total_iterations` means
-something else: the run turned out to be bigger than the number someone
-typed, which can be true of a run doing nothing wrong. So it answers
-`ESCALATE` (exit 2, a person is being asked) while leaving the run
-`running`, and its message says how to answer:
+Every edge there is a shell command's exit code. The branch out of `judge` is
+`grep -qx APPROVED .headsign/tmp/verdict`; the one out of `record` asks the
+queue file, not the agent, whether another lap is owed. Here is a run of it,
+whole, straight out of this repository:
 
 ```
-$ headsign next
-ESCALATE build: max_total_iterations (15) reached — the run is still open: raise limits.max_total_iterations in .headsign/workflow.yaml and run `headsign next` to continue from this phase, or run `headsign abort <reason>` to end it
-Human judgment needed. Report the situation to the user and ask for instructions.
+$ cat .headsign/log
+2026-07-29T07:24:19+09:00 start inventory a=0 i=0 workflow=explainability-fitness
+2026-07-29T07:24:19+09:00 advance explain a=0 i=1 from=inventory
+2026-07-29T07:24:41+09:00 advance judge a=0 i=2 from=explain
+2026-07-29T07:26:36+09:00 advance record a=0 i=3 from=judge routed-when="grep -qx APPROVED .headsign/tmp/verdict"
+2026-07-29T07:26:36+09:00 advance learn a=0 i=4 from=record routed-default
+2026-07-29T07:26:59+09:00 advance improve a=0 i=5 from=learn
+2026-07-29T07:27:12+09:00 advance report a=0 i=6 from=improve
+2026-07-29T07:27:28+09:00 complete report a=0 i=7
 ```
 
-Raise the number in the workflow file and `headsign next` picks the run up
-at the same phase, with its attempts and its `.headsign/tmp/` intact; decide
-it isn't worth more laps and `headsign abort <reason>` ends it. The check
-runs before the gate, so a run standing at that wall spends no iteration and
-no attempt however many times it is asked — the runaway protection is
-unchanged, and `headsign status` still reports `RUNNING`
-([ADR-0017](docs/adr/0017-three-budgets-and-the-recoverable-ceiling.md)).
-Because the run really is unfinished, the stop-boundary hook still nudges
-its driver back to `headsign next`: an agent that reports the ceiling to you
-and steps away should write its pause note first (see
-[The backstop](#the-backstop)).
+Three minutes, one item, approved on the first attempt — so this particular run
+never took the rework edge, and `a=0` says no phase ever spent a failed
+attempt. Where a transition had a choice to make, the log records the command
+that made it (`routed-when=`) or that no command matched and the default was
+taken (`routed-default`). A run's history is written as it happens, and it says
+why the run went this way rather than that one.
 
-Two of `on_fail`'s values look interchangeable and are not. `retry` keeps
-the run where it is; naming the phase itself sends the run out of the phase
-and back into it, which runs everything entering a phase runs:
+The picture's job is to show the shape, not the subject. The picture for your
+repository is what the prompt above draws.
 
-| | `on_fail: retry` | `on_fail: <this phase>` |
-|---|---|---|
-| Meaning | stay | leave, then re-enter |
-| `clear:` | not run | runs |
-| Answer token | `RETRY` | `ADVANCE` |
+The practice has names now — [*loop
+engineering*](https://addyosmani.com/blog/loop-engineering/) for the cycle,
+[*graph
+engineering*](https://www.langchain.com/blog/3-years-of-graph-engineering-with-langgraph)
+for the shape it runs on. headsign is neither framework: it doesn't run your
+agent, and it doesn't execute the graph. It keeps one file saying where the
+work may go next, and answers when the agent asks. The graph in that second
+name is also a bigger object than this one — it fans out and it joins, and
+this one does neither.
 
-So a self-route deletes the artifacts that phase lists under `clear:`,
-while `retry` leaves them where the work left them. That is exactly what
-you want when re-entering fresh is the point — throwing away a stale review
-verdict, say — and exactly what you don't want when the agent should just
-keep working on the same failure. Reach for `retry` in the second case.
+## What the machine holds
 
-### The router pattern
+The file the phases live in is small, and its schema is still pre-1.0 — so the
+syntax is in [docs/workflow-reference.md](docs/workflow-reference.md), where it
+can be corrected, rather than here, where copies of it freeze in npm caches and
+forks. What is worth knowing before you write any of it is where the walls are,
+because those don't move:
 
-Some phases exist to decide where the work should go — read the request,
-then send it to the phase that fits. Write that with a list-form `on_pass`:
-each entry has a `when:` (a shell command) and a `to:`, and the last entry,
-which carries no `when:`, is the default. A complete one ships as
-[example.headsign/router.yaml](example.headsign/router.yaml); the shape is:
+- **One phase is running at a time.** Two phases never advance at once.
+- **A shell exit code decides the transition**, never the agent's account of
+  what it did. The check is an ordinary command — `bundle exec rspec`,
+  `go test ./...`, `npm test` — run the way you would run it yourself.
+- **You can branch, and the run takes one edge.** A branching phase picks
+  exactly one destination out of the ones written in the file, and cannot name
+  one that isn't there. There is no join: nothing forks and nothing waits.
+- **A phase's failures can be capped.** When the cap runs out, the run stops
+  and hands the decision to a person, with its reason.
 
-```yaml
-  classify:
-    description: >
-      Read the request and write exactly one of fix-bug, write-docs, or
-      implement to .headsign/tmp/route.
-    clear: [.headsign/tmp/route]
-    ready: "test -s .headsign/tmp/route"
-    gate:
-      checks:
-        - name: the route names a kind this workflow knows
-          run: "grep -qx -e fix-bug -e write-docs -e implement .headsign/tmp/route"
-    on_pass:
-      - when: "grep -qx fix-bug .headsign/tmp/route"
-        to: fix-bug
-      - when: "grep -qx write-docs .headsign/tmp/route"
-        to: write-docs
-      - to: implement          # no when: — the default, and always last
-```
+Run state lives in a file next to the workflow, so a loop survives context
+compaction: recovery is just `headsign next` again. That file belongs to the
+directory the run started in, which is also what answers the question of a team
+working at once — separate clones and worktrees never share a run, and for two
+sessions open on the same directory, who drives and who only watches is
+[Multiple sessions](docs/workflow-reference.md#multiple-sessions).
 
-The rules, in full:
+When you do want work happening in parallel, compose it one level up — one
+worktree, one run, and above them something that fans the work out and gathers
+it back in: a shell script, a CI job, the orchestrator you already run, or a
+parent headsign run whose gate reads whatever the child runs left behind. That
+layer stays yours; headsign holds one run and will not be growing into it. What
+that costs you is in [What headsign is not](#what-headsign-is-not).
 
-- Routes are resolved **after** the gate passes, and never on the failure
-  path. A router phase whose own gate fails is an ordinary failing phase.
-- The `when:` commands run in order, and the **first one to exit 0** wins.
-  If none matches, the last entry's `to:` is used.
-- `when:` takes an optional `timeout:` (seconds, default 120) and runs in
-  headsign's own environment — the same treatment a check gets.
-- `to:` names a phase or `$end`.
-- `validate` rejects a list whose last entry has a `when:` (nothing would
-  be the default) and one whose earlier entry lacks one (everything after
-  it would be unreachable).
-- If a `when:` **can't be run at all** — it fails to spawn, or times out —
-  headsign stops with exit 3 and transitions nowhere, rather than falling
-  through to the default. A non-zero exit is an answer ("not this one"); a
-  command that never ran is not, and the thing being decided here is where
-  the run goes next.
+None of this displaces your CI: the commands a gate runs are usually the ones
+CI already runs, and headsign's part is to run them inside the local agent
+loop, phase by phase, so that the pull request arrives having been through them
+already.
 
-An `ADVANCE` reached this way gains one line naming the route that was taken
-(`--- routed: when "grep -qx fix-bug .headsign/tmp/route" → fix-bug ---`, or
-`--- routed: default → implement ---`), and that transition's `.headsign/log`
-entry records the same, so a run's history says why it went this way rather
-than that one. A route to `$end` ends the run with the usual `COMPLETE`, and
-a plain string `on_pass` prints and logs exactly what it always did.
+## Reading a finished one
 
-**The judgment is the agent's; the transition is headsign's.** The agent
-decides by writing a file; headsign decides by running the commands you
-wrote and reading their exit codes. It never takes a phase name out of the
-agent's output or out of that file: what the agent writes can only pick
-among the destinations the workflow file already declares, and cannot name
-one that isn't there. Something unexpected in the file lands on the default,
-or fails the phase's gate first if you check the file's shape there, as the
-example above does.
+Once you have a picture of your own, [example.headsign/](example.headsign/)
+holds workflows for several shapes of work — a test-first feature, a bug fix
+that must reproduce before it may fix, docs, a release with a human go/no-go,
+a router that dispatches by kind of request, a sweep that works a queue one
+item per lap. To put one of them into words: the test-first workflow runs
+spec → red → green → refactor → review, where spec's gate wants a written spec
+with an acceptance section, red passes only while the new test still *fails*,
+green and refactor both gate on the suite (refactor adding lint to it), and
+review gates on a verdict file — a rejection routes back to green, three rounds
+at most, after which the run goes to a person.
 
-**Keep `when:` a cheap predicate, and keep it free of side effects.** Routes
-run on the success path — the fast path through your workflow — and several
-of them can run before one matches. Expensive or consequential work belongs
-in the gate, which runs once and reports what failed; the routes should do
-no more than read the cheap artifact the gate already checked.
+Read the one nearest to what you drew. It is there to check your design against
+something that runs, not to be the thing you start from: a workflow you adopt
+before you have decided the shape of your work lets the harness decide it for
+you.
 
-### Async review (when review takes a while)
-
-A review phase's gate often depends on something slower than the loop
-itself — a reviewer subagent still reading the diff, a human glancing at a
-PR. Calling `next` before that verdict exists would, without `ready:`,
-burn a counted attempt on a gate that had nothing to judge yet — and since
-that phase's verdict file is also listed under `clear:` (recommended
-above), a verdict that lands a moment later could be discarded by that
-same early call's next re-entry, silently losing a real review. Give the
-phase a `ready:` probe (e.g. `test -f .headsign/tmp/verdict`) and an early
-`next` answers `PENDING` instead: no attempt spent, `clear:` not run,
-verdict left intact for the `next` that actually finds it.
-
-### The backstop
-
-Skills are instructions, not guarantees. Two stop-boundary hooks read
-`.headsign/state.json`; while a run is `running`, the hook that fires for
-the run's **driver** blocks that turn from ending and points it back to
-`headsign next`. A turn that isn't the driver's passes straight through
-instead — except while a `claim` marker is armed, where the first delegated
-agent to stop that can name itself is seated as the new driver (see
-[Multiple sessions](#multiple-sessions)). Escalated, aborted, and completed
-runs pass through too; those are correct endings.
-
-Which turns those are depends on whether anyone has claimed the run, and
-the two hooks answer an unclaimed one in opposite directions, on purpose.
-`Stop` nudges: a session stopping in the run's own directory is probably
-driving it, and missing the real driver is worse than one stray reminder.
-`SubagentStop` passes, because most delegated agents stopping nearby are
-reviewers and workers with no role in the run at all, and holding one of
-those hostage is worse than a missed reminder.
-
-Once a run's driver *has* been seated by `headsign claim`, what's recorded
-is an agent identifier, so `Stop` passes every session through
-unconditionally — no session can be that agent — and `SubagentStop` holds
-that one agent and no other. That is the whole of the ownership question
-either hook asks; neither compares session identifiers, and headsign
-records none. See [Multiple sessions](#multiple-sessions).
-
-Two hooks, because a turn can end in two ways: `Stop` fires when a
-session's turn ends, `SubagentStop` when a delegated agent's does. A
-delegated agent never fires `Stop` at all, so without the second hook it
-would have no backstop — and, worse, the run would keep pushing the
-session that merely spawned it (see
-[Multiple sessions](#multiple-sessions)).
-
-**To pause deliberately**, write one line explaining why to
-`.headsign/tmp/stop-note` and stop again: the hook passes immediately, no
-nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
-has a record. The note is consumed (deleted) the moment it's read, and the
-working tree returns to exactly what it was before — net zero, so the pause
-itself costs the run nothing and leaves the phase's artifacts where the
-work left them. One note covers one turn end, so a wait that runs over
-several exchanges needs the note written again before each of them. Tomorrow, `headsign next` picks the run up at the same
-phase and judges its gate, the way any `next` does. `headsign abort
-<reason>` is the other exit, and it is permanent, not a pause: the run
-can't be resumed, and a fresh `headsign start` begins again from the entry
-phase, replaying every phase's gate from scratch. Keeping that replay cheap
-is a design requirement on the workflow, not something headsign does for
-you: write early phases' gates as fast, idempotent checks (does a file
-exist, does lint pass) rather than ones with real side effects or long
-unrepeatable work, and a fresh start after an abort costs almost nothing.
-The same property pays off every turn, since each `next` runs the gate
-again. A workflow whose early gates are slow or non-idempotent makes its
-own re-runs expensive — that's the workflow author's cost to manage, by
-writing cheap gates, not a cost headsign can absorb on its behalf.
-
-Stopping *without* a note is pushed back — the hook fails open (never
-traps a session) after 5 consecutive nudges with nothing in between that
-shows someone is still steering: a real evaluation, a consumed note, or a
-sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
-`.headsign/log`, and every stop after that passes silently. That cap is a
-safety net for a stuck or silently departed agent, not the normal way to
-pause — the note above is. To spot an unattended stall from the outside:
-`headsign status` (read-only, safe to run from any session — see
-[Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
-`.headsign/log`'s tail shows `stalled` (equivalently, `stop_nudges >= 5`) —
-together they mean the driving agent has walked away without a note.
-Re-drive the run with `headsign next` from the session that's actually
-driving it.
-
-## Multiple sessions
-
-A repository often has more than one Claude Code session open on it at
-once — a lead session plus teammates, or a subagent working alongside the
-session that spawned it. Only one of them should ever be answering
-`headsign next` for a given run; headsign calls that one the **driver**.
-Everyone else is an **observer**. The distinction matters because the
-stop-boundary hooks (above) push a driver that tries to stop mid-run back
-to `headsign next`: a session that obeys a nudge meant for someone else can
-burn a retry or advance a phase it had no business touching, and every
-blocked stop, whoever made it, spends one from the same nudge cap. See
-[ADR-0008](docs/adr/0008-multi-session-ownership.md) for the field feedback
-that drove the design, and
-[ADR-0013](docs/adr/0013-claim-only-driver-identity.md) for what it has
-since been narrowed to.
-
-There is one way a run learns who drives it, and one kind of driver it can
-learn about: a **delegated agent** that ran `headsign claim` and then ended
-its turn (below). Nothing else records a driver — `start` and `next` stamp
-no one, and no environment variable names anyone. Until a run is claimed,
-headsign does not know who is driving it, and acts on that: every session
-that ends a turn in the run's directory is nudged, and no delegated agent
-is. Once a run is claimed, that agent's turn ends are the only ones held,
-and every session's stop passes.
-
-Those two behaviors cover the two shapes a run takes. A session driving its
-own run needs no claiming: it is nudged because nobody else has claimed the
-run, which is exactly the backstop it wants. A run handed to a delegated
-agent does need claiming, because that agent shares its spawning session's
-process and can't otherwise be told apart from it — that is what `headsign
-claim` is for (below).
-
-What this deliberately does *not* do is tell two **sessions** apart. A run
-belongs to the directory it lives in — one worktree, one run — so a second
-session watching that same directory is nudged like any other while the run
-is unclaimed. `HEADSIGN_OBSERVER` (below) is how such a session opts out,
-and it is the only manual control headsign offers here. Every session that
-isn't driving — teammates, a subagent that wasn't delegated the run, or any
-session that never ran `headsign start` — should reach for `headsign
-status` instead of `next`.
-
-### `headsign status`
-
-Read-only: no gate runs, no state is written, no lock is taken. Safe to run
-from any session, at any time, as often as you like.
-
-```
-$ headsign status
-RUNNING implement (attempt 2/5)
-workflow: feature-dev
---- last failure: unit tests (bundle exec rspec, exit 1) ---
-Failures:
-  1) Billing::Invoice#total ...
-driver: not delegated yet — no agent has claimed this run
-```
-
-```
-$ headsign status
-COMPLETE
-workflow: feature-dev
-```
-
-```
-$ headsign status
-ESCALATED
-workflow: feature-dev
-reason: review rejected 3 times
-```
-
-The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
-capitalized like `next`'s tokens, but it's a *report*, not a verdict:
-`status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
-judges anything. The `driver:` line (shown only while `RUNNING`) has two
-readings: `not delegated yet — no agent has claimed this run`, and `a
-delegated agent` once a `headsign claim` handoff (below) has been sealed.
-
-It says nothing about whether *you* are that agent, and cannot: the
-identifier on file comes from a hook, and no command can resolve the
-caller's own agent identity to compare against it — the same gap that makes
-`claim` necessary in the first place. What the line is for is confirming
-that a handoff landed. `claim` takes two beats and can fail quietly, so one
-`headsign status` after the confirmation is how anyone — the delegating
-session, the user, a passing observer — checks that the run really did
-change hands.
-
-**If you are a delegated agent, end your turn and watch what happens: being
-pushed back to `headsign next` means this run is yours to drive.**
-`SubagentStop` holds an agent when it matches the recorded driver, and
-otherwise only to seal a claim — so read *which* message you got, starting
-with its opening words. Both name the workflow and phase, both tell you to
-run `headsign next`, and both end with the same pause and abort advice, so
-the opening is the one part that always tells them apart. A message opening
-`headsign workflow '…' is still running` is the ordinary nudge, and it
-confirms you already drive the run. One opening `Claim confirmed:` means
-something else entirely: an armed marker just seated *you*, possibly one
-another agent armed for itself. If you get that message without having run
-`headsign claim`, you have taken a seat someone else was asking for — say
-so, and let them claim again.
-
-The implication runs one way only. Ending quietly does *not* prove the
-reverse. You may never have claimed, in which case the hook passes you
-before it ever looks at who you are; the nudge cap may have run out (see
-[the backstop](#the-backstop)); a pause note may have been consumed; or
-`HEADSIGN_OBSERVER` may be set. And a probe is not free. An ordinary nudge
-back spends one off that cap; a probe that passes while your own pause note
-is armed consumes the note instead; and a probe that lands while *someone
-else's* claim marker is armed consumes the marker — that is the `Claim
-confirmed` case above, and the other agent has to claim again. Spend the
-probe deliberately rather than habitually.
-
-For a *session*, the same test proves nothing at all. `Stop` rules a stop
-out only when a delegated agent holds the run, so while nobody has claimed
-it, every session in the directory is nudged, driver or not. Being held
-there says the run is running, not that you own it.
-
-Exit code follows a deliberately different contract from `next`'s: `status`
-exits 0 whenever `.headsign/state.json` could be read at all — an
-`ESCALATED` or `ABORTED` run is normal, informative output, not a status
-error — and exits 3 only when there's nothing to report (no run here, or
-state unreadable). A script that wraps `status` in `set -e` therefore never
-dies just because the run it's watching happens to need a human; read the
-run's own state from line 1, not from the exit code.
-
-### Delegating who drives: `headsign claim`
-
-A **delegated agent** — a teammate under Claude Code's agent-teams
-feature, or a subagent — is the one driver headsign can record, and the
-only one it can tell apart from anybody else. Such an agent shares its
-spawning session's process outright (same pid, same environment) and
-carries no identifier of its own anywhere its Bash tool can reach, so no
-command it runs can say who it is. The one moment it *can* be named is its
-own turn end, which Claude Code reports to a hook with an identifier for
-that agent specifically.
-
-Skipping the claim fails quietly rather than loudly. An agent that just
-starts calling `headsign next` records nothing, so the run stays unclaimed:
-every nudge it produces goes to whichever *session* stops in the
-directory — typically the one sitting idle, waiting on the delegation —
-while the agent actually doing the work ends its turns unheld. The backstop
-stays armed and points at the wrong party, and nothing in either one's
-output says so. So when you hand a run to a delegated agent, that agent's
-first headsign command is `headsign claim`, never `headsign next`.
-
-`headsign claim` fixes that by letting a hook do the recording, because
-Claude Code tells the hook what the agent's own environment cannot. Two
-beats:
-
-1. From the agent you want driving the run, run `headsign claim`. It arms
-   a one-shot marker and tells you to end your turn — it records nothing
-   itself.
-2. End that turn. **That agent's own turn end is where the seal
-   happens** (Claude Code fires a `SubagentStop` hook for it, carrying an
-   identifier for that agent specifically): headsign writes it into
-   `driver_agent` in `.headsign/state.json`, records a `claimed` line in
-   `.headsign/log`, and confirms it in the hook's message. Wait for that
-   confirmation before running `headsign next` — it is how you know the
-   right agent got seated.
-
-A typical delegation: "please drive this run" → the delegated agent runs
-`headsign claim` and ends its turn → the confirmation arrives → it
-proceeds with `headsign next`. Nothing can quietly displace that agent
-afterwards: no command records a driver, a session's own stop never adopts
-a claim, and only another `headsign claim` arms the marker again. So the
-session that handed the work off cannot take the seat back by stopping
-first, or by running `next` itself.
-
-Being the driver also brings the backstop with it: once seated, that
-agent's own turn endings are pushed back to `headsign next` while the run
-is `running`, and pausing with a stop-note or ending with `headsign
-abort` works from there exactly as it does for a session. An agent that is
-neither the recorded driver nor the first to name itself under an armed claim
-marker is never held — a reviewer subagent, or an agent working on
-something else entirely, stops normally.
-
-This is a handshake, not a lock: if some *other* delegated agent ends a
-turn while the marker is armed and can name itself, it gets adopted
-instead. Run `headsign claim` again from the right one: a new claim
-re-arms the marker, and that agent is now a real contender for it, because
-its own turn end is guaranteed to fire the event that seals. It is still a
-contender and not a winner — another delegated agent naming itself first
-can take this marker too — so re-claim until the confirmation names the
-agent you meant. The full mechanism, the measurements behind it, and the
-race that remains are in
-[ADR-0010](docs/adr/0010-subagent-stop-identity.md).
-
-### Environment variables
-
-| Variable | Set by | Meaning |
-|---|---|---|
-| `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. |
-
-That is the whole list: headsign reads no session or agent identifier from
-the environment, because nothing there can name a delegated agent — see
-[ADR-0013](docs/adr/0013-claim-only-driver-identity.md), which retired the
-two variables that used to appear here.
-
-**The rule:** a session that hasn't run `headsign start` and hasn't been
-asked to drive the run should reach for `headsign status`, never `headsign
-next` or `headsign abort`.
-
-## Nodes, edges, and state
-
-A workflow file describes a **control graph**: it says where the work goes
-next, and nothing else. It is not a knowledge graph — it holds no facts
-about your domain — and not an execution trace, since it is written before
-the run and the run's own history goes to `.headsign/log`. If you already
-think in graph terms, the vocabulary maps over like this:
-
-| Graph term | In headsign |
-|---|---|
-| node | a phase |
-| edge | `on_pass`, `on_fail` |
-| conditional k-way branch | a list of `when:`/`to:` routes on `on_pass` |
-| the condition an edge is taken under | the gate — shell exit codes |
-| state kept outside the model | `.headsign/state.json` |
-| bounded cycle | `max_attempts`, `limits.max_total_iterations` |
-| handing the decision back to a person | `ESCALATE` |
-| the path a run actually took | `.headsign/log` |
-
-One of the shipped examples,
-[example.headsign/sweep.yaml](example.headsign/sweep.yaml), applies a
-mechanical change to a queue of files one item per lap; drawn as its graph,
-it looks like this. This is a different picture from the sequence diagram in
-[How a run flows](#how-a-run-flows): that one is a single trip around the
-loop, this one is the shape of the whole workflow, fixed before the run
-starts.
-
-```mermaid
-flowchart TD
-    survey["survey"]
-    apply["apply"]
-    verify["verify"]
-    record["record"]
-    report["report"]
-    finish(["$end"])
-
-    survey -- "pass" --> apply
-    apply -- "pass" --> verify
-    verify -- "pass" --> record
-    verify -- "fail" --> apply
-    record -- "when: queue not empty" --> apply
-    record -- "default: queue empty" --> report
-    report -- "pass" --> finish
-```
-
-Every edge in it is decided by a shell exit code. Only edges that move the
-run are drawn: a phase whose gate fails simply stays where it is, which is
-true of nearly all of them. `verify` is the exception — its failure routes
-back to `apply` instead of staying, and that is the rework edge — and `record` is the branch: its `when:` check
-turns the cycle for as long as the queue still has entries, and its default
-route leaves for `report` once it doesn't. So the stopping condition here is
-the data rather than a counter, and `limits.max_total_iterations` sits above
-the whole thing as the backstop that escalates to a person if the queue
-never drains. A long queue is not a stuck one, which is why that escalation
-leaves the run open rather than ending it: raise the number and the sweep
-carries on from where it stopped.
-
-Being a graph is not itself an achievement, so here is a plain scorecard of
-what it adds over a loop that just re-prompts until the model says it's
-done:
-
-- **Independent verification: yes, as far as your checks are independent.**
-  The transition is decided by commands in the workflow file, not by the
-  working agent's own report, and a review phase can put the verdict in a
-  read-only reviewer's hands instead. How far that goes — hard, semi, and
-  soft gates — is [ADR-0007](docs/adr/0007-verdict-authorship.md).
-- **A human approval gate: yes.** `ESCALATE` hands the decision back to a
-  person, and a phase whose gate reads a decision file only a person writes
-  holds the run until they write it (the release workflow in
-  [example.headsign/](example.headsign/) is exactly that).
-- **Parallel branches: no, deliberately.** One active phase per run; a k-way
-  branch chooses one destination and never fans out. Composing parallelism
-  outside a run is covered under
-  [What headsign is not](#what-headsign-is-not).
-
-If your work is a straight line, you don't need branching, and adding it
-buys nothing — a chain of phases is a complete workflow. What the graph is
-still doing for you there is holding the stopping condition: `$end`,
-`max_attempts`, and `limits.max_total_iterations` are what make a loop end
-for a stated reason rather than when someone gets bored of it.
+This repository's own workflows live in `.headsign/`, kept apart from the
+examples because they read this project's paths and tooling.
 
 ## What headsign is not
 
 Read this before adopting — the boundaries are the design.
 
 - **It doesn't verify quality by itself.** A gate proves whatever its check
-  proves. Test gates are hard: their outcome cannot be authored. Review
-  gates are soft: the verdict file is written by an LLM, and headsign
-  guarantees the *transition* is deterministic, not that the verdict is
-  wise. The hardness scale — and how to take the pen out of the working
-  agent's hand when it matters — is
-  [ADR-0007](docs/adr/0007-verdict-authorship.md).
-- **It doesn't force anyone to use it.** Nothing makes an agent or a
-  teammate run `headsign start`, and skipping the tool leaves no trace.
-  Making the loop a habit is convention work headsign cannot do for you.
-- **It doesn't orchestrate.** One active phase per run: no DAGs, no
-  parallel phases, no worktree management, no provider abstraction, no
-  personas, no template/expression language, no MCP server, no TUI, no
-  cross-run dashboard. Not *managing* worktrees isn't the same as not
-  working in one, though: a run started in a worktree stays entirely its
-  own — one worktree, one independent run (see
-  [Quick start](#quick-start)). Branching doesn't change that: a
-  [router](#the-router-pattern) picks one destination, never several, and
-  nothing inside a run ever advances two phases at once. Where you do want
-  work happening in parallel, compose it a level up — one worktree, one
-  run — and have a parent run's join phase gate on what the child runs left
-  behind, whether that's their terminal `.headsign/state.json` or an
-  artifact you had them write; to a gate it is all just files to inspect.
-  Setting those worktrees up, starting the child runs, and cleaning up
-  afterwards stays yours: headsign doesn't create them, coordinate them, or
-  aggregate their state. If the harness needs to be clever, the cleverness
-  is in the wrong place.
-- **It doesn't run on native Windows.** Checks execute via `/bin/sh`
-  (POSIX); WSL works fine.
+  proves. Test gates are hard: their outcome cannot be authored. Review gates
+  are soft: the verdict file is written by an LLM, and what headsign guarantees
+  is that the *transition* is deterministic, not that the verdict is wise. The
+  hardness scale — and how to take the pen out of the working agent's hand when
+  it matters — is [ADR-0007](docs/adr/0007-verdict-authorship.md).
+- **It doesn't orchestrate.** One active phase per run: no DAGs, no parallel
+  phases, no worktree management, no provider abstraction, no personas, no
+  template or expression language, no MCP server, no TUI, no cross-run
+  dashboard. Not *managing* worktrees isn't the same as not working in one — a
+  run started in a worktree is entirely its own — but setting those worktrees
+  up, starting the child runs, and cleaning up after them stays yours. If the
+  harness needs to be clever, the cleverness is in the wrong place.
+- **It doesn't run your agent.** Unlike outer-loop runners that invoke the
+  model as a subordinate, headsign is a place your agent asks a question. It
+  starts no process and holds no session.
+- **It doesn't force anyone to use it.** Nothing makes an agent or a teammate
+  run `headsign start`, and skipping the tool leaves no trace. What the machine
+  holds, it holds only from the moment a run begins. Making the loop a habit is
+  convention work headsign cannot do for you.
+- **It doesn't run on native Windows.** Checks execute via `/bin/sh` (POSIX);
+  WSL works fine.
 
-What it does hold, it holds mechanically: transitions and attempt accounting
-an agent cannot sweet-talk, run state that survives compaction, a backstop
-that makes quitting silently impossible without leaving a trace, and a
-read-only `status` for everyone who only wants to look.
+One more thing it is not: trusted input. A workflow's check commands are shell
+that headsign executes on your machine, exactly like a Makefile target or an
+npm `postinstall` script. A `.headsign/` directory you didn't write — cloned,
+or arriving on a teammate's pull request — deserves the reading you would give
+any other executable code in the repository.
+
+What it does hold, it holds mechanically: transitions and attempt accounting an
+agent cannot sweet-talk, run state that survives compaction, a backstop that
+takes effect once a run has started — an agent ending its turn mid-run is
+pushed back to the loop, and one that walks away regardless leaves a line in
+the log instead of silence — and a read-only `headsign status` for everyone who
+only wants to look.
 
 ### Where it sits among neighbors
 
-- **Curated skill packs** (Superpowers and kin) — those ship polished,
-  fixed workflows; headsign ships the gate machinery, and you bring the
-  workflow (or start from [example.headsign/](example.headsign/)).
-- **ralph-style loops** (re-prompting until done) — complementary, not
-  competing: headsign works as the stop condition and phase memory *inside*
-  such a loop. The runner just re-invokes the agent until `state.json` goes
-  terminal.
-- **takt** — a full-featured orchestrator that runs agents itself, with
-  worktree parallelism and personas. headsign flips the relationship — the
-  agent drives and consults the gate — and it owes takt its starting
-  point: working with takt is what made clear which single, agent-driven
-  slice of the problem wanted a deliberately smaller tool.
-- **jdi** — the lightest neighbor: the agent marks phase transitions in
-  its own output. headsign keeps that lightness while moving the one
-  decision that matters — the transition — out of the LLM's text and into
-  exit codes.
-
-### Should you adopt it? Let your agent decide
-
-headsign pays off only where "done" can be checked mechanically. Measure
-your own repository — paste this into your coding agent (read-only,
-changes nothing):
-
-```text
-Assess (read-only) whether this repository would benefit from a phase gate
-for agent work — a tool that only lets a work phase advance when shell
-checks pass.
-1. Inventory the mechanical signals: which commands here can prove work
-   state (test suite, typecheck, lint, build)? Note roughly how long the
-   main one takes.
-2. From recent merged PRs (skip deps/chore), reconstruct the typical unit
-   of work: does it decompose into 2-5 phases, each with a checkable
-   outcome (tests green, artifact exists), plus judgments no shell can
-   make (review)?
-3. Look for the failure this tool exists for: work declared finished that
-   was not — red CI on first push, fixup commits, reverts.
-4. Report: the signal inventory with runtimes; whether work decomposes
-   into gateable phases; roughly how often "done" was not; and a
-   High/Medium/Low fit with a 3-line rationale.
-```
-
-**High** (checkable signals exist, and "done" has lied before) → adopt;
-start from an example workflow. **Medium** → adopt for one recurring kind
-of work first. **Low** (no runnable checks) → don't: without mechanical
-signals there is nothing for gates to hold — build those first. Either
-way, the signal inventory the agent hands back is the first draft of your
-gates.
+**Curated skill packs** (Superpowers and kin) ship polished, fixed workflows.
+headsign ships the gate machinery, and you bring the workflow — drawn for your
+own repository, or read off the shelf in
+[example.headsign/](example.headsign/).
 
 ## Development
 
@@ -959,11 +311,9 @@ npm run typecheck
 npm run build     # esbuild → plugin/dist/headsign.mjs (committed artifact)
 ```
 
-Node ≥ 20 to run; Node ≥ 22.6 to develop (tests run TypeScript natively).
-The design is documented in [docs/architecture.md](docs/architecture.md),
-with the rationale for each decision in [docs/adr/](docs/adr/README.md);
-release and maintenance procedures live in
-[docs/maintenance.md](docs/maintenance.md).
+Node ≥ 20 to run; Node ≥ 22.6 to develop (tests run TypeScript natively). The
+design, the record of every decision behind it, and the release procedure are
+in [docs/](docs/README.md).
 
 ## License
 
