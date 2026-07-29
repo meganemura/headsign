@@ -388,6 +388,16 @@ its driver back to `headsign next`: an agent that reports the ceiling to you
 and steps away should write its pause note first (see
 [The backstop](#the-backstop)).
 
+Those three budgets have one thing in common: headsign can count each of them
+itself, inside one `next`, without asking anyone. Tokens and money it cannot —
+it never runs the model, so it never sees what a turn cost. That is a layer
+boundary rather than a gap, and where those numbers do exist they belong to
+your harness; a check can go and read them if you wire it up, at the price of
+coupling your workflow to one vendor's interface. Wall-clock time is the one
+headsign *could* count — `.headsign/log` timestamps every transition — and
+deliberately doesn't: a slow run is not a wrong run, and a lap is what the loop
+spends.
+
 Two of `on_fail`'s values look interchangeable and are not. `retry` keeps
 the run where it is; naming the phase itself sends the run out of the phase
 and back into it, which runs everything entering a phase runs:

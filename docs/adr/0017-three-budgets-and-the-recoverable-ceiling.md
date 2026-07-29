@@ -153,6 +153,35 @@ often the right specific one: it is the thing this decision makes possible
 *after* the wall is reached, rather than a guess made before the run starts.
 Picking a bigger number up front just moves the same cliff further out.
 
+## Why there are three and not five
+
+*(Added 2026-07-30, after the question came up from outside: current writing on
+agent execution asks for tokens, money, wall clock and tool permissions to be
+budgeted state.)*
+
+The three budgets share a property that is easy to miss because it is
+structural rather than stated: **headsign can count each of them itself, inside
+one `next`, without asking anyone.** Attempts and iterations live in the run's
+own record; a check's runtime is measured by the process that spawned it.
+
+Tokens and money it cannot count, and the reason is ADR-0001's first principle
+rather than an omission — headsign does not run the model, so a lap has no way
+to learn what the turn before it spent. Tool permissions are the same boundary
+seen from the other side: headsign grants nothing, the harness does. Where
+those numbers do exist they belong to the harness, and a check can be pointed
+at them by whoever wants that; the coupling to one vendor's interface then
+lives in that repository, which is where it should be. (Reading a harness's
+transcript files directly is not the way to do it — Claude Code documents that
+format as internal and liable to change on any release.)
+
+Wall clock is the one headsign could count and doesn't. `.headsign/log`
+timestamps every transition, so the number is already there. Leaving it out is
+a judgement, not a boundary: a slow run is not a wrong run, and the ceiling
+counts laps because a lap is what the loop spends, where seconds are a fact
+about the machine and the model. If that judgement turns out wrong it is the
+cheapest of the three to revisit, which is the other reason to write it down
+here as a judgement rather than let it look like an oversight.
+
 ## Consequences
 
 - A run can now be continued past a ceiling it was going to die at, and the
