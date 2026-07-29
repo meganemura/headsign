@@ -22,6 +22,11 @@ test("round-trips through write/read", () => {
     end_reason: null,
     stop_nudges: 1,
     driver_agent: null,
+    // A non-empty pin here on purpose: the map is the one field of this record that is not a
+    // scalar, so it is the one that a serialisation change could quietly flatten.
+    graph_fingerprint: { plan: "a".repeat(64), $limits: "b".repeat(64) },
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
@@ -46,6 +51,9 @@ test("round-trips a non-null driver_agent", () => {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: "agent-claimed",
+    graph_fingerprint: {},
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
   };
   state.writeState(dir, s);
   assert.deepEqual(state.readState(dir), s);
@@ -156,6 +164,9 @@ test("atomic write leaves valid JSON and no leftover temp files", () => {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    graph_fingerprint: {},
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
   };
   state.writeState(dir, s);
   const raw = fs.readFileSync(state.statePath(dir), "utf8");

@@ -28,6 +28,12 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    // The graph pin as a run that has just started carries it: empty rather than absent, since
+    // step() and the pure functions below never reconcile it (that is the lap's job) and only
+    // ever have to carry it through untouched.
+    graph_fingerprint: {},
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
     ...overrides,
   };
 }
@@ -460,4 +466,254 @@ phases:
   assert.deepEqual(after.state, before.state, "state.json must be byte-identical: a refused probe is not a PENDING and not an attempt");
   assert.deepEqual(after.log, before.log, "no transition happened, so nothing is logged");
   assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released before returning");
+});
+
+// --- the graph pin: a lap notices when its own rules moved under it ---
+//
+// Whole laps again, and again they have to be: the claim is about what a lap wrote, in which
+// order, and whether the gate downstream of the check ran at all — none of which step() can
+// show on its own. Every test below edits the workflow file mid-run, which is a thing headsign
+// deliberately allows (ADR-0016 §5, ADR-0017); what is under test is that the edit is
+// reported, counted and then obeyed, never refused.
+
+function writeWorkflowFile(dir: string, yaml: string): void {
+  fs.writeFileSync(path.join(dir, ".headsign", "workflow.yaml"), yaml);
+}
+
+function runState(dir: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8"));
+}
+
+function graphLogLines(dir: string): string[] {
+  return fs
+    .readFileSync(path.join(dir, ".headsign", "log"), "utf8")
+    .split("\n")
+    .filter((line) => line.includes(" graph-changed "));
+}
+
+// `next` and then the answer, with the two non-answers (a refusal, an invalid workflow) turned
+// into a test failure that names what came back instead.
+function lap(dir: string): engine.Outcome {
+  const result = engine.next(dir, LAP_TIME);
+  if (result.kind !== "ANSWERED") assert.fail(`expected an answered lap, got ${result.kind}: ${JSON.stringify(result)}`);
+  return result.outcome;
+}
+
+// `implement`'s gate is a file check so a lap can be made to fail (RETRY, stays put) or pass
+// (ADVANCE) on demand, and `review` is downstream so reachability can be narrowed by simply
+// letting the run advance.
+function pinnedWorkflow(opts: { implementGate?: string; reviewAttempts?: number; ceiling?: number } = {}): string {
+  const attempts = opts.reviewAttempts === undefined ? "" : `    max_attempts: ${opts.reviewAttempts}\n`;
+  const ceiling = opts.ceiling === undefined ? "" : `limits:\n  max_total_iterations: ${opts.ceiling}\n`;
+  return (
+    `version: 0.1\n` +
+    `name: pinned\n` +
+    `entry: implement\n` +
+    `phases:\n` +
+    `  implement:\n` +
+    `    description: "Implement."\n` +
+    `    gate:\n` +
+    `      checks:\n` +
+    `        - name: "marker"\n` +
+    `          run: "${opts.implementGate ?? "test -f marker.txt"}"\n` +
+    `    on_pass: review\n` +
+    `  review:\n` +
+    `    description: "Review."\n` +
+    `    gate:\n` +
+    `      checks:\n` +
+    `        - run: "true"\n` +
+    `    on_pass: "$end"\n` +
+    attempts +
+    ceiling
+  );
+}
+
+test("graph pin: a lap that changed nothing leaves the pin alone and writes no graph-changed line", () => {
+  const dir = startedRun(pinnedWorkflow());
+  const before = runState(dir).graph_fingerprint;
+
+  assert.equal(lap(dir).kind, "RETRY");
+
+  const after = runState(dir);
+  assert.deepEqual(after.graph_fingerprint, before, "an untouched workflow must not move the pin");
+  assert.equal(after.graph_change_reported, null);
+  assert.equal(after.accepted_graph_changes, 0);
+  assert.deepEqual(graphLogLines(dir), []);
+});
+
+// The heart of it: the run is NOT ended, nothing is counted, and the only thing written is the
+// marker — so the next thing the person does decides what this was.
+test("graph pin: rewriting the current phase's gate escalates without ending the run or counting anything", () => {
+  const dir = startedRun(pinnedWorkflow());
+  const before = runState(dir);
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+
+  const outcome = lap(dir);
+  assert.equal(outcome.kind, "ESCALATE");
+  if (outcome.kind === "ESCALATE") {
+    assert.equal(
+      outcome.reason,
+      `implement: the workflow's rules changed under this run (phase 'implement') — the run is still open and nothing was counted: ` +
+        `restore '${path.join(dir, ".headsign", "workflow.yaml")}' to what this run has been running, or run \`headsign next\` again to accept the change and continue. ` +
+        "An accepted change is counted and reported at COMPLETE.",
+    );
+    // One line, like the ceiling's reason: it is the tail of ESCALATE's token line.
+    assert.doesNotMatch(outcome.reason, /\n/);
+  }
+
+  const after = runState(dir);
+  assert.equal(after.status, "running", "the run stays open — this is a question, not an ending");
+  assert.equal(after.phase, before.phase);
+  assert.equal(after.total_iterations, before.total_iterations, "the changed gate was not run, so no iteration was spent");
+  assert.deepEqual(after.attempts, before.attempts);
+  assert.equal(after.accepted_graph_changes, 0, "nothing is counted until it is accepted");
+  assert.match(after.graph_change_reported as string, /^[0-9a-f]{64}$/);
+  assert.deepEqual(after.graph_fingerprint, before.graph_fingerprint, "the pin stays on the rules this run has been running");
+  assert.deepEqual(graphLogLines(dir), [`${LAP_TIME} graph-changed implement a=0 i=0 state=reported phases=implement`]);
+});
+
+test("graph pin: asking again accepts the change, counts it once, and runs the NEW gate in that same lap", () => {
+  const dir = startedRun(pinnedWorkflow());
+  const pinBefore = runState(dir).graph_fingerprint as Record<string, string>;
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ESCALATE");
+
+  // The accepted gate is `true`, so a lap that actually ran it advances — which is how this
+  // test can tell acceptance from a second report.
+  assert.equal(lap(dir).kind, "ADVANCE");
+
+  const after = runState(dir);
+  assert.equal(after.accepted_graph_changes, 1);
+  assert.equal(after.graph_change_reported, null, "the marker is spent by the acceptance");
+  assert.equal(after.total_iterations, 1, "the gate really ran in the accepting lap");
+  assert.notEqual((after.graph_fingerprint as Record<string, string>).implement, pinBefore.implement, "the pin moved onto the accepted rules");
+  assert.deepEqual(graphLogLines(dir).map((l) => l.split(" ").slice(-2).join(" ")), [
+    "state=reported phases=implement",
+    "state=accepted phases=implement",
+  ]);
+});
+
+// The reason restoring must cost nothing: it is the most correct response to the report, and a
+// design that counted it would punish it. (Updating the pin at report time is what would make
+// the restore look like a second change — see reconcileGraphPin.)
+test("graph pin: putting the file back after a report is free and silent", () => {
+  const dir = startedRun(pinnedWorkflow());
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ESCALATE");
+
+  writeWorkflowFile(dir, pinnedWorkflow());
+  assert.equal(lap(dir).kind, "RETRY", "the restored gate ran and answered, exactly as if nothing had happened");
+
+  const after = runState(dir);
+  assert.equal(after.accepted_graph_changes, 0, "a change that was undone was never accepted");
+  assert.equal(after.graph_change_reported, null, "the marker goes when the difference goes");
+  assert.equal(graphLogLines(dir).length, 1, "the restore adds no line of its own");
+});
+
+// Why the marker is a digest and not a flag: a second edit made after the report must not ride
+// in on the first one's acknowledgement.
+test("graph pin: a further edit after a report is reported again, naming every key that has moved", () => {
+  const dir = startedRun(pinnedWorkflow());
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ESCALATE");
+  const firstMarker = runState(dir).graph_change_reported;
+
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true", reviewAttempts: 3 }));
+  const outcome = lap(dir);
+  assert.equal(outcome.kind, "ESCALATE");
+  if (outcome.kind === "ESCALATE") assert.match(outcome.reason, /\(phases 'implement', 'review'\)/);
+
+  const after = runState(dir);
+  assert.equal(after.accepted_graph_changes, 0);
+  assert.notEqual(after.graph_change_reported, firstMarker, "a new difference is a new question");
+  assert.deepEqual(graphLogLines(dir).map((l) => l.split(" ").slice(-2).join(" ")), [
+    "state=reported phases=implement",
+    "state=reported phases=implement,review",
+  ]);
+});
+
+// ADR-0016 §5 in one test: a run only depends on the phases it has not entered yet, so
+// rewriting one it has walked past is the ordinary way a workflow improves itself mid-run.
+test("graph pin: rewriting a phase the run can no longer reach is not a change to its rules", () => {
+  const dir = startedRun(pinnedWorkflow());
+  fs.writeFileSync(path.join(dir, "marker.txt"), "");
+  assert.equal(lap(dir).kind, "ADVANCE");
+
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "false" }));
+  assert.equal(lap(dir).kind, "COMPLETE", "review's own gate decided this lap, with nothing to report");
+
+  const after = runState(dir);
+  assert.equal(after.accepted_graph_changes, 0);
+  assert.equal(after.graph_change_reported, null);
+  assert.deepEqual(graphLogLines(dir), []);
+});
+
+// Raising the ceiling is not asked about twice (ADR-0017): the ESCALATE a person just read WAS
+// the beat where they decided this run may keep going.
+test("graph pin: a limits-only change is accepted on the spot — no report, and the lap carries on", () => {
+  const dir = startedRun(pinnedWorkflow({ ceiling: 5 }));
+  assert.equal(lap(dir).kind, "RETRY");
+
+  writeWorkflowFile(dir, pinnedWorkflow({ ceiling: 6 }));
+  assert.equal(lap(dir).kind, "RETRY", "the gate ran in the same lap that accepted the new ceiling");
+
+  const after = runState(dir);
+  assert.equal(after.accepted_graph_changes, 1, "accepted without being asked, but never uncounted");
+  assert.equal(after.graph_change_reported, null);
+  assert.equal(after.total_iterations, 2);
+  // a=1 i=1, not the 2/2 the lap ends on: a log line reports the state right after the event it
+  // describes, and the event here is the acceptance, which spends no attempt and no iteration.
+  // The gate that then ran in the same lap gets its own line.
+  assert.deepEqual(graphLogLines(dir), [`${LAP_TIME} graph-changed implement a=1 i=1 state=accepted phases=$limits`]);
+});
+
+// The documented way out of the wall, end to end: it has to stay ONE lap, or the pin has made
+// ADR-0017's own advice cost twice what it says it costs.
+test("graph pin: raising the ceiling at the wall resumes the run in a single lap", () => {
+  const dir = startedRun(pinnedWorkflow({ ceiling: 1 }));
+  assert.equal(lap(dir).kind, "RETRY");
+  const atTheWall = lap(dir);
+  assert.equal(atTheWall.kind, "ESCALATE");
+  if (atTheWall.kind === "ESCALATE") assert.match(atTheWall.reason, /max_total_iterations \(1\) reached/);
+
+  writeWorkflowFile(dir, pinnedWorkflow({ ceiling: 5 }));
+  assert.equal(lap(dir).kind, "RETRY", "one `next` after raising the limit runs the gate — no stop in between");
+  assert.equal(runState(dir).total_iterations, 2);
+});
+
+// The transitional half of the tolerance state.ts describes: a run already in progress when
+// these fields shipped has none of them, and a run that never pinned anything cannot have had
+// its rules changed under it.
+test("graph pin: a state.json from before the pin existed is adopted in silence", () => {
+  const dir = startedRun(pinnedWorkflow());
+  const legacy = runState(dir);
+  delete legacy.graph_fingerprint;
+  delete legacy.graph_change_reported;
+  delete legacy.accepted_graph_changes;
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(legacy, null, 2) + "\n");
+
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ADVANCE", "no report: there was no pin for the edit to contradict");
+
+  const after = runState(dir);
+  assert.equal(after.accepted_graph_changes, 0, "nothing was accepted, because nothing was reported");
+  assert.equal(after.graph_change_reported, null);
+  assert.ok(after.graph_fingerprint, "the lap leaves the run pinned from here on");
+  assert.deepEqual(graphLogLines(dir), []);
+});
+
+// COMPLETE is where the count reaches a person who was not watching: `.headsign/log` is
+// gitignored, so this line is the only one a pull-request reviewer can see.
+test("graph pin: an accepted change is carried all the way to COMPLETE, and a run without one carries nothing", () => {
+  const dir = startedRun(pinnedWorkflow());
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ESCALATE");
+  assert.equal(lap(dir).kind, "ADVANCE");
+  assert.deepEqual(lap(dir), { kind: "COMPLETE", acceptedGraphChanges: 1 });
+  // A reprint of a finished run says the same thing: asking twice must not lose the fact.
+  assert.deepEqual(lap(dir), { kind: "COMPLETE", acceptedGraphChanges: 1 });
+
+  const untouched = startedRun(pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(untouched).kind, "ADVANCE");
+  assert.deepEqual(lap(untouched), { kind: "COMPLETE" }, "no key at all, so the output is byte-identical to what it always was");
 });

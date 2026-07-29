@@ -12,9 +12,15 @@
 // run re-loading it on every lap sees an edit made mid-run on the next lap. That is what
 // makes a workflow rewritable while it is being walked (ADR-0016), and it is a property of
 // this module rather than of its callers.
+// It also computes the GRAPH FINGERPRINT (bottom of the file) — the hash of the rules a run is
+// currently walking under. That lives here and not with the run record because it is a fact
+// about the schema and the reachability walk, both of which are this module's alone; who
+// stores it, when it is compared and what is said about a difference are somebody else's
+// (state.ts, engine.ts, render.ts respectively).
 // Must NOT know about: state.json, gate execution, git.
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import { parse as parseYaml } from "yaml";
 
 export interface Check { name?: string; run: string; timeout?: number }
@@ -312,4 +318,114 @@ function unboundedPassCycles(entry: string, phases: Record<string, Phase>, names
     );
   }
   return warnings;
+}
+
+// --- the graph fingerprint: one hash per rule a run is currently depending on ---
+//
+// A run re-reads this file every lap (see the header), which is deliberate and stays: ADR-0016
+// §5 lets a run rewrite its own workflow, and ADR-0017 tells a person to raise the ceiling and
+// resume with `next`. What was missing is not a lock but a RECORD — with nothing pinned, a run
+// that failed a gate three times and then had that gate loosened looks exactly like a run that
+// passed it, and the loosening is indistinguishable from the edit the documents recommend.
+// A fingerprint is what lets the difference be noticed and said out loud; nothing here forbids
+// anything.
+//
+// The map is name -> hash, and it is a map rather than one whole-file hash because a
+// difference has to be reportable as "which rules moved" — a single digest can only say "the
+// file is not what it was", which is unactionable and would fire on a comment.
+
+export type GraphFingerprint = Record<string, string>;
+
+// The one key in the map that is not a phase name: the whole `limits` mapping, hashed as a
+// unit. `$`-prefixed, like the `$end` destination the schema already reserves, because that is
+// this file's existing mark for "not a phase". A phase LITERALLY named `$limits` would collide
+// with it; that is left as-is rather than answered with a new validation rule (the schema is
+// not this change's to touch), and the collision is deterministic: this key is written last,
+// so `limits` wins and the phase rides along with it.
+export const LIMITS_KEY = "$limits";
+
+// The field every phase hash leaves out, and the ONLY one — an exclusion list, not an
+// allow-list. ADR-0003 makes `description` advisory (it is prose for the agent, changed
+// constantly and routed on never), so a run must be able to reword it mid-flight without
+// anyone being asked about it. Everything else is in, including fields added to the schema
+// after this line was written: an allow-list would let a new routing field ship silently
+// unpinned, which is the same trap ADR-0015 closes by rejecting unknown keys instead of
+// ignoring them.
+//
+// `clear:` being in matters more than it looks. Deleting a `clear:` entry leaves the previous
+// pass's artifact (a stale `APPROVED` verdict) in place for the next gate to find, which is a
+// way of loosening a gate without touching the gate.
+const UNPINNED_PHASE_KEY = "description";
+
+function sha256(text: string): string {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+
+// Recursively key-sorted JSON, so the hash is of the PARSED STRUCTURE and not of the bytes.
+// Comments, indentation, quoting style and key order are things YAML does not make the author
+// keep; hashing raw bytes would report every one of them as a change to the rules, and a
+// report that fires on reflowing a comment is a report nobody reads. Arrays keep their order:
+// a gate's checks run in order and a k-way `on_pass` is resolved in order (ADR-0011), so
+// moving an entry there IS a different rule.
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!isMap(value)) return value;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    if (value[key] === undefined) continue;
+    sorted[key] = canonical(value[key]);
+  }
+  return sorted;
+}
+
+// `?? null` so an absent value hashes to something rather than to nothing: JSON.stringify
+// (undefined) is undefined, and a `limits:` that isn't written at all still needs a hash, or
+// the run could not tell "no ceiling" from "no pin".
+function hashOf(value: unknown): string {
+  return sha256(JSON.stringify(canonical(value) ?? null));
+}
+
+// The rules a run sitting on `from` is actually depending on: every phase reachable from
+// there, plus `$limits`. Scoped that way because ADR-0016 §5 says what a run is owed — the
+// definitions of the phases it has NOT ENTERED YET. A phase it has already walked past can be
+// rewritten freely (that is how a workflow improves itself mid-run), and reporting such an
+// edit would make the ordinary case noisy enough to train everyone to ignore the report.
+// Reachability is the same walk `unreachable()` uses, `on_fail` edges included: a phase a
+// failure can still route to is one this run can still land in.
+export function graphFingerprint(wf: Workflow, from: string): GraphFingerprint {
+  const names = new Set(Object.keys(wf.phases));
+  const reachable = reachableFrom(from, wf.phases, names);
+  const fingerprint: GraphFingerprint = {};
+  // File order, not walk order: the difference is reported to a person as a list of names, and
+  // the same pair of files must always produce the same list.
+  for (const name of Object.keys(wf.phases)) {
+    if (!reachable.has(name)) continue;
+    const { [UNPINNED_PHASE_KEY]: _advisory, ...pinned } = wf.phases[name];
+    fingerprint[name] = hashOf(pinned);
+  }
+  // Always present, even with no `limits:` in the file — see hashOf. A key that appears only
+  // once a ceiling is declared would make declaring one look like a widened reachable set
+  // (adopted in silence) rather than the change it is.
+  fingerprint[LIMITS_KEY] = hashOf(wf.limits);
+  return fingerprint;
+}
+
+// One digest standing for a whole computed map. Its only job is to answer "is this the same
+// difference I already reported?", which is why it is a hash rather than a flag: after a report
+// the file can be edited AGAIN, and a flag would let that second edit through unreported.
+export function fingerprintDigest(fingerprint: GraphFingerprint): string {
+  return hashOf(fingerprint);
+}
+
+// What moved, in the computed map's order. Only keys present in BOTH sides count, and that is
+// the rule rather than an optimisation:
+//   - computed-only means the run can now reach a phase it could not reach before (it walked
+//     an edge, or an edit added one). It has never depended on that phase's rules, so there is
+//     nothing to have changed under it — adopt it in silence.
+//   - saved-only means the run has moved past a phase and can no longer reach it. Nothing it
+//     does now depends on those rules — drop them in silence.
+// Comparing the maps whole would report both as "changed" and turn every ordinary advance into
+// an escalation.
+export function changedFingerprintKeys(saved: GraphFingerprint, computed: GraphFingerprint): string[] {
+  return Object.keys(computed).filter((key) => key in saved && saved[key] !== computed[key]);
 }

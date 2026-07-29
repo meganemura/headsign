@@ -24,6 +24,9 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    graph_fingerprint: {},
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
     ...overrides,
   };
 }

@@ -488,3 +488,142 @@ test("version: 1 is rejected, and the message asks for the fields to be checked,
   assert.match(message, /'version: 1'/);
   assert.match(message, /fields checked against the current schema, not just the number changed/);
 });
+
+// --- graph fingerprint: which rules a run is depending on, hashed ---
+//
+// The fingerprint's job is to make a mid-run edit to the rules noticeable, so every test here
+// is about one of two failure modes: something that IS a rule change coming out invisible, or
+// something that is NOT one (a reworded description, a moved comment, a phase the run can no
+// longer reach) coming out as a change and making the report noise.
+
+function fingerprintOf(doc: Record<string, unknown>, from: string): Record<string, string> {
+  return workflow.graphFingerprint(doc as unknown as workflow.Workflow, from);
+}
+
+// The workflow the tests below mutate: three phases, and `docs` is reachable from `plan` only
+// by walking through `build`, which is what makes the reachability assertions meaningful.
+function pinnableWorkflow(): Record<string, unknown> {
+  return {
+    version: 0.1,
+    name: "demo",
+    entry: "plan",
+    phases: {
+      plan: { description: "plan", gate: { checks: [{ run: "true" }] }, on_pass: "build" },
+      build: { description: "build", gate: { checks: [{ run: "true" }] }, on_pass: "docs" },
+      docs: { description: "docs", gate: { checks: [{ run: "true" }] }, on_pass: "$end" },
+    },
+  };
+}
+
+// The one key every fingerprint has, whether or not the file declares `limits:`.
+test("graphFingerprint: keys are the phases reachable from where the run stands, plus $limits", () => {
+  assert.deepEqual(Object.keys(fingerprintOf(pinnableWorkflow(), "plan")), ["plan", "build", "docs", "$limits"]);
+});
+
+// ADR-0003 makes description advisory: it is prose for the agent and nothing routes on it, so
+// a run must be able to reword it mid-flight without anybody being asked about it.
+test("graphFingerprint: a description is not part of the pin — rewording one changes no hash", () => {
+  const before = fingerprintOf(pinnableWorkflow(), "plan");
+  const doc = pinnableWorkflow();
+  phases(doc).build.description = "completely different prose, at length";
+  assert.deepEqual(fingerprintOf(doc, "plan"), before);
+});
+
+// Every field the schema allows on a phase except description, one at a time. The point is the
+// exclusion list: a field nobody remembered to add to an allow-list would silently go unpinned,
+// and `clear:` is in the list because deleting a clear entry leaves the previous pass's verdict
+// on disk for the next gate to find — a way of loosening a gate without touching the gate.
+const PINNED_PHASE_EDITS: Record<string, (phase: Record<string, unknown>) => void> = {
+  gate: (p) => { p.gate = { checks: [{ run: "false" }] }; },
+  ready: (p) => { p.ready = "test -f ready"; },
+  clear: (p) => { p.clear = ["artifact.txt"]; },
+  // Same destination, spelled as a one-entry route list: reachability is untouched, so this
+  // isolates "the rule was rewritten" from "the graph now goes somewhere else".
+  on_pass: (p) => { p.on_pass = [{ to: "docs" }]; },
+  on_fail: (p) => { p.on_fail = "escalate"; },
+  max_attempts: (p) => { p.max_attempts = 3; },
+};
+
+for (const [field, edit] of Object.entries(PINNED_PHASE_EDITS)) {
+  test(`graphFingerprint: changing a phase's ${field} changes that phase's hash and no other`, () => {
+    const before = fingerprintOf(pinnableWorkflow(), "plan");
+    const doc = pinnableWorkflow();
+    edit(phases(doc).build);
+    const after = fingerprintOf(doc, "plan");
+    assert.notEqual(after.build, before.build, `${field} must be part of the pin`);
+    assert.equal(after.plan, before.plan);
+    assert.equal(after.docs, before.docs);
+    assert.equal(after.$limits, before.$limits);
+  });
+}
+
+test("graphFingerprint: changing limits changes $limits and no phase hash", () => {
+  const before = fingerprintOf(pinnableWorkflow(), "plan");
+  const doc = pinnableWorkflow();
+  doc.limits = { max_total_iterations: 20 };
+  const after = fingerprintOf(doc, "plan");
+  assert.notEqual(after.$limits, before.$limits);
+  for (const phase of ["plan", "build", "docs"]) assert.equal(after[phase], before[phase]);
+});
+
+// Declaring a ceiling has to read as a change to $limits rather than as a key appearing out of
+// nowhere: a key present on only one side is adopted in silence (see changedFingerprintKeys),
+// so a $limits that only exists once `limits:` is written would let the first ceiling through.
+test("graphFingerprint: a workflow with no limits still has a $limits hash, and it differs from one that declares limits", () => {
+  const bare = fingerprintOf(pinnableWorkflow(), "plan");
+  const doc = pinnableWorkflow();
+  doc.limits = { max_total_iterations: 20 };
+  assert.equal(typeof bare.$limits, "string");
+  assert.notEqual(fingerprintOf(doc, "plan").$limits, bare.$limits);
+});
+
+// ADR-0016 §5: what a run is owed is the definitions of the phases it has NOT ENTERED yet. A
+// phase it can no longer reach is one it can never be judged by again.
+test("graphFingerprint: phases unreachable from where the run stands are not keys at all", () => {
+  const fromDocs = fingerprintOf(pinnableWorkflow(), "docs");
+  assert.deepEqual(Object.keys(fromDocs), ["docs", "$limits"]);
+});
+
+test("graphFingerprint: an on_fail edge counts as reachable — a failure can still land there", () => {
+  const doc = pinnableWorkflow();
+  phases(doc).docs.on_fail = "plan";
+  assert.deepEqual(Object.keys(fingerprintOf(doc, "docs")).sort(), ["$limits", "build", "docs", "plan"]);
+});
+
+// The pin is of the parsed structure, not of the bytes: YAML does not make an author keep the
+// key order they typed, so reporting one would fire on a file nobody meaningfully changed.
+test("graphFingerprint: reordering a phase's keys changes nothing; reordering a gate's checks does", () => {
+  const before = fingerprintOf(pinnableWorkflow(), "plan");
+  const reordered = pinnableWorkflow();
+  const build = phases(reordered).build;
+  phases(reordered).build = { on_pass: build.on_pass, gate: build.gate, description: build.description };
+  assert.deepEqual(fingerprintOf(reordered, "plan"), before);
+
+  const twoChecks = pinnableWorkflow();
+  phases(twoChecks).build.gate = { checks: [{ run: "a" }, { run: "b" }] };
+  const swapped = pinnableWorkflow();
+  phases(swapped).build.gate = { checks: [{ run: "b" }, { run: "a" }] };
+  assert.notEqual(fingerprintOf(swapped, "plan").build, fingerprintOf(twoChecks, "plan").build, "checks run in order, so their order is a rule");
+});
+
+test("fingerprintDigest: same map, same digest; any differing hash gives a different one", () => {
+  const map = fingerprintOf(pinnableWorkflow(), "plan");
+  assert.equal(workflow.fingerprintDigest(map), workflow.fingerprintDigest({ ...map }));
+  assert.notEqual(workflow.fingerprintDigest({ ...map, build: "0".repeat(64) }), workflow.fingerprintDigest(map));
+});
+
+// --- changedFingerprintKeys: only what both sides know about ---
+
+test("changedFingerprintKeys: reports differing shared keys, in the computed map's (file) order", () => {
+  const saved = { plan: "p", build: "b", docs: "d", $limits: "l" };
+  const computed = { plan: "p", build: "B", docs: "D", $limits: "l" };
+  assert.deepEqual(workflow.changedFingerprintKeys(saved, computed), ["build", "docs"]);
+});
+
+test("changedFingerprintKeys: a key only the computed map has is not a difference — the run never depended on it", () => {
+  assert.deepEqual(workflow.changedFingerprintKeys({ plan: "p" }, { plan: "p", build: "b" }), []);
+});
+
+test("changedFingerprintKeys: a key only the saved map has is not a difference — the run can no longer reach it", () => {
+  assert.deepEqual(workflow.changedFingerprintKeys({ plan: "p", build: "b" }, { plan: "p" }), []);
+});

@@ -119,6 +119,23 @@ test("complete", () => {
   assert.equal(actual, expected);
 });
 
+// The count rides on COMPLETE because `.headsign/log` is gitignored: a run that loosened its
+// own gate and then finished must say so somewhere a pull-request reviewer will actually look.
+test("complete: a run that accepted no changes to its own rules prints exactly what it always printed", () => {
+  const unchanged = `COMPLETE\nWorkflow 'demo' finished.\n`;
+  assert.equal(render.complete("demo"), unchanged);
+  assert.equal(render.complete("demo", 0), unchanged);
+  assert.equal(render.complete("demo", 0), render.complete("demo"));
+});
+
+test("complete: one accepted change adds one line, in the singular", () => {
+  assert.equal(render.complete("demo", 1), `COMPLETE\nWorkflow 'demo' finished.\nThis run accepted 1 change to its own workflow rules while it was running.\n`);
+});
+
+test("complete: more than one accepted change is plural", () => {
+  assert.equal(render.complete("demo", 2), `COMPLETE\nWorkflow 'demo' finished.\nThis run accepted 2 changes to its own workflow rules while it was running.\n`);
+});
+
 test("escalate", () => {
   const actual = render.escalate("build: max_attempts (3) exhausted");
   const expected = `ESCALATE build: max_attempts (3) exhausted\nHuman judgment needed. Report the situation to the user and ask for instructions.\n`;
@@ -268,6 +285,54 @@ test("statusRunning: neither driver value makes a claim about who is reading the
   }
 });
 
+// --- status: the graph pin, said only when there is something to say ---
+
+test("statusRunning: a run whose rules never moved under it prints byte-identical output to before the pin existed", () => {
+  const base = { phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false, workflowName: "demo", lastFailure: null } as const;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n`;
+  assert.equal(render.statusRunning({ ...base, driver: "a delegated agent" }), expected);
+  assert.equal(render.statusRunning({ ...base, driver: "a delegated agent", acceptedGraphChanges: 0, graphChangeReported: false }), expected);
+});
+
+test("statusRunning: accepted changes are one line after the driver line, singular for one", () => {
+  const base = { phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo", driver: "a delegated agent" } as const;
+  assert.equal(
+    render.statusRunning({ ...base, acceptedGraphChanges: 1 }),
+    `RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\ngraph: 1 accepted change to the workflow's rules during this run\n`,
+  );
+  assert.equal(
+    render.statusRunning({ ...base, acceptedGraphChanges: 2 }),
+    `RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\ngraph: 2 accepted changes to the workflow's rules during this run\n`,
+  );
+});
+
+// The standing question, and it has to name both answers: a reader who is only told the file
+// changed cannot tell that running `next` again is what accepts it.
+test("statusRunning: a reported-but-unaccepted change names both ways out", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", graphChangeReported: true,
+  });
+  assert.equal(
+    actual,
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n",
+  );
+});
+
+test("statusRunning: history first, then the outstanding question", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", acceptedGraphChanges: 2, graphChangeReported: true,
+  });
+  assert.equal(
+    actual,
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "graph: 2 accepted changes to the workflow's rules during this run\n" +
+      "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n",
+  );
+});
+
 test("statusTerminal: complete has no reason line", () => {
   const actual = render.statusTerminal("complete", "demo", null);
   assert.equal(actual, `COMPLETE\nworkflow: demo\n`);
@@ -302,6 +367,9 @@ function baseState(overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    graph_fingerprint: {},
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
     ...overrides,
   };
 }
@@ -370,6 +438,18 @@ test("logLine: ceiling has its own event word and carries the reason like an end
   const line = render.logLine("ts", { kind: "CEILING", reason }, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 5 }));
   assert.equal(line, `ts ceiling build a=1 i=5 reason="${reason}"\n`);
   assert.doesNotMatch(line, /escalate/);
+});
+
+// One event word for both dispositions (a reader following a run greps `graph-changed` once),
+// and the keys unquoted because they are identifiers rather than free text.
+test("logLine: graph-changed names the disposition and every key that moved", () => {
+  const line = render.logLine("ts", { kind: "GRAPH_CHANGED", disposition: "reported", keys: ["implement", "review"] }, baseState({ phase: "review", attempts: { review: 1 }, total_iterations: 7 }));
+  assert.equal(line, `ts graph-changed review a=1 i=7 state=reported phases=implement,review\n`);
+});
+
+test("logLine: an accepted ceiling change is the same line with a different disposition", () => {
+  const line = render.logLine("ts", { kind: "GRAPH_CHANGED", disposition: "accepted", keys: ["$limits"] }, baseState({ phase: "review", attempts: { review: 1 }, total_iterations: 7 }));
+  assert.equal(line, `ts graph-changed review a=1 i=7 state=accepted phases=$limits\n`);
 });
 
 test("logLine: abort", () => {

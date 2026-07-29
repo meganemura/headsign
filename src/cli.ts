@@ -87,7 +87,7 @@ function printOutcome(outcome: engine.Outcome, workflowName: string, ctx?: { wf:
     case "ADVANCE":
       return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, outcome.routedBy), 0);
     case "COMPLETE":
-      return exitAfter(render.complete(workflowName), 0);
+      return exitAfter(render.complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
       return exitAfter(render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure }), 1);
     case "ESCALATE":
@@ -193,6 +193,8 @@ function reportStatus(result: engine.StatusResult): never {
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet — no agent has claimed this run",
+          acceptedGraphChanges: result.acceptedGraphChanges,
+          graphChangeReported: result.graphChangeReported,
         }),
         0,
       );

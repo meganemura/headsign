@@ -65,8 +65,17 @@ export function retry(o: Failure & { phase: string; attempt: number; maxAttempts
   return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)}) ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
 }
 
-export function complete(name: string): string {
-  return `COMPLETE\nWorkflow '${name}' finished.\n`;
+// The second line exists only for a run that rewrote its own workflow while it was running
+// (ADR-0016 §5 allows that, and headsign does not forbid it). It says so HERE, on the run's
+// final answer, because `.headsign/log` is gitignored: a count that lived only in the log would
+// never reach the person reading the pull request. An undefined or zero count adds nothing —
+// the COMPLETE of a run that changed nothing is byte-identical to the one headsign has always
+// printed.
+export function complete(name: string, acceptedGraphChanges?: number): string {
+  const accepted = acceptedGraphChanges ?? 0;
+  const changeLine =
+    accepted > 0 ? `This run accepted ${accepted} ${accepted === 1 ? "change" : "changes"} to its own workflow rules while it was running.\n` : "";
+  return `COMPLETE\nWorkflow '${name}' finished.\n${changeLine}`;
 }
 
 export function escalate(reason: string): string {
@@ -137,12 +146,26 @@ export function statusRunning(o: {
   // has been claimed — which is exactly the question `headsign claim`'s two-beat handshake
   // leaves open when it fails quietly (see cli.ts's reportStatus for why the line is kept).
   driver: "a delegated agent" | "not delegated yet — no agent has claimed this run";
+  // The graph pin, and both are optional: a run whose workflow never changed under it says
+  // nothing about it at all, and its status output is byte-identical to what it always was.
+  // `acceptedGraphChanges` is history (how many changes this run has taken on board);
+  // `graphChangeReported` is a standing question (one was shown and has not been accepted).
+  acceptedGraphChanges?: number;
+  graphChangeReported?: boolean;
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure
     ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds)}) ---\n${o.lastFailure.outputTail}\n`
     : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n`;
+  // After the driver line rather than beside the workflow line: the last-failure block's slot
+  // (between `workflow:` and `driver:`) is part of this contract already, and an addendum that
+  // only some runs have is safer at the end than wedged into a documented gap. History first,
+  // then the outstanding question — the reader wants the thing that needs an answer last.
+  const accepted = o.acceptedGraphChanges ?? 0;
+  const acceptedLine =
+    accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run\n` : "";
+  const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n" : "";
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${acceptedLine}${reportedLine}`;
 }
 
 export function statusTerminal(status: "complete" | "escalated" | "aborted", workflowName: string, endReason: string | null): string {
@@ -168,6 +191,15 @@ export type LogEvent =
   // after someone raises the limit. Logging it as `escalate` would make every reader of a log
   // that stops here — and of one that carries on past it — read an ending that never happened.
   | { kind: "CEILING"; reason: string }
+  // The workflow's own rules moved under a running run (engine.ts's reconcileGraphPin). One
+  // event word for both dispositions, distinguished in the detail, because they are two
+  // readings of the same finding and a reader following a run wants them on one grep. Not an
+  // `escalate`, for the same reason `ceiling` is not: the reported disposition prints as
+  // ESCALATE but ends nothing.
+  // `disposition` rather than `state` even though it PRINTS as `state=`: `state` in this file
+  // means the run record, which logLine also takes, and one word for two things across one
+  // function signature is how a log line ends up reporting the wrong one.
+  | { kind: "GRAPH_CHANGED"; disposition: "reported" | "accepted"; keys: string[] }
   | { kind: "PAUSED"; note: string }
   | { kind: "STALLED" }
   // The claim handshake's adoption event (ADR-0009/0010) — a third hook-boundary exception
@@ -209,6 +241,8 @@ function eventName(event: LogEvent): string {
       return "abort";
     case "CEILING":
       return "ceiling";
+    case "GRAPH_CHANGED":
+      return "graph-changed";
     case "PAUSED":
       return "paused";
     case "STALLED":
@@ -246,6 +280,13 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
     // reader who knows one line format knows all three.
     case "CEILING":
       return `reason="${event.reason}"`;
+    case "GRAPH_CHANGED":
+      // Which keys moved, comma-separated and unquoted: they are identifiers (phase names and
+      // `$limits`), not free text like a reason, and this is the one record of WHAT changed
+      // that outlives the lap. A reported line is written every time a difference is reported,
+      // the same way `ceiling` repeats at the wall: each one was a real question really asked,
+      // and collapsing them would understate how much a run's rules moved under it.
+      return `state=${event.disposition} phases=${event.keys.join(",")}`;
     case "PAUSED":
       return `note="${event.note}"`;
     case "STALLED":

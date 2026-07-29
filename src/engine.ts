@@ -54,7 +54,11 @@ export type Outcome =
   // answered, or that nothing did and the default was taken. Carried verbatim for render.ts
   // to print and log — the engine decides nothing from it.
   | { kind: "ADVANCE"; phase: string; description: string; failure?: FailureInfo & { routedTo: string }; routedBy?: { when: string } | { default: true } }
-  | { kind: "COMPLETE" }
+  // `acceptedGraphChanges` is set only when this run accepted at least one change to its own
+  // workflow rules while it was running (see reconcileGraphPin below). Optional, and set
+  // through the same spread `routedBy` uses, so a run that never rewrote its workflow prints
+  // the COMPLETE it always printed, to the byte.
+  | { kind: "COMPLETE"; acceptedGraphChanges?: number }
   | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo }
   | { kind: "ESCALATE"; reason: string }
   | { kind: "ABORT"; reason: string }
@@ -117,6 +121,40 @@ function describePhase(workflow: Workflow, phase: string): string {
   return p.description;
 }
 
+// --- reading the graph pin off a run record ---
+//
+// The three fields are read through these and never straight off the record. A state.json
+// written before they existed has none of them, and `undefined` compares unequal to
+// everything: a bare read would report a change against a run that never pinned anything, and
+// would arithmetic a count into NaN. The same guards also absorb a hand-edited record, which
+// is why they do not go away when the transitional half of the tolerance does — state.ts's
+// declaration says when that is.
+
+function recordedFingerprint(state: State): workflowMod.GraphFingerprint | null {
+  const recorded: unknown = state.graph_fingerprint;
+  // null means "this run has no pin", which is not the same as "its pin is empty" — the empty
+  // map is a legitimate pin (a workflow whose every phase is unreachable cannot arise, but the
+  // distinction is what the migration branch turns on).
+  return typeof recorded === "object" && recorded !== null && !Array.isArray(recorded) ? (recorded as workflowMod.GraphFingerprint) : null;
+}
+
+function recordedGraphMarker(state: State): string | null {
+  return typeof state.graph_change_reported === "string" ? state.graph_change_reported : null;
+}
+
+function acceptedGraphChanges(state: State): number {
+  const recorded: unknown = state.accepted_graph_changes;
+  return typeof recorded === "number" && Number.isFinite(recorded) ? recorded : 0;
+}
+
+// The COMPLETE arm's optional count, spread in the way `routedBy` is spread into ADVANCE: an
+// ABSENT key rather than a zero, so a run that never rewrote its own workflow produces the
+// outcome — and therefore the output — it produced before any of this existed.
+function graphChangeNote(state: State): { acceptedGraphChanges?: number } {
+  const accepted = acceptedGraphChanges(state);
+  return accepted > 0 ? { acceptedGraphChanges: accepted } : {};
+}
+
 export function checkIterationLimit(workflow: Workflow, state: State): CeilingOutcome | null {
   // A finished run has no allowance left to be over or under, and the reason string below
   // would tell a reader "the run is still open" about a run that is not.
@@ -140,7 +178,10 @@ export function terminalOutcome(state: State): Outcome {
   if (state.status === "running") {
     refuse("terminalOutcome", "run is still running; there is no terminal outcome to report");
   }
-  if (state.status === "complete") return { kind: "COMPLETE" };
+  // A reprint says exactly what the run said when it finished, accepted-changes line included:
+  // the run record still holds the count, and a COMPLETE that mentions the rewrites once and
+  // then stops mentioning them would make asking twice a way to lose the fact.
+  if (state.status === "complete") return { kind: "COMPLETE", ...graphChangeNote(state) };
   if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
   return { kind: "ABORT", reason: state.end_reason ?? "" };
 }
@@ -185,7 +226,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     const { to, routedBy } = passTarget(phase.on_pass, route);
     if (to === "$end") {
       next.status = "complete";
-      return { state: next, outcome: { kind: "COMPLETE" } };
+      return { state: next, outcome: { kind: "COMPLETE", ...graphChangeNote(next) } };
     }
     next.phase = to;
     // Spread rather than always setting the key: a string-form `on_pass` must produce the
@@ -225,7 +266,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   next.last_failure = null;
   if (onFail === "$end") {
     next.status = "complete";
-    return { state: next, outcome: { kind: "COMPLETE" } };
+    return { state: next, outcome: { kind: "COMPLETE", ...graphChangeNote(next) } };
   }
   // `escalate` is the only end-the-run token on the failure path (ADR-0014). A run ends as
   // ABORT only when a person says so through `headsign abort`, which this module writes
@@ -313,6 +354,12 @@ export type StatusResult =
       // the CLI can never resolve for itself, so this reports the one thing the CLI can
       // honestly know. The words that carry it to the reader are cli.ts's.
       delegated: boolean;
+      // The graph pin as an observation: how many changes to its own rules this run has
+      // accepted, and whether one is reported but not yet accepted. Read-only like everything
+      // else here — `status` never reconciles the pin, because reconciling can WRITE (accept a
+      // change, clear a marker) and the observation window judges nothing (ADR-0002/0008).
+      acceptedGraphChanges: number;
+      graphChangeReported: boolean;
     };
 
 // Shared by next, claim and status (ADR-0004/0008): all three are cwd-only lookups of the
@@ -392,6 +439,12 @@ export function start(cwd: string, workflowPath: string, nowIso: string): StartR
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
     driver_agent: null,
+    // The pin is taken here and nowhere else at run start: from the entry phase, because that
+    // is where the run is about to stand and the fingerprint covers what is reachable from
+    // where it stands. Nothing is outstanding and nothing has been accepted yet.
+    graph_fingerprint: workflowMod.graphFingerprint(wf, wf.entry),
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
   };
   state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -477,19 +530,113 @@ function unrunnableMessage(state: State, what: string, reason: string): string {
   );
 }
 
-// The real evaluation (phase-missing guard, iteration limit, ready probe, gate,
+// What the graph pin decides for this lap: either the lap goes on (with the state it must go
+// on WITH — see reconcileGraphPin) or the change is handed to a person and the lap is over.
+// The reported arm is narrowed to ESCALATE by the same idiom CeilingOutcome uses, but spelled
+// out rather than reusing that alias: this report is not the ceiling, and a type named for the
+// ceiling appearing here would say it was.
+type PinResult = { kind: "CONTINUE"; state: State } | { kind: "REPORT"; outcome: Extract<Outcome, { kind: "ESCALATE" }> };
+
+// Same skeleton as the ceiling's reason, because it is the same kind of answer: an ESCALATE
+// that ends nothing. So it has to name both ways forward — put the file back, or ask again —
+// and say what asking again will cost, since accepting is counted and reported at the end.
+// Deliberately one line, no embedded newline: it is the tail of ESCALATE's token line
+// (ADR-0002) and one `.headsign/log` record.
+function graphChangedReason(state: State, changed: string[]): string {
+  const noun = changed.length === 1 ? "phase" : "phases";
+  const named = changed.map((key) => `'${key}'`).join(", ");
+  return (
+    `${state.phase}: the workflow's rules changed under this run (${noun} ${named}) — the run is still open and nothing was counted: ` +
+    `restore '${state.workflow_path}' to what this run has been running, or run \`headsign next\` again to accept the change and continue. ` +
+    "An accepted change is counted and reported at COMPLETE."
+  );
+}
+
+// Compare the rules this run pinned against the rules now on disk, and decide the lap's fate.
+// Four answers, and the reasoning behind each is the whole of this feature:
+//
+//   1. Nothing pinned (a run older than these fields) or nothing this run depends on moved:
+//      carry on. The pin follows the reachable set silently — see changedFingerprintKeys for
+//      why a key on one side only is not a difference. If a report was outstanding and the
+//      difference is now gone, somebody put the file back: clear the marker and say nothing.
+//      Restoring must be free and silent, or the most correct response to the report is the
+//      one that costs the most.
+//   2. Only `$limits` moved: accept it on the spot, count it, and CARRY ON — no report. The
+//      ceiling's own ESCALATE was already the human beat (ADR-0017): a person read the wall,
+//      decided the run deserved more room, and raised it. Asking them to confirm the decision
+//      they just made would make the documented way to resume cost two laps and teach everyone
+//      that the report is noise.
+//   3. A phase moved and this exact difference has not been reported yet: report it. Write the
+//      MARKER ONLY — not the fingerprint, not the counters, not the phase. Leaving the
+//      fingerprint on the rules the run has been running is what makes (1) reachable: update
+//      it here and a restored file becomes a second difference, escalating again and counting
+//      the correction as a change.
+//   4. A phase moved and this exact difference is the one already reported: accept it, count
+//      it, clear the marker, carry on. The person has now been shown it and asked again.
+//
+// The state this returns is the state the rest of the lap must use. step() builds its answer
+// from the state it is handed, so handing it the pre-acceptance object would write the
+// acceptance straight back out of existence.
+function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: string): PinResult {
+  const computed = workflowMod.graphFingerprint(wf, current.phase);
+  const saved = recordedFingerprint(current);
+  const marker = recordedGraphMarker(current);
+  const accepted = acceptedGraphChanges(current);
+  const changed = saved === null ? [] : workflowMod.changedFingerprintKeys(saved, computed);
+  // Adopting `computed` is how "a key on only one side is not a difference" is actually
+  // carried out: the reachable set moves as the run walks, and the pin moves with it.
+  const adopt = (count: number): State => ({
+    ...current,
+    graph_fingerprint: computed,
+    graph_change_reported: null,
+    accepted_graph_changes: count,
+  });
+
+  if (changed.length === 0) {
+    if (marker === null) return { kind: "CONTINUE", state: adopt(accepted) };
+    const restored = adopt(accepted);
+    state.writeState(cwd, restored);
+    return { kind: "CONTINUE", state: restored };
+  }
+
+  const digest = workflowMod.fingerprintDigest(computed);
+  const limitsOnly = changed.every((key) => key === workflowMod.LIMITS_KEY);
+  if (limitsOnly || marker === digest) {
+    const accepting = adopt(accepted + 1);
+    state.writeState(cwd, accepting);
+    state.appendLog(cwd, render.logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "accepted", keys: changed }, accepting));
+    return { kind: "CONTINUE", state: accepting };
+  }
+
+  const reporting: State = { ...current, graph_change_reported: digest };
+  state.writeState(cwd, reporting);
+  state.appendLog(cwd, render.logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "reported", keys: changed }, reporting));
+  return { kind: "REPORT", outcome: { kind: "ESCALATE", reason: graphChangedReason(current, changed) } };
+}
+
+// The real evaluation (phase-missing guard, graph pin, iteration limit, ready probe, gate,
 // step/writeState), run while next() holds the lock. Private, and reachable only from behind
 // that guard sequence: nothing here re-checks that the run is still going, because the only
 // caller has just done it against a fresh read.
-function evaluateNext(cwd: string, wf: Workflow, current: State, nowIso: string): NextResult {
-  if (!wf.phases[current.phase]) {
+function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string): NextResult {
+  if (!wf.phases[incoming.phase]) {
     return {
       kind: "REFUSED",
       message:
-        `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. ` +
+        `workflow '${incoming.workflow_path}' no longer defines phase '${incoming.phase}', which this run is currently on. ` +
         `Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`,
     };
   }
+
+  // The graph pin, and its position is the whole of it: after the phase-missing guard (which
+  // is about the phase the run is standing on, not about the rules) and before EVERYTHING that
+  // reads a rule. The ceiling reads `limits`, the readiness probe and the gate read the phase,
+  // step() reads its edges — every one of them would be acting on the very definitions this is
+  // about to check. Check the graph before using the graph. Where in the lap this sits is a
+  // routing rule, so it belongs to this module (ADR-0018).
+  const pin = reconcileGraphPin(cwd, wf, incoming, nowIso);
+  if (pin.kind === "REPORT") return { kind: "ANSWERED", outcome: pin.outcome, workflowName: wf.name, wf };
+  const current = pin.state;
 
   // The ceiling (ADR-0017): answered as ESCALATE, but no writeState — the run stays
   // `running`, so raising `limits.max_total_iterations` and running `next` again resumes
@@ -657,5 +804,7 @@ export function status(cwd: string): StatusResult {
     workflowName: current.workflow,
     lastFailure,
     delegated: driverAgent !== null,
+    acceptedGraphChanges: acceptedGraphChanges(current),
+    graphChangeReported: recordedGraphMarker(current) !== null,
   };
 }

@@ -68,6 +68,42 @@ export interface State {
   // non-string *corrupt*-value half of the tolerance is not transitional and stays — a
   // hand-edited state.json is always possible.
   driver_agent: string | null;
+
+  // --- the graph pin: the rules this run has been running under ---
+  //
+  // A run re-reads its workflow file every lap and may rewrite it as it goes (ADR-0016 §5,
+  // ADR-0017). These three fields are what makes such a change VISIBLE; nothing here prevents
+  // one, and nothing could — anything that can edit the workflow can edit this file too.
+  //
+  // `graph_fingerprint` is workflow.ts's name -> hash map for the phases this run can still
+  // reach, plus `$limits`. `graph_change_reported` is the digest of the changed map a person
+  // has already been shown and has not yet accepted (null when there is nothing outstanding) —
+  // a digest and not a flag, so a second edit made after the report cannot ride in on the
+  // first one's acknowledgement. `accepted_graph_changes` is how many such changes this run
+  // has accepted, and it is the number COMPLETE reports: `.headsign/log` is gitignored, so a
+  // count that only lived there would never reach the person reading the pull request.
+  //
+  // engine.ts owns when these are compared and what happens on a difference; render.ts owns
+  // the wording. This module owns only the shape.
+  //
+  // A state.json written before these fields existed simply lacks all three; readers must
+  // treat a missing/non-map `graph_fingerprint` as "not pinned yet" (adopt what is on disk in
+  // silence — a run that never pinned anything cannot have had it changed under it), a
+  // non-string `graph_change_reported` as null, and a non-number `accepted_graph_changes` as
+  // 0. Same tolerant idiom as `driver_agent` above and `stop_nudges`.
+  //
+  // The missing-field half of that tolerance is TRANSITIONAL, on exactly the criterion written
+  // for `driver_agent` above and repeated here rather than pointed at, because the two will
+  // not expire together: it can go once no run started before the release that ADDED THESE
+  // THREE FIELDS can plausibly still be in progress — i.e. that release has shipped and enough
+  // time has passed that any older run has finished, been aborted, or been abandoned. A run is
+  // one work session in one directory, not a long-lived record, so one release cycle is ample.
+  // Removing it means dropping the missing-field arm of engine.ts's three reader helpers
+  // (recordedFingerprint / recordedGraphMarker / acceptedGraphChanges) — the corrupt-value arm
+  // is not transitional and stays.
+  graph_fingerprint: Record<string, string>;
+  graph_change_reported: string | null;
+  accepted_graph_changes: number;
 }
 
 export function statePath(cwd: string): string {

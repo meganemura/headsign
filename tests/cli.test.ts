@@ -2122,6 +2122,68 @@ test("status: a state.json still carrying the pre-rename driver_session field re
   assert.doesNotMatch(result.stdout, /session-mine/);
 });
 
+// --- the graph pin, end to end through the CLI (ADR-0016 §5, ADR-0017) ---
+//
+// A run may rewrite the workflow it is walking; what it may not do is have that pass
+// unmentioned. These two pin the whole path — verdict, exit code, `status`, and the line
+// COMPLETE ends with — because every module in it is allowed to be right on its own while the
+// wiring between them drops the fact.
+
+// Same two phases as TWO_PHASE_WORKFLOW, with `build`'s gate loosened from a real file check
+// to one that cannot fail: exactly the edit that is indistinguishable, without a pin, from the
+// ceiling-raising ADR-0017 recommends.
+const TWO_PHASE_WORKFLOW_LOOSENED = TWO_PHASE_WORKFLOW.replace(`run: "test -f marker.txt"`, `run: "true"`);
+
+test("next: a change to the current phase's rules mid-run escalates without ending the run, and `status` keeps asking until it is accepted", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW_LOOSENED);
+
+  const escalated = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(escalated.status, 2);
+  assert.match(escalated.stdout, /^ESCALATE build: the workflow's rules changed under this run \(phase 'build'\) — the run is still open and nothing was counted: /);
+  assert.match(escalated.stdout, /run `headsign next` again to accept the change and continue/);
+  assert.equal(readState(dir).status, "running", "an ESCALATE that ends nothing");
+
+  const asking = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(asking.status, 0);
+  assert.match(asking.stdout, /^graph: changed since this run accepted it — restore the file, or `headsign next` to accept$/m);
+  assert.doesNotMatch(asking.stdout, /accepted change/, "nothing is counted until it is accepted");
+
+  const accepting = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(accepting.status, 0);
+  assert.match(accepting.stdout, /^ADVANCE verify\n/, "the accepted gate ran in the accepting lap");
+
+  const after = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.match(after.stdout, /^graph: 1 accepted change to the workflow's rules during this run$/m);
+  assert.doesNotMatch(after.stdout, /changed since this run accepted it/);
+  assert.deepEqual(
+    readLog(dir).filter((l) => l.includes(" graph-changed ")).map((l) => l.split(" ").slice(-2).join(" ")),
+    ["state=reported phases=build", "state=accepted phases=build"],
+  );
+});
+
+test("next: COMPLETE names how many changes the run accepted to its own rules, and says nothing when there were none", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW_LOOSENED);
+  run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // ESCALATE: the change is reported
+  run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // accepted, then ADVANCE verify
+
+  const done = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(done.status, 0);
+  assert.equal(done.stdout, `COMPLETE\nWorkflow 'demo' finished.\nThis run accepted 1 change to its own workflow rules while it was running.\n`);
+
+  const untouched = initRepo();
+  writeWorkflow(untouched, TWO_PHASE_WORKFLOW_LOOSENED);
+  run(["start"], { cwd: untouched, env: NO_OBSERVER_ENV });
+  run(["next"], { cwd: untouched, env: NO_OBSERVER_ENV }); // ADVANCE verify
+  const plain = run(["next"], { cwd: untouched, env: NO_OBSERVER_ENV });
+  assert.equal(plain.stdout, `COMPLETE\nWorkflow 'demo' finished.\n`, "a run that changed nothing prints what it always printed");
+});
+
 test("status: complete -> COMPLETE token, workflow line, no reason line, exit 0", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);

@@ -7370,6 +7370,7 @@ import fs5 from "node:fs";
 // src/workflow.ts
 var import_yaml = __toESM(require_dist(), 1);
 import fs from "node:fs";
+import crypto from "node:crypto";
 var ON_FAIL_TOKENS = /* @__PURE__ */ new Set(["retry", "$end", "escalate"]);
 var SCHEMA_VERSION = 0.1;
 var ALLOWED_KEYS = {
@@ -7559,6 +7560,42 @@ function unboundedPassCycles(entry, phases, names) {
     );
   }
   return warnings;
+}
+var LIMITS_KEY = "$limits";
+var UNPINNED_PHASE_KEY = "description";
+function sha256(text) {
+  return crypto.createHash("sha256").update(text).digest("hex");
+}
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!isMap(value)) return value;
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) {
+    if (value[key] === void 0) continue;
+    sorted[key] = canonical(value[key]);
+  }
+  return sorted;
+}
+function hashOf(value) {
+  return sha256(JSON.stringify(canonical(value) ?? null));
+}
+function graphFingerprint(wf, from) {
+  const names = new Set(Object.keys(wf.phases));
+  const reachable = reachableFrom(from, wf.phases, names);
+  const fingerprint = {};
+  for (const name of Object.keys(wf.phases)) {
+    if (!reachable.has(name)) continue;
+    const { [UNPINNED_PHASE_KEY]: _advisory, ...pinned } = wf.phases[name];
+    fingerprint[name] = hashOf(pinned);
+  }
+  fingerprint[LIMITS_KEY] = hashOf(wf.limits);
+  return fingerprint;
+}
+function fingerprintDigest(fingerprint) {
+  return hashOf(fingerprint);
+}
+function changedFingerprintKeys(saved, computed) {
+  return Object.keys(computed).filter((key) => key in saved && saved[key] !== computed[key]);
 }
 
 // src/state.ts
@@ -7757,10 +7794,13 @@ ${o.outputTail}
 Fix the failure above, then run \`headsign next\` again.
 `;
 }
-function complete(name) {
+function complete(name, acceptedGraphChanges2) {
+  const accepted = acceptedGraphChanges2 ?? 0;
+  const changeLine = accepted > 0 ? `This run accepted ${accepted} ${accepted === 1 ? "change" : "changes"} to its own workflow rules while it was running.
+` : "";
   return `COMPLETE
 Workflow '${name}' finished.
-`;
+${changeLine}`;
 }
 function escalate(reason) {
   return `ESCALATE ${reason}
@@ -7797,10 +7837,14 @@ function statusRunning(o) {
   const lastFailureBlock = o.lastFailure ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds)}) ---
 ${o.lastFailure.outputTail}
 ` : "";
+  const accepted = o.acceptedGraphChanges ?? 0;
+  const acceptedLine = accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run
+` : "";
+  const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next` to accept\n" : "";
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-`;
+${acceptedLine}${reportedLine}`;
 }
 function statusTerminal(status2, workflowName, endReason) {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}
@@ -7835,6 +7879,8 @@ function eventName(event) {
       return "abort";
     case "CEILING":
       return "ceiling";
+    case "GRAPH_CHANGED":
+      return "graph-changed";
     case "PAUSED":
       return "paused";
     case "STALLED":
@@ -7863,6 +7909,8 @@ function logDetail(event, prevPhase) {
     // reader who knows one line format knows all three.
     case "CEILING":
       return `reason="${event.reason}"`;
+    case "GRAPH_CHANGED":
+      return `state=${event.disposition} phases=${event.keys.join(",")}`;
     case "PAUSED":
       return `note="${event.note}"`;
     case "STALLED":
@@ -7887,6 +7935,21 @@ function describePhase(workflow, phase) {
   }
   return p.description;
 }
+function recordedFingerprint(state) {
+  const recorded = state.graph_fingerprint;
+  return typeof recorded === "object" && recorded !== null && !Array.isArray(recorded) ? recorded : null;
+}
+function recordedGraphMarker(state) {
+  return typeof state.graph_change_reported === "string" ? state.graph_change_reported : null;
+}
+function acceptedGraphChanges(state) {
+  const recorded = state.accepted_graph_changes;
+  return typeof recorded === "number" && Number.isFinite(recorded) ? recorded : 0;
+}
+function graphChangeNote(state) {
+  const accepted = acceptedGraphChanges(state);
+  return accepted > 0 ? { acceptedGraphChanges: accepted } : {};
+}
 function checkIterationLimit(workflow, state) {
   if (state.status !== "running") {
     refuse("checkIterationLimit", `run is already ${state.status}; ask terminalOutcome instead`);
@@ -7900,7 +7963,7 @@ function terminalOutcome(state) {
   if (state.status === "running") {
     refuse("terminalOutcome", "run is still running; there is no terminal outcome to report");
   }
-  if (state.status === "complete") return { kind: "COMPLETE" };
+  if (state.status === "complete") return { kind: "COMPLETE", ...graphChangeNote(state) };
   if (state.status === "escalated") return { kind: "ESCALATE", reason: state.end_reason ?? "" };
   return { kind: "ABORT", reason: state.end_reason ?? "" };
 }
@@ -7924,7 +7987,7 @@ function step(workflow, state, gateResult, route) {
     const { to, routedBy } = passTarget(phase.on_pass, route);
     if (to === "$end") {
       next2.status = "complete";
-      return { state: next2, outcome: { kind: "COMPLETE" } };
+      return { state: next2, outcome: { kind: "COMPLETE", ...graphChangeNote(next2) } };
     }
     next2.phase = to;
     return { state: next2, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...routedBy && { routedBy } } };
@@ -7955,7 +8018,7 @@ function step(workflow, state, gateResult, route) {
   next2.last_failure = null;
   if (onFail === "$end") {
     next2.status = "complete";
-    return { state: next2, outcome: { kind: "COMPLETE" } };
+    return { state: next2, outcome: { kind: "COMPLETE", ...graphChangeNote(next2) } };
   }
   if (onFail === "escalate") {
     const reason = `${phaseName}: gate failed (on_fail: escalate)`;
@@ -8029,7 +8092,13 @@ function start2(cwd, workflowPath, nowIso) {
     last_failure: null,
     end_reason: null,
     stop_nudges: 0,
-    driver_agent: null
+    driver_agent: null,
+    // The pin is taken here and nowhere else at run start: from the entry phase, because that
+    // is where the run is about to stand and the fingerprint covers what is reachable from
+    // where it stands. Nothing is outstanding and nothing has been accepted yet.
+    graph_fingerprint: graphFingerprint(wf, wf.entry),
+    graph_change_reported: null,
+    accepted_graph_changes: 0
   };
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
@@ -8064,13 +8133,52 @@ function next(cwd, nowIso) {
 function unrunnableMessage(state, what, reason) {
   return `phase '${state.phase}': could not run ${what} \u2014 ${reason}. headsign has no verdict to act on, so the run has not moved and no attempt was spent. Fix that command in '${state.workflow_path}', or the environment it needs, and run \`headsign next\` again.`;
 }
-function evaluateNext(cwd, wf, current, nowIso) {
-  if (!wf.phases[current.phase]) {
+function graphChangedReason(state, changed) {
+  const noun = changed.length === 1 ? "phase" : "phases";
+  const named = changed.map((key) => `'${key}'`).join(", ");
+  return `${state.phase}: the workflow's rules changed under this run (${noun} ${named}) \u2014 the run is still open and nothing was counted: restore '${state.workflow_path}' to what this run has been running, or run \`headsign next\` again to accept the change and continue. An accepted change is counted and reported at COMPLETE.`;
+}
+function reconcileGraphPin(cwd, wf, current, nowIso) {
+  const computed = graphFingerprint(wf, current.phase);
+  const saved = recordedFingerprint(current);
+  const marker = recordedGraphMarker(current);
+  const accepted = acceptedGraphChanges(current);
+  const changed = saved === null ? [] : changedFingerprintKeys(saved, computed);
+  const adopt = (count) => ({
+    ...current,
+    graph_fingerprint: computed,
+    graph_change_reported: null,
+    accepted_graph_changes: count
+  });
+  if (changed.length === 0) {
+    if (marker === null) return { kind: "CONTINUE", state: adopt(accepted) };
+    const restored = adopt(accepted);
+    writeState(cwd, restored);
+    return { kind: "CONTINUE", state: restored };
+  }
+  const digest = fingerprintDigest(computed);
+  const limitsOnly = changed.every((key) => key === LIMITS_KEY);
+  if (limitsOnly || marker === digest) {
+    const accepting = adopt(accepted + 1);
+    writeState(cwd, accepting);
+    appendLog(cwd, logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "accepted", keys: changed }, accepting));
+    return { kind: "CONTINUE", state: accepting };
+  }
+  const reporting = { ...current, graph_change_reported: digest };
+  writeState(cwd, reporting);
+  appendLog(cwd, logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "reported", keys: changed }, reporting));
+  return { kind: "REPORT", outcome: { kind: "ESCALATE", reason: graphChangedReason(current, changed) } };
+}
+function evaluateNext(cwd, wf, incoming, nowIso) {
+  if (!wf.phases[incoming.phase]) {
     return {
       kind: "REFUSED",
-      message: `workflow '${current.workflow_path}' no longer defines phase '${current.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
+      message: `workflow '${incoming.workflow_path}' no longer defines phase '${incoming.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
     };
   }
+  const pin = reconcileGraphPin(cwd, wf, incoming, nowIso);
+  if (pin.kind === "REPORT") return { kind: "ANSWERED", outcome: pin.outcome, workflowName: wf.name, wf };
+  const current = pin.state;
   const limitOutcome = checkIterationLimit(wf, current);
   if (limitOutcome) {
     appendLog(cwd, logLine(nowIso, { kind: "CEILING", reason: limitOutcome.reason }, current));
@@ -8156,7 +8264,9 @@ function status(cwd) {
     attemptUnknown: phase === void 0,
     workflowName: current.workflow,
     lastFailure,
-    delegated: driverAgent !== null
+    delegated: driverAgent !== null,
+    acceptedGraphChanges: acceptedGraphChanges(current),
+    graphChangeReported: recordedGraphMarker(current) !== null
   };
 }
 
@@ -8329,7 +8439,7 @@ function printOutcome(outcome, workflowName, ctx) {
     case "ADVANCE":
       return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, outcome.routedBy), 0);
     case "COMPLETE":
-      return exitAfter(complete(workflowName), 0);
+      return exitAfter(complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
       return exitAfter(retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure }), 1);
     case "ESCALATE":
@@ -8403,7 +8513,9 @@ function reportStatus(result) {
           attemptUnknown: result.attemptUnknown,
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
-          driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run"
+          driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run",
+          acceptedGraphChanges: result.acceptedGraphChanges,
+          graphChangeReported: result.graphChangeReported
         }),
         0
       );
