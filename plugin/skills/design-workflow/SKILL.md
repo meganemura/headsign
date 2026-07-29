@@ -489,15 +489,25 @@ guard in the same breath is what lets the person judge the group at all —
 without that, "anchored" is a word, and they cannot tell it from a fakeable
 gate wearing a `git` command.
 
-**Hand over the invocation you have been using yourself, not a tidier one.**
-If everything you ran in this session was of the form `node
-…/dist/headsign.mjs`, then that, with `start` on the end and the path written
-out in full as you actually typed it, is the line to give. `headsign start`
-is the right line only for someone who has that command on their `PATH` or is
-willing to go through `npx`, and the reading rule at the top of this file is
-what tells you which of those this person is. A start line that does not run
-on the machine it was handed to is the first thing they will try and the
-first thing that will fail.
+**Give the start line in the form that will still work next week.** The
+canonical one is `headsign start` (with the workflow's name as an argument
+unless the file is `workflow.yaml`), and it is the right line for anyone who
+has the command on their `PATH` or reaches it through `npx`.
+
+**Do not paste the path you have been running yourself.** When this skill
+runs inside its plugin, the invocation you were handed is an absolute path
+into the plugin's cache, and that path contains the plugin's version — it
+stops existing the next time the plugin updates. It is the correct way for
+*you* to call the CLI in this session and the wrong thing to write down for
+someone else.
+
+So: if the person has `headsign` on their `PATH` or in their project's
+`node_modules`, give them `headsign start …` or `npx headsign start …` and
+you are done. If they only have it through the plugin, there is no short
+command to give — say so, and tell them to ask their agent to start the run
+instead. The `workflow` skill drives runs and works out how to reach the
+bundled CLI on its own, which is exactly the indirection that keeps a
+version-pinned path out of their notes.
 
 **Do not commit the file.** It belongs in version control — that is where a
 workflow is meant to live — but putting it there is not your call. Writing
