@@ -873,3 +873,56 @@ buys nothing — a chain of phases is a complete workflow. What the graph is
 still doing for you there is holding the stopping condition: `$end`,
 `max_attempts`, and `limits.max_total_iterations` are what make a loop end
 for a stated reason rather than when someone gets bored of it.
+
+### The graph the name comes from
+
+The shape has a name now. *Graph engineering*, [as first written
+down](https://www.drjoshcsimmons.com/writing/we-are-entering-the-graph-engineering-phase),
+is "designing agentic systems as explicit graphs instead of implicit loops",
+and it draws its line against the older name this way: "Loop engineering was
+the craft of what happens inside one context window. Graph engineering is
+the craft of what happens between them." What headsign holds is exactly the
+between. It has no opinion about what happens inside a phase — how the work
+is done, over how many turns, by how many agents — and it learns nothing
+about it either. The only thing it reads of that work is what a shell
+command exits with.
+
+Of that definition's three terms, one headsign plainly does not satisfy.
+State there is "an object with a schema, checkpointed every time you cross
+an edge", and here an edge carries nothing at all. What survives a
+transition is the run's ledger — `.headsign/state.json`: which phase the run
+stands on, how many attempts it has spent — and the working tree itself,
+which is the real carrier and is not headsign's to describe. Anything a
+phase wants to hand the next one, its agent writes to a file and the next
+phase's check reads it; `.headsign/tmp/` is where those files go by
+convention. There is no typed payload, and no schema for one.
+
+On the other two, headsign is not short of the definition but inverted
+against it, and that is the difference worth naming. There, the edge is the
+clever part — "an edge is a typed transition that carries state from one
+node to the next" — and the node is meant to be dull: "A good node is
+boring. It does one thing, you can test it alone." Here the boring one is
+the edge. It carries no state and has no type; its whole content is an exit
+code selecting a route that was written in the file before the run started,
+so it can be read in a line and tested in a shell. The node is where nothing
+is constrained: a phase may delegate to subagents, run work in parallel, ask
+a person something, or take twenty turns, and the workflow file neither
+knows nor cares. Boringness moved from the node to the edge. That is the
+same claim the README makes about a harness that needs to be clever having
+the cleverness in the wrong place — judgment belongs inside a phase, and a
+transition is the one place it does not belong.
+
+The same definition asks for one more thing: "Treat humans as nodes.
+Approval deserves the same design attention as any other capability."
+headsign has no approval feature and needs none, because a human node is
+already an ordinary phase — one whose gate reads a decision file that only a
+person writes, which is what the `approve` phase in
+[example.headsign/release.yaml](../example.headsign/release.yaml) is. The
+waiting is `ready:` and `PENDING`, which is not a failure and spends no
+attempt; the way back out is `ESCALATE`, which hands the decision to a
+person. What that buys is a deterministic transition, not a wise one: a
+verdict a person types is still an authored verdict, soft on
+[ADR-0007](adr/0007-verdict-authorship.md)'s scale, and the guarantee stops
+at the routing. [ADR-0003](adr/0003-workflow-yaml-vocabulary.md) deferred a
+dedicated `type: approval` to v2 "if real usage demands it". The ordinary
+vocabulary above is why it is still deferred.

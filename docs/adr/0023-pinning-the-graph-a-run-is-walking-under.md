@@ -126,6 +126,15 @@ the same evidence: it rescues the first typo and walls off the second, and the
 person paying is the one authoring a workflow, while the actor it aims at
 restarts the run.
 
+**Freeze the graph for the run (an immutable plan version).** The
+scheduler-theoretic account of agent execution in
+[arXiv:2604.11378](https://arxiv.org/abs/2604.11378) makes this a principle —
+*execution plans are immutable within a plan version* — so an edit yields a new
+version instead of changing the running one. Rejected for the reason the two
+entries above already give: here the sanctioned recovery *is* an edit to the
+file the run is walking under (ADR-0017), and telling its author to start a new
+version is telling them to abort and start over.
+
 **Report every change, `limits` included.** One rule, no carve-out. Rejected
 under §7: it makes ADR-0017's documented recovery stop twice, and the friction
 falls entirely on the person who is behaving correctly.

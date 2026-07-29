@@ -190,12 +190,13 @@ repository is what the prompt above draws.
 The practice has names now — [*loop
 engineering*](https://addyosmani.com/blog/loop-engineering/) for the cycle,
 [*graph
-engineering*](https://www.langchain.com/blog/3-years-of-graph-engineering-with-langgraph)
+engineering*](https://www.drjoshcsimmons.com/writing/we-are-entering-the-graph-engineering-phase)
 for the shape it runs on. headsign is neither framework: it doesn't run your
 agent, and it doesn't execute the graph. It keeps one file saying where the
 work may go next, and answers when the agent asks. The graph in that second
-name is also a bigger object than this one — it fans out and it joins, and
-this one does neither.
+name is a different object as well — there an edge carries typed state from
+one node to the next, and the shape fans out and joins, while here an edge
+carries nothing, an exit code picks which one is taken, and nothing fans out.
 
 ## What the machine holds
 

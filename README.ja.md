@@ -184,13 +184,13 @@ run の履歴は起きたそばから書かれ、なぜあちらではなくこ�
 あなたのリポジトリのための絵は、上のプロンプトが描きます。
 
 この営みには、いまでは名前がついています。
-周回のほうは [*loop engineering*](https://addyosmani.com/blog/loop-engineering/)、その周回が走る形のほうは [*graph engineering*](https://www.langchain.com/blog/3-years-of-graph-engineering-with-langgraph) です。
+周回のほうは [*loop engineering*](https://addyosmani.com/blog/loop-engineering/)、その周回が走る形のほうは [*graph engineering*](https://www.drjoshcsimmons.com/writing/we-are-entering-the-graph-engineering-phase) です。
 headsign はそのどちらのフレームワークでもありません。
 エージェントを走らせもしませんし、グラフを実行もしません。
 仕事が次にどこへ行ってよいかを書いたファイルを一つ保持して、エージェントが尋ねたときに答えるだけです。
-二つ目の名前が指すグラフは、こちらのグラフより大きな対象でもあります。
-あちらは枝分かれし、合流します。
-こちらはそのどちらもしません。
+二つ目の名前が指すグラフは、こちらのグラフとは別の対象でもあります。
+あちらでは辺が型付きの状態をノードからノードへ運び、形は枝分かれし、合流します。
+こちらでは辺は何も運ばず、exit code が通る辺を一つ選ぶだけで、枝分かれもしません。
 
 ## 機械が握るもの
 
