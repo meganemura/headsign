@@ -1,5 +1,7 @@
 # Workflow reference
 
+[日本語](workflow-reference.ja.md)
+
 How to write a `.headsign/workflow.yaml`, and what the CLI does with it.
 
 The [README](../README.md) is the page you read before adopting headsign;
