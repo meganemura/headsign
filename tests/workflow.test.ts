@@ -1,5 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { stringify as stringifyYaml } from "yaml";
 import * as workflow from "../src/workflow.ts";
 
 function validWorkflow(): Record<string, unknown> {
@@ -270,6 +274,115 @@ test("a phase named by no route at all is still reported unreachable", () => {
   const doc = routedWorkflow();
   phases(doc).orphan = { description: "orphan", gate: { checks: [{ run: "true" }] }, on_pass: "$end" };
   assert.deepEqual(warnings(doc), ["phase 'orphan' is unreachable from entry 'plan'"]);
+});
+
+// --- a cycle of pass edges with no max_total_iterations under it ---
+//
+// max_attempts counts a phase's failures since it last passed and engine.ts clears it on a
+// pass, so it cannot bound a loop whose every edge is a pass: `limits.max_total_iterations`
+// is the only backstop there is (ADR-0017), and it is optional with no default.
+
+function cycleWarning(...names: string[]): string {
+  return (
+    `${names.length === 1 ? "phase" : "phases"} ${names.map((n) => `'${n}'`).join(", ")} can cycle on pass edges alone, and no limits.max_total_iterations bounds the run: ` +
+    `max_attempts counts a phase's failures and is cleared when it passes, so it cannot stop a cycle that turns on passes`
+  );
+}
+
+// sweep.yaml's shape: apply -> verify -> record, and record's route list turns back to apply
+// while there is work left, or falls through to report when there is not.
+function sweepWorkflow(): Record<string, unknown> {
+  return {
+    version: 0.1,
+    name: "sweep",
+    entry: "apply",
+    phases: {
+      apply: { description: "apply", gate: { checks: [{ run: "true" }] }, on_pass: "verify" },
+      verify: { description: "verify", gate: { checks: [{ run: "true" }] }, on_pass: "record" },
+      record: {
+        description: "record",
+        gate: { checks: [{ run: "true" }] },
+        on_pass: [{ when: "test -s queue", to: "apply" }, { to: "report" }],
+      },
+      report: { description: "report", gate: { checks: [{ run: "true" }] }, on_pass: "$end" },
+    },
+  };
+}
+
+test("a pass-only cycle with no max_total_iterations warns, naming every phase on the loop", () => {
+  const doc = sweepWorkflow();
+  assert.deepEqual(errors(doc), []);
+  assert.deepEqual(warnings(doc), [cycleWarning("apply", "verify", "record")]);
+});
+
+test("the same cycle with limits.max_total_iterations set says nothing: the ceiling is the answer", () => {
+  const doc = sweepWorkflow();
+  doc.limits = { max_total_iterations: 60 };
+  assert.deepEqual(warnings(doc), []);
+});
+
+// verify --fail--> apply --pass--> verify. Deliberately not warned about: verify's attempts
+// survive until verify passes, so max_attempts can bound this one.
+test("a cycle that needs a fail edge to close is not warned about, even with no limits", () => {
+  const doc = validWorkflow();
+  doc.entry = "apply";
+  phases(doc).apply = { description: "apply", gate: { checks: [{ run: "true" }] }, on_pass: "verify" };
+  phases(doc).verify = {
+    description: "verify",
+    gate: { checks: [{ run: "true" }] },
+    on_pass: "$end",
+    on_fail: "apply",
+    max_attempts: 3,
+  };
+  delete phases(doc).plan;
+  delete phases(doc).build;
+  assert.deepEqual(errors(doc), []);
+  assert.deepEqual(warnings(doc), []);
+});
+
+test("a straight-line workflow with no limits warns about nothing", () => {
+  assert.deepEqual(warnings(validWorkflow()), []);
+});
+
+test("a phase whose on_pass names itself is a cycle of one", () => {
+  const doc = validWorkflow();
+  phases(doc).build.on_pass = "build";
+  assert.deepEqual(errors(doc), []);
+  assert.deepEqual(warnings(doc), [cycleWarning("build")]);
+});
+
+// A loop nobody can enter is not what runs away, and it already has a warning of its own.
+test("a pass cycle unreachable from entry gets the unreachable warning only", () => {
+  const doc = validWorkflow();
+  phases(doc).left = { description: "left", gate: { checks: [{ run: "true" }] }, on_pass: "right" };
+  phases(doc).right = { description: "right", gate: { checks: [{ run: "true" }] }, on_pass: "left" };
+  assert.deepEqual(warnings(doc), [
+    "phase 'left' is unreachable from entry 'plan'",
+    "phase 'right' is unreachable from entry 'plan'",
+  ]);
+});
+
+test("two separate pass cycles are warned about one at a time, in file order", () => {
+  const doc = sweepWorkflow();
+  // report loops back on itself instead of ending: a second cycle, disjoint from the first.
+  phases(doc).report.on_pass = "report";
+  assert.deepEqual(warnings(doc), [cycleWarning("apply", "verify", "record"), cycleWarning("report")]);
+});
+
+// The point of it being a warning (ADR-0011): a file that loops is still a file a run can be
+// walking, and a run in progress must not be stopped by advice.
+test("the cycle warning is not an error: load() still hands back the workflow", () => {
+  const doc = sweepWorkflow();
+  const result = workflow.validate(doc);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.warnings.length, 1);
+
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "headsign-workflow-")), "cycle.yaml");
+  fs.writeFileSync(file, stringifyYaml(doc));
+  const loaded = workflow.load(file);
+  assert.ok(loaded.workflow);
+  assert.deepEqual(loaded.errors, []);
+  assert.equal(loaded.warnings.length, 1);
 });
 
 // --- unknown keys are errors, at every level (ADR-0015) ---

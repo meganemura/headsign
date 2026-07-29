@@ -7430,7 +7430,12 @@ function validate(doc) {
       }
     }
   }
-  if (errors.length === 0) warnings.push(...unreachable(doc.entry, phases, names));
+  if (errors.length === 0) {
+    const graph = phases;
+    warnings.push(...unreachable(doc.entry, graph, names));
+    const bounded = isMap(doc.limits) && doc.limits.max_total_iterations !== void 0;
+    if (!bounded) warnings.push(...unboundedPassCycles(doc.entry, graph, names));
+  }
   return { errors, warnings };
 }
 function validatePhase(name, p, names, errors) {
@@ -7504,10 +7509,10 @@ function validateRoutes(name, routes, names, errors) {
   });
 }
 function routeTargets(p) {
-  const passTargets = Array.isArray(p.on_pass) ? p.on_pass.map((r) => r.to) : [p.on_pass];
-  return [...passTargets, p.on_fail];
+  const passTargets2 = Array.isArray(p.on_pass) ? p.on_pass.map((r) => r.to) : [p.on_pass];
+  return [...passTargets2, p.on_fail];
 }
-function unreachable(entry, phases, names) {
+function reachableFrom(entry, phases, names) {
   const visited = /* @__PURE__ */ new Set();
   const stack = [entry];
   while (stack.length > 0) {
@@ -7516,7 +7521,44 @@ function unreachable(entry, phases, names) {
     visited.add(name);
     for (const t of routeTargets(phases[name])) if (typeof t === "string" && names.has(t)) stack.push(t);
   }
+  return visited;
+}
+function unreachable(entry, phases, names) {
+  const visited = reachableFrom(entry, phases, names);
   return [...names].filter((n) => !visited.has(n)).map((n) => `phase '${n}' is unreachable from entry '${entry}'`);
+}
+function passTargets(p) {
+  const targets = Array.isArray(p.on_pass) ? p.on_pass.map((r) => r.to) : [p.on_pass];
+  return targets.filter((t) => typeof t === "string" && t !== "$end");
+}
+function passClosure(from, phases, names) {
+  const seen = /* @__PURE__ */ new Set();
+  const stack = passTargets(phases[from]).filter((t) => names.has(t));
+  while (stack.length > 0) {
+    const name = stack.pop();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    for (const t of passTargets(phases[name])) if (names.has(t)) stack.push(t);
+  }
+  return seen;
+}
+function unboundedPassCycles(entry, phases, names) {
+  const reachable = reachableFrom(entry, phases, names);
+  const order = [...names].filter((n) => reachable.has(n));
+  const forward = new Map(order.map((n) => [n, passClosure(n, phases, names)]));
+  const onCycle = order.filter((n) => forward.get(n).has(n));
+  const warnings = [];
+  const grouped = /* @__PURE__ */ new Set();
+  for (const n of onCycle) {
+    if (grouped.has(n)) continue;
+    const group = onCycle.filter((m) => m === n || forward.get(n).has(m) && forward.get(m).has(n));
+    for (const m of group) grouped.add(m);
+    const noun = group.length === 1 ? "phase" : "phases";
+    warnings.push(
+      `${noun} ${group.map((m) => `'${m}'`).join(", ")} can cycle on pass edges alone, and no limits.max_total_iterations bounds the run: max_attempts counts a phase's failures and is cleared when it passes, so it cannot stop a cycle that turns on passes`
+    );
+  }
+  return warnings;
 }
 
 // src/state.ts

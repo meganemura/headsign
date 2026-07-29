@@ -121,10 +121,17 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
     }
   }
 
-  // A warning, not an error (ADR-0011): a half-written phase or a temporarily commented-out
+  // Warnings, not errors (ADR-0011): a half-written phase or a temporarily commented-out
   // edge must not stop the run that is being used to write it. Only computed once the shape
-  // is otherwise valid, since the walk below trusts the schema.
-  if (errors.length === 0) warnings.push(...unreachable(doc.entry as string, phases as unknown as Record<string, Phase>, names));
+  // is otherwise valid, since the walks below trust the schema.
+  if (errors.length === 0) {
+    const graph = phases as unknown as Record<string, Phase>;
+    warnings.push(...unreachable(doc.entry as string, graph, names));
+    // Nothing to say when a ceiling is declared: `max_total_iterations` is the answer to a
+    // graph that turns forever (ADR-0017), so a bounded run needs no advice about it.
+    const bounded = isMap(doc.limits) && doc.limits.max_total_iterations !== undefined;
+    if (!bounded) warnings.push(...unboundedPassCycles(doc.entry as string, graph, names));
+  }
   return { errors, warnings };
 }
 
@@ -222,7 +229,7 @@ function routeTargets(p: Phase): unknown[] {
   return [...passTargets, p.on_fail];
 }
 
-function unreachable(entry: string, phases: Record<string, Phase>, names: Set<string>): string[] {
+function reachableFrom(entry: string, phases: Record<string, Phase>, names: Set<string>): Set<string> {
   const visited = new Set<string>();
   const stack = [entry];
   while (stack.length > 0) {
@@ -231,5 +238,78 @@ function unreachable(entry: string, phases: Record<string, Phase>, names: Set<st
     visited.add(name);
     for (const t of routeTargets(phases[name])) if (typeof t === "string" && names.has(t)) stack.push(t);
   }
+  return visited;
+}
+
+function unreachable(entry: string, phases: Record<string, Phase>, names: Set<string>): string[] {
+  const visited = reachableFrom(entry, phases, names);
   return [...names].filter((n) => !visited.has(n)).map((n) => `phase '${n}' is unreachable from entry '${entry}'`);
+}
+
+// The pass edges only — every `to:` of a k-way on_pass, or the single string form, minus
+// `$end`. `on_fail` is deliberately absent: a cycle that turns on a failure edge (verify
+// --fail--> apply --pass--> verify) can be bounded by the failing phase's max_attempts,
+// because attempts survive until that phase passes. A cycle made of passes cannot be, which
+// is exactly what the warning below is for.
+function passTargets(p: Phase): string[] {
+  const targets = Array.isArray(p.on_pass) ? p.on_pass.map((r) => r.to) : [p.on_pass];
+  return targets.filter((t): t is string => typeof t === "string" && t !== "$end");
+}
+
+// Every phase reachable from `from` by walking ONE OR MORE pass edges. Starting the walk at
+// `from`'s targets rather than at `from` is what makes "can I get back to myself" answerable
+// with the same function that answers "can I get to you" — and it is what lets a self-loop
+// (on_pass naming its own phase) come out as a cycle of one.
+function passClosure(from: string, phases: Record<string, Phase>, names: Set<string>): Set<string> {
+  const seen = new Set<string>();
+  const stack = passTargets(phases[from]).filter((t) => names.has(t));
+  while (stack.length > 0) {
+    const name = stack.pop()!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    for (const t of passTargets(phases[name])) if (names.has(t)) stack.push(t);
+  }
+  return seen;
+}
+
+// A graph that can turn forever on passes alone, with no `limits.max_total_iterations` under
+// it, has nothing that stops it: `max_attempts` counts a phase's failures SINCE IT LAST
+// PASSED and engine.ts clears the count on a pass, so a loop whose every edge is a pass keeps
+// resetting the only other counter there is.
+//
+// Found the plain way rather than with Tarjan (ADR-0016 — the fitness function is "can this
+// be explained to a middle schooler"): ask each phase whether it can walk back to itself,
+// then put two such phases in the same group when each can reach the other. Phase counts here
+// are in the tens, so the cost of asking one phase at a time does not matter.
+//
+// Cycles that need a fail edge to close are left alone on purpose (see passTargets): deciding
+// whether such a loop is really unbounded means enumerating the cycles and checking that
+// nobody on one carries max_attempts, and the false positives that would cost outweigh what
+// it would catch.
+function unboundedPassCycles(entry: string, phases: Record<string, Phase>, names: Set<string>): string[] {
+  // File order, not walk order: the same file must produce the same warning every time.
+  // Unreachable phases are skipped — they already have a warning of their own, and a loop
+  // nobody can enter is not what runs away.
+  const reachable = reachableFrom(entry, phases, names);
+  const order = [...names].filter((n) => reachable.has(n));
+  const forward = new Map(order.map((n) => [n, passClosure(n, phases, names)]));
+  const onCycle = order.filter((n) => forward.get(n)!.has(n));
+
+  const warnings: string[] = [];
+  const grouped = new Set<string>();
+  for (const n of onCycle) {
+    if (grouped.has(n)) continue;
+    const group = onCycle.filter((m) => m === n || (forward.get(n)!.has(m) && forward.get(m)!.has(n)));
+    for (const m of group) grouped.add(m);
+    // Long, because this warning cannot be acted on without its reason: told only that the
+    // graph loops, an author reaches for max_attempts, which is the one thing that cannot help.
+    // A group of one is a phase whose on_pass names itself; saying "phases 'build'" there
+    // would be the machine mis-hearing its own finding.
+    const noun = group.length === 1 ? "phase" : "phases";
+    warnings.push(
+      `${noun} ${group.map((m) => `'${m}'`).join(", ")} can cycle on pass edges alone, and no limits.max_total_iterations bounds the run: ` +
+        `max_attempts counts a phase's failures and is cleared when it passes, so it cannot stop a cycle that turns on passes`,
+    );
+  }
+  return warnings;
 }
