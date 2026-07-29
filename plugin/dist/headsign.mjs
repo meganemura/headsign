@@ -7631,21 +7631,14 @@ function runGate(checks, cwd) {
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error;
     if (spawnError?.code === "ETIMEDOUT") {
-      return { pass: false, check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
+      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
     }
     if (spawnError) {
-      return {
-        pass: false,
-        check,
-        run: c.run,
-        exitCode: -1,
-        outputTail: `headsign: could not run check '${check}' (${spawnError.code}) \u2014 see below
-${outputTail}`
-      };
+      return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
-    if (result.status !== 0) return { pass: false, check, run: c.run, exitCode: result.status ?? -1, outputTail };
+    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail };
   }
-  return { pass: true };
+  return { kind: "pass" };
 }
 function isReady(sh, cwd) {
   const result = spawnSync("/bin/sh", ["-c", sh], {
@@ -7653,8 +7646,10 @@ function isReady(sh, cwd) {
     timeout: DEFAULT_TIMEOUT_SECONDS * 1e3,
     stdio: "ignore"
   });
-  if (result.error) return true;
-  return result.status === 0;
+  const spawnError = result.error;
+  if (spawnError?.code === "ETIMEDOUT") return { kind: "ready" };
+  if (spawnError) return { kind: "unrunnable", reason: spawnError.code ?? spawnError.message };
+  return result.status === 0 ? { kind: "ready" } : { kind: "not-ready" };
 }
 function resolveRoute(routes, cwd) {
   for (const route of routes) {
@@ -7881,7 +7876,7 @@ function step(workflow, state, gateResult, route) {
   const next2 = { ...state, attempts: { ...state.attempts } };
   next2.total_iterations += 1;
   next2.stop_nudges = 0;
-  if (gateResult.pass) {
+  if (gateResult.kind === "pass") {
     delete next2.attempts[phaseName];
     next2.last_failure = null;
     const { to, routedBy } = passTarget(phase.on_pass, route);
@@ -8024,6 +8019,9 @@ function next(cwd, nowIso) {
     releaseLock(cwd);
   }
 }
+function unrunnableMessage(state, what, reason) {
+  return `phase '${state.phase}': could not run ${what} \u2014 ${reason}. headsign has no verdict to act on, so the run has not moved and no attempt was spent. Fix that command in '${state.workflow_path}', or the environment it needs, and run \`headsign next\` again.`;
+}
 function evaluateNext(cwd, wf, current, nowIso) {
   if (!wf.phases[current.phase]) {
     return {
@@ -8037,12 +8035,22 @@ function evaluateNext(cwd, wf, current, nowIso) {
     return { kind: "ANSWERED", outcome: limitOutcome, workflowName: wf.name, wf };
   }
   const phase = wf.phases[current.phase];
-  if (phase.ready !== void 0 && !isReady(phase.ready, cwd)) {
-    return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
+  if (phase.ready !== void 0) {
+    const readiness = isReady(phase.ready, cwd);
+    if (readiness.kind === "unrunnable") {
+      return { kind: "REFUSED", message: unrunnableMessage(current, `the readiness probe \`${phase.ready}\``, readiness.reason) };
+    }
+    if (readiness.kind === "not-ready") {
+      return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
+    }
   }
   const gateResult = runGate(phase.gate.checks, cwd);
+  if (gateResult.kind === "unrunnable") {
+    const what = `the gate check '${gateResult.check}' (\`${gateResult.run}\`)`;
+    return { kind: "REFUSED", message: unrunnableMessage(current, what, gateResult.reason) };
+  }
   let route;
-  if (gateResult.pass && Array.isArray(phase.on_pass)) {
+  if (gateResult.kind === "pass" && Array.isArray(phase.on_pass)) {
     const resolution = resolveRoute(phase.on_pass, cwd);
     if (resolution.kind === "error") {
       return {

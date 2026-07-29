@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import * as engine from "../src/engine.ts";
 import type { Workflow, Phase } from "../src/workflow.ts";
 import type { State } from "../src/state.ts";
-import type { GateResult } from "../src/gate.ts";
+import type { GateVerdict } from "../src/gate.ts";
 
 function wf(phases: Record<string, Partial<Phase> & { on_pass: Phase["on_pass"] }>, entry?: string): Workflow {
   const built: Record<string, Phase> = {};
@@ -29,8 +32,11 @@ function st(phase: string, overrides: Partial<State> = {}): State {
   };
 }
 
-const PASS: GateResult = { pass: true };
-const FAIL = (check = "c", run = "r", exitCode: number | "timeout" = 1): GateResult => ({ pass: false, check, run, exitCode, outputTail: "out" });
+// A GateVerdict, not a GateResult: step() takes only the two arms that are answers, and the
+// third (a check that produced no exit code) is refused a lap earlier — see the `next` tests
+// at the end of this file.
+const PASS: GateVerdict = { kind: "pass" };
+const FAIL = (check = "c", run = "r", exitCode: number | "timeout" = 1): GateVerdict => ({ kind: "fail", check, run, exitCode, outputTail: "out" });
 
 // --- transition table (ADR-0002), every row ---
 
@@ -356,4 +362,102 @@ test("the guards leave every normal answer untouched", () => {
   assert.equal(engine.checkIterationLimit(workflow, st("a")), null);
   assert.deepEqual(engine.terminalOutcome(st("a", { status: "complete" })), { kind: "COMPLETE" });
   assert.equal(engine.step(workflow, st("a"), PASS).outcome.kind, "ADVANCE");
+});
+
+// --- a lap that got no verdict: `next` refuses, and leaves the run byte-for-byte alone ---
+//
+// The only tests in this file that touch a filesystem, and they have to: the claim is about
+// what a whole lap did NOT write, which step() alone cannot show. Both shell failures below
+// are real, reproduced the two ways this runner can be made to produce no exit code on demand:
+//   - a check whose output floods past maxBuffer (`yes`) — spawnSync kills it: ENOBUFS.
+//   - a probe whose command string is bigger than the kernel's argument limit — execve never
+//     starts it: E2BIG. (isReady discards output, so ENOBUFS cannot reach that path.)
+// A nonexistent cwd, which gate.test.ts uses, is not available here: `next` reads the run
+// record out of that same directory, so a missing one never reaches a gate at all.
+
+const START_TIME = "2026-07-29T12:00:00+09:00";
+const LAP_TIME = "2026-07-29T12:00:01+09:00";
+
+function startedRun(workflowYaml: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  // Absolute: engine.start hands the path to workflow.load as given, and these tests run in
+  // the repo's own cwd rather than the run's.
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(workflowPath, workflowYaml);
+  assert.equal(engine.start(dir, workflowPath, START_TIME).result.kind, "STARTED");
+  return dir;
+}
+
+function snapshot(dir: string): { state: Buffer; log: Buffer } {
+  return {
+    state: fs.readFileSync(path.join(dir, ".headsign", "state.json")),
+    log: fs.readFileSync(path.join(dir, ".headsign", "log")),
+  };
+}
+
+test("a gate check that produced no exit code refuses the lap: nothing written, nothing counted", () => {
+  const dir = startedRun(`
+version: 0.1
+name: floods
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "unit tests"
+          run: "yes"
+    on_pass: "$end"
+    max_attempts: 2
+`);
+  const before = snapshot(dir);
+
+  const result = engine.next(dir, LAP_TIME);
+  assert.equal(result.kind, "REFUSED");
+  if (result.kind === "REFUSED") {
+    assert.match(result.message, /^phase 'build': could not run the gate check 'unit tests' \(`yes`\) — ENOBUFS\./);
+    assert.match(result.message, /the run has not moved and no attempt was spent/);
+    assert.match(result.message, /Fix that command in '.*\/\.headsign\/workflow\.yaml'/);
+  }
+
+  const after = snapshot(dir);
+  assert.deepEqual(after.state, before.state, "state.json must be byte-identical: no attempt, no iteration, no phase change");
+  assert.deepEqual(after.log, before.log, "no transition happened, so nothing is logged");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released before returning");
+});
+
+test("a readiness probe that produced no exit code refuses the lap too — it is neither ready nor not-ready", () => {
+  // Larger than ARG_MAX on macOS and than MAX_ARG_STRLEN (128 KiB) on Linux, so execve
+  // refuses the command outright on both. Asserted with `ok` rather than `match` so a
+  // failure prints this sentence instead of a megabyte and a half of the probe.
+  const oversizedProbe = "x".repeat(1_500_000);
+  const dir = startedRun(`
+version: 0.1
+name: probe-too-big
+entry: review
+phases:
+  review:
+    description: "Review."
+    ready: "${oversizedProbe}"
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`);
+  const before = snapshot(dir);
+
+  const result = engine.next(dir, LAP_TIME);
+  assert.equal(result.kind, "REFUSED");
+  if (result.kind === "REFUSED") {
+    assert.ok(result.message.startsWith("phase 'review': could not run the readiness probe `x"), "names the phase and the probe");
+    assert.ok(result.message.includes("` — E2BIG. "), "names why it could not run");
+    assert.ok(result.message.includes("the run has not moved and no attempt was spent"), "says the run did not move");
+    assert.ok(result.message.includes("Fix that command in '"), "names the file to fix it in");
+  }
+
+  const after = snapshot(dir);
+  assert.deepEqual(after.state, before.state, "state.json must be byte-identical: a refused probe is not a PENDING and not an attempt");
+  assert.deepEqual(after.log, before.log, "no transition happened, so nothing is logged");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released before returning");
 });

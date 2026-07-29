@@ -39,7 +39,7 @@ import * as gate from "./gate.ts";
 import * as render from "./render.ts";
 import type { Workflow, Route } from "./workflow.ts";
 import type { State } from "./state.ts";
-import type { GateResult, CheckFailure, RouteResolution } from "./gate.ts";
+import type { GateVerdict, CheckFailure, RouteResolution } from "./gate.ts";
 
 type FailureInfo = CheckFailure;
 
@@ -159,7 +159,12 @@ function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: stri
 // step() is fully deterministic: same (workflow, state, gateResult, route) always yields the
 // same output — no clock, no randomness. The shell work behind `route` happened in gate.ts
 // before the call; this function only reads the answer.
-export function step(workflow: Workflow, state: State, gateResult: GateResult, route?: ResolvedRoute): { state: State; outcome: Outcome } {
+//
+// `gateResult` is a GateVerdict, not a GateResult: the "unrunnable" arm — a check that
+// produced no exit code — is excluded by the type, the same way ResolvedRoute excludes an
+// unresolvable route above. The lap below refuses on it (cli.ts turns that into exit 3), so
+// this function is never handed a non-answer to invent a transition from.
+export function step(workflow: Workflow, state: State, gateResult: GateVerdict, route?: ResolvedRoute): { state: State; outcome: Outcome } {
   // Without this an already-ended run is judged again: the iteration count rises, a fresh
   // RETRY comes back, and the state handed out still says the run finished — a record that
   // contradicts itself.
@@ -174,7 +179,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, r
   // should clear the Stop hook's loop guard (ADR-0006) — reset it unconditionally here.
   next.stop_nudges = 0;
 
-  if (gateResult.pass) {
+  if (gateResult.kind === "pass") {
     delete next.attempts[phaseName];
     next.last_failure = null;
     const { to, routedBy } = passTarget(phase.on_pass, route);
@@ -189,7 +194,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateResult, r
   }
 
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
-  // Destructure rather than reuse gateResult as-is: it also carries `pass: false`,
+  // Destructure rather than reuse gateResult as-is: it also carries `kind: "fail"`,
   // which must not leak into the outcome's public FailureInfo shape.
   const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
   const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds };
@@ -450,6 +455,28 @@ export function next(cwd: string, nowIso: string): NextResult {
   }
 }
 
+// The refusal a lap produces when a shell command it asked answered nothing at all. Written
+// to the same skeleton as the route-error refusal further down — what could not be run and
+// why, that the run therefore has not moved, and where to fix it — because they are the same
+// event: headsign asked, got no exit code, and will not invent one. One logical line, like
+// every other REFUSED message (cli.ts prints it as `ERROR: <message>` on stderr); the
+// concatenation is for reading the source, not for the output.
+//
+// One function for both the gate check and the readiness probe, taking the naming of the
+// command as a parameter: the two differ only in what to call the thing that failed, and the
+// rest is a statement of policy — nothing moved, nothing was spent, here is where to fix
+// it — which is the kind of sentence that gets corrected in one copy and not the other.
+//
+// `state` shadows the module namespace of the same name here, exactly as it does in the pure
+// functions above and for the same reason: this does not touch the module.
+function unrunnableMessage(state: State, what: string, reason: string): string {
+  return (
+    `phase '${state.phase}': could not run ${what} — ${reason}. ` +
+    "headsign has no verdict to act on, so the run has not moved and no attempt was spent. " +
+    `Fix that command in '${state.workflow_path}', or the environment it needs, and run \`headsign next\` again.`
+  );
+}
+
 // The real evaluation (phase-missing guard, iteration limit, ready probe, gate,
 // step/writeState), run while next() holds the lock. Private, and reachable only from behind
 // that guard sequence: nothing here re-checks that the run is still going, because the only
@@ -487,17 +514,32 @@ function evaluateNext(cwd: string, wf: Workflow, current: State, nowIso: string)
   // Ready probe: before the gate, and the one path that answers without judging. Not
   // ready -> PENDING without touching state.json at all (no writeState on this path):
   // "stay put, don't count it" — the cell the transition table was missing.
-  if (phase.ready !== undefined && !gate.isReady(phase.ready, cwd)) {
-    return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
+  if (phase.ready !== undefined) {
+    const readiness = gate.isReady(phase.ready, cwd);
+    if (readiness.kind === "unrunnable") {
+      return { kind: "REFUSED", message: unrunnableMessage(current, `the readiness probe \`${phase.ready}\``, readiness.reason) };
+    }
+    if (readiness.kind === "not-ready") {
+      return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
+    }
   }
 
   const gateResult = gate.runGate(phase.gate.checks, cwd);
+  // A check that produced no exit code is refused on exactly like an unresolvable route
+  // below, and for the same reason: headsign has no verdict, so it has nothing to transition
+  // on. Nothing has been written at this point — state.json, the log, this phase's attempt
+  // count and total_iterations are all as they were before the lap, which is what makes
+  // "run `headsign next` again" honest advice rather than a resumption mid-transition.
+  if (gateResult.kind === "unrunnable") {
+    const what = `the gate check '${gateResult.check}' (\`${gateResult.run}\`)`;
+    return { kind: "REFUSED", message: unrunnableMessage(current, what, gateResult.reason) };
+  }
 
   // k-way `on_pass` (ADR-0011): resolved here, after the gate passed and before step(), so
   // the transition function stays free of shell execution. Only the pass path ever routes —
   // a failed gate never evaluates a `when:`.
   let route: ResolvedRoute | undefined;
-  if (gateResult.pass && Array.isArray(phase.on_pass)) {
+  if (gateResult.kind === "pass" && Array.isArray(phase.on_pass)) {
     const resolution = gate.resolveRoute(phase.on_pass, cwd);
     if (resolution.kind === "error") {
       // Nothing has been written yet: state.json, the log and total_iterations are all

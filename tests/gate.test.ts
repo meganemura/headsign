@@ -13,37 +13,37 @@ test("stops at the first failing check; later checks do not run", () => {
   const dir = tmpdir();
   const marker = path.join(dir, "ran-second");
   const result = gate.runGate([{ run: "exit 1" }, { run: `touch ${marker}` }], dir);
-  assert.equal(result.pass, false);
+  assert.equal(result.kind, "fail");
   assert.equal(fs.existsSync(marker), false);
 });
 
 test("passes when all checks succeed", () => {
   const result = gate.runGate([{ run: "true" }, { run: "true" }], tmpdir());
-  assert.deepEqual(result, { pass: true });
+  assert.deepEqual(result, { kind: "pass" });
 });
 
 test("check name defaults to the run string; explicit name overrides it", () => {
   const dir = tmpdir();
   const withoutName = gate.runGate([{ run: "exit 3" }], dir);
   const withName = gate.runGate([{ name: "unit tests", run: "exit 3" }], dir);
-  assert.equal(withoutName.pass, false);
-  assert.equal(withName.pass, false);
-  if (!withoutName.pass) assert.equal(withoutName.check, "exit 3");
-  if (!withName.pass) assert.equal(withName.check, "unit tests");
+  assert.equal(withoutName.kind, "fail");
+  assert.equal(withName.kind, "fail");
+  if (withoutName.kind === "fail") assert.equal(withoutName.check, "exit 3");
+  if (withName.kind === "fail") assert.equal(withName.check, "unit tests");
 });
 
 // A check inherits headsign's own environment and nothing else (ADR-0014): variables a
 // check needs are written into its own `run:` string, in the shell it already runs in.
 test("a check sees headsign's own environment, and a run: string can set its own variables", () => {
   const result = gate.runGate([{ run: 'test -n "$PATH" && FOO=bar; test "$FOO" = "bar"' }], tmpdir());
-  assert.equal(result.pass, true);
+  assert.equal(result.kind, "pass");
 });
 
 test("output tail is truncated at 4000 chars with a marker", () => {
   const run = `node -e "process.stdout.write('x'.repeat(5000))" && exit 1`;
   const result = gate.runGate([{ run }], tmpdir());
-  assert.equal(result.pass, false);
-  if (!result.pass) {
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
     assert.ok(result.outputTail.startsWith("… (output truncated)\n"));
     assert.equal(result.outputTail.length, "… (output truncated)\n".length + 4000);
   }
@@ -51,48 +51,80 @@ test("output tail is truncated at 4000 chars with a marker", () => {
 
 test("empty output renders as (no output)", () => {
   const result = gate.runGate([{ run: "exit 1" }], tmpdir());
-  assert.equal(result.pass, false);
-  if (!result.pass) assert.equal(result.outputTail, "(no output)");
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") assert.equal(result.outputTail, "(no output)");
 });
 
 test("large output from a passing check is not misreported as a failure", () => {
   const run = `node -e "process.stdout.write('x'.repeat(2_000_000))" && exit 0`;
   const result = gate.runGate([{ run }], tmpdir());
-  assert.deepEqual(result, { pass: true });
+  assert.deepEqual(result, { kind: "pass" });
 });
 
-test("timeout is reported as a failure with a timeout marker", () => {
+// A timeout stays a FAIL, deliberately, next to the unrunnable tests below that look almost
+// like it: the command ran, and the limit it ran past is one the workflow author wrote. Only
+// "headsign never got an exit code at all" is unrunnable — this is the regression guard for
+// that line.
+test("timeout is reported as a failure with a timeout marker, not as an unrunnable check", () => {
   const result = gate.runGate([{ run: "sleep 5", timeout: 0.2 }], tmpdir());
-  assert.equal(result.pass, false);
-  if (!result.pass) {
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
     assert.equal(result.exitCode, "timeout");
     assert.equal(result.timeoutSeconds, 0.2);
   }
 });
 
+// --- a check that could not be run at all: the third result, not a failure ---
+
+test("a check that cannot be launched is unrunnable, naming the check and the errno", () => {
+  // Same trick the isReady and resolveRoute spawn-error tests use: a nonexistent cwd stops
+  // /bin/sh from starting at all (spawnSync sets result.error), which is a different event
+  // from the shell running and exiting nonzero. `false` would be a plain fail if it ever ran,
+  // so a mislabelled result can't hide behind a command that fails anyway.
+  const brokenCwd = path.join(tmpdir(), "does-not-exist");
+  const result = gate.runGate([{ name: "unit tests", run: "false" }], brokenCwd);
+  assert.equal(result.kind, "unrunnable");
+  if (result.kind === "unrunnable") {
+    assert.equal(result.check, "unit tests");
+    assert.equal(result.run, "false");
+    assert.equal(result.reason, "ENOENT");
+  }
+});
+
+test("an unrunnable check stops the gate where it is: later checks do not run", () => {
+  const dir = tmpdir();
+  const brokenCwd = path.join(dir, "does-not-exist");
+  const marker = path.join(dir, "ran-second");
+  const result = gate.runGate([{ run: "true" }, { run: `touch ${marker}` }], brokenCwd);
+  assert.equal(result.kind, "unrunnable");
+  assert.equal(fs.existsSync(marker), false);
+});
+
 // --- isReady: the `ready:` readiness probe ---
 
 test("isReady: exit 0 means ready", () => {
-  assert.equal(gate.isReady("true", tmpdir()), true);
+  assert.deepEqual(gate.isReady("true", tmpdir()), { kind: "ready" });
 });
 
 test("isReady: nonzero exit means not ready", () => {
-  assert.equal(gate.isReady("false", tmpdir()), false);
+  assert.deepEqual(gate.isReady("false", tmpdir()), { kind: "not-ready" });
 });
 
 test("isReady: runs in the given cwd, like runGate", () => {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "marker"), "");
-  assert.equal(gate.isReady("test -f marker", dir), true);
-  assert.equal(gate.isReady("test -f nope", dir), false);
+  assert.deepEqual(gate.isReady("test -f marker", dir), { kind: "ready" });
+  assert.deepEqual(gate.isReady("test -f nope", dir), { kind: "not-ready" });
 });
 
-test("isReady: fails open (true) on a spawn error rather than stalling the run behind a broken probe", () => {
-  // A nonexistent cwd makes spawnSync fail to launch /bin/sh at all (result.error set),
-  // as distinct from the shell running and exiting nonzero — use a command that would
-  // report "not ready" if it ever ran, so a false pass can't hide a broken fail-open path.
+test("isReady: a probe that cannot be launched at all is unrunnable, not a guess in either direction", () => {
+  // A nonexistent cwd makes spawnSync fail to launch /bin/sh at all (result.error set), as
+  // distinct from the shell running and exiting nonzero — use a command that would report
+  // "not ready" if it ever ran, so a mislabelled result can't hide behind a truthful one.
+  // This used to answer "ready", which handed the phase to a gate on the strength of a
+  // question nobody managed to ask; the caller now refuses instead.
   const brokenCwd = path.join(tmpdir(), "does-not-exist");
-  assert.equal(gate.isReady("false", brokenCwd), true);
+  assert.deepEqual(gate.isReady("false", brokenCwd), { kind: "unrunnable", reason: "ENOENT" });
 });
 
 // --- resolveRoute: which branch of a k-way on_pass answers (ADR-0011) ---

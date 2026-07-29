@@ -7,6 +7,12 @@
 //     (ADR-0011)?
 // All three are "run shell, read exit code" — the routing *rules* still live in engine.ts;
 // this module only reports which branch answered yes.
+// All three can also come back with NO exit code, and all three answer that in the same shape
+// — `unrunnable` for the first two, the `error` arm of RouteResolution for the third. A
+// command headsign could not run has not answered, and an unanswered question is not a "no":
+// the caller stops the run on it instead of falling toward whichever default this module
+// found convenient. Which command it was and why it could not run are reported here; what to
+// do about it is engine.ts's business.
 // Commands run in a directory the caller supplies, taken as given and never checked: a wrong
 // one runs every check somewhere else and the answers come back looking perfectly ordinary.
 // Resolving a branch is only legitimate AFTER the gate has passed, and nothing here enforces
@@ -22,7 +28,25 @@ import { spawnSync } from "node:child_process";
 import type { Check, Route } from "./workflow.ts";
 
 export interface CheckFailure { check: string; run: string; exitCode: number | "timeout"; outputTail: string; timeoutSeconds?: number }
-export type GateResult = { pass: true } | ({ pass: false } & CheckFailure);
+
+// Three outcomes, not two, and the third is not a kind of failure. `fail` is an ANSWER: the
+// check ran and said no, which is exactly what a gate is for. `unrunnable` is the ABSENCE of
+// one — the command never started, or was killed by this runner before it could finish (a cwd
+// that no longer exists, an output flood past maxBuffer), so there is no exit code to route
+// on. Reporting that as `fail` spends an attempt on a verdict nobody measured, and
+// `max_attempts` failures away it ends the run — a transition decided by something that never
+// ran, which is precisely what ADR-0001 says headsign does not do. Same rule resolveRoute
+// already applies to a `when:` (ADR-0011), now stated in the same vocabulary.
+export type GateResult =
+  | { kind: "pass" }
+  | ({ kind: "fail" } & CheckFailure)
+  | { kind: "unrunnable"; check: string; run: string; reason: string };
+
+// What a transition may be computed from: the two arms that are actual verdicts. engine.step
+// takes THIS, not GateResult, so "unrunnable never reaches the transition function" is a fact
+// the compiler keeps rather than a comment asking a future caller to remember it — the caller
+// has to deal with the third arm before it can call step at all.
+export type GateVerdict = Exclude<GateResult, { kind: "unrunnable" }>;
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const OUTPUT_TAIL_LIMIT = 4000;
@@ -42,36 +66,50 @@ export function runGate(checks: Check[], cwd: string): GateResult {
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error as NodeJS.ErrnoException | undefined;
     if (spawnError?.code === "ETIMEDOUT") {
-      return { pass: false, check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
+      // A timeout is a verdict, deliberately NOT an unrunnable check: the command did run,
+      // it reported on the work by being stopped, and the limit it ran past is one the
+      // workflow author wrote in this very file. Only "headsign never got an answer at all"
+      // belongs in the arm below.
+      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
     }
     if (spawnError) {
       // The runner itself couldn't execute/complete the check (e.g. ENOBUFS despite
-      // maxBuffer) — this is a headsign-level failure, not the check's own nonzero
-      // exit, and must be reported unambiguously as such, not as a RETRY-worthy fail.
-      return {
-        pass: false, check, run: c.run, exitCode: -1,
-        outputTail: `headsign: could not run check '${check}' (${spawnError.code}) — see below\n${outputTail}`,
-      };
+      // maxBuffer, or a cwd that vanished): there is no exit code, so there is nothing to
+      // route on. The caller stops the run on this (exit 3) instead of spending an attempt.
+      // `reason` stays short — the errno, which names the situation to anyone who can fix it.
+      return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
-    if (result.status !== 0) return { pass: false, check, run: c.run, exitCode: result.status ?? -1, outputTail };
+    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail };
   }
-  return { pass: true };
+  return { kind: "pass" };
 }
 
+// Same three-way shape as GateResult, for the same reason: a probe that produced no exit code
+// answered neither "ready" nor "not ready", and the caller refuses on it rather than picking
+// one of the two on the probe's behalf.
+export type ReadyResult =
+  | { kind: "ready" }
+  | { kind: "not-ready" }
+  | { kind: "unrunnable"; reason: string };
+
 // Readiness probe for a phase's optional `ready:` field, mirroring runGate's spawnSync
-// pattern (same shell, same cwd). exitCode 0 -> ready (the real gate should be
-// evaluated); nonzero -> not ready (PENDING, no attempt counted).
-export function isReady(sh: string, cwd: string): boolean {
+// pattern (same shell, same cwd). exit 0 -> ready (the real gate should be evaluated);
+// nonzero -> not ready (PENDING, no attempt counted).
+export function isReady(sh: string, cwd: string): ReadyResult {
   const result = spawnSync("/bin/sh", ["-c", sh], {
     cwd,
     timeout: DEFAULT_TIMEOUT_SECONDS * 1000,
     stdio: "ignore",
   });
-  // Fail toward evaluating on a spawn error (bad cwd, timeout, ...): a broken probe
-  // must not silently stall the run behind PENDING forever — running the real gate and
-  // producing an actual verdict is the safer failure mode.
-  if (result.error) return true;
-  return result.status === 0;
+  const spawnError = result.error as NodeJS.ErrnoException | undefined;
+  // A timed-out probe still ran, and this stays the one lenient arm in the file: a slow
+  // probe must not silently stall the run behind PENDING forever — running the real gate and
+  // producing an actual verdict is the safer failure mode, and the gate is the thing being
+  // deferred here, not a destination. That leniency was never about the case below: a probe
+  // that could not be started produced nothing to be lenient toward.
+  if (spawnError?.code === "ETIMEDOUT") return { kind: "ready" };
+  if (spawnError) return { kind: "unrunnable", reason: spawnError.code ?? spawnError.message };
+  return result.status === 0 ? { kind: "ready" } : { kind: "not-ready" };
 }
 
 // --- resolveRoute: which branch of a k-way `on_pass` takes the pass (ADR-0011) ---

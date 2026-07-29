@@ -1069,6 +1069,47 @@ test("PENDING does not reset stop_nudges — it never runs step(), so the loop g
   assert.equal(readState(dir).stop_nudges, 2);
 });
 
+// --- a check headsign could not run at all: no verdict, so no transition (exit 3) ---
+
+test("a gate check that produces no exit code stops the run at exit 3 and moves nothing", () => {
+  const dir = initRepo();
+  // `yes` floods far past the 64 MiB maxBuffer, so spawnSync kills it and reports ENOBUFS
+  // instead of a status: headsign ran a check and got no answer out of it. The distinction
+  // this test exists for is that the answer is NOT `RETRY 1` — a fail nobody measured would
+  // spend an attempt, and enough of them would end the run.
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: floods
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - name: "unit tests"
+          run: "yes"
+    on_pass: "$end"
+    max_attempts: 2
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  const stateBefore = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+  const logBefore = fs.readFileSync(path.join(dir, ".headsign", "log"));
+
+  const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /^ERROR: phase 'build': could not run the gate check 'unit tests' \(`yes`\) — ENOBUFS\./);
+  assert.match(result.stderr, /the run has not moved and no attempt was spent/);
+  assert.match(result.stderr, /Fix that command in '\.headsign\/workflow\.yaml'/);
+  assert.equal(result.stdout, "", "no verdict was reached, so the agent-facing channel says nothing at all");
+
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "state.json")), stateBefore, "state.json must be byte-identical");
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "log")), logBefore, "no transition happened, so nothing is logged");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released before exiting");
+});
+
 // --- the global ceiling: limits.max_total_iterations (ADR-0017) ---
 
 // A one-phase workflow whose gate always fails, so every `next` below is a counted RETRY
