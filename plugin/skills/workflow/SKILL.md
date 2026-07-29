@@ -149,8 +149,11 @@ plugin or `npm install` the package. Do not guess at other paths.
   on (e.g. the reviewer's verdict file), then run `headsign next` again;
   don't retry-loop on it. Exit 3 is different — a real usage/config error
   (unknown command, wrong directory, a workflow that no longer defines the
-  current phase, another `next` already running). Fix the invocation, the
-  directory, or the workflow file; don't loop-retry on it.
+  current phase, another `next` already running, or a check or `ready:` probe
+  that could not be run at all). Fix the invocation, the directory, or the
+  workflow file; don't loop-retry on it. A check that could not be run is not
+  a failing check: headsign got no exit code, so the lap moved nothing and
+  spent no attempt — repair the command rather than the work.
 - **You can write the workflow too, not just run it.** A workflow is one
   YAML file; `headsign validate --workflow <path>` checks it statically —
   no gate runs, no state is touched — so drafting or editing one is safe at

@@ -26,6 +26,7 @@ record the reasoning each choice rests on.
 | [0018](0018-cli-engine-seam.md) | The `cli.ts`/`engine.ts` seam — the order a lap asks its questions in is a routing rule, so `start`/`next`/`abort`/`claim`/`status` move; refusals become an exhaustively-switched kind, the lock is released in a `finally`, and `engine.ts` stops claiming to be pure |
 | [0019](0019-readme-as-one-page-and-the-three-document-layers.md) | The README is the page before you enter — documentation splits into three layers by the moment it is read, the README carries boundaries rather than syntax, and its demonstration is a picture bound to commands that exist *(its middle layer corrected by 0020)* |
 | [0020](0020-writing-the-workflow-as-its-own-skill.md) | Writing the workflow is a second skill — the seam is intent rather than whether `.headsign/` exists, gates sort into unfakeable/anchored/fakeable, authoring stops at the file; and a correction to 0019: the layer that writes has two readers, so the reference page is the person's and the skill ships the agent's |
+| [0021](0021-a-command-that-never-ran-is-not-an-answer.md) | A command that never ran is not an answer, in all three places headsign runs one — an unrunnable check or `ready:` probe refuses the lap (exit 3) and moves nothing, while a timeout stays an ordinary failure |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

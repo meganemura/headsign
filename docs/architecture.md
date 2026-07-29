@@ -101,7 +101,10 @@ chooses the exit code.
    that wall costs no iteration.
 4. Run the current phase's checks in order; stop at the first failure.
    There is no cache in front of this step: every `next` that gets here
-   judges, and a failure costs an attempt (ADR-0012).
+   judges, and a failure costs an attempt (ADR-0012). A check that could not
+   be run at all — no exit code to read — is not a failure: the lap refuses
+   with exit 3 and writes nothing, as does a `ready:` probe that could not be
+   run (ADR-0021).
 5. If they all passed and this phase's `on_pass` is a list of routes, run
    the routes' `when:` commands in order and resolve which one matched
    (ADR-0011). A `when:` that could not be run at all → exit 3.
@@ -147,3 +150,4 @@ outside it:
 - [ADR-0016](adr/0016-explainability-as-the-fitness-function.md) — explainability replaces the line budget; the rule for a run that rewrites its own workflow
 - [ADR-0017](adr/0017-three-budgets-and-the-recoverable-ceiling.md) — three budgets; the global ceiling escalates without ending the run
 - [ADR-0018](adr/0018-cli-engine-seam.md) — the seam between `cli.ts` and `engine.ts`: the order of a lap is a routing rule, so the five run operations move
+- [ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md) — an unrunnable check or `ready:` probe refuses the lap instead of failing it; a timeout stays a verdict

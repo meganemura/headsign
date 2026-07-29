@@ -9,6 +9,23 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A gate check that could not be run at all was counted as a check that
+  failed.** If the command never started — a working directory that had gone
+  away, output past the runner's buffer — headsign had no exit code to read,
+  and reported it as an ordinary gate failure anyway: the lap spent an attempt,
+  `max_attempts` of them ended the run in `ESCALATE`, and a phase with
+  `on_fail: <phase>` moved the run somewhere on the strength of it. The rule
+  was already written one function away, where a route's `when:` that cannot be
+  run stops the run rather than falling through to the default. Now a check or
+  a `ready:` probe that could not be run refuses the lap the same way (exit 3)
+  and moves nothing: no attempt, no iteration, no state written, and a message
+  naming the command, the errno, and the file to fix it in. A check that runs
+  and *times out* is unchanged and still an ordinary failure — it ran, and the
+  limit it ran past is one you wrote. See
+  [ADR-0021](docs/adr/0021-a-command-that-never-ran-is-not-an-answer.md).
+
 ## [0.3.0] - 2026-07-29
 
 ### Fixed

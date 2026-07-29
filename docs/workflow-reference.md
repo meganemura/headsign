@@ -308,8 +308,15 @@ loaded with whatever still happens to fit
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
 
-Exit 3 is a configuration/usage error, and `next` is idempotent on finished
-runs. On a running one it is a judgment rather than a peek: it runs the
+Exit 3 is a configuration/usage error — which includes a check or a `ready:`
+probe that **could not be run at all** (the command never started, or headsign
+had to kill it before it finished). That is not a gate failure: headsign got no
+exit code, so it has no verdict, and the lap moves nothing — no attempt, no
+iteration, no state written. Fix the command and ask again
+([ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md)). A check
+that runs and *times out* is a different thing and still an ordinary failure:
+it ran, and the limit it ran past is one you wrote. `next` is idempotent on
+finished runs. On a running one it is a judgment rather than a peek: it runs the
 phase's gate, and a failure spends an attempt (a phase whose `ready:` probe
 hasn't passed yet answers `PENDING` before the gate runs, as above, and
 spends nothing). Hence the driving session's two-command rule — **did work
