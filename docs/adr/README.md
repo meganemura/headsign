@@ -28,6 +28,7 @@ record the reasoning each choice rests on.
 | [0020](0020-writing-the-workflow-as-its-own-skill.md) | Writing the workflow is a second skill — the seam is intent rather than whether `.headsign/` exists, gates sort into unfakeable/anchored/fakeable, authoring stops at the file; and a correction to 0019: the layer that writes has two readers, so the reference page is the person's and the skill ships the agent's |
 | [0021](0021-a-command-that-never-ran-is-not-an-answer.md) | A command that never ran is not an answer, in all three places headsign runs one — an unrunnable check or `ready:` probe refuses the lap (exit 3) and moves nothing, while a timeout stays an ordinary failure |
 | [0022](0022-validate-checks-that-a-run-can-end.md) | `validate` asks whether the run can end, not only whether every phase can be reached — a cycle of pass edges with no `limits.max_total_iterations` is warned about, because `max_attempts` clears on a pass and cannot bound one |
+| [0023](0023-pinning-the-graph-a-run-is-walking-under.md) | A run pins the rules it walks under — a fingerprint per reachable phase plus `limits`, `description` excluded; a change is reported once as an ESCALATE that ends nothing, restoring the file is free, asking again accepts and counts it, and `COMPLETE` says how many *(amends 0016 §5 and 0017)* |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

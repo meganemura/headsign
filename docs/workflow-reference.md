@@ -358,10 +358,13 @@ say `escalate` (stop and ask a person) but never "stop", and exhausting
 <reason>`, which is a person's decision and records their reason — so an
 aborted run is always one somebody ended on purpose.
 
-**Two of the three ways a run reaches `ESCALATE` end it; the ceiling does
-not.** Exhausting a phase's `max_attempts` and taking an `on_fail: escalate`
-route both mean something is wrong — the agent can't satisfy a gate — and
-both end the run for good. Reaching `limits.max_total_iterations` means
+**Two of the four ways a run reaches `ESCALATE` end it; the ceiling and a
+changed graph do not.** Exhausting a phase's `max_attempts` and taking an
+`on_fail: escalate` route both mean something is wrong — the agent can't
+satisfy a gate — and both end the run for good. The other two leave the run
+`running` and wait for an answer: a graph that changed under the run
+([The graph a run is walking under](#the-graph-a-run-is-walking-under)), and
+the ceiling below. Reaching `limits.max_total_iterations` means
 something else: the run turned out to be bigger than the number someone
 typed, which can be true of a run doing nothing wrong. So it answers
 `ESCALATE` (exit 2, a person is being asked) while leaving the run
@@ -549,6 +552,45 @@ pause — the note above is. To spot an unattended stall from the outside:
 together they mean the driving agent has walked away without a note.
 Re-drive the run with `headsign next` from the session that's actually
 driving it.
+
+### The graph a run is walking under
+
+`next` re-reads the workflow file every lap, so editing it mid-run works —
+that is how you raise a ceiling and carry on, and how a run can improve the
+phases it has already walked past. What headsign adds is that the change
+doesn't happen in silence.
+
+At `start`, a run records a fingerprint of the **rules** it is walking under:
+every phase reachable from where it stands, plus `limits`. Rules, not
+instructions — a phase's `description` is deliberately left out, so rewriting
+what the agent is told to do is invisible to this, while `gate`, `ready`,
+`clear`, `on_pass`, `on_fail` and `max_attempts` are not. (`clear:` counts as a
+rule because dropping it is how a stale `APPROVED` verdict passes a review
+gate.) Comments and formatting are invisible too: the fingerprint is of the
+parsed file, not its bytes.
+
+When a lap finds those rules changed, it says so once — an `ESCALATE` that
+leaves the run `running`, spends no attempt and no iteration, and names the
+phases that moved. You then have two ways forward:
+
+- **put the file back**, and the next `next` matches the fingerprint again, says
+  nothing, and costs nothing. Restoring is free;
+- **run `headsign next` again**, which accepts the change and carries on. An
+  accepted change is counted, and `COMPLETE` says how many a run accepted —
+  because `.headsign/log` is gitignored and never reaches a pull request, while
+  the final answer is read by whoever is being reported to.
+
+Two things are deliberately quiet. A change to a phase this run can no longer
+reach is not reported at all — the run doesn't depend on it. And a change to
+`limits` alone is accepted without a report, so raising the ceiling after
+hitting it stays one stop rather than two; it is still counted, so a run that
+was given more room says so at the end.
+
+This is a guardrail, not a lock. Anything that can edit the workflow can edit
+`.headsign/state.json` too, and headsign says nothing about that. What it does
+is separate a loosened gate from the edits the documentation recommends, which
+until now were the same act
+([ADR-0023](adr/0023-pinning-the-graph-a-run-is-walking-under.md)).
 
 ## Multiple sessions
 
@@ -768,6 +810,7 @@ think in graph terms, the vocabulary maps over like this:
 | bounded cycle | `max_attempts`, `limits.max_total_iterations` |
 | handing the decision back to a person | `ESCALATE` |
 | the path a run actually took | `.headsign/log` |
+| the version of the graph a run is running under | `graph_fingerprint` in `.headsign/state.json` — pinned, and a change reported once rather than forbidden (see [above](#the-graph-a-run-is-walking-under)) |
 
 One of the shipped examples,
 [example.headsign/sweep.yaml](../example.headsign/sweep.yaml), applies a

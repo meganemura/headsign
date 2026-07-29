@@ -11,6 +11,24 @@ changes), and a patch bump means fixes only.
 
 ### Added
 
+- **A run now notices when its own workflow changes underneath it.** `next`
+  re-reads the file every lap on purpose — that is how you raise a ceiling and
+  carry on, and how a run improves the phases it has walked past — but until now
+  nothing recorded that it had happened, so a gate could be loosened between two
+  laps with the earlier attempts still counted against the stricter version. A
+  run now pins a fingerprint of the *rules* it is walking under (every phase it
+  can still reach, plus `limits`; `description` deliberately excluded, so
+  rewriting instructions stays invisible). A change is reported once as an
+  `ESCALATE` that ends nothing and spends nothing: put the file back and the
+  next lap is silent and free, or run `headsign next` again to accept it, which
+  is counted. `COMPLETE` says how many changes a run accepted, and `status`
+  shows the same plus any change still awaiting an answer. A change to `limits`
+  alone is accepted without a report, so raising the ceiling stays one stop. It
+  is a guardrail, not a lock — anything that can edit the workflow can edit
+  `state.json` — but loosening a gate is no longer indistinguishable from the
+  edits the documentation recommends. See
+  [ADR-0023](docs/adr/0023-pinning-the-graph-a-run-is-walking-under.md).
+
 - **`headsign validate` says when a workflow has no way to stop.** It checked
   that every phase could be *reached* and never that the run could *end*. If a
   set of phases can cycle on pass edges alone — a sweep turning back through its

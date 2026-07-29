@@ -116,13 +116,18 @@ plugin or `npm install` the package. Do not guess at other paths.
    picks the run back up later from the same phase. The hook consumes the
    note, so one note covers one turn end — if the wait runs over several
    exchanges, write it again before each turn that ends still waiting. `ESCALATE` means stop
-   working and ask the user for direction. One `ESCALATE` does not end the
-   run: the one whose reason reads `max_total_iterations (<n>) reached`
-   leaves the run `running`, so the user can raise that limit and have you
-   continue from the same phase. Report it and wait for their direction like
-   any other escalation — but because the run is still open, the hook will
-   push you back to `headsign next`, so write the pause note above before
-   you stop.
+   working and ask the user for direction. Two kinds of `ESCALATE` do not end
+   the run, and both leave it `running` so the user can answer and have you
+   continue from the same phase. One reads `max_total_iterations (<n>)
+   reached`: the user can raise that limit. The other reads `the workflow's
+   rules changed under this run` — the workflow file was edited while the run
+   was walking it, which headsign allows but reports once; the user either
+   puts the file back or tells you to run `headsign next` again, which accepts
+   the change and counts it (the count is named at `COMPLETE`). If *you* made
+   that edit, say so plainly when you report it. Report either one and wait for
+   direction like any other escalation — but because the run is still open, the
+   hook will push you back to `headsign next`, so write the pause note above
+   before you stop.
 7. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then

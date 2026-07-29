@@ -67,8 +67,8 @@ thin harness need this?
 | Module | Responsibility | Must NOT know about |
 |---|---|---|
 | `src/cli.ts` | argv parsing, command dispatch, printing, process exit code — one typed command becomes one `engine.ts` call, and the value it answers with becomes text and a status. Also the one clock read (`localIso(new Date())`), passed down as an argument | routing rules — *including the order `next` asks its questions in* (ADR-0018) — the YAML schema, what any operation does to a run |
-| `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types | state.json, gates, git |
-| `src/state.ts` | read/write `state.json` (atomic write); owns the state shape | routing rules, YAML |
+| `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types, and the fingerprint of the *rules* a run is walking under (ADR-0023) — a fact about the schema and the reachability walk, both of which are this module's | state.json, gates, git |
+| `src/state.ts` | read/write `state.json` (atomic write); owns the state shape, the graph pin's three fields included | routing rules, YAML |
 | `src/gate.ts` | run one phase's checks (shell, timeout, output tail); resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
 | `src/engine.ts` | one operation on a run — `start`, one lap of `next`, `abort`, `claim`, `status` — carried out and reported as a value. The ONLY place routing rules live, *the order a lap asks its questions in included* (ADR-0018); inside it, `step()` is still the pure transition function (workflow, state, gate result, resolved route) → (new state, outcome), and a resolved route still arrives as data rather than being evaluated here | argv, how an answer is worded, what it exits with, the clock |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
@@ -83,7 +83,7 @@ handed it the words.
 
 ## Data flow of `headsign next`
 
-Steps 1–6 are one function, `engine.ts`'s `next` — the order below *is* part
+Steps 1–7 are one function, `engine.ts`'s `next` — the order below *is* part
 of the routing rules, which is why it lives with them (ADR-0018). It takes
 the concurrency lock after step 1 (parsing YAML is the widest window another
 process could act in, so the parse happens outside the lock) and releases it
@@ -95,20 +95,24 @@ chooses the exit code.
 2. If status is terminal (`complete` / `escalated` / `aborted`), reprint the
    terminal outcome idempotently and exit — a finished run stays finished
    however many times it is asked.
-3. If `limits.max_total_iterations` is reached → ESCALATE, without writing
+3. Compare the workflow's rules against the fingerprint this run pinned —
+   before anything reads a rule, since the ceiling, the probe, the gate and
+   `step()` all do. A difference is reported once (ESCALATE, run stays
+   `running`); asking again accepts and counts it (ADR-0023).
+4. If `limits.max_total_iterations` is reached → ESCALATE, without writing
    state: the run stays `running`, so raising the limit and asking again
    resumes the same phase (ADR-0017). Checked before the gate, so standing at
    that wall costs no iteration.
-4. Run the current phase's checks in order; stop at the first failure.
+5. Run the current phase's checks in order; stop at the first failure.
    There is no cache in front of this step: every `next` that gets here
    judges, and a failure costs an attempt (ADR-0012). A check that could not
    be run at all — no exit code to read — is not a failure: the lap refuses
    with exit 3 and writes nothing, as does a `ready:` probe that could not be
    run (ADR-0021).
-5. If they all passed and this phase's `on_pass` is a list of routes, run
+6. If they all passed and this phase's `on_pass` is a list of routes, run
    the routes' `when:` commands in order and resolve which one matched
    (ADR-0011). A `when:` that could not be run at all → exit 3.
-6. Route per the transition table (ADR-0002), persist state, and answer;
+7. Route per the transition table (ADR-0002), persist state, and answer;
    `cli.ts` prints the outcome and exits with the contract code.
 
 ## Where the intelligence lives
@@ -152,3 +156,4 @@ outside it:
 - [ADR-0018](adr/0018-cli-engine-seam.md) — the seam between `cli.ts` and `engine.ts`: the order of a lap is a routing rule, so the five run operations move
 - [ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md) — an unrunnable check or `ready:` probe refuses the lap instead of failing it; a timeout stays a verdict
 - [ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md) — `validate` warns on a pass-edge cycle with no ceiling: `max_attempts` clears on a pass, so it cannot bound one
+- [ADR-0023](adr/0023-pinning-the-graph-a-run-is-walking-under.md) — a run pins the rules it walks under; a change is reported once and counted when accepted
