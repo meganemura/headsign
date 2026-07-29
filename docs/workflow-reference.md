@@ -11,6 +11,14 @@ agent follows *during* a run ships with the plugin, in
 internals are in [architecture.md](architecture.md), with the reasoning
 behind each decision in [the ADRs](adr/README.md).
 
+This page is the one written for a person, and it holds both halves — how to
+write a workflow and how to run one — while the excerpt an agent reads at the
+moment it writes one ships with the plugin instead, in the
+[`design-workflow` skill](../plugin/skills/design-workflow/SKILL.md) and its
+[schema reference](../plugin/skills/design-workflow/references/schema.md),
+because this page ships nowhere
+([ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md)).
+
 ## Using without the plugin
 
 The plugin is just one way headsign ships, packaged for Claude Code. The

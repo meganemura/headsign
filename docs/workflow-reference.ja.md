@@ -8,6 +8,8 @@
 run の*最中*にエージェントが従う規律はプラグインに同梱されていて、[plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md) にあります。
 内部構造は [architecture.md](architecture.md) に、各判断の背景は [ADR](adr/README.md) にあります。
 
+このページは人のために書かれた 1 枚で、書き方と運転の両方を持っていますが、エージェントが書くその瞬間に読む抜粋のほうは [`design-workflow` スキル](../plugin/skills/design-workflow/SKILL.md) とその [スキーマリファレンス](../plugin/skills/design-workflow/references/schema.md) としてプラグインと一緒に配られます(このページはどこにも同梱されないため。[ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md))。
+
 ## プラグインなしで使う
 
 プラグインは、headsign を Claude Code 向けに包んだ配布形態の一つにすぎません。
