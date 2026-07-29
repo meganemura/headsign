@@ -3,6 +3,16 @@
   "version": "0.3.0",
   "description": "A tiny phase gate for coding agents. Ask it what's next; it runs deterministic checks and tells the loop where to go.",
   "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "coding-agent",
+    "phase-gate",
+    "workflow",
+    "state-machine",
+    "cli",
+    "loop-engineering",
+    "graph-engineering"
+  ],
   "type": "module",
   "bin": {
     "headsign": "plugin/dist/headsign.mjs"

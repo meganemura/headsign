@@ -16,6 +16,8 @@
     "phase-gate",
     "workflow",
     "state-machine",
-    "cli"
+    "cli",
+    "loop-engineering",
+    "graph-engineering"
   ]
 }
