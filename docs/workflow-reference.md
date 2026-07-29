@@ -166,6 +166,51 @@ Anything past that is out of scope: worktrees never share run state, and
 headsign neither coordinates the runs in them nor aggregates them into one
 view. A run belongs to the directory it was started in.
 
+### Fanning out, and joining back
+
+That property is enough to build a fan-out on top of headsign without
+headsign gaining a single feature.
+[example.headsign/fan-out.yaml](../example.headsign/fan-out.yaml) writes the
+shape out: a `split` phase whose `description` tells the agent to cut the
+work into independent items, `git worktree add` a worktree per item, and run
+`headsign start` inside each one; a `gather` phase that waits for those
+child runs; and an `integrate` phase that merges the results and removes the
+worktrees.
+
+Read closely what headsign does there, because it is less than it looks. It
+does not start the child runs, does not create their worktrees, and does not
+wait for them — it never learns they exist. The fan-out happens because a
+phase's `description` asked the agent for it, which is the same kind of
+instruction as "use the `/foo` skill" or "have a reviewer subagent check it"
+([Instructions vs. the gate](#instructions-vs-the-gate)): the description is
+the plan, and only the gate is enforced. The parent run is still doing
+exactly one phase at a time — the parallelism lives one layer below it,
+where headsign cannot see it, and the parent's attempts and iteration
+ceiling count the parent's own gate evaluations only. Making the worktrees
+and taking them away again is the agent's job from beginning to end; not
+*managing* worktrees isn't the same as not working in one.
+
+What headsign adds is the join, and only the join: one shell command that
+answers "are they all in?". `gather` asks that as two separate questions,
+which is the part worth copying. Its `ready:` asks whether every child has
+reached a terminal state — while any of them is still `RUNNING`, `next`
+answers `PENDING` and spends no attempt, so waiting costs nothing and is not
+a failure. Its gate then asks whether every child is `COMPLETE`, and
+`on_fail: escalate` hands the run to a person when one of them isn't,
+because a child that escalated or was aborted is already somebody's
+decision. Both read the children with `headsign status`, whose first line is
+the documented `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` contract,
+rather than reading a child's `state.json`.
+
+So the joining strategies orchestrators hand you as modes — all of them, any
+of them, a quorum of N — are not settings headsign is missing. They are that
+same loop with the test moved, and `fan-out.yaml` writes all three out in
+its comments. It is also why
+[ADR-0003](adr/0003-workflow-yaml-vocabulary.md)'s refusal of `needs:` and
+DAG parallelism doesn't need revisiting: what the DAG would have expressed
+is expressible one layer up, and keeping it up there is what stops headsign
+from growing into the orchestrator it declines to be.
+
 ## Instructions vs. the gate
 
 A phase's `description` is where you write what the agent should do in that

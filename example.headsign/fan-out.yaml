@@ -1,0 +1,213 @@
+# fan-out.yaml — many runs at once, joined back into one, by a workflow
+# that orchestrates nothing.
+#
+# headsign is a single-active-phase state machine. There is no `needs:`, no
+# DAG, no parallel branch, and there is not going to be one — that road
+# ends in rebuilding a general orchestrator (docs/adr/0003). This file is
+# what you write instead, and the whole point of it is that none of it is a
+# headsign feature.
+#
+# What actually happens: `split` tells the AGENT to cut the work into
+# independent items, add a git worktree per item, and run `headsign start`
+# inside each one. Those children are ordinary runs in ordinary
+# directories, each with its own state, lock and log — "One worktree, one
+# run" in docs/workflow-reference.md is the property that makes this legal
+# at all. headsign does not start them, does not make their worktrees, and
+# does not wait for them; it never learns they exist. Asking for the
+# fan-out in a `description` is the same kind of instruction as "use the
+# /foo skill" or "have a reviewer subagent check it": the description is
+# the plan, and only the gate is enforced (docs/adr/0003).
+#
+# So the parent is still doing exactly one phase at a time, like every
+# other example here. The parallelism lives one layer below this file,
+# where headsign cannot see it.
+#
+# What headsign adds is the join, and only the join — `gather` below, whose
+# two fields ask two different questions: `ready:` asks "has everyone
+# finished talking?", and the gate asks "did everyone pass?". The joining
+# strategies an orchestrator hands you as modes (all_of, any_of, quorum)
+# need no field here. They are three shell one-liners, and all three are
+# written out at that gate.
+#
+# Making the worktrees and taking them away again is the agent's job from
+# start to finish. Not *managing* worktrees isn't the same as not working
+# in one.
+#
+# Conventions this workflow relies on (own them, they are not headsign's):
+#   .headsign/tmp/items  — the split, one item per line, written by
+#                          `split`. An item is a short slug that also works
+#                          as a directory and branch name (`parser`,
+#                          `docs-api`): the loops below word-split this
+#                          file, so no spaces and no glob characters.
+#   .worktrees/<item>    — that item's worktree, holding that item's child
+#                          run. Created by the agent in `split`, removed by
+#                          the agent in `integrate`. Add `.worktrees/` to
+#                          your .gitignore: the `.headsign/.gitignore`
+#                          headsign maintains covers its own tmp/ and knows
+#                          nothing about anything else a workflow invents.
+#
+# SWAP: every `headsign` below that runs inside a worktree. This directory
+# has the CLI on PATH; a fresh worktree may not. Use `npx headsign`, or the
+# plugin's bundled path, whichever your setup gives you. (If no invocation
+# reaches inside a worktree at all, the last resort is grepping the child's
+# `.headsign/state.json` — but that file is headsign's internal, pre-1.0
+# format, while `headsign status`'s first line is a documented contract.)
+
+version: 0.1
+name: fan-out
+entry: split
+
+phases:
+  # ── split ────────────────────────────────────────────────────────────────
+  # Cut the work up, then hand each piece to a run of its own. Every action
+  # in this phase is the agent's; the gate's only job is to turn "I started
+  # them" from a claim into a fact.
+  split:
+    description: >
+      Cut the work into items that can be finished independently — no item
+      may wait on another item's change, because nothing here will sequence
+      them. Write one item per line to `.headsign/tmp/items`, each a short
+      slug that also works as a directory and branch name (`parser`,
+      `docs-api`), with no blank lines, no numbering and no other content.
+      Then, for each item: `git worktree add .worktrees/<item> -b <item>`,
+      and start a run inside it — `cd .worktrees/<item> && headsign start`
+      (or `headsign start <name>` to give that item a different workflow).
+      There is nothing to copy in: the worktree is a checkout of the same
+      commit, so the committed `.headsign/*.yaml` is already sitting there.
+      Once a child has started, stop driving it from here — each child run
+      is driven by its own agent, one `headsign next` at a time, exactly
+      like this one. If you hand a child to a delegated agent, that agent's
+      first command in the worktree is `headsign claim`, before any work
+      (see Multiple sessions in docs/workflow-reference.md). Do not start
+      on the items' actual work in this phase.
+    # Cleared on entry, which for the entry phase means on `headsign start`:
+    # a list left behind by the previous fan-out would send `gather` looking
+    # for worktrees that belong to a run that is already over.
+    #
+    # Note what is NOT cleared: the worktrees. `clear:` deletes files, and
+    # deleting a worktree directory out from under git is not the same as
+    # removing it — cleanup is a git operation, so it stays with the agent,
+    # in `integrate`.
+    clear: [.headsign/tmp/items]
+    gate:
+      checks:
+        - name: the work is split into at least one item
+          run: "test -s .headsign/tmp/items"
+        - name: every item has a child run already started
+          # The check that keeps this phase honest. `state.json` exists in a
+          # worktree only after `headsign start` really ran there, so an
+          # agent that wrote a tidy list and started nothing fails here
+          # rather than at `gather`, where the failure would look like a
+          # child's. It covers the sloppy list too: a blank line in `items`
+          # becomes a path that cannot exist, which `test -s` above would
+          # have waved through.
+          run: 'for i in $(cat .headsign/tmp/items); do
+            test -f ".worktrees/$i/.headsign/state.json" || exit 1; done'
+    on_pass: gather
+    max_attempts: 3
+
+  # ── gather ───────────────────────────────────────────────────────────────
+  # The join, and the reason this example exists. Two questions, two
+  # fields: `ready:` is "has everyone finished talking?", the gate is "did
+  # everyone pass?" — and they have to be asked separately, because a child
+  # that is still RUNNING has not failed anything yet. Collapse them into
+  # one gate and every early `headsign next` reads as a failure and burns
+  # an attempt on children that are doing fine.
+  gather:
+    description: >
+      Wait for the children. They are driven by their own agents in their
+      own worktrees; do not push them along from here, and do not answer a
+      child's `headsign next` yourself to hurry it up. To look, run
+      `headsign status` in each worktree — it is read-only: no gate runs,
+      no state is written, no lock is taken. Then ask `headsign next` here.
+      While any child is still going you get PENDING, which spends no
+      attempt, so asking early costs nothing.
+    # PENDING while any child is still RUNNING (docs/adr/0002): waiting is
+    # not failing. Note that nothing blocks — headsign answers PENDING and
+    # returns, and the next `headsign next` asks the question again. The
+    # "waiting" is the agent's, and it is one probe long.
+    #
+    # `headsign status` rather than a peek at the child's state.json: it
+    # judges nothing, writes nothing and takes no lock, and its first line
+    # is a documented contract (RUNNING / COMPLETE / ESCALATED / ABORTED).
+    # Only RUNNING carries anything after the word — the phase and the
+    # attempt count — which is why this one is anchored with `^` while the
+    # gate below can ask for a whole line. A worktree that has vanished
+    # reads as not-RUNNING here and then fails the gate below, which is the
+    # right way round: a missing child is a question for a person, not
+    # something to wait on forever.
+    ready: 'for i in $(cat .headsign/tmp/items); do
+      (cd ".worktrees/$i" && headsign status) | head -n 1
+      | grep -q ^RUNNING && exit 1; done; exit 0'
+    gate:
+      checks:
+        - name: every child run finished COMPLETE
+          # ALL_OF — one child short of COMPLETE fails the whole gate. The
+          # other two joins, the ones an orchestrator would give you a mode
+          # for, are this same loop with the test moved. No field in this
+          # file changes, because none of this is a headsign feature:
+          #
+          #   any_of — one COMPLETE child is enough:
+          #     for i in $(cat .headsign/tmp/items); do (cd ".worktrees/$i" \
+          #       && headsign status) | head -n 1 | grep -qx COMPLETE \
+          #       && exit 0; done; exit 1
+          #
+          #   quorum — at least N of them (N=2 here):
+          #     n=0; for i in $(cat .headsign/tmp/items); do (cd \
+          #       ".worktrees/$i" && headsign status) | head -n 1 \
+          #       | grep -qx COMPLETE && n=$((n+1)); done; [ "$n" -ge 2 ]
+          #
+          # An empty list would pass all_of vacuously; what prevents that is
+          # `split`'s first check, one phase back.
+          run: 'for i in $(cat .headsign/tmp/items); do
+            (cd ".worktrees/$i" && headsign status) | head -n 1
+            | grep -qx COMPLETE || exit 1; done'
+    on_pass: integrate
+    # A child that ended ESCALATED or ABORTED is a decision someone has
+    # already stopped on, and no amount of re-running this gate restarts a
+    # run that has ended. There is also no work in this phase to retry — so
+    # the failure goes where it belongs, to a person. Deliberately no
+    # `max_attempts` beside it: `escalate` fires on the first failure, which
+    # would make the budget dead code, and validate rejects the pair
+    # outright (docs/adr/0014).
+    on_fail: escalate
+
+  # ── integrate ────────────────────────────────────────────────────────────
+  # Bring the work home and put the tools away. This is the first time the
+  # suite sees all of the changes together: each child left its own
+  # worktree green, which says nothing about the three of them in one tree.
+  integrate:
+    description: >
+      Merge each item's branch into this one, resolve whatever conflicts
+      the split failed to prevent, and get the suite green over the
+      combined result. Then clean up after the fan-out: `git worktree
+      remove .worktrees/<item>` for every item, `git worktree prune` if a
+      directory was already deleted by hand, and delete the merged
+      branches. If a merge turns out to need work that belongs to a child,
+      do it here on this branch and say so in your report — the child's run
+      is over, and nothing restarts it.
+    gate:
+      checks:
+        - name: full suite passes over the merged result
+          # swap-me: your project's test command, e.g.
+          #   pytest / go test ./... / bundle exec rspec
+          run: "npm test"
+          timeout: 600
+        - name: no worktree left behind
+          # Cleanup is checked because it is the part everyone skips, and
+          # because a leftover worktree is not harmless: the next fan-out
+          # would find `.worktrees/<item>` already there and `git worktree
+          # add` would refuse. Empty or absent both pass — `git worktree
+          # remove` takes the item's directory and leaves the parent.
+          run: 'test -z "$(ls -A .worktrees 2>/dev/null)"'
+    on_pass: $end
+    max_attempts: 3
+
+limits:
+  # Three phases and slack for a few rounds of merge trouble. Note what
+  # this number does not cover: the children's laps. Each child run keeps
+  # its own attempts and its own ceiling in its own worktree, and this run
+  # can neither see nor bound them — the budget here counts gate
+  # evaluations in THIS directory, of which `gather`'s waiting costs none
+  # (a probe that answers PENDING spends nothing).
+  max_total_iterations: 20
