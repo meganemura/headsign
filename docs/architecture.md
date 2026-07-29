@@ -151,3 +151,4 @@ outside it:
 - [ADR-0017](adr/0017-three-budgets-and-the-recoverable-ceiling.md) — three budgets; the global ceiling escalates without ending the run
 - [ADR-0018](adr/0018-cli-engine-seam.md) — the seam between `cli.ts` and `engine.ts`: the order of a lap is a routing rule, so the five run operations move
 - [ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md) — an unrunnable check or `ready:` probe refuses the lap instead of failing it; a timeout stays a verdict
+- [ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md) — `validate` warns on a pass-edge cycle with no ceiling: `max_attempts` clears on a pass, so it cannot bound one

@@ -27,6 +27,7 @@ record the reasoning each choice rests on.
 | [0019](0019-readme-as-one-page-and-the-three-document-layers.md) | The README is the page before you enter — documentation splits into three layers by the moment it is read, the README carries boundaries rather than syntax, and its demonstration is a picture bound to commands that exist *(its middle layer corrected by 0020)* |
 | [0020](0020-writing-the-workflow-as-its-own-skill.md) | Writing the workflow is a second skill — the seam is intent rather than whether `.headsign/` exists, gates sort into unfakeable/anchored/fakeable, authoring stops at the file; and a correction to 0019: the layer that writes has two readers, so the reference page is the person's and the skill ships the agent's |
 | [0021](0021-a-command-that-never-ran-is-not-an-answer.md) | A command that never ran is not an answer, in all three places headsign runs one — an unrunnable check or `ready:` probe refuses the lap (exit 3) and moves nothing, while a timeout stays an ordinary failure |
+| [0022](0022-validate-checks-that-a-run-can-end.md) | `validate` asks whether the run can end, not only whether every phase can be reached — a cycle of pass edges with no `limits.max_total_iterations` is warned about, because `max_attempts` clears on a pass and cannot bound one |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

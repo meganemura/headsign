@@ -253,6 +253,12 @@ run が存在しない場合は、従来どおり `.headsign/workflow.yaml` に�
 `next` は表示しません。
 毎周回尋ねられるコマンドだからです。
 
+もう一つの警告は、到達ではなく**停止**についてのものです。
+あるフェーズの集まりが **pass 辺だけ**で循環でき、かつ `limits.max_total_iterations` が宣言されていないとき、その run を止めるものは何もありません。
+`max_attempts` は「そのフェーズが最後に pass してからの失敗回数」なので、pass で回る閉路は毎周それを消してしまうからです。
+[example.headsign/sweep.yaml](../example.headsign/sweep.yaml) のような掃引がまさにその形で、だからこそ上限を宣言しています。
+**失敗**辺を通って閉じる閉路は警告しません。そちらは失敗するフェーズの `max_attempts` が実際に上限として効くからです([ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md))。
+
 スキーマが定義していないキーは、ファイルのどの階層にあってもエラーです。
 フェーズに `max_atempts: 3` と書かれていれば、試行回数の上限が一切効かないまま走るのではなく、`phase 'implement': unknown key 'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail, max_attempts)` で止まります。
 これまでは、この書き間違いは黙って読み飛ばされていました。

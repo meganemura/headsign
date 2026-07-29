@@ -285,6 +285,16 @@ the run you were in the middle of. `start` prints the warnings too, once,
 while the person who wrote the file is still there; `next` doesn't, because
 it is asked every turn.
 
+The other warning is about stopping rather than reaching. If a set of phases
+can cycle on **pass** edges alone and no `limits.max_total_iterations` is
+declared, nothing bounds the run: `max_attempts` counts a phase's failures
+since it last passed, so a loop that turns on passes clears it every lap. A
+sweep like [example.headsign/sweep.yaml](../example.headsign/sweep.yaml) is
+exactly that shape, which is why it declares a ceiling. Cycles that close
+through a *failure* edge are not warned about — the failing phase's
+`max_attempts` really does bound those
+([ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md)).
+
 A key the schema doesn't define is an error, at every level of the file. A
 phase declaring `max_atempts: 3` stops with `phase 'implement': unknown key
 'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail,

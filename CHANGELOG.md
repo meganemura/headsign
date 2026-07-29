@@ -9,6 +9,20 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **`headsign validate` says when a workflow has no way to stop.** It checked
+  that every phase could be *reached* and never that the run could *end*. If a
+  set of phases can cycle on pass edges alone — a sweep turning back through its
+  queue, say — and no `limits.max_total_iterations` is declared, nothing bounds
+  the run: `max_attempts` counts a phase's failures since it last passed, so a
+  loop that turns on passes clears it every lap. That is now a warning (still
+  exit 0, like the unreachable-phase one), and it carries its reason, because an
+  author told only that the graph loops reaches for `max_attempts` — the one
+  thing that cannot help. Cycles that close through a *failure* edge are not
+  warned about; the failing phase's `max_attempts` really does bound those. See
+  [ADR-0022](docs/adr/0022-validate-checks-that-a-run-can-end.md).
+
 ### Fixed
 
 - **A gate check that could not be run at all was counted as a check that
