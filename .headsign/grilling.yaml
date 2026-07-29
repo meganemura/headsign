@@ -41,7 +41,7 @@ phases:
     # Cleared on entry, which for the entry phase means on `headsign start`:
     # a list or a decision log left over from an earlier session would send
     # this run through questions nobody asked this time.
-    clear: [.headsign/tmp/questions, .headsign/tmp/decisions.md]
+    clear: [.headsign/tmp/questions, .headsign/tmp/decisions.md, .headsign/tmp/corrections.md]
     gate:
       checks:
         - name: at least one question framed
@@ -113,6 +113,21 @@ phases:
       than the claim, that is a result: go back and rewrite
       `.headsign/tmp/plain.md` before moving on, and say in this file what
       changed.
+
+      Then append the outcome to `.headsign/tmp/corrections.md`, which is the
+      only file in this run that survives the lap: the claimed question line
+      verbatim, and under it what the challenge changed in the explanation —
+      or, when it changed nothing, say that. Write it for someone who will
+      read it without `challenge.md` in front of them, because they will:
+      this file is cleared on the way into the next question and that one is
+      not.
+    # challenge.md is cleared on entry; corrections.md deliberately is not.
+    # Everything this phase finds lives in a file that the next lap destroys,
+    # so what survives is only what got carried out by hand. In the run that
+    # produced this rule, fourteen questions wrote fourteen of these files and
+    # thirteen were thrown away — the seven mistakes the challenging caught
+    # survived because the agent chose to copy them, not because anything
+    # asked it to.
     clear: [.headsign/tmp/challenge.md]
     ready: "test -s .headsign/tmp/challenge.md"
     gate:
@@ -125,6 +140,13 @@ phases:
           # summary of the explanation, which is what this phase exists not
           # to be.
           run: "grep -q -e '?' -e '？' .headsign/tmp/challenge.md"
+        - name: this lap left a line in the surviving record
+          # Same idiom as decide's second check, and honest in the same way:
+          # it proves the question reached corrections.md, never that what was
+          # written under it is true. A lap that changed nothing still has to
+          # say so — an empty entry and a missing entry read the same later,
+          # and only one of them is a claim.
+          run: 'cat .headsign/tmp/corrections.md 2>/dev/null | grep -qF -e "$(head -n 1 .headsign/tmp/current-question)"'
     on_pass: decide
     max_attempts: 3
 
@@ -148,6 +170,13 @@ phases:
       If `.headsign/tmp/plain.md` and `.headsign/tmp/challenge.md` settled
       the question, record it: append the question line verbatim to
       `.headsign/tmp/decisions.md` with the decision and the reason under it.
+      **And say so out loud, in this turn, to the person who asked for the
+      work** — what the question was, what the explaining changed on the way
+      to answering it, and why nobody needed to be asked. A question you
+      settled yourself is the one that person never sees; from where they sit,
+      a lap that asks nothing and a lap that thought about nothing look
+      identical. Tell them, briefly, and let them stop you if the answer is
+      wrong.
       If it is genuinely still open, this is the moment to ask a person —
       state the question in the plain terms you just worked out, offer the
       candidate answers and what each costs, write `.headsign/tmp/stop-note`
@@ -203,8 +232,15 @@ phases:
 
       Note which answers came from a person and which the explaining produced
       on its own — the second kind is what tells you whether this loop is
-      earning its keep. Copy the plan somewhere durable before you finish;
-      `.headsign/tmp/` does not survive the next `headsign start`.
+      earning its keep. `.headsign/tmp/corrections.md` is the record of that
+      second kind: read it before writing, and carry what it holds into the
+      plan under its own heading — every place the challenging moved the
+      answer, and what the belief was before it moved. That list is the part
+      a reader cannot reconstruct from the decisions alone, and it is the
+      evidence for or against running this loop again.
+
+      Copy the plan **and `corrections.md`** somewhere durable before you
+      finish; `.headsign/tmp/` does not survive the next `headsign start`.
     gate:
       checks:
         - name: the plan was written
