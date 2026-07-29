@@ -7622,10 +7622,6 @@ function lockPath(cwd) {
 function logPath(cwd) {
   return path.join(cwd, ".headsign", "log");
 }
-function initLog(cwd) {
-  fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
-  fs2.writeFileSync(logPath(cwd), "");
-}
 function appendLog(cwd, line) {
   fs2.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
   fs2.appendFileSync(logPath(cwd), line);
@@ -8102,7 +8098,6 @@ function start2(cwd, workflowPath, nowIso) {
   };
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
-  initLog(cwd);
   appendLog(cwd, logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
   const tmpDir = path2.join(cwd, ".headsign", "tmp");
   fs3.rmSync(tmpDir, { recursive: true, force: true });

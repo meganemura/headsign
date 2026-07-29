@@ -131,19 +131,6 @@ test("releaseLock on an absent lock file is a silent no-op", () => {
 
 // --- .headsign/log I/O ---
 
-test("initLog creates an empty log file", () => {
-  const dir = tmpdir();
-  state.initLog(dir);
-  assert.equal(fs.readFileSync(state.logPath(dir), "utf8"), "");
-});
-
-test("initLog truncates an existing log file", () => {
-  const dir = tmpdir();
-  state.appendLog(dir, "leftover from a previous run\n");
-  state.initLog(dir);
-  assert.equal(fs.readFileSync(state.logPath(dir), "utf8"), "");
-});
-
 test("appendLog appends without truncating, creating the file and .headsign/ if needed", () => {
   const dir = tmpdir();
   state.appendLog(dir, "line 1\n");

@@ -3,11 +3,17 @@
 // record, the log and the lock on request, so a caller that needs to test for a run's
 // existence (the stop hooks, walking upward) asks here rather than joining path fragments of
 // its own. Nowhere else in the program spells `.headsign/state.json`.
-// Also owns I/O for .headsign/log (a sibling, run-scoped transition log; see ADR-0004) —
-// line formatting itself lives in render.ts's logLine, not here — and "formatting" includes
-// the terminator: an append writes exactly the bytes handed over and adds nothing, so a
-// caller that omits the trailing newline runs its entry into the next one. Owning the file's
-// I/O here does not mean framing its entries.
+// Also owns I/O for .headsign/log (a sibling transition log; see ADR-0004) — line formatting
+// itself lives in render.ts's logLine, not here — and "formatting" includes the terminator: an
+// append writes exactly the bytes handed over and adds nothing, so a caller that omits the
+// trailing newline runs its entry into the next one. Owning the file's I/O here does not mean
+// framing its entries.
+// Appending is the ONLY write offered, deliberately. `start` used to truncate the log first, so
+// the file held exactly one run — but it is gitignored, which makes it the only copy of what
+// happened, and so `abort` -> edit -> `start` erased the aborted run's stated reason at the
+// moment the next run began. The log now survives a restart. Nothing is inserted to mark the
+// seam between runs: each run already opens with its own `start` line, and inventing a
+// separator would be framing, which is render.ts's to do.
 // The directory is the caller's choice and is taken on trust: the record and the log are read
 // and written under the directory handed in, never one found by searching upward.
 // Absence and damage are reported differently, on purpose: no record at all comes back as
@@ -132,13 +138,6 @@ export function lockPath(cwd: string): string {
 
 export function logPath(cwd: string): string {
   return path.join(cwd, ".headsign", "log");
-}
-
-// Truncates (or creates) the run-transition log. Called once, by `start`, so each run's
-// log begins empty — call sites and exact line format are owned by render.ts/engine.ts.
-export function initLog(cwd: string): void {
-  fs.mkdirSync(path.join(cwd, ".headsign"), { recursive: true });
-  fs.writeFileSync(logPath(cwd), "");
 }
 
 export function appendLog(cwd: string, line: string): void {

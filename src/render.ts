@@ -207,7 +207,7 @@ export type LogEvent =
   // adopted must never be written to the log (see logDetail below).
   | { kind: "CLAIMED" };
 
-// Pure formatting of one .headsign/log line (state.ts's appendLog/initLog own the I/O).
+// Pure formatting of one .headsign/log line (state.ts's appendLog owns the I/O).
 // `ts` always originates from cli.ts's local `localIso(new Date())` helper — the one place
 // headsign reads the clock (ADR-0006) — even though neither caller is cli.ts any more:
 // engine.ts and stophook.ts both receive `ts` as a `nowIso` argument and never call

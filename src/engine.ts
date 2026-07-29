@@ -448,9 +448,9 @@ export function start(cwd: string, workflowPath: string, nowIso: string): StartR
   };
   state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
-  // The log is run-scoped: truncate/create it fresh so a previous run's history never
-  // bleeds into this one, then record the run's first transition.
-  state.initLog(cwd);
+  // Record the run's first transition. The log is never cleared here: it is gitignored, so a
+  // previous run's history exists nowhere else, and a restart must not be the cheap way to
+  // erase it (see state.ts). This `start` line is what marks where the new run begins.
   state.appendLog(cwd, render.logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
   // Every run starts with a clean scratch dir: artifacts from a previous run (verdicts,
   // tickets, notes) must not leak into this one.

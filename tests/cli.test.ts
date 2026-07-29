@@ -1252,7 +1252,7 @@ test("regression: `headsign abort` still ends the run for good", () => {
 
 // --- .headsign/log ---
 
-test("log: start truncates/creates the log with exactly one start line naming the workflow", () => {
+test("log: the first start in a fresh directory creates the log with exactly one start line naming the workflow", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
@@ -1277,15 +1277,77 @@ test("log: timestamp reflects TZ (Asia/Tokyo, +09:00), not UTC", () => {
   assert.match(lines[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00 start /);
 });
 
-test("log: a second start truncates the previous run's log rather than appending to it", () => {
+// Reading one run out of an append-only log: the event name is ALWAYS the second field and
+// free text like reason="…" always sits after a=/i=, so anchoring on `^[^ ]* start ` cannot be
+// fooled by a reason that happens to contain the word (a naive `grep ' start '` can be).
+// These are the exact pipelines a person is told to use, run through a shell so the tests below
+// protect the advice and not just an equivalent regex.
+const LAST_START_LINE_NO = String.raw`grep -n '^[^ ]* start ' .headsign/log | tail -1 | cut -d: -f1`;
+const COUNT_START_LINES = String.raw`grep -c '^[^ ]* start ' .headsign/log`;
+const COUNT_START_LINES_NAIVE = String.raw`grep -c ' start ' .headsign/log`;
+
+function sh(dir: string, script: string): string {
+  return execFileSync("sh", ["-c", script], { cwd: dir, encoding: "utf8" }).trim();
+}
+
+test("log: a second start appends to the previous run's log, leaving the previous run's bytes exactly as they were", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
   run(["abort", "done"], { cwd: dir });
+  const before = fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8");
   assert.ok(readLog(dir).length >= 2);
 
   run(["start"], { cwd: dir });
-  assert.equal(readLog(dir).length, 1);
+  const after = fs.readFileSync(path.join(dir, ".headsign", "log"), "utf8");
+  assert.ok(after.startsWith(before), `the previous run's bytes were rewritten:\n${after}`);
+  // Byte-exact on the tail as well: a restart adds its own start line and NOTHING else — no
+  // blank line, no separator. Framing runs is render.ts's business, and the start line already
+  // does it.
+  assert.match(after.slice(before.length), /^\S+ start build a=0 i=0 workflow=demo\n$/);
+});
+
+test("log: the abort reason survives the next start — restarting is not a cheap way to erase why the last run stopped", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["abort", "the", "spec", "was", "wrong"], { cwd: dir });
+  run(["start"], { cwd: dir });
+
+  const lines = readLog(dir);
+  assert.ok(
+    lines.some((l) => /^\S+ abort build a=0 i=0 reason="the spec was wrong"$/.test(l)),
+    `the abort line is gone after the restart:\n${lines.join("\n")}`,
+  );
+});
+
+test("log: after a restart the anchored start grep matches twice, and the slice from the last match is only the new run", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir }); // RETRY — a line that belongs to the first run
+  run(["abort", "done"], { cwd: dir });
+  run(["start"], { cwd: dir });
+  run(["next"], { cwd: dir }); // RETRY — a line that belongs to the second run
+
+  assert.equal(sh(dir, COUNT_START_LINES), "2");
+  const currentRun = readLog(dir).slice(Number(sh(dir, LAST_START_LINE_NO)) - 1);
+  assert.equal(currentRun.length, 2, `the slice caught lines from the previous run:\n${currentRun.join("\n")}`);
+  assert.match(currentRun[0], /^\S+ start build a=0 i=0 workflow=demo$/);
+  assert.match(currentRun[1], /^\S+ retry build a=1 i=1 check="/);
+});
+
+test("log: an abort reason containing the word start does not add a match to the anchored grep", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  run(["abort", "let's start over"], { cwd: dir });
+  run(["start"], { cwd: dir });
+
+  assert.ok(readLog(dir).some((l) => l.includes(`reason="let's start over"`)));
+  assert.equal(sh(dir, COUNT_START_LINES), "2");
+  // Why the anchor is not decoration: without it the reason is counted as a third run.
+  assert.equal(sh(dir, COUNT_START_LINES_NAIVE), "3");
 });
 
 test("log: every retry/advance/complete appends one line, including a repeated retry on an untouched tree", () => {
