@@ -29,6 +29,7 @@ record the reasoning each choice rests on.
 | [0021](0021-a-command-that-never-ran-is-not-an-answer.md) | A command that never ran is not an answer, in all three places headsign runs one — an unrunnable check or `ready:` probe refuses the lap (exit 3) and moves nothing, while a timeout stays an ordinary failure |
 | [0022](0022-validate-checks-that-a-run-can-end.md) | `validate` asks whether the run can end, not only whether every phase can be reached — a cycle of pass edges with no `limits.max_total_iterations` is warned about, because `max_attempts` clears on a pass and cannot bound one |
 | [0023](0023-pinning-the-graph-a-run-is-walking-under.md) | A run pins the rules it walks under — a fingerprint per reachable phase plus `limits`, `description` excluded; a change is reported once as an ESCALATE that ends nothing, restoring the file is free, asking again accepts and counts it, and `COMPLETE` says how many *(amends 0016 §5 and 0017)* |
+| [0024](0024-the-log-survives-a-restart.md) | The log survives a restart — `start` no longer truncates it, so an aborted run's stated reason outlives the next one; the `start` line is the seam, and anchoring on the second field makes it a marker a script can trust *(revises 0004)* |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

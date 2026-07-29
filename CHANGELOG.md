@@ -9,6 +9,23 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A restart no longer erases the run before it.** `headsign start` truncated
+  `.headsign/log`, and that file is gitignored — so it was the only copy of what
+  happened, and the next `start` wiped it. `headsign abort <reason>` records the
+  one thing nothing else does, a person's stated reason for stopping, and that
+  line did not survive the next run. It mattered most beside the graph pin: a
+  gate loosened mid-run is reported and counted, while `abort` → edit → `start`
+  reset the pin, reset the count and emptied the log, so the detour left less
+  trace than the sanctioned path. Every write to the log is now an append. The
+  line format is unchanged, and nothing is inserted between runs — each run
+  already opens with its own `start` line, which is a marker a script can trust
+  because the event word is always the second field. To read just the current
+  run, and follow it:
+  `N=$(grep -n '^[^ ]* start ' .headsign/log | tail -1 | cut -d: -f1); tail -n +"$N" -f .headsign/log`.
+  See [ADR-0024](docs/adr/0024-the-log-survives-a-restart.md).
+
 ### Added
 
 - **A run now notices when its own workflow changes underneath it.** `next`

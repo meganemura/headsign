@@ -157,3 +157,4 @@ outside it:
 - [ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md) — an unrunnable check or `ready:` probe refuses the lap instead of failing it; a timeout stays a verdict
 - [ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md) — `validate` warns on a pass-edge cycle with no ceiling: `max_attempts` clears on a pass, so it cannot bound one
 - [ADR-0023](adr/0023-pinning-the-graph-a-run-is-walking-under.md) — a run pins the rules it walks under; a change is reported once and counted when accepted
+- [ADR-0024](adr/0024-the-log-survives-a-restart.md) — `start` stops truncating `.headsign/log`; the `start` line is the seam between runs

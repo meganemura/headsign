@@ -725,8 +725,26 @@ run が始まる前に書かれるものであり、run 自身の履歴は `.hea
 | モデルの外に置かれた状態 | `.headsign/state.json` |
 | 上限付きの閉路 | `max_attempts`、`limits.max_total_iterations` |
 | 判断を人間に戻すこと | `ESCALATE` |
-| run が実際に通った経路 | `.headsign/log` |
+| run が実際に通った経路 | `.headsign/log`。このディレクトリの全 run が、古い順に入っている([読み方](#ログの読み方)) |
 | run が走っているグラフのバージョン | `.headsign/state.json` の `graph_fingerprint`。禁止ではなく、変化を一度だけ報告する([上記](#run-が歩いているグラフ)) |
+
+### ログの読み方
+
+`.headsign/log` には、このディレクトリで始まった run が古い順にすべて入っていて、`start` がそれを消すことはありません。
+abort された run に人が書いた理由は、なぜ止めたのかを示す唯一の記録なので、次の run が始まっても残ります([ADR-0024](adr/0024-the-log-survives-a-restart.md))。
+このファイルは gitignore されていて捨ててよいものです。まっさらにしたくなったら削除してください。
+
+run と run のあいだに区切りは入りません。run は必ず自分の `start` 行から始まるからです。
+その行は、スクリプトが信頼してよい目印です。イベント名は必ず 2 番目のフィールドにあり、`abort` の理由のような自由文は必ず `a=` と `i=` より後ろに来ます。
+なので、直近の run だけを切り出して追いかけるにはこうします。
+
+```sh
+N=$(grep -n '^[^ ]* start ' .headsign/log | tail -1 | cut -d: -f1)
+tail -n +"$N" -f .headsign/log
+```
+
+2 番目のフィールドに当てているところが肝心です。
+素朴な `grep ' start '` は `abort … reason="let's start over"` にも当たってしまい、誰かの書いた文章の途中でログを切ることになります。
 
 同梱のサンプルの一つ [example.headsign/sweep.yaml](../example.headsign/sweep.yaml) は、機械的な変更を待ち行列の先頭から 1 周に 1 件ずつ適用していくワークフローです。
 これをそのままグラフとして描くと、次の形になります。

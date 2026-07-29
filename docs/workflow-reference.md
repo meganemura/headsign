@@ -864,8 +864,30 @@ think in graph terms, the vocabulary maps over like this:
 | state kept outside the model | `.headsign/state.json` |
 | bounded cycle | `max_attempts`, `limits.max_total_iterations` |
 | handing the decision back to a person | `ESCALATE` |
-| the path a run actually took | `.headsign/log` |
+| the path a run actually took | `.headsign/log` — every run in this directory, oldest first ([reading it](#reading-the-log)) |
 | the version of the graph a run is running under | `graph_fingerprint` in `.headsign/state.json` — pinned, and a change reported once rather than forbidden (see [above](#the-graph-a-run-is-walking-under)) |
+
+### Reading the log
+
+`.headsign/log` holds every run started in this directory, oldest first, and
+`start` never clears it — an aborted run's stated reason is the only record
+there is of why someone stopped, and it outlives the run that follows it
+([ADR-0024](adr/0024-the-log-survives-a-restart.md)). The file is gitignored
+and disposable; delete it when you want a clean slate.
+
+Nothing separates one run from the next, because a run already opens with its
+own `start` line. That line is a marker a script can trust: the event word is
+always the second field, and free text like an `abort` reason always comes
+after `a=` and `i=`. So this pulls out the current run, and follows it:
+
+```sh
+N=$(grep -n '^[^ ]* start ' .headsign/log | tail -1 | cut -d: -f1)
+tail -n +"$N" -f .headsign/log
+```
+
+Anchoring on the second field is the part that matters. A plain
+`grep ' start '` also matches `abort … reason="let's start over"`, and would
+slice the log at somebody's sentence.
 
 One of the shipped examples,
 [example.headsign/sweep.yaml](../example.headsign/sweep.yaml), applies a

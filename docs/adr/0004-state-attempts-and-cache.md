@@ -200,17 +200,20 @@ the one on disk afterward), and `releaseLock` only removes a lock this
 process still owns, so a stealer's fresh lock is never deleted out from
 under it by the process it stole from.
 
-### `.headsign/log` (the run-scoped transition log)
+### `.headsign/log` (the transition log)
 
 A sibling of `state.json` and `lock`: `.headsign/log` records every real
 transition of a run as one line per event, in order — which phase was
 visited, how many times it failed, and why the run ended, so a devlog
 written after the fact no longer has to be reconstructed from the
-conversation. `start` truncates it: a run scopes its own log, and a
-previous run's history must not bleed into a new one. Every other write is
-an append.
+conversation.
 
-All I/O for this file lives in `state.ts` (`initLog`/`appendLog`); its line
+*(Revised 2026-07-30 by [ADR-0024](0024-the-log-survives-a-restart.md): `start`
+used to truncate this file so a run scoped its own log. It no longer does —
+every write is an append, and the log survives a restart. The heading above
+lost the word "run-scoped" with it.)*
+
+All I/O for this file lives in `state.ts` (`appendLog`); its line
 format lives in `render.ts` (`logLine`), pure text formatting with no I/O
 of its own; `cli.ts` captures the timestamp (`localIso(new Date())`) —
 still the one place headsign reads the clock — and passes it down to
@@ -221,8 +224,8 @@ itself: `cli.ts` captures `localIso(new Date())` per command and hands it
 over as an argument — `nowIso` for both — which is the same
 clock-stays-in-cli.ts split this ADR has kept from the start.
 
-Four call sites, one line each, for real *transitions*: `start` (truncate,
-then a `start` line), `next`'s iteration-limit branch (a `ceiling` line —
+Four call sites, one line each, for real *transitions*: `start` (a `start`
+line), `next`'s iteration-limit branch (a `ceiling` line —
 see below), `next`'s real evaluation after `step()` (a `retry` / `advance` /
 `complete` / `escalate` / `abort` line, matching the outcome), and `abort`
 (an `abort` line). A terminal-state re-display and a PENDING answer

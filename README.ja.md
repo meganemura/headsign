@@ -164,7 +164,7 @@ Claude Code 以外のエージェントに規律を教える方法と、プラ�
 そのループを実際に回した記録を、このリポジトリからそのまま、丸ごと引いてきます:
 
 ```
-$ cat .headsign/log
+$ tail -8 .headsign/log
 2026-07-29T07:24:19+09:00 start inventory a=0 i=0 workflow=explainability-fitness
 2026-07-29T07:24:19+09:00 advance explain a=0 i=1 from=inventory
 2026-07-29T07:24:41+09:00 advance judge a=0 i=2 from=explain
