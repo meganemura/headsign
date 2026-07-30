@@ -304,6 +304,13 @@ Six commands; a driving session routinely uses one:
 | `headsign status` | read-only view of the current run, for a session that isn't driving it — see [Multiple sessions](#multiple-sessions) |
 | `headsign claim` | hand driver ownership to a delegated agent via the `SubagentStop` hook — for delegating who drives a run; see [Multiple sessions](#multiple-sessions) |
 
+Two more commands sit outside that contract, because they answer about the tool
+rather than about a run: `headsign version` prints the version of the copy that
+is running and nothing else (`--version` prints the same), and `headsign help`
+prints the usage text (`-h`, `--help`, and a bare `headsign` print the same).
+Both always exit 0 — neither is ever a verdict, so neither can be mistaken for
+one.
+
 Multiple workflows can live as separate files under `.headsign/` (one
 workflow per file); pick one with `headsign start <name>` (→
 `.headsign/<name>.yaml`), or pass `--workflow <path>` for an explicit path.

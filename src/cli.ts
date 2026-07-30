@@ -274,8 +274,50 @@ function cmdSubagentStopHook(): never {
   return process.exit(0);
 }
 
+// The version the CLI reports, substituted by esbuild at build time (the `--define` in
+// package.json's `build` script) rather than read from package.json at runtime. Read at
+// runtime it would be unreliable: this bundle ships through two channels and package.json is
+// reliably present in only one of them. The npm package has it at the root, while the Claude
+// Code plugin's source is the `plugin/` directory alone — so a copy cached from the
+// marketplace has plugin/.claude-plugin/plugin.json and nothing above it. A runtime read would
+// work from npm and fail from a plugin copy, or worse, silently find some *other* package.json
+// on the way up.
+//
+// Substituting at build time also turns a check this repo already runs into a guarantee, for
+// free: CI runs `npm run build` and then `git diff --exit-code plugin/dist`, so bumping
+// package.json without rebuilding now fails that check. The version the CLI reports can never
+// silently disagree with the version the package claims.
+//
+// Declared, never assigned: esbuild replaces the identifier itself. `| undefined` records that
+// a bundle built outside `npm run build` leaves it unsubstituted, which is why every read of it
+// goes through `typeof` — an identifier that was never substituted does not merely hold
+// `undefined`, it does not exist, and anything but `typeof` would throw reading it.
+declare const HEADSIGN_VERSION: string | undefined;
+
+// Prints the bare version and a newline — not "headsign 0.4.0". The command name already said
+// which tool, and a bare value composes (`v=$(headsign version)`) as well as it reads.
+//
+// Exit 0, and not a verdict. ADR-0002 gives `next` the 1 = RETRY/PENDING, 2 = ESCALATE/ABORT
+// contract and reserves 3 for usage and configuration errors; `version` (like `help`) answers a
+// question about the tool rather than about a run, so it always succeeds.
+//
+// No `-v`, deliberately: it reads as *verbose* in enough tools that claiming it for *version*
+// now would foreclose the shorter, more useful meaning later, and `--version` is not long
+// enough to need an abbreviation. Its absence is a decision — do not add it "for consistency".
+function cmdVersion(): never {
+  // An unsubstituted constant means this bundle was not built by `npm run build`. Say that
+  // instead of guessing: this command exists to answer *which copy is running* when a fix
+  // seems missing or a gate behaves differently on one machine, and a version that might be
+  // wrong is worse than no version at all.
+  if (typeof HEADSIGN_VERSION !== "string") {
+    return errorExit("this build carries no version — it was not produced by `npm run build`, which is what substitutes it");
+  }
+  return exitAfter(`${HEADSIGN_VERSION}\n`, 0);
+}
+
 // Human convenience only — outside the agent-facing contract (ADR-0002). The two hidden
-// hook subcommands are deliberately omitted; these six commands are the whole surface.
+// hook subcommands are deliberately omitted; those six commands are the whole surface a run is
+// driven through, and the two below them answer about the tool rather than about a run.
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
@@ -285,6 +327,8 @@ Usage:
   headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
   headsign claim                                claim driver ownership for this delegated agent (see docs)
+  headsign version                              print the version of this copy (also --version)
+  headsign help                                 print this text (also -h, --help, no arguments)
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -300,8 +344,15 @@ Guide and workflow reference: https://github.com/meganemura/headsign
 
 function main(): void {
   const [command, ...rest] = process.argv.slice(2);
-  if (command === undefined || command === "-h" || command === "--help") {
+  // Help and version are matched before the switch, in both their word and flag spellings,
+  // because the flag spellings could never live in the switch anyway (a bare `headsign` has no
+  // command at all to switch on). Keeping the spellings of one answer in one place is what
+  // makes them byte-identical rather than two texts that drift.
+  if (command === undefined || command === "help" || command === "-h" || command === "--help") {
     return exitAfter(HELP_TEXT, 0);
+  }
+  if (command === "version" || command === "--version") {
+    return cmdVersion();
   }
   switch (command) {
     case "start": return cmdStart(rest);

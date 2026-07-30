@@ -15,6 +15,11 @@
   can be continued by raising the limit. The table row and the
   idempotent-on-terminal-states paragraph below are updated in place. The
   six tokens are unchanged.
+- Revised: 2026-07-31 — `headsign status` gains two conditional lines
+  ([ADR-0025](0025-a-stop-that-passed-and-a-stop-that-never-ran.md)), and
+  two commands about the *tool* rather than a repository are added:
+  `version` and `help`. Both are covered in the parenthetical below. The
+  six tokens and the six commands are unchanged.
 
 ## Context
 
@@ -70,10 +75,34 @@ as `status`'s `RUNNING`/`COMPLETE`/… is. "The one judging question is
 (Two hidden subcommands exist for the plugin's stop-boundary hooks —
 `stop-hook` for `Stop` (ADR-0006) and, since ADR-0010, `subagent-stop-hook`
 for `SubagentStop`. Both are plumbing invoked by Claude Code itself, not
-part of the agent-facing surface, and neither is listed in `--help`;
-"six commands" counts what an agent may type. Likewise `-h`/`--help`/no-args
-print usage and exit 0 — a human convenience outside the agent-facing
-contract; the six commands stay six.)
+part of the agent-facing surface, and neither is listed in `--help`.)
+
+`help` and `version` are typeable, listed, and still do not make the six
+eight — because the criterion was never "what an agent may type", which
+`-h`/`--help`/no-args already strained. **The six take a repository as their
+subject: a run, or a workflow file. These two take the tool.** Nothing they
+print is about the state of anything in `.headsign/`, which is why neither
+produces a token from the contract below and why both always exit 0. That
+last part is worth stating rather than inferring: asking a tool what it is
+cannot be a usage error, so `headsign help` exits 0 where `headsign --badflag`
+exits 3.
+
+`version` exists because of a gap [ADR-0025](0025-a-stop-that-passed-and-a-stop-that-never-ran.md)
+opened. An installed plugin copy is version-scoped, so a released fix does not
+reach a machine whose copy is older, and that ADR's diagnostic advice — establish
+which version is in play before reading the workflow or the gate — had no command
+to answer it. It prints the bare version and nothing else: the command name has
+already said which tool, and a bare value composes as well as it reads. The
+number is substituted into the bundle at build time rather than read from
+`package.json` at runtime, because the bundle ships through two channels and that
+file is reliably present in only one of them — and because CI already rebuilds
+and diffs `plugin/dist`, which turns "the reported version matches the packaged
+version" from a convention into something that cannot silently drift.
+
+`help` is symmetry, and cheap: `-h`, `--help`, no arguments, and `help` are four
+spellings of one text. `-v` is deliberately not a fifth spelling of `version` —
+it reads as *verbose* in enough tools that claiming it now would foreclose the
+more useful meaning later.
 
 ### Output contract
 

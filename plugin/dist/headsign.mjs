@@ -8604,6 +8604,13 @@ function cmdSubagentStopHook() {
 `, 2);
   return process.exit(0);
 }
+function cmdVersion() {
+  if (false) {
+    return errorExit("this build carries no version \u2014 it was not produced by `npm run build`, which is what substitutes it");
+  }
+  return exitAfter(`${"0.4.0"}
+`, 0);
+}
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
 
 Usage:
@@ -8613,6 +8620,8 @@ Usage:
   headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
   headsign claim                                claim driver ownership for this delegated agent (see docs)
+  headsign version                              print the version of this copy (also --version)
+  headsign help                                 print this text (also -h, --help, no arguments)
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -8627,8 +8636,11 @@ Guide and workflow reference: https://github.com/meganemura/headsign
 `;
 function main() {
   const [command, ...rest] = process.argv.slice(2);
-  if (command === void 0 || command === "-h" || command === "--help") {
+  if (command === void 0 || command === "help" || command === "-h" || command === "--help") {
     return exitAfter(HELP_TEXT, 0);
+  }
+  if (command === "version" || command === "--version") {
+    return cmdVersion();
   }
   switch (command) {
     case "start":

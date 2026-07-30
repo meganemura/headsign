@@ -564,6 +564,39 @@ test("an unknown command errors to stderr (exit 3) and points at --help", () => 
   assert.match(result.stderr, /--help/);
 });
 
+// One text, four ways in — asserted as bytes rather than as four separate /Usage:/ matches,
+// because the failure this guards against is a second help text growing beside the first.
+test("help prints byte-identically to --help, -h and the no-argument invocation, and exits 0", () => {
+  const spellings = [["help"], ["--help"], ["-h"], []];
+  const results = spellings.map((args) => run(args, { cwd: tmpdir() }));
+  for (const result of results) {
+    assert.equal(result.status, 0);
+    assert.equal(result.stderr, "");
+    assert.equal(result.stdout, results[0]!.stdout);
+  }
+  assert.match(results[0]!.stdout, /Usage:/);
+});
+
+test("--help lists the two commands that answer about the tool rather than about a run", () => {
+  const result = run(["--help"], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /headsign version/);
+  assert.match(result.stdout, /headsign help/);
+});
+
+// Run from src/ under Node's type stripping there is no esbuild --define, so the constant is
+// never substituted — the same state a bundle built by invoking esbuild directly would be in.
+// Pinned deliberately: the command exists to answer which copy is running, so a build that
+// cannot answer must say so (exit 3, the usage/configuration code) rather than print a
+// plausible-looking fallback that might be wrong.
+test("version refuses rather than guessing when the build did not bake a version in", () => {
+  const result = run(["version"], { cwd: tmpdir() });
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /no version/);
+  assert.match(result.stderr, /npm run build/);
+});
+
 // --- workflow name resolution: `start <name>` / `validate <name>` (bare positional -> .headsign/<name>.yaml) ---
 
 test("start <name> resolves .headsign/<name>.yaml, stores that workflow_path, and a subsequent next runs it", () => {

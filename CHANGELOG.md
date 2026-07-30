@@ -9,6 +9,25 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **You can now ask which copy of headsign is running.** An installed plugin copy
+  is version-scoped, so a released fix does not reach a machine until that copy
+  updates — and when a report came in that a fix was missing, or that a gate
+  behaved differently for one person, there was no way to establish the version
+  in play. The reference told you to start by doing exactly that and then had to
+  admit the tool could not answer. `headsign version` (or `headsign --version`)
+  now prints the bare version and nothing else, so it reads and composes equally
+  well: `v=$(headsign version)`. It is baked in when the bundle is built rather
+  than read from `package.json` at runtime, which a copy cached from the plugin
+  marketplace does not have above it — so the number cannot come from some other
+  package, and cannot disagree with the version the package claims.
+  `headsign help` is added alongside it: `help` was the one word you could not
+  type without dashes, and it prints exactly what `-h`, `--help` and a bare
+  `headsign` print.
+  Both always exit 0 and neither is a verdict. There is deliberately no `-v`: it
+  reads as *verbose* in enough tools to be worth leaving free.
+
 ## [0.4.0] - 2026-07-30
 
 ### Added

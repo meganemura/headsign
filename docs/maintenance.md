@@ -177,30 +177,40 @@ machine or is protected against being undone once it has.
 1. **[agent]** Bump `version` in **both** `package.json` and
    `plugin/.claude-plugin/plugin.json` (CI enforces equality; without the
    plugin bump, marketplace users never receive the release).
-2. **[agent]** Add the `CHANGELOG.md` entry — curated and user-facing, not a
+2. **[agent]** `npm run build`, and commit the rebuilt
+   `plugin/dist/headsign.mjs` with the bump. **This step is not optional and
+   the release commit is where it belongs**: the build substitutes the version
+   into the bundle, so a bump without a rebuild leaves `headsign version`
+   reporting the previous release from a package claiming the new one. CI
+   catches it — `npm run build` then `git diff --exit-code plugin/dist` — so
+   skipping this fails the push rather than shipping the lie. That is the
+   design working: the check is what makes the reported version trustworthy
+   (ADR-0002). Note the consequence for review: a release commit now touches
+   the bundle, where it used to be three text files.
+3. **[agent]** Add the `CHANGELOG.md` entry — curated and user-facing, not a
    commit-log replay (Keep a Changelog format).
-3. **[agent]** Commit (`Release vX.Y.Z`). Landing it is the next step, and it
-   is a separate step on purpose: the commit is local and amendable, the push
-   is not.
-4. **[agent]** Pre-flight, both free and both read-only:
+4. **[agent]** Commit (`Release vX.Y.Z`) — the two version files, the bundle,
+   and the changelog. Landing it is the next step, and it is a separate step
+   on purpose: the commit is local and amendable, the push is not.
+5. **[agent]** Pre-flight, both free and both read-only:
    `npm pack --dry-run` — read the *list* rather than the count, and check it
    against the `files` whitelist (`plugin/`, the READMEs, the CHANGELOG); the
    number changes whenever `plugin/` gains a file, and a count written down
    here goes stale silently while a wrong list does not. And
    `gh skill publish --dry-run`, which validates the skill layout and nothing
    else.
-5. **[you]** `git push` — landing it on `main`. **This is the moment plugin
+6. **[you]** `git push` — landing it on `main`. **This is the moment plugin
    users can receive it**, which is why it is yours: the distribution map above
    is what makes a merge to `main` a publication.
-6. **[agent]** `git tag vX.Y.Z` — creating the tag locally, which is
+7. **[agent]** `git tag vX.Y.Z` — creating the tag locally, which is
    reversible here.
    **[you]** `git push --tags`. Tags matching `v*` are protected (no deletion,
    no re-pointing) — one tag is the shared reference point for every channel,
    which is only trustworthy if it cannot move. So the push is the
    irreversible half, and the agent stops before it.
-7. **[you]** Create the GitHub Release for the tag; its body is the
+8. **[you]** Create the GitHub Release for the tag; its body is the
    transcription of the `CHANGELOG.md` section.
-8. **[you]** `npm publish` from the tagged, CI-green checkout —
+9. **[you]** `npm publish` from the tagged, CI-green checkout —
    `prepublishOnly` forces typecheck+test+build. It may prompt for a 2FA OTP,
    which is the mechanical reason this one cannot be delegated. Consider
    `--provenance` once publishing moves into CI instead of a laptop.
@@ -209,7 +219,7 @@ machine or is protected against being undone once it has.
 existing tag (`gh skill publish` insists on creating the tag itself), and what
 discovery actually keys on — the `agent-skills` topic — is a one-time
 repository setting, already in place (publish added it on 2026-07-25). The
-`--dry-run` in step 4 is the whole of its involvement.
+`--dry-run` in step 5 is the whole of its involvement.
 
 ### Yours, and only yours
 

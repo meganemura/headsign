@@ -347,3 +347,37 @@ phases:
   assert.equal(done.status, 0);
   assert.match(done.stdout, /^COMPLETE\n/);
 });
+
+// --- version: the number is baked into the bundle at build time ---
+//
+// These belong in this suite and nowhere else: the version is substituted by esbuild's
+// --define, so it exists only in the shipped bundle. Run against src/ under Node's type
+// stripping there is no substitution at all, which is a different (and deliberately failing)
+// path, covered in cli.test.ts.
+
+const PACKAGE_VERSION: string = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, "..", "package.json"), "utf8"),
+).version;
+
+// The test that matters. --define wiring is the part that can rot silently — drop the flag, or
+// bump package.json without rebuilding, and the CLI keeps happily reporting a stale number.
+// The version is read out of package.json rather than written here on purpose: hard-coding it
+// would freeze this test at today's number and it would pass forever after the next release.
+test("the version baked into the bundle is the package's own version", () => {
+  const result = run(["version"], { cwd: tmpdir() });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `${PACKAGE_VERSION}\n`);
+});
+
+test("version and --version print the bare version and a newline, byte-identically, and exit 0", () => {
+  const word = run(["version"], { cwd: tmpdir() });
+  const flag = run(["--version"], { cwd: tmpdir() });
+  assert.equal(word.status, 0);
+  assert.equal(flag.status, 0);
+  // Bare value, not "headsign 0.4.0": the command name already said which tool, and this is
+  // the form that composes into `v=$(headsign version)`.
+  assert.equal(word.stdout, `${PACKAGE_VERSION}\n`);
+  assert.equal(flag.stdout, word.stdout);
+  assert.equal(word.stderr, "");
+  assert.equal(flag.stderr, "");
+});
