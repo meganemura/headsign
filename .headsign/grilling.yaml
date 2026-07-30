@@ -97,6 +97,21 @@ phases:
   # thing, and every sentence written about them was true. The question that
   # broke it came from a person, and it was not "why is that true" but "is
   # that really the same thing as the others".
+  #
+  # The instruction to count existing instances before accepting a refusal was
+  # added after a run refused to put a value in state.json because it would
+  # duplicate a fact the log already records — while four pairs in that same
+  # file do exactly that: `claimed` with `driver_agent`, `paused` with the
+  # `stop_nudges` reset, `stalled` with `stop_nudges: 5`, `graph-changed` with
+  # `graph_change_reported`. That lap's challenge was not idle: it checked how
+  # the costs had been grouped and threw out an analogy that did not hold. It
+  # never asked how the record's existing fields relate to the log's existing
+  # lines. A person reversed it in one sentence.
+  #
+  # Note the shape, because it is the mirror of the rule above and not a
+  # restatement of it: attacking groupings catches a false *identity* ("these
+  # are all the same kind of thing"), and this catches a false *exception*
+  # ("this would be the only one of its kind here").
   challenge:
     description: >
       Put naive "why?" questions to the explanation you just wrote, and write
@@ -109,10 +124,18 @@ phases:
       X" or reasons about several things at once, ask whether they are really
       the same kind of thing. A claim can be true of every member of a
       category that should never have been one category. Ask like someone who
-      does not already agree with you. If an answer turns out to be weaker
-      than the claim, that is a result: go back and rewrite
-      `.headsign/tmp/plain.md` before moving on, and say in this file what
-      changed.
+      does not already agree with you.
+
+      Then, wherever the explanation *refuses* something — a field, a line, a
+      command — because it would duplicate what is already there, or because
+      this project does not do that sort of thing, go and count the existing
+      instances before you accept the refusal. Find none and the refusal
+      stands. Find four and what you are refusing is the house pattern, and
+      the refusal is the thing that has to defend itself.
+
+      If an answer turns out to be weaker than the claim, that is a result: go
+      back and rewrite `.headsign/tmp/plain.md` before moving on, and say in
+      this file what changed.
 
       Then append the outcome to `.headsign/tmp/corrections.md`, which is the
       only file in this run that survives the lap: the claimed question line
