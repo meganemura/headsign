@@ -190,7 +190,10 @@ patch = fixes only.
 7. `npm publish` from the tagged, CI-green checkout — `prepublishOnly`
    forces typecheck+test+build; the `files` whitelist ships only `plugin/`,
    the READMEs, and the CHANGELOG. Sanity-check with `npm pack --dry-run`
-   (9 files) first. Publishing may prompt for a 2FA OTP. Consider
+   first — read the *list* rather than the count, and check it against that
+   whitelist: the number changes whenever `plugin/` gains a file, and a count
+   written down here goes stale silently while a wrong list does not.
+   Publishing may prompt for a 2FA OTP. Consider
    `--provenance` once publishing moves into CI instead of a laptop.
 
 ## Repository settings (live outside the tree; recorded here to be reproducible)
