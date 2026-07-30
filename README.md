@@ -124,6 +124,25 @@ The plugin ships three things: the bundled CLI (no npm install, no build), a
 `workflow` skill teaching the loop discipline, and the stop-boundary hooks that
 keep an agent from silently quitting mid-run.
 
+A repository can enable it for everyone who opens it, so that nobody on the team
+installs it individually. That is a committed `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "headsign": {
+      "source": { "source": "github", "repo": "meganemura/headsign" }
+    }
+  },
+  "enabledPlugins": { "headsign@headsign": true }
+}
+```
+
+Those keys are a declaration rather than an installation: they name the
+marketplace the repository expects and the plugin it wants enabled there. What a
+given person's Claude Code does on meeting that declaration is Claude Code's to
+define and its own documentation's to describe.
+
 Anywhere else — another agent, a custom harness, or your own hands at a
 terminal — install the CLI:
 
@@ -136,8 +155,10 @@ The CLI is the tool; the plugin is packaging. Either way it is a Node program:
 the plugin spares you the install and the build, not the runtime, so Node ≥ 20
 has to be present wherever `headsign` is invoked — including a CI job, or a
 harness in a Ruby, Go, or Python repository whose toolchain is otherwise none
-of Node's business. Teaching a non-Claude-Code agent the discipline, and
-installing the hook backstop without the plugin, are in
+of Node's business. Teaching a non-Claude-Code agent the discipline, installing
+the hook backstop without the plugin, and the parts of that repository-wide
+declaration that move — pinning it to a release tag, opting out of it, and what
+updating means — are in
 [docs/workflow-reference.md](docs/workflow-reference.md).
 
 ## What a loop looks like

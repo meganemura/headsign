@@ -10,6 +10,99 @@ run の*最中*にエージェントが従う規律はプラグインに同梱�
 
 このページは人のために書かれた 1 枚で、書き方と運転の両方を持っていますが、エージェントが書くその瞬間に読む抜粋のほうは [`design-workflow` スキル](../plugin/skills/design-workflow/SKILL.md) とその [スキーマリファレンス](../plugin/skills/design-workflow/references/schema.md) としてプラグインと一緒に配られます(このページはどこにも同梱されないため。[ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md))。
 
+## リポジトリ全体でプラグインを有効にする
+
+[README](../README.ja.md#インストール) の二つのコマンドは、プラグインを一人ぶんインストールするものです。
+そうではなく、そのリポジトリを開く全員に向けて宣言することもできます。
+コードと一緒にコミットする `.claude/settings.json` がそれです:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "headsign": {
+      "source": { "source": "github", "repo": "meganemura/headsign" }
+    }
+  },
+  "enabledPlugins": { "headsign@headsign": true }
+}
+```
+
+`extraKnownMarketplaces` は、そのリポジトリのメンバーに必要なプラグインの供給元を、リポジトリの側から名指しする場所です。
+スキーマ自身の説明は "Additional marketplaces to make available for this repository. Typically used in repository .claude/settings.json to ensure team members have required plugin sources" です。
+キーの `headsign` はマーケットプレイスの名前で、[`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json) から来ています。
+その `source` は、そのマーケットプレイスがどこにあるかを述べます。
+`enabledPlugins` のキーは `plugin@marketplace` の形なので、`headsign@headsign` は「`headsign` という名前のマーケットプレイスの中の、`headsign` という名前のプラグイン」です(後者は [`plugin/.claude-plugin/plugin.json`](../plugin/.claude-plugin/plugin.json) から来ています)。
+両方が同じ語なのは、このプロジェクトが同梱するプラグインが一つだからであって、形式上の決まりではありません。
+
+この二つのキーは headsign のものではなく Claude Code のものです。
+そのため以下に書くのは、このファイルが何を*宣言*しているかです。
+その宣言に出会った各人の Claude Code が何をするかを説明するのは Claude Code 自身のドキュメントであり、スキーマが動いたときに追随するのもそちらです。
+このページはどこにも同梱されませんが、README のほうは npm のキャッシュや fork の中で凍りつきます。
+動く部分をこちら側に置いてあるのは、そのためです。
+
+**固定(pin)。** マーケットプレイスの `source` は `ref`(ブランチまたはタグ)も取ります。
+全員を一つのバージョンに揃えたいチームは、既定ブランチのままにせず、リリースタグを指します:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "headsign": {
+      "source": {
+        "source": "github",
+        "repo": "meganemura/headsign",
+        "ref": "v0.4.0"
+      }
+    }
+  },
+  "enabledPlugins": { "headsign@headsign": true }
+}
+```
+
+これが買うのは、チーム全体で一つのゲートのふるまいです。
+ワークフローのスキーマは 1.0 より前で、定義していないキーを拒否します([ADR-0015](adr/0015-strict-schema-and-version-0-1.md))。
+そのため固定していないチームでは、あるメンバーの手元で走るワークフローが、別のメンバーの手元では validate に通らない、ということが起こりえます。
+それはハーネスの差でありながら、仕事の差として届きます。
+これが支払わせるのは、誰かが pin を動かし続ける手間です。
+しかも古びた pin は目に見えません。
+固定したバージョンに無いものをワークフローが使うまで、どこもおかしく見えず、そのときには「三つ前のリリースにいる」ではなく「headsign が壊れている」という形で届きます。
+同じエントリには `autoUpdate` というフラグもあります。
+pin と自動更新は同じ問いに逆向きに答えるものなので、どちらかが成り行きで決まるより、リポジトリが意図して片方を選ぶほうが良いはずです。
+
+**個人単位での解除。** 設定の優先順位は user < project < local なので、project の設定に勝つのは、同じリポジトリにあるその人自身の `.claude/settings.local.json` です:
+
+```json
+{ "enabledPlugins": { "headsign@headsign": false } }
+```
+
+これはコミットするファイルではなく個人用のファイルなので、解除は手元だけの行為で、リポジトリの宣言はそのまま残ります。
+プロジェクトはプラグインを宣言できますが、使い続けることを強制はできません。
+これは [headsign が使うことを誰にも強制しない](../README.ja.md#headsign-がやらないこと)のと同じ境界を、一段下でなぞったものです。
+
+**更新。** バージョンを宣言することと、それが手元にあることは、別々の出来事です。
+配布する側から見たそれは [maintenance.md](maintenance.md) の distribution map にあり、サードパーティのマーケットプレイスは既定で auto-update が無効で、更新は利用者自身が実行する、と記録されています。
+つまり、コミットしたファイルの `ref` を動かすことは更新の開始であって、完了ではありません。
+
+**プロジェクトが固定したバージョンは、run が使うバージョンとは限りません。** インストール済みのプラグインの複製はバージョンごとに分かれた場所に置かれます。
+1 バージョンに 1 ディレクトリで、そのパスは [maintenance.md](maintenance.md#live-patching-an-installed-plugin-local-testing) にあります。
+そのため、プロジェクトが新しいリリースへ移ったからといって、古いまま入っている複製のふるまいは、その複製が更新されるまで変わりません。
+コミットしたファイルが述べるのはチームが欲しいバージョンで、そのマシンで `headsign next` が実際に走らせるのは、そのマシンにある複製です。
+「修正が入っていない」「一人だけゲートのふるまいが違う」という報告が来たら、ワークフローのファイルを読むより先に、ゲートを読むより先に、いま動いているバージョンを突き止めてください。
+それに答えるのが `headsign version`(同じものを表示する `headsign --version` でも構いません)で、いま実際に動いているその複製自身が答えます。
+この番号はバンドルのビルド時に焼き込まれるので、パッケージが名乗るバージョンとずれることはありません。
+これまでの二つの手がかりも、引き続き持っておく価値があります。
+そちらが答えるのは別の問い、複製が*どこに*あってどの経路で来たのかで、入っている二つの複製を見分けるのはそちらだからです。
+インストール済みのプラグインの複製を識別するのは、それが入っているバージョンのディレクトリ名で、npm から入れた CLI のほうは `npm ls headsign` が答えるものです。
+
+**このリポジトリがやっていないこと。** headsign 自身には、headsign プラグインを有効にする `.claude/settings.json` は置いていません。
+これは意図的です。
+headsign の開発とは、いま編集している CLI(`src/` からビルドされる `node plugin/dist/headsign.mjs`)を、このリポジトリ自身の `.headsign/` にあるワークフローに対して走らせることです。
+ここでリリース済みのプラグインを有効にすれば、次のバージョンを書いている最中に前のバージョンを運転席に座らせることになります。
+そうなると、何か想定外のことが起きるたびに、原因の候補が二つになります。
+いま加えた変更か、ゲートを走らせている複製か。
+これが「headsign を*使う*プロジェクト」と「headsign *である*プロジェクト」の違いです。
+前者は固定された、全員で同一のリリース版を求めるもので、ここまでの内容はすべてそちらに当てはまります。
+後者にとっては、そのファイルが無いことが設定です。
+
 ## プラグインなしで使う
 
 プラグインは、headsign を Claude Code 向けに包んだ配布形態の一つにすぎません。

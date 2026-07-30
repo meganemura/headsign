@@ -124,6 +124,25 @@ Claude Code では、プラグインとして:
 プラグインには三つが同梱されます。
 バンドル済み CLI(npm install もビルドも不要)、ループの規律を教える `workflow` スキル、そして run の途中でエージェントが黙って抜けるのを押し返す停止境界の hook です。
 
+リポジトリの側で、そこを開く全員に対して有効にすることもできます。
+そうすれば、チームの誰も個別にインストールせずに済みます。
+それを担うのは、コミットされた `.claude/settings.json` です:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "headsign": {
+      "source": { "source": "github", "repo": "meganemura/headsign" }
+    }
+  },
+  "enabledPlugins": { "headsign@headsign": true }
+}
+```
+
+これらのキーはインストールではなく宣言です。
+リポジトリが前提とするマーケットプレイスと、そこで有効にしたいプラグインを名指しするだけです。
+その宣言に出会ったとき各人の Claude Code が何をするかは、Claude Code が決めることであり、それを説明するのは Claude Code 自身のドキュメントです。
+
 それ以外の場所、つまり別のエージェント、自作のハーネス、あるいはターミナルでの手作業では、CLI をインストールしてください:
 
 ```
@@ -136,7 +155,7 @@ npx headsign --help
 プラグインが省いてくれるのはインストールとビルドであって、ランタイムではありません。
 そのため `headsign` を呼ぶ場所には、どこであれ Node 20 以上が必要です。
 CI のジョブでも、ツールチェーンが本来 Node と無縁な Ruby / Go / Python のリポジトリのハーネスでも、これは変わりません。
-Claude Code 以外のエージェントに規律を教える方法と、プラグインなしで hook のバックストップを入れる方法は、[docs/workflow-reference.ja.md](docs/workflow-reference.ja.md) にあります。
+Claude Code 以外のエージェントに規律を教える方法、プラグインなしで hook のバックストップを入れる方法、そして上のリポジトリ単位の宣言のうち動く部分(リリースタグへの固定、個人単位での解除、更新が何を意味するか)は、[docs/workflow-reference.ja.md](docs/workflow-reference.ja.md) にあります。
 
 ## ループはどんな形か
 

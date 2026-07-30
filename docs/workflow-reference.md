@@ -19,6 +19,124 @@ moment it writes one ships with the plugin instead, in the
 because this page ships nowhere
 ([ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md)).
 
+## Enabling the plugin for a whole repository
+
+The two commands in the [README](../README.md#install) install the plugin for
+one person. A repository can instead declare it for everyone who opens it, in a
+`.claude/settings.json` committed with the code:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "headsign": {
+      "source": { "source": "github", "repo": "meganemura/headsign" }
+    }
+  },
+  "enabledPlugins": { "headsign@headsign": true }
+}
+```
+
+`extraKnownMarketplaces` is where a repository names a plugin source its members
+need — the schema's own description is "Additional marketplaces to make
+available for this repository. Typically used in repository
+.claude/settings.json to ensure team members have required plugin sources". The
+key `headsign` is the marketplace's name, from
+[`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json), and its
+`source` says where that marketplace lives. `enabledPlugins` is keyed
+`plugin@marketplace`, so `headsign@headsign` is the plugin named `headsign` —
+from [`plugin/.claude-plugin/plugin.json`](../plugin/.claude-plugin/plugin.json)
+— inside the marketplace named `headsign`. Both names being the same word is
+this project shipping one plugin, not a rule of the format.
+
+Those two keys are Claude Code's rather than headsign's, so what follows
+describes what the file *declares*. What a person's Claude Code does on meeting
+that declaration is Claude Code's own documentation to describe, and that
+documentation is also the copy that stays current when the schema moves; this
+page ships nowhere, but the README freezes in npm caches and forks, which is why
+the moving parts are down here.
+
+**Pinning.** A marketplace `source` also takes a `ref` — a branch or a tag — so
+a team that wants every member on one version points it at a release tag instead
+of leaving it on the default branch:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "headsign": {
+      "source": {
+        "source": "github",
+        "repo": "meganemura/headsign",
+        "ref": "v0.4.0"
+      }
+    }
+  },
+  "enabledPlugins": { "headsign@headsign": true }
+}
+```
+
+What that buys is one gate behaviour for the whole team. The workflow schema is
+pre-1.0 and rejects any key it does not define
+([ADR-0015](adr/0015-strict-schema-and-version-0-1.md)), so an unpinned team can
+have one member's copy running a workflow that another member's copy refuses to
+validate — a difference in the harness, arriving as a difference in the work.
+What it costs is that somebody now has to move the pin, and a stale one is
+invisible: nothing looks wrong until a workflow reaches for something the pinned
+version does not have, and that reaches you as "headsign is broken" rather than
+"we are three releases behind". The same entry also carries an `autoUpdate`
+flag; a pin and an auto-update answer the same question in opposite directions,
+so a repository is better off setting one of them deliberately than inheriting
+whichever it gets.
+
+**Opting out.** Settings precedence is user < project < local, so the file that
+wins over a project setting is the person's own `.claude/settings.local.json` in
+the same repository:
+
+```json
+{ "enabledPlugins": { "headsign@headsign": false } }
+```
+
+That is the per-person file rather than the committed one, so opting out is a
+local act that leaves the repository's declaration alone. A project can declare
+the plugin; it cannot make anyone keep it — which is the same boundary as
+[headsign not forcing anyone to use it](../README.md#what-headsign-is-not), one
+layer down.
+
+**Updates.** Declaring a version and having it are two events, not one. The
+publishing side of that is the distribution map in
+[maintenance.md](maintenance.md), which records that third-party marketplaces
+have auto-update off by default and that users run the update themselves. So
+moving the `ref` in the committed file begins the update; it does not conclude
+it.
+
+**The version a project pins is not the version a run uses.** An installed
+plugin copy is version-scoped — one directory per version, the path is in
+[maintenance.md](maintenance.md#live-patching-an-installed-plugin-local-testing)
+— so a project that has moved to a new release does not change what an older
+installed copy does until that copy updates. The committed file says which
+version the team wants; the copy on the machine is what `headsign next` on that
+machine actually runs. When a report comes in that a fix is not there, or that a
+gate behaves differently for one person, establish the version in play before
+reading the workflow file and before reading the gate. `headsign version` — or
+`headsign --version`, which prints the same thing — answers that from the copy
+that is actually running. The number is baked into the bundle when it is built,
+so it cannot drift from the version the package claims. Two older answers are
+still worth having, because they answer a different question, *where* the copy
+is and which channel it came from, and that is how you tell two installed copies
+apart: an installed plugin copy is identified by the version directory it sits
+in, and a CLI installed from npm instead is whatever `npm ls headsign` reports.
+
+**What this repository does not do.** headsign itself has no committed
+`.claude/settings.json` enabling the headsign plugin, deliberately. Working on
+headsign means running the CLI you are editing — `node plugin/dist/headsign.mjs`,
+built from `src/` — against this repository's own workflows in `.headsign/`.
+Enabling the released plugin here would put the previous version in the driver's
+seat while the next one is being written, and every surprise would then have two
+candidate causes: the change just made, or the copy running the gate. That is the
+distinction between a project that *uses* headsign and the project that *is*
+headsign. The first wants a pinned, released version, the same one for everyone,
+and everything above applies to it. For the second, the absence of the file is
+the setting.
+
 ## Using without the plugin
 
 The plugin is just one way headsign ships, packaged for Claude Code. The
