@@ -603,10 +603,28 @@ safety net for a stuck or silently departed agent, not the normal way to
 pause — the note above is. To spot an unattended stall from the outside:
 `headsign status` (read-only, safe to run from any session — see
 [Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
-`.headsign/log`'s tail shows `stalled` (equivalently, `stop_nudges >= 5`) —
-together they mean the driving agent has walked away without a note.
+`.headsign/log`'s tail shows `stalled`, or `status`'s own `last stop:` line reads
+`not held — the nudge cap is spent` — together they mean the driving agent has
+walked away without a note. Read it off those two rather than out of
+`.headsign/state.json`: the counter behind the cap is reset by every real
+`headsign next`, so on a run being driven it tells you almost nothing.
 Re-drive the run with `headsign next` from the session that's actually
 driving it.
+
+A turn end also passes when Claude Code has **already resumed** the turn it
+belongs to. When the hook holds a turn, Claude Code flags the continuation —
+`stop_hook_active` on the hook's input at that turn's own ending — and
+headsign stands down there: the ending is never blocked, and nothing
+one-shot is spent, so a pause note and an armed `claim` marker both survive
+it untouched. That is why a nudge arrives roughly once per exchange rather
+than once per turn end; the window is one turn wide and closes when the turn
+ends. It is not the nudge cap above — a different mechanism with the same
+visible outcome — and the two are now told apart by what they leave behind:
+the spent cap has its `stalled` line, while an overruled turn end leaves an
+`unheld` line in `.headsign/log` (naming the field it was told,
+`by=stop_hook_active`) and a `last stop:` line in `headsign status`. Both
+writes are best-effort and skipped while the run's lock is held, so a
+*missing* `unheld` line does not prove the hook did not run.
 
 ### The graph a run is walking under
 
@@ -716,6 +734,15 @@ workflow: feature-dev
 reason: review rejected 3 times
 ```
 
+```
+$ headsign status
+RUNNING decide (attempt 0/5)
+workflow: design-grilling
+driver: not delegated yet — no agent has claimed this run
+last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at 2026-07-30T23:06:51+09:00
+observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held
+```
+
 The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
 capitalized like `next`'s tokens, but it's a *report*, not a verdict:
 `status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
@@ -732,6 +759,44 @@ that a handoff landed. `claim` takes two beats and can fail quietly, so one
 session, the user, a passing observer — checks that the run really did
 change hands.
 
+Two further lines can appear while a run is `RUNNING`, both of them in the
+last example above, and both about how turns *end* rather than where the run
+stands. `last stop:` appears once headsign has processed one stop it could
+attribute to this run, and says what it did with that turn end, in one of
+four readings:
+
+- `held, and pointed back to headsign next` — the ordinary nudge.
+- `paused by a note` — a `.headsign/tmp/stop-note` was consumed.
+- `not held — the nudge cap is spent` — the backstop had already given up on
+  this run (see [the backstop](#the-backstop)).
+- `not held — Claude Code had already resumed the turn (stop_hook_active)` —
+  headsign was overruled at that turn end, and the same stop is the `unheld`
+  line in `.headsign/log`.
+
+Each is followed by ` — at <timestamp>`, printed exactly as it was recorded,
+offset and all. The wording says what headsign did with the field it was
+handed, and claims nothing about what Claude Code's own documentation says
+about that field. Read the timestamp along with the disposition: a turn end
+headsign cannot attribute — a bystander agent's, or one from an environment
+that opted out — leaves the line describing the earlier stop rather than
+blanking it, so a stale disposition is possible and its timestamp is how you
+catch one.
+
+`observer:` appears when `HEADSIGN_OBSERVER` is set in the environment
+`status` itself runs in — normally the session's, but not necessarily, since
+what is read is that one process's environment. It is the only quiet-ending
+cause a caller can answer about *itself*, since there is no identifier to
+resolve.
+
+Conditional means byte-for-byte conditional: a run on which no stop has been
+processed, read in an environment without the switch, prints exactly what
+`status` printed before either line existed. Neither line is a judgement —
+`status` still runs no gate, writes nothing, and takes no lock. And because
+the record holds only the most recent stop, while `headsign next` resets the
+nudge counter, `headsign status` is the right **first** command on resuming
+when you want to know how your last turn end was handled: before `next`, and
+before any other work.
+
 **If you are a delegated agent, end your turn and watch what happens: being
 pushed back to `headsign next` means this run is yours to drive.**
 `SubagentStop` holds an agent when it matches the recorded driver, and
@@ -747,15 +812,38 @@ another agent armed for itself. If you get that message without having run
 so, and let them claim again.
 
 The implication runs one way only. Ending quietly does *not* prove the
-reverse. You may never have claimed, in which case the hook passes you
-before it ever looks at who you are; the nudge cap may have run out (see
-[the backstop](#the-backstop)); a pause note may have been consumed; or
-`HEADSIGN_OBSERVER` may be set. And a probe is not free. An ordinary nudge
-back spends one off that cap; a probe that passes while your own pause note
-is armed consumes the note instead; and a probe that lands while *someone
-else's* claim marker is armed consumes the marker — that is the `Claim
-confirmed` case above, and the other agent has to claim again. Spend the
-probe deliberately rather than habitually.
+reverse: five things end a turn quietly, and what you look at to tell them
+apart differs for each one.
+
+| a turn ended quietly because | how you tell |
+| --- | --- |
+| Claude Code had already resumed the turn | an `unheld` line in `.headsign/log`; the `last stop:` line in `headsign status` |
+| a pause note was consumed | a `paused` line in the log |
+| the nudge cap is spent | a `stalled` line in the log — and no such line means the cap is innocent |
+| nobody has claimed the run, or the stopper is not the driver | `driver:` in `status`, which narrows rather than settles |
+| `HEADSIGN_OBSERVER` is set | the `observer:` line in `status` |
+
+Three caveats go with that table, and each one is load-bearing.
+
+**`driver:` narrows the fourth row rather than settling it.** It reports
+whether *some* delegated agent holds the run, never whether the reader is
+that agent (above). Reading the log instead does not rescue it: the log
+spans runs, so a `claimed` line may belong to a run that ended days ago.
+
+**A missing `unheld` line proves nothing.** The hook's writes are
+best-effort and skipped while the run's lock is held, so the absence of a
+line does not prove the hook did not run.
+
+**An `unheld` line says that *some* stop hook held the turn** and that
+headsign then stood down — not that headsign was the hook that held it. A
+repository may install more than one.
+
+And a probe is not free. An ordinary nudge back spends one off that cap; a
+probe that passes while your own pause note is armed consumes the note
+instead; and a probe that lands while *someone else's* claim marker is armed
+consumes the marker — that is the `Claim confirmed` case above, and the other
+agent has to claim again. Spend the probe deliberately rather than
+habitually.
 
 For a *session*, the same test proves nothing at all. `Stop` rules a stop
 out only when a delegated agent holds the run, so while nobody has claimed
@@ -785,10 +873,12 @@ Skipping the claim fails quietly rather than loudly. An agent that just
 starts calling `headsign next` records nothing, so the run stays unclaimed:
 every nudge it produces goes to whichever *session* stops in the
 directory — typically the one sitting idle, waiting on the delegation —
-while the agent actually doing the work ends its turns unheld. The backstop
+while nothing holds the turns of the agent actually doing the work. The backstop
 stays armed and points at the wrong party, and nothing in either one's
-output says so. So when you hand a run to a delegated agent, that agent's
-first headsign command is `headsign claim`, never `headsign next`.
+output says so — not even the log: an `unheld` line is written only for a stop
+headsign can attribute to the run, so an unclaimed run records nothing for that
+agent's turn ends either. So when you hand a run to a delegated agent, that
+agent's first headsign command is `headsign claim`, never `headsign next`.
 
 `headsign claim` fixes that by letting a hook do the recording, because
 Claude Code tells the hook what the agent's own environment cannot. Two
@@ -888,6 +978,23 @@ tail -n +"$N" -f .headsign/log
 Anchoring on the second field is the part that matters. A plain
 `grep ' start '` also matches `abort … reason="let's start over"`, and would
 slice the log at somebody's sentence.
+
+Four of the event words are not about the run moving at all, but about a turn
+end: `paused`, `stalled`, `claimed`, and `unheld` — the last of them written
+when headsign was overruled at a stop boundary.
+
+```
+2026-07-30T23:06:51+09:00 unheld decide a=0 i=21 by=stop_hook_active
+```
+
+Claude Code had already resumed that turn, so headsign stood down and the
+turn ended (see [the backstop](#the-backstop)). The detail is bare rather
+than quoted because `stop_hook_active` is an identifier — and it is the name
+of a field on the hook's payload from Claude Code, not anything headsign
+sets. It is in the line so that the log, headsign's source, and the payload a
+person can print for themselves all use the one word. A *missing* `unheld`
+line proves nothing on its own: the hook's writes are best-effort and skipped
+while the run's lock is held.
 
 One of the shipped examples,
 [example.headsign/sweep.yaml](../example.headsign/sweep.yaml), applies a

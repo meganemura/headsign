@@ -65,7 +65,9 @@ plugin or `npm install` the package. Do not guess at other paths.
    which is exactly the backstop that session wants. Skipping the claim
    fails silently rather than loudly: the run stays unclaimed, so every
    later nudge goes to a *session* — usually the idle one that delegated to
-   you — while your own turns end unheld. And if you need to check whether
+   you — while nothing holds your own turns at all. (Nothing records them
+   either: `unheld` is written only for a stop headsign can attribute, so an
+   unclaimed run leaves no line for your turn ends.) And if you need to check whether
    you are the driver, don't read it off `headsign status` — it reports
    whether some delegated agent holds the run, never whether that agent is
    you. As a delegated agent, the reliable signal is the hook itself: if
@@ -75,9 +77,15 @@ plugin or `npm install` the package. Do not guess at other paths.
    seated you — if you did not run `headsign claim`, you have taken a seat
    another agent was asking for, so say so and let it claim again. The test
    only works in this direction and only for delegated agents: ending
-   quietly proves nothing (not having claimed, an exhausted nudge cap, a
-   pause note, or `HEADSIGN_OBSERVER` all end turns quietly), and a session
-   gets nudged on any run nobody has claimed, whether or not it is driving.
+   quietly proves nothing (not having claimed, Claude Code's
+   already-continuing flag, an exhausted nudge cap, a pause note, or
+   `HEADSIGN_OBSERVER` all end turns quietly), and a session gets nudged
+   on any run nobody has claimed, whether or not it is driving. A nudge
+   arrives roughly **once per exchange**, not once per turn end. When the
+   hook holds a turn, Claude Code flags the continuation, so the ending of
+   *that* turn passes quietly — recorded as an `unheld` line in
+   `.headsign/log` and on `headsign status`'s `last stop:` line. The
+   window is one turn wide and closes when the turn ends.
    A probe is not free either: one that comes back as an ordinary nudge
    spends one from the cap, one that passes while your own pause note is
    armed consumes the note, and one that lands under another agent's armed
@@ -94,7 +102,10 @@ plugin or `npm install` the package. Do not guess at other paths.
    whole protocol. `next` is a judgment, not a peek: it runs the phase's
    gate, and a failure spends one of that phase's attempts. When you only
    want to look, run `headsign status` (rule 1) — it judges nothing and
-   costs nothing.
+   costs nothing. And when you want to know how your last turn end was
+   handled, `headsign status` is the **first** command to run on resuming,
+   before `headsign next`: `next` resets the nudge counter, and the record
+   holds only the most recent stop.
 5. `RETRY` → the output shows exactly which check failed and its last output.
    Fix that, then run `headsign next` again. `ADVANCE` → follow the printed
    instructions of the new phase. If `ADVANCE <phase>` is followed by a line
