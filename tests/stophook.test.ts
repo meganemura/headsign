@@ -24,6 +24,7 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    last_stop: null,
     graph_fingerprint: {},
     graph_change_reported: null,
     accepted_graph_changes: 0,
@@ -704,6 +705,263 @@ test("SubagentStop: walk-up boundary — a .git FILE stops the walk before reach
   const decision = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha" }), NOW, NO_ENV);
   assert.deepEqual(decision, { block: false });
   assert.equal(state.readState(root)?.stop_nudges, 0);
+});
+
+// --- the already-continuing flag: Claude Code overruled the hook, and it says so ---
+//
+// `stop_hook_active` on the hook's input means the turn end belongs to a turn Claude Code has
+// already resumed, so headsign is overruled and lets it pass. What these pin is that the pass now
+// leaves a trace — and that acquiring one did not cost either of the two guarantees the pass
+// carries: it is never blocked, and it never spends a one-shot resource (the pause note, the
+// claim marker).
+
+// Holds the run's lock the way a concurrent `headsign next` lap does: a lock file carrying a
+// LIVE pid (this test process's own), which acquireLock refuses to steal.
+function holdLock(dir: string): void {
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  fs.writeFileSync(state.lockPath(dir), String(process.pid));
+}
+
+test("Stop: a flagged stop on an unclaimed run records an unheld stop — the field and one whole log line, and it still ends the turn", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build", driver_agent: null, stop_nudges: 2 }));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, stop_hook_active: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+
+  const after = state.readState(dir);
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW });
+  assert.equal(after?.stop_nudges, 2, "the already-continuing flag never touches headsign's own nudge counter");
+
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0], `${NOW} unheld build a=0 i=0 by=stop_hook_active`);
+});
+
+// Guarantee 2 at the Stop boundary: the moved-down check passes over only read-only steps, and
+// the pause note is opened one step further down, inside the nudge flow.
+test("Stop: a flagged stop does not consume the pause note it passes over", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null }));
+  writeNote(dir, "a one-shot pause that must survive an overruled turn end");
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, stop_hook_active: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.ok(fs.existsSync(path.join(dir, ".headsign", "tmp", "stop-note")), "the note is a one-shot resource and this stop must not spend it");
+  assert.equal(state.readState(dir)?.last_stop?.disposition, "unheld", "the pass is recorded as unheld, not as a pause");
+  assert.deepEqual(readLog(dir).filter((l) => l.includes(" paused ")), []);
+});
+
+// The reason the check sits BELOW the recorded-driver test rather than at the top of `evaluate`:
+// a claimed run's Stop can never be its driver's (only SubagentStop carries an agent id), so
+// headsign cannot attribute the stop to anybody and must write nothing at all.
+test("Stop: a flagged stop on a claimed run writes nothing at all — no field, no line, not one byte of state.json", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: "agent-alpha", stop_nudges: 1 }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, stop_hook_active: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "an unattributable stop must not write state.json");
+  assert.deepEqual(readLog(dir), []);
+});
+
+test("Stop: a flagged stop on a non-running run, and one where no run is reachable at all, write nothing", () => {
+  for (const status of ["complete", "escalated", "aborted"] as const) {
+    const dir = tmpdir();
+    state.writeState(dir, runningState({ status, end_reason: status === "complete" ? null : "some reason" }));
+    const before = fs.readFileSync(state.statePath(dir));
+    assert.deepEqual(stophook.evaluate(dir, JSON.stringify({ cwd: dir, stop_hook_active: true }), NOW, NO_ENV), { block: false });
+    assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
+    assert.deepEqual(readLog(dir), []);
+  }
+
+  const noRun = tmpdir();
+  assert.deepEqual(stophook.evaluate(noRun, JSON.stringify({ cwd: noRun, stop_hook_active: true }), NOW, NO_ENV), { block: false });
+  assert.equal(fs.existsSync(state.statePath(noRun)), false, "a flagged stop must not conjure a record where there is no run");
+});
+
+// The observer path must stay a COMPLETE no-op: it returns before the input is parsed and before
+// the walk-up, and writing there would both undo the short-circuit that makes the opt-out an
+// opt-out and record a non-participant in the record of a run it opted out of.
+test("Stop: HEADSIGN_OBSERVER set -> a flagged stop records nothing, not even the field", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, stop_hook_active: true }), NOW, { HEADSIGN_OBSERVER: "1" });
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
+  assert.deepEqual(readLog(dir), []);
+});
+
+// The write is best-effort, exactly like every other write in this module: somebody holding the
+// lock is somebody judging the run, and a hook must never be the reason a turn cannot end. So a
+// MISSING unheld line never proves the hook did not run.
+test("Stop: with the run's lock held, a flagged stop writes neither the field nor the line, and the turn still ends", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null }));
+  holdLock(dir);
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, stop_hook_active: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false }, "the turn must end regardless");
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "no field: the record belongs to whoever holds the lock");
+  assert.deepEqual(readLog(dir), []);
+  assert.equal(fs.readFileSync(state.lockPath(dir), "utf8"), String(process.pid), "the holder's lock is left alone");
+});
+
+test("SubagentStop: with the run's lock held, a flagged stop by the driver writes neither the field nor the line, and the turn still ends", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: "agent-alpha" }));
+  holdLock(dir);
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-alpha", stopHookActive: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
+  assert.deepEqual(readLog(dir), []);
+});
+
+// The regression this branch exists to prevent, and the reason it is a branch rather than a
+// moved check: consuming the claim marker seats a driver AND blocks, which violates both
+// guarantees at once. The branch returns before the adoption gate is anywhere in its path, so no
+// later reordering can put a flagged turn end through that gate.
+test("SubagentStop: a flagged stop with an armed claim marker passes through, leaves the marker armed, and seats no driver", () => {
+  const unclaimed = tmpdir();
+  state.writeState(unclaimed, runningState({ driver_agent: null, stop_nudges: 0 }));
+  writeClaimMarker(unclaimed);
+  const before = fs.readFileSync(state.statePath(unclaimed));
+
+  const onUnclaimed = stophook.evaluateSubagent(unclaimed, subagentStdin({ dir: unclaimed, agentId: "agent-alpha", stopHookActive: true }), NOW, NO_ENV);
+  assert.deepEqual(onUnclaimed, { block: false });
+  assert.ok(fs.existsSync(claimMarkerPath(unclaimed)), "the marker is a one-shot request and must wait for an unflagged turn end");
+  assert.deepEqual(fs.readFileSync(state.statePath(unclaimed)), before, "no adoption, and nothing to attribute either: the run has no driver to match");
+  assert.deepEqual(readLog(unclaimed), [], "no claimed line, and no unheld line for an unattributable stop");
+
+  // The same marker on a run this agent already drives: the unheld stop is recorded (positive
+  // match), and the marker still survives untouched.
+  const claimed = tmpdir();
+  state.writeState(claimed, runningState({ driver_agent: "agent-alpha", stop_nudges: 0 }));
+  writeClaimMarker(claimed);
+
+  const onClaimed = stophook.evaluateSubagent(claimed, subagentStdin({ dir: claimed, agentId: "agent-alpha", stopHookActive: true }), NOW, NO_ENV);
+  assert.deepEqual(onClaimed, { block: false });
+  assert.ok(fs.existsSync(claimMarkerPath(claimed)), "the adoption gate is not in the flagged branch's path at all");
+  const after = state.readState(claimed);
+  assert.equal(after?.driver_agent, "agent-alpha", "no driver was seated by this stop");
+  assert.equal(after?.stop_nudges, 0);
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW });
+  assert.deepEqual(readLog(claimed), [`${NOW} unheld build a=0 i=0 by=stop_hook_active`]);
+});
+
+// Only a positive match is recorded, for the same reason only a positive match may block: most
+// subagent stops belong to reviewers, searchers and workers with no headsign role, and a line
+// about one of those would report a run as unheld for a party that never held it.
+test("SubagentStop: a flagged stop that cannot be matched to the recorded driver records nothing", () => {
+  for (const [label, driver, agentId] of [
+    ["a bystander agent", "agent-alpha", "agent-beta"],
+    ["an unnameable agent", "agent-alpha", undefined],
+    ["an unclaimed run", null, "agent-alpha"],
+  ] as const) {
+    const dir = tmpdir();
+    state.writeState(dir, runningState({ driver_agent: driver }));
+    const before = fs.readFileSync(state.statePath(dir));
+
+    const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId, stopHookActive: true }), NOW, NO_ENV);
+    assert.deepEqual(decision, { block: false }, label);
+    assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, `${label}: nothing headsign can attribute, so nothing is written`);
+    assert.deepEqual(readLog(dir), [], label);
+  }
+});
+
+test("SubagentStop: a flagged stop reaches the record through the same walk-up an unflagged one does", () => {
+  const root = tmpdir();
+  fs.mkdirSync(path.join(root, ".git"));
+  state.writeState(root, runningState({ workflow: "demo", phase: "build", driver_agent: "agent-alpha" }));
+  const deepSubdir = path.join(root, "a", "b", "c");
+  fs.mkdirSync(deepSubdir, { recursive: true });
+
+  const decision = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha", stopHookActive: true }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(state.readState(root)?.last_stop, { disposition: "unheld", at: NOW });
+  assert.deepEqual(readLog(root), [`${NOW} unheld build a=0 i=0 by=stop_hook_active`]);
+});
+
+// --- last_stop at every disposition headsign can attribute ---
+//
+// Written on every stop the hook processes and can attribute, not only on the passes. A field
+// written only on passes would still read "not held" long after a later nudge — which is exactly
+// the misreading `stop_nudges: 0` produced for the report that asked for this field.
+
+test("last_stop: a nudge records `nudged` alongside the counter it increments", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 0 }));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  const after = state.readState(dir);
+  assert.equal(after?.stop_nudges, 1);
+  assert.deepEqual(after?.last_stop, { disposition: "nudged", at: NOW });
+  assert.deepEqual(readLog(dir), [], "nudges 1-4 stay silent in the log; the field is the only trace");
+});
+
+test("last_stop: a consumed pause note records `paused`, in the same write as the paused line", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 3 }));
+  writeNote(dir, "stepping away");
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  const after = state.readState(dir);
+  assert.equal(after?.stop_nudges, 0);
+  assert.deepEqual(after?.last_stop, { disposition: "paused", at: NOW });
+  assert.equal(readLog(dir).length, 1);
+});
+
+// The one stop where the field and the log answer differently, and deliberately: the 5th nudge
+// still HELD the turn, so its disposition is `nudged`, while its `stalled` line records the
+// moment the loop guard tripped. `stalled` as a disposition belongs to the stops afterwards,
+// which are the ones that are no longer held.
+test("last_stop: the cap-tripping nudge records `nudged` while logging `stalled`, and the passes after it record `stalled`", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 4 }));
+  const stdin = JSON.stringify({ cwd: dir });
+
+  const fifth = stophook.evaluate(dir, stdin, NOW, NO_ENV);
+  assert.equal(fifth.block, true);
+  assert.deepEqual(state.readState(dir)?.last_stop, { disposition: "nudged", at: NOW });
+  assert.equal(readLog(dir).length, 1);
+  assert.match(readLog(dir)[0], /^\S+ stalled build a=0 i=0 nudges=5$/);
+
+  const later = "2026-07-25T10:00:00+09:00";
+  const sixth = stophook.evaluate(dir, stdin, later, NO_ENV);
+  assert.deepEqual(sixth, { block: false });
+  const after = state.readState(dir);
+  assert.deepEqual(after?.last_stop, { disposition: "stalled", at: later });
+  assert.equal(after?.stop_nudges, 5, "a spent cap is not incremented further");
+  assert.equal(readLog(dir).length, 1, "stalled is never repeated: only the field moves");
+});
+
+test("last_stop: the cap-exhausted pass keeps its fail-open behaviour — with the lock held it changes nothing and the turn still ends", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 5 }));
+  holdLock(dir);
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
+  assert.deepEqual(readLog(dir), []);
+});
+
+test("last_stop: a bystander subagent's stop leaves the field describing the earlier stop it does not overwrite", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: "agent-alpha", last_stop: { disposition: "nudged", at: NOW } }));
+
+  const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-beta" }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(state.readState(dir)?.last_stop, { disposition: "nudged", at: NOW }, "unattributable stops leave the field alone rather than blanking it");
 });
 
 // --- isObserver (inlined into stophook.ts when its module lost its other half) ---

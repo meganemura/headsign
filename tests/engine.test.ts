@@ -28,6 +28,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    last_stop: null,
     // The graph pin as a run that has just started carries it: empty rather than absent, since
     // step() and the pure functions below never reconcile it (that is the lap's job) and only
     // ever have to carry it through untouched.

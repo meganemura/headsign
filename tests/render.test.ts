@@ -333,6 +333,100 @@ test("statusRunning: history first, then the outstanding question", () => {
   );
 });
 
+// --- status: what happened at the last stop, and whether the caller has opted out ---
+//
+// The two lines that answer the question `driver:` cannot reach: was the previous turn end held,
+// and if not, why not. Both are conditional, so a run nobody has stopped yet says nothing.
+
+test("statusRunning: each of the four dispositions prints its own last-stop line, verbatim", () => {
+  const base = { phase: "decide", attempt: 0, attemptUnknown: false, workflowName: "design-grilling", lastFailure: null, driver: "not delegated yet — no agent has claimed this run" } as const;
+  const head = `RUNNING decide (attempt 0)\nworkflow: design-grilling\ndriver: not delegated yet — no agent has claimed this run\n`;
+  const at = "2026-07-30T23:06:51+09:00";
+
+  assert.equal(
+    render.statusRunning({ ...base, lastStop: { disposition: "nudged", at } }),
+    `${head}last stop: held, and pointed back to headsign next — at ${at}\n`,
+  );
+  assert.equal(
+    render.statusRunning({ ...base, lastStop: { disposition: "unheld", at } }),
+    `${head}last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n`,
+  );
+  assert.equal(
+    render.statusRunning({ ...base, lastStop: { disposition: "paused", at } }),
+    `${head}last stop: paused by a note — at ${at}\n`,
+  );
+  assert.equal(
+    render.statusRunning({ ...base, lastStop: { disposition: "stalled", at } }),
+    `${head}last stop: not held — the nudge cap is spent — at ${at}\n`,
+  );
+});
+
+// The stored value carries its own offset, and this module reads no clock and cannot know the
+// reader's timezone: reformatting it — or truncating it to a bare wall clock, which is what the
+// original report asked for — would be inventing a fact the writer did not record.
+test("statusRunning: the last stop's timestamp is printed exactly as stored, offset and all", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "unheld", at: "2026-01-02T03:04:05-05:00" },
+  });
+  assert.match(actual, /last stop: .* — at 2026-01-02T03:04:05-05:00\n/);
+});
+
+test("statusRunning: the last-stop line lands after the driver line and before the graph lines", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "nudged", at: "T" },
+    acceptedGraphChanges: 1, graphChangeReported: true,
+  });
+  assert.equal(
+    actual,
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "last stop: held, and pointed back to headsign next — at T\n" +
+      "graph: 1 accepted change to the workflow's rules during this run\n" +
+      "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n",
+  );
+});
+
+test("statusRunning: a run on which no stop has been processed prints byte-identical output to before either line existed", () => {
+  const base = { phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false, workflowName: "demo", lastFailure: null, driver: "a delegated agent" } as const;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n`;
+  assert.equal(render.statusRunning(base), expected);
+  assert.equal(render.statusRunning({ ...base, lastStop: undefined, observer: undefined }), expected);
+  assert.equal(render.statusRunning({ ...base, observer: false }), expected, "an opted-in caller says nothing about the switch");
+});
+
+// The one quiet-ending cause a caller can answer about itself. Printed last because it is the
+// only line here that is about the caller rather than the run.
+test("statusRunning: the observer line prints only when the switch is set, and prints last", () => {
+  const base = { phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo", driver: "a delegated agent" } as const;
+  assert.equal(
+    render.statusRunning({ ...base, observer: true }),
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n",
+  );
+  assert.equal(
+    render.statusRunning({ ...base, lastStop: { disposition: "unheld", at: "T" }, acceptedGraphChanges: 2, observer: true }),
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at T\n" +
+      "graph: 2 accepted changes to the workflow's rules during this run\n" +
+      "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n",
+  );
+});
+
+// The vocabulary rule for both lines: they say what HEADSIGN did with the turn, and name the
+// upstream field only as the identifier it is. Neither may describe what any platform
+// documentation currently says about that field — a published claim about somebody else's docs
+// rots silently (ADR-0006's dated line about this very field is the example).
+test("statusRunning: the unheld wording names the field and claims nothing about upstream documentation", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "unheld", at: "T" },
+  });
+  assert.match(actual, /\(stop_hook_active\)/);
+  assert.doesNotMatch(actual, /documented|undocumented/);
+  assert.doesNotMatch(actual, /loop guard/, "the loop guard is headsign's own stop_nudges, not Claude Code's flag");
+});
+
 test("statusTerminal: complete has no reason line", () => {
   const actual = render.statusTerminal("complete", "demo", null);
   assert.equal(actual, `COMPLETE\nworkflow: demo\n`);
@@ -367,6 +461,7 @@ function baseState(overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    last_stop: null,
     graph_fingerprint: {},
     graph_change_reported: null,
     accepted_graph_changes: 0,
@@ -463,7 +558,7 @@ test("logLine: PENDING is never a valid event to log (defensive — cli.ts must 
   assert.throws(() => render.logLine("ts", outcome, baseState({ phase: "review" })));
 });
 
-// --- logLine: the three Stop-boundary events (ADR-0006/0009; stophook.ts is the caller) ---
+// --- logLine: the Stop-boundary events (ADR-0006/0009; stophook.ts is the caller) ---
 
 test("logLine: paused carries the note's first line", () => {
   const line = render.logLine("ts", { kind: "PAUSED", note: "stepping away for lunch" }, baseState({ phase: "build" }));
@@ -484,4 +579,21 @@ test("logLine: claimed has no detail — the adopted agent id must never appear 
   const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "build", driver_agent: "agent-abc" }));
   assert.equal(line, `ts claimed build a=0 i=0\n`);
   assert.doesNotMatch(line, /agent-abc/);
+});
+
+// The whole line, to the byte, because every part of it is load-bearing: the event word is
+// headsign's own (`unheld`, never `pass` — that is what a GATE does here), and the detail names
+// the upstream field BARE, by this file's rule that quotes mean free text and bare means
+// identifier. `stop_hook_active` is the one token common to the log line, headsign's source, the
+// hook payload a person can print, and whatever upstream documentation exists.
+test("logLine: unheld names the already-continuing flag as a bare identifier, never quoted", () => {
+  const line = render.logLine("2026-07-30T23:06:51+09:00", { kind: "UNHELD" }, baseState({ phase: "decide", total_iterations: 21 }));
+  assert.equal(line, `2026-07-30T23:06:51+09:00 unheld decide a=0 i=21 by=stop_hook_active\n`);
+  assert.doesNotMatch(line, /"/, "the detail is an identifier, so it carries no quotes");
+  assert.doesNotMatch(line, / pass /, "`pass` is this codebase's word for a gate succeeding and must not name this event");
+});
+
+test("logLine: unheld reflects the resulting state's phase, attempts and iterations like every other event", () => {
+  const line = render.logLine("ts", { kind: "UNHELD" }, baseState({ phase: "review", attempts: { review: 2 }, total_iterations: 6 }));
+  assert.equal(line, `ts unheld review a=2 i=6 by=stop_hook_active\n`);
 });

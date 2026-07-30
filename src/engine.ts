@@ -23,9 +23,11 @@
 //   - step() is still pure, total and exported — same (workflow, state, gate result, route),
 //     same answer, no I/O — which is what lets tests/engine.test.ts enumerate the whole
 //     transition table by calling it directly.
-//   - nothing here reads the clock. A timestamp arrives as an argument (`nowIso`), the shape
-//     stophook.ts already uses across this same boundary, so the same inputs produce
-//     byte-identical log lines and a test can assert a whole line.
+//   - nothing here reads the clock, and nothing reads the environment. A timestamp arrives as an
+//     argument (`nowIso`), and so does the environment where one operation needs it (`status`,
+//     for the HEADSIGN_OBSERVER line) — the shape stophook.ts already uses across this same
+//     boundary, so the same inputs produce byte-identical output and a test can assert a whole
+//     line.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -37,6 +39,11 @@ import * as workflowMod from "./workflow.ts";
 import * as state from "./state.ts";
 import * as gate from "./gate.ts";
 import * as render from "./render.ts";
+// One function, for one line of `status`: whether HEADSIGN_OBSERVER is set. It is imported
+// rather than re-implemented because the switch's definition — any non-empty value, the value
+// itself never inspected (ADR-0008) — belongs with the hooks that honour it, and a second copy
+// here could drift into reporting an opt-out that the hooks do not act on.
+import * as stophook from "./stophook.ts";
 import type { Workflow, Route } from "./workflow.ts";
 import type { State } from "./state.ts";
 import type { GateVerdict, CheckFailure, RouteResolution } from "./gate.ts";
@@ -145,6 +152,28 @@ function recordedGraphMarker(state: State): string | null {
 function acceptedGraphChanges(state: State): number {
   const recorded: unknown = state.accepted_graph_changes;
   return typeof recorded === "number" && Number.isFinite(recorded) ? recorded : 0;
+}
+
+// --- reading the last stop off a run record ---
+//
+// Same tolerance, same two halves: a record written before the field existed lacks it (that half
+// is transitional — state.ts's driver_agent declaration carries the criterion), and a
+// hand-edited one may carry anything at all (that half is permanent). Anything that is not a
+// well-formed object reads as "no stop has been attributed yet", which prints no line — the
+// alternative being a `status` that crashes on a record a person edited, on the one command
+// whose whole promise is that it is safe to run while diagnosing.
+const STOP_DISPOSITIONS: readonly NonNullable<State["last_stop"]>["disposition"][] = ["nudged", "unheld", "paused", "stalled"];
+
+function recordedLastStop(state: State): NonNullable<State["last_stop"]> | null {
+  const recorded: unknown = state.last_stop;
+  if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
+  const { disposition, at } = recorded as { disposition?: unknown; at?: unknown };
+  if (typeof at !== "string" || at.length === 0) return null;
+  // An unknown disposition is dropped rather than passed through: render.ts turns the word into
+  // a phrase through a fixed map, so a word it has no phrase for would print nothing useful and
+  // a forged one must not choose the sentence a reader sees.
+  if (!STOP_DISPOSITIONS.includes(disposition as NonNullable<State["last_stop"]>["disposition"])) return null;
+  return { disposition: disposition as NonNullable<State["last_stop"]>["disposition"], at };
 }
 
 // The COMPLETE arm's optional count, spread in the way `routedBy` is spread into ADVANCE: an
@@ -354,6 +383,16 @@ export type StatusResult =
       // the CLI can never resolve for itself, so this reports the one thing the CLI can
       // honestly know. The words that carry it to the reader are cli.ts's.
       delegated: boolean;
+      // What headsign did with the last turn end it could attribute to this run, read off the
+      // record — never by parsing `.headsign/log`, which spans runs and would have to be read
+      // backwards to answer this. null when no stop has been attributed yet, and also when the
+      // field is malformed (see recordedLastStop): both mean "there is nothing to report", and
+      // cli.ts prints no line for either.
+      lastStop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string } | null;
+      // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with. The one
+      // quiet-ending cause the caller can answer about ITSELF; what it reports is the environment
+      // of the process `status` runs in, which is normally the session's but not necessarily.
+      observer: boolean;
       // The graph pin as an observation: how many changes to its own rules this run has
       // accepted, and whether one is reported but not yet accepted. Read-only like everything
       // else here — `status` never reconciles the pin, because reconciling can WRITE (accept a
@@ -439,6 +478,9 @@ export function start(cwd: string, workflowPath: string, nowIso: string): StartR
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
     driver_agent: null,
+    // No stop has been processed yet, and `start` must not invent one: the field is written only
+    // by the stop-boundary hooks, at a stop they actually saw.
+    last_stop: null,
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -758,7 +800,12 @@ export function claim(cwd: string): ClaimResult {
 // argument to log with, and cwd-only like `next`/`abort` (no walk-up). workflow.yaml is read
 // best-effort only to resolve max_attempts for the attempt display — its content never gates
 // anything here, so a broken workflow.yaml degrades the display instead of refusing.
-export function status(cwd: string): StatusResult {
+//
+// The environment arrives as an ARGUMENT, the shape stophook.ts uses for the same reason
+// ("Nothing here reads the clock or the environment: both arrive as arguments"), rather than
+// this module reaching for process.env — which nothing below cli.ts does. It is the first thing
+// outside the hook path to need one, so it follows the existing shape instead of inventing one.
+export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
 
@@ -804,6 +851,8 @@ export function status(cwd: string): StatusResult {
     workflowName: current.workflow,
     lastFailure,
     delegated: driverAgent !== null,
+    lastStop: recordedLastStop(current),
+    observer: stophook.isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
   };

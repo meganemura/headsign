@@ -75,6 +75,37 @@ export interface State {
   // hand-edited state.json is always possible.
   driver_agent: string | null;
 
+  // What headsign DID with the most recent turn end it both processed and could attribute to
+  // this run — the current-value companion to the stop-boundary lines in `.headsign/log`, in
+  // the same way `driver_agent` sits beside `claimed` (the log holds the event, the record
+  // holds the value; ADR-0004 calls this file the external memory).
+  //
+  // The four dispositions are headsign's own actions, never a claim about what the platform
+  // did: `nudged` (the turn was held and pointed back at `headsign next`), `unheld` (the turn
+  // end arrived carrying Claude Code's already-continuing flag, so headsign was overruled and
+  // let it pass — stophook.ts owns that branch), `paused` (a pause note was consumed) and
+  // `stalled` (the nudge cap was already spent, so the stop passed).
+  //
+  // `at` is a local ISO timestamp with a numeric offset — the same `nowIso` value the writers
+  // already receive as an argument. Nothing in this module reads the clock, and no reader may
+  // reformat the value: only the writer knew the reader's timezone.
+  //
+  // Written by stophook.ts in the SAME `withRunLock` call as the log line it accompanies. That
+  // is what makes a second representation of one event safe rather than a smell — the field and
+  // the line land together or neither does.
+  //
+  // Deliberately stale-able: it describes the last stop headsign could attribute, so after a
+  // bystander's turn end it still describes an earlier one. Same limit `status`'s `driver:` line
+  // carries, and it gets the same treatment — printed, with the limit written down.
+  //
+  // A state.json written before this field existed simply lacks it, so every reader must treat
+  // anything that is not a well-formed object (missing, null, a non-object, or an object whose
+  // `disposition`/`at` are not one of the four words and a string) as null. The missing-field
+  // half of that tolerance is TRANSITIONAL on exactly the criterion written for `driver_agent`
+  // above, read for the release that added THIS field; the malformed-value half is permanent,
+  // because a hand-edited state.json is always possible.
+  last_stop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string } | null;
+
   // --- the graph pin: the rules this run has been running under ---
   //
   // A run re-reads its workflow file every lap and may rewrite it as it goes (ADR-0016 §5,

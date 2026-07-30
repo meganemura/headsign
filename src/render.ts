@@ -146,6 +146,18 @@ export function statusRunning(o: {
   // has been claimed — which is exactly the question `headsign claim`'s two-beat handshake
   // leaves open when it fails quietly (see cli.ts's reportStatus for why the line is kept).
   driver: "a delegated agent" | "not delegated yet — no agent has claimed this run";
+  // What headsign did with the last turn end it could attribute to this run, straight off the
+  // record (no log parsing). Optional, so a run on which no stop has been processed prints what
+  // `status` has always printed, to the byte. The wordings below say what HEADSIGN did and, for
+  // `unheld`, name the upstream field it was told — never what any platform documentation
+  // currently says about that field, because a published claim about somebody else's docs rots
+  // silently.
+  lastStop?: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string };
+  // HEADSIGN_OBSERVER, read from the environment of the process `status` runs in (engine.ts
+  // takes it as an argument; this module reads nothing). The one quiet-ending cause a caller can
+  // answer ABOUT ITSELF — there is no identifier to resolve — which makes it worth a line even
+  // though the switch is nothing to do with the run's record.
+  observer?: boolean;
   // The graph pin, and both are optional: a run whose workflow never changed under it says
   // nothing about it at all, and its status output is byte-identical to what it always was.
   // `acceptedGraphChanges` is history (how many changes this run has taken on board);
@@ -165,8 +177,26 @@ export function statusRunning(o: {
   const acceptedLine =
     accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run\n` : "";
   const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n" : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${acceptedLine}${reportedLine}`;
+  // Directly after `driver:`, which is the other line about who and what happened at a turn
+  // boundary, and ahead of the `graph:` lines, which are about the rules rather than the run's
+  // stops. The timestamp is printed VERBATIM: this module reads no clock, cannot know the
+  // reader's timezone, and the stored value already carries its own offset — reformatting or
+  // truncating it to a wall clock would be inventing a fact the writer did not record.
+  const lastStopLine = o.lastStop ? `last stop: ${LAST_STOP_WORDING[o.lastStop.disposition]} — at ${o.lastStop.at}\n` : "";
+  // Last, because it is the only line here that is about the CALLER rather than the run.
+  const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${acceptedLine}${reportedLine}${observerLine}`;
 }
+
+// One phrase per disposition, and each one is about what headsign did to the turn: "held" for
+// the two dispositions that blocked, "not held" for the two that could not. `paused` says
+// neither, because a pause is the reader's own doing and "not held" would read as a failure.
+const LAST_STOP_WORDING: Record<"nudged" | "unheld" | "paused" | "stalled", string> = {
+  nudged: "held, and pointed back to headsign next",
+  unheld: "not held — Claude Code had already resumed the turn (stop_hook_active)",
+  paused: "paused by a note",
+  stalled: "not held — the nudge cap is spent",
+};
 
 export function statusTerminal(status: "complete" | "escalated" | "aborted", workflowName: string, endReason: string | null): string {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}\n` : "";
@@ -175,7 +205,7 @@ export function statusTerminal(status: "complete" | "escalated" | "aborted", wor
 
 // What a `.headsign/log` line can be about: every real transition engine.ts logs, plus the
 // synthetic `start` event (which isn't an engine.Outcome — `start` never runs step()), plus
-// the two Stop-boundary events (ADR-0004's explicit exception to "transitions only"; owned
+// the Stop-boundary events (ADR-0004's explicit exception to "transitions only"; owned
 // and appended by stophook.ts, not engine.ts — see ADR-0006). The type is the full
 // engine.Outcome (PENDING included) rather than a narrower Exclude<>, because
 // engine.step()'s declared return type still carries PENDING even though it never actually
@@ -202,6 +232,14 @@ export type LogEvent =
   | { kind: "GRAPH_CHANGED"; disposition: "reported" | "accepted"; keys: string[] }
   | { kind: "PAUSED"; note: string }
   | { kind: "STALLED" }
+  // A turn end headsign was overruled on: Claude Code's already-continuing flag was set on the
+  // hook's input, so the stop was let through (stophook.ts's flagged branches). `unheld` and
+  // not `pass`, deliberately — `pass` is this codebase's word for a GATE SUCCEEDING
+  // (GateVerdict's passing arm is literally named `pass`), so reusing it here would put the
+  // same string in the log for the opposite kind of event. `unheld` negates the verb headsign
+  // already uses for what these hooks do to a turn, and claims no choice: headsign did not let
+  // go, it was overruled.
+  | { kind: "UNHELD" }
   // The claim handshake's adoption event (ADR-0009/0010) — a third hook-boundary exception
   // alongside PAUSED/STALLED. Deliberately detail-free: the identifier that was just
   // adopted must never be written to the log (see logDetail below).
@@ -247,6 +285,8 @@ function eventName(event: LogEvent): string {
       return "paused";
     case "STALLED":
       return "stalled";
+    case "UNHELD":
+      return "unheld";
     case "CLAIMED":
       return "claimed";
     case "PENDING":
@@ -291,6 +331,14 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
       return `note="${event.note}"`;
     case "STALLED":
       return "nudges=5";
+    case "UNHELD":
+      // Bare, not quoted, by this file's own rule: quotes are for free text, and
+      // `stop_hook_active` is an identifier (see the graph-changed arm above). Naming the
+      // upstream field is deliberate — it is the one token common to the whole diagnostic
+      // chain, from this line through headsign's source to the hook payload a person can
+      // print. Which is also why the event WORD stays inside headsign's own vocabulary: the
+      // line says what headsign did, and names in the detail what it was told.
+      return "by=stop_hook_active";
     case "CLAIMED":
       // No detail — the whole point of the claimed event is to record *that* an adoption
       // happened, never *who* was adopted (that stays in state.json only, per ADR-0009).

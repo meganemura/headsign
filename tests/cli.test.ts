@@ -2184,6 +2184,131 @@ test("status: a state.json still carrying the pre-rename driver_session field re
   assert.doesNotMatch(result.stdout, /session-mine/);
 });
 
+// --- status: what happened at the last stop (the quiet-stop diagnostic) ---
+//
+// The whole point of the field: a turn end that passed because Claude Code had already resumed
+// the turn used to leave no trace anywhere, so a driver could not tell "the hook ran and stood
+// down" from "the hook is not installed". These walk the diagnostic end to end, through the same
+// two commands a person would actually run.
+
+test("status: a turn end that Claude Code had already resumed leaves both an unheld log line and a last-stop line, and the two carry the same timestamp", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const passed = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir, stop_hook_active: true }), env: NO_OBSERVER_ENV });
+  assert.equal(passed.status, 0, "a flagged turn end is never blocked");
+  assert.equal(passed.stderr, "", "and nothing is said to the agent about it");
+
+  const unheld = readLog(dir).filter((l) => l.includes(" unheld "));
+  assert.equal(unheld.length, 1);
+  assert.match(unheld[0], /^\S+ unheld build a=0 i=0 by=stop_hook_active$/);
+  const at = unheld[0].split(" ")[0];
+
+  // Same event, two representations, one locked write: the line and the field cannot disagree.
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  assert.equal(
+    result.stdout,
+    `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n` +
+      `last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n`,
+  );
+});
+
+// The counterpart claim the documentation makes: a nudge is not silent in the record either, so
+// the field never reads "not held" about a stop that was in fact held.
+test("status: a held turn end updates the last-stop line, so a later stop never reads as an earlier pass", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir, stop_hook_active: true }), env: NO_OBSERVER_ENV });
+  assert.match(run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout, /^last stop: not held — Claude Code had already resumed the turn \(stop_hook_active\) — at \S+$/m);
+
+  const nudged = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir }), env: NO_OBSERVER_ENV });
+  assert.equal(nudged.status, 2, "an unflagged turn end on an unclaimed run is still held");
+  assert.match(run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout, /^last stop: held, and pointed back to headsign next — at \S+$/m);
+  assert.equal(readState(dir).stop_nudges, 1);
+  assert.deepEqual(readLog(dir).filter((l) => l.includes(" nudge")), [], "nudges 1-4 have no log line: the field is the only trace");
+});
+
+// The transitional half of the field's tolerance (state.ts's driver_agent declaration carries the
+// criterion for dropping it): a run already in progress across the release that added the field
+// has no field at all, and must print exactly what it printed before the field existed.
+test("status: a record with no last_stop at all prints byte-identical output to before the field existed", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  const withField = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout;
+
+  const legacy = readState(dir) as Record<string, unknown>;
+  delete legacy.last_stop;
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(legacy));
+
+  const withoutField = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(withoutField.status, 0);
+  assert.equal(withoutField.stdout, withField);
+  assert.doesNotMatch(withoutField.stdout, /last stop:/);
+});
+
+// The permanent half: a hand-edited record is always possible, and `status` is the one command
+// whose whole promise is that it is safe to run while diagnosing — so a malformed value reads as
+// "nothing to report" rather than crashing the command someone is diagnosing WITH.
+test("status: a malformed last_stop is read as absent rather than crashing, whatever shape the damage takes", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  for (const damaged of ["not an object", 42, [], {}, { disposition: "unheld" }, { at: "T" }, { disposition: "vanished", at: "T" }, { disposition: "unheld", at: 5 }]) {
+    const st = readState(dir) as Record<string, unknown>;
+    st.last_stop = damaged;
+    fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(st));
+
+    const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+    assert.equal(result.status, 0, `last_stop = ${JSON.stringify(damaged)} must not break status`);
+    assert.doesNotMatch(result.stdout, /last stop:/, `last_stop = ${JSON.stringify(damaged)} must print no line`);
+    assert.match(result.stdout, /^RUNNING build \(attempt 0\)\n/);
+  }
+});
+
+// The only quiet-ending cause a caller can answer ABOUT ITSELF: no identifier to resolve, just
+// the environment the command was run in. Which is also the limit — what is read is the
+// environment of the process `status` runs in, normally the session's but not necessarily.
+test("status: the observer line prints only when HEADSIGN_OBSERVER is set in the calling environment", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const optedIn = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.doesNotMatch(optedIn.stdout, /observer:/);
+
+  const observing = run(["status"], { cwd: dir, env: { ...NO_OBSERVER_ENV, HEADSIGN_OBSERVER: "1" } });
+  assert.equal(observing.status, 0);
+  assert.match(observing.stdout, /^observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held$/m);
+  // Any non-empty value is the whole signal (ADR-0008), and `status` must report the switch on
+  // exactly the values the hooks honour.
+  assert.match(run(["status"], { cwd: dir, env: { ...NO_OBSERVER_ENV, HEADSIGN_OBSERVER: "0" } }).stdout, /^observer: /m);
+  assert.doesNotMatch(run(["status"], { cwd: dir, env: { ...NO_OBSERVER_ENV, HEADSIGN_OBSERVER: "" } }).stdout, /observer:/);
+});
+
+// The hook's observer path stays a complete no-op, so the two lines answer different questions:
+// the observer line says turn ends from HERE are never held, and there is no last stop to report
+// because nothing was ever recorded from this environment.
+test("status: an observing environment's own turn ends leave no last stop to report", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  const observerEnv = { ...NO_OBSERVER_ENV, HEADSIGN_OBSERVER: "1" };
+
+  const passed = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir, stop_hook_active: true }), env: observerEnv });
+  assert.equal(passed.status, 0);
+
+  const result = run(["status"], { cwd: dir, env: observerEnv });
+  assert.doesNotMatch(result.stdout, /last stop:/, "an opted-out session's turn end is not this run's business");
+  assert.match(result.stdout, /^observer: /m);
+  assert.deepEqual(readLog(dir).filter((l) => l.includes(" unheld ")), []);
+});
+
 // --- the graph pin, end to end through the CLI (ADR-0016 §5, ADR-0017) ---
 //
 // A run may rewrite the workflow it is walking; what it may not do is have that pass

@@ -193,6 +193,14 @@ function reportStatus(result: engine.StatusResult): never {
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet — no agent has claimed this run",
+          // Both conditional, and both absent rather than falsy when there is nothing to say:
+          // `undefined` is what makes a run on which no stop has been processed print exactly
+          // what `status` printed before either line existed. The last stop is the answer to the
+          // question the `driver:` line cannot reach — whether the previous turn end was held —
+          // and the observer line is the only one of these facts that is about the caller rather
+          // than the run.
+          lastStop: result.lastStop ?? undefined,
+          observer: result.observer ? true : undefined,
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
         }),
@@ -224,8 +232,11 @@ function cmdClaim(): never {
   return reportClaim(engine.claim(process.cwd()));
 }
 
+// `process.env` is handed over the same way it already is to the two hook evaluators: this file
+// is the only one that reads the process, and `status` now has one line to print about the
+// environment it was called in.
 function cmdStatus(): never {
-  return reportStatus(engine.status(process.cwd()));
+  return reportStatus(engine.status(process.cwd(), process.env));
 }
 
 // The one command that stayed behind when ADR-0018 moved the other five into engine.ts, and

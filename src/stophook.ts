@@ -18,6 +18,25 @@
 // one that trips the cap, logs `stalled`; and a sealed claim writes the driver into the run's
 // record and logs `claimed`. The decision is the return value, but it is never the only
 // effect.
+// It also stamps `last_stop` on EVERY stop it processes and can attribute — a nudge, an
+// `unheld` pass, a pause, and the pass that happens because the cap is spent — so that a reader
+// of `headsign status` is never handed a value from a stop older than the last one. A field
+// written only on passes would still read "not held" long after a later nudge, which is exactly
+// the misreading `stop_nudges: 0` produced for the report that asked for this. Never stamped
+// where headsign cannot attribute the stop or cannot write: HEADSIGN_OBSERVER, unparseable
+// input, no run found, a non-`running` run, a bystander's stop, or a held lock.
+//
+// TWO GUARANTEES ABOUT THE ALREADY-CONTINUING FLAG, for whoever next reorders these steps.
+// When Claude Code sets `stop_hook_active` on a hook's input, the turn it belongs to is one
+// headsign has already been overruled on, and so:
+//   1. it is NEVER blocked, and
+//   2. it NEVER spends a one-shot resource — the pause note, the claim marker.
+// One single action violates both at once, which is why it governs the placement below:
+// consuming `.headsign/tmp/claim` seats a driver AND blocks. "The already-continuing flag" is
+// the name for Claude Code's mechanism throughout this file, never "the loop guard" — that is
+// headsign's own name for `stop_nudges` (ADR-0006), and the two are sibling mechanisms whose
+// observable outcome is identical (a stop that passes quietly), which is precisely the pair a
+// reader has to be able to tell apart.
 //
 // Nothing here reads the clock or the environment: both arrive as arguments, the shape
 // render.ts and engine.ts also use. And the payload is not trusted to be JSON — an empty
@@ -45,8 +64,13 @@ const MAX_STOP_NUDGES = 5;
 // a session that opts out is opting its delegated agents' stops out too — regardless of
 // driver ownership; the value itself is never inspected, presence is the whole signal
 // (documented as `=1`). This lived in its own module while the environment was also where a
-// session identifier came from; ADR-0013 removed that path, and reading one env var for one
-// caller does not earn a module boundary of its own.
+// session identifier came from; ADR-0013 removed that path, and reading one env var did not
+// earn a module boundary of its own.
+// It has a second caller now — engine.ts's `status`, for the one line that reports the switch
+// (ADR-0025) — and it stays here rather than moving somewhere neutral on purpose: what the
+// switch MEANS is "these turn ends are never held", which is a fact about these hooks. A
+// reporting line that resolved the switch by its own rule could drift into announcing an
+// opt-out the hooks do not act on, and the reader would have no way to tell which was wrong.
 export function isObserver(env: NodeJS.ProcessEnv): boolean {
   const raw = env["HEADSIGN_OBSERVER"];
   return typeof raw === "string" && raw.length > 0;
@@ -64,6 +88,36 @@ export function isObserver(env: NodeJS.ProcessEnv): boolean {
 // missing-field case goes when that day comes.
 function recordedDriver(state: State): string | null {
   return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
+}
+
+// The agent's own identifier, never an env-derived fallback: every env identifier describes the
+// enclosing session, not this agent, so falling back to one would seal the wrong identity —
+// exactly the confusion this hook exists to end (and why ADR-0013 deleted the env path rather
+// than leaving it as a tempting second source).
+// A function rather than two inline expressions because evaluateSubagent resolves it twice, on
+// two branches that must agree: a flagged turn end and an ordinary one have to name the same
+// agent, or the `unheld` line would be attributed by a rule the nudge does not use.
+function resolveAgentId(raw: unknown): string | null {
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+type StopDisposition = NonNullable<State["last_stop"]>["disposition"];
+
+// The record half of "what happened at the last stop". Always applied to the record read INSIDE
+// the lock, and returned for the same write that appends the line, so the field and the log can
+// never disagree about one event.
+function withLastStop(fresh: State, disposition: StopDisposition, nowIso: string): State {
+  return { ...fresh, last_stop: { disposition, at: nowIso } };
+}
+
+// The whole body of both hooks' flagged branches: stamp the record, write the line, let the turn
+// end. It reads nothing else and consumes nothing — no pause note, no claim marker — which is
+// guarantee 2 of the two at the top of this file. Fail-open is unchanged from every other write
+// here: a lock that cannot be had means somebody is judging the run right now, so nothing is
+// written and the turn still ends. A missing line therefore never proves the hook did not run.
+function recordUnheld(runDir: string, nowIso: string): HookDecision {
+  withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso), log: stamped(nowIso, { kind: "UNHELD" }) }));
+  return { block: false };
 }
 
 // Walk up from startDir to find a run's .headsign/state.json, bounded by the enclosing
@@ -150,7 +204,7 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
       // another process was mid-lap would be a one-shot pause spent on nothing.
       const paused = withRunLock(runDir, (fresh) => {
         fs.rmSync(notePath, { force: true });
-        const pausedState = { ...fresh, stop_nudges: 0 };
+        const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso);
         return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
       });
       // Either the pause was recorded, or somebody is judging right now — both mean the turn
@@ -170,14 +224,26 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   // state.json with stop_nudges as a string): "x" + 1 would string-concatenate to "x1",
   // which is always < 5, disabling the fail-open guard forever. Require an actual number.
   const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
-  if (nudges >= MAX_STOP_NUDGES) return { block: false };
+  if (nudges >= MAX_STOP_NUDGES) {
+    // The cap is spent, so this stop passes — and now says so in the record, on a path that
+    // wrote nothing at all before. No log line: the `stalled` line was written the moment the
+    // guard tripped, and repeating it on every later stop is the spam ADR-0004 forbids.
+    // Fail-open is exactly as it was: the write is best-effort, and a lock that cannot be had
+    // changes nothing and lets the turn end.
+    withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "stalled", nowIso) }));
+    return { block: false };
+  }
 
   const nextNudges = nudges + 1;
   // The final nudge alone gets a `stalled` log line: 1st-4th nudges (and any pass-through
   // after the cap trips) are deliberately silent (ADR-0004's spam-prevention rule) — only
   // the moment the loop guard actually trips is worth a permanent record.
+  // The disposition is `nudged` for all five, including the one that trips the cap: that stop
+  // WAS held, and `stalled` is reserved for the stops afterwards that are not. The log line and
+  // the field answer different questions — when the guard tripped, versus what happened to the
+  // most recent turn end — and this is the one stop where those two answers differ.
   const counted = withRunLock(runDir, (fresh) => {
-    const nudgedState = { ...fresh, stop_nudges: nextNudges };
+    const nudgedState = withLastStop({ ...fresh, stop_nudges: nextNudges }, "nudged", nowIso);
     return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : undefined };
   });
   // Nothing was counted because a lap is in progress: that lap is the proof somebody is
@@ -215,10 +281,6 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     const runDir = findRunDir(startDir);
     if (!runDir) return { block: false }; // no headsign run reachable from here — near-no-op
 
-    // Undocumented as of this ADR's revision, but still honored when present: it's a
-    // strictly stronger "you already unblocked me" signal than our own guard, and free to check.
-    if (input.stop_hook_active) return { block: false };
-
     const state = readState(runDir);
     if (!state) return { block: false }; // race: vanished between findRunDir and here
     if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
@@ -237,6 +299,19 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // driving agent's one-shot pause note. An unclaimed run keeps the fail-open default:
     // nobody named a driver, so whoever stopped here gets nudged.
     if (recordedDriver(state) !== null) return { block: false };
+
+    // The already-continuing flag (see the two guarantees at the top of this file). Undocumented
+    // as of ADR-0006's revision, but still honored when present: it is a strictly stronger "you
+    // already unblocked me" signal than headsign's own nudge counter.
+    //
+    // It sits HERE, immediately above the nudge flow, and not at the top of this function where
+    // it used to. Everything it now passes over is read-only — the record read, the status test,
+    // the recorded-driver test — and the pause note is opened only inside noteGateThenNudge, so
+    // moving it down spends nothing (guarantee 2) and still blocks nothing (guarantee 1). What it
+    // buys is a line that can name the phase and belong to the right party: from here headsign
+    // knows the phase, and knows the run is unclaimed because a claimed run returned one step
+    // earlier — so the stopper is the very party this hook would otherwise have nudged.
+    if (input.stop_hook_active) return recordUnheld(runDir, nowIso);
 
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
@@ -258,10 +333,6 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
   try {
     const input = JSON.parse(stdinRaw) as { agent_id?: string; cwd?: string; stop_hook_active?: boolean };
 
-    // Undocumented as of this ADR's revision, but still honored when present: it's a
-    // strictly stronger "you already unblocked me" signal than our own guard, and free to check.
-    if (input.stop_hook_active) return { block: false };
-
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
     const runDir = findRunDir(startDir);
     if (!runDir) return { block: false }; // no headsign run reachable from here — near-no-op
@@ -270,11 +341,32 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     if (!state) return { block: false }; // race: vanished between findRunDir and here
     if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
 
-    // The agent's own identifier, never an env-derived fallback: every env identifier
-    // describes the enclosing session, not this agent, so falling back to one would seal the
-    // wrong identity — exactly the confusion this hook exists to end (and why ADR-0013
-    // deleted the env path rather than leaving it as a tempting second source).
-    const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
+    // The already-continuing flag (see the two guarantees at the top of this file), and here it
+    // gets a BRANCH OF ITS OWN rather than the moved-down check `evaluate` uses. It must not
+    // travel past the adoption gate below: that gate consumes the claim marker and blocks, which
+    // is the one action that violates both guarantees at once — and its position is itself
+    // decided, since ADR-0010 requires it to precede the owner comparison. So this branch
+    // returns before the gate is anywhere in its path, which is safety by CONSTRUCTION rather
+    // than by position: a later reordering can undo a position, and cannot undo a return.
+    //
+    // The asymmetry with `evaluate` is placement only, and consistent with ADR-0010: its
+    // identical-behaviour rule is about OBSERVABLE behaviour, and both hooks record an `unheld`
+    // stop under the same condition, write the same line, and block nothing. ADR-0010 itself
+    // notes the two share "everything below the adoption gate", which concedes that above it
+    // they do not.
+    //
+    // Only a positive match against the recorded driver is recorded, for the same reason the
+    // owner check below requires one: most subagent stops belong to reviewers, searchers and
+    // workers with no headsign role, and a line about them would say a run was unheld for a party
+    // that never held it. An unclaimed run and an unnameable agent therefore write nothing —
+    // undecidable, not unimportant.
+    if (input.stop_hook_active) {
+      const flaggedAgentId = resolveAgentId(input.agent_id);
+      if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso);
+      return { block: false };
+    }
+
+    const agentId = resolveAgentId(input.agent_id);
 
     // Adoption gate (the claim handshake, re-homed here by ADR-0010): a claim marker means
     // an agent ran `headsign claim` and ended its turn, waiting to be sealed as this run's

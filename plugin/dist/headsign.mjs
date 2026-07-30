@@ -7684,8 +7684,8 @@ function isAlive(pid) {
 }
 
 // src/engine.ts
-import fs3 from "node:fs";
-import path2 from "node:path";
+import fs4 from "node:fs";
+import path3 from "node:path";
 
 // src/gate.ts
 import { spawnSync } from "node:child_process";
@@ -7837,11 +7837,20 @@ ${o.lastFailure.outputTail}
   const acceptedLine = accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run
 ` : "";
   const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next` to accept\n" : "";
+  const lastStopLine = o.lastStop ? `last stop: ${LAST_STOP_WORDING[o.lastStop.disposition]} \u2014 at ${o.lastStop.at}
+` : "";
+  const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${acceptedLine}${reportedLine}`;
+${lastStopLine}${acceptedLine}${reportedLine}${observerLine}`;
 }
+var LAST_STOP_WORDING = {
+  nudged: "held, and pointed back to headsign next",
+  unheld: "not held \u2014 Claude Code had already resumed the turn (stop_hook_active)",
+  paused: "paused by a note",
+  stalled: "not held \u2014 the nudge cap is spent"
+};
 function statusTerminal(status2, workflowName, endReason) {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}
 ` : "";
@@ -7881,6 +7890,8 @@ function eventName(event) {
       return "paused";
     case "STALLED":
       return "stalled";
+    case "UNHELD":
+      return "unheld";
     case "CLAIMED":
       return "claimed";
     case "PENDING":
@@ -7911,12 +7922,148 @@ function logDetail(event, prevPhase) {
       return `note="${event.note}"`;
     case "STALLED":
       return "nudges=5";
+    case "UNHELD":
+      return "by=stop_hook_active";
     case "CLAIMED":
       return "";
     case "COMPLETE":
       return "";
     case "PENDING":
       throw new Error("logLine: PENDING is never logged");
+  }
+}
+
+// src/stophook.ts
+import fs3 from "node:fs";
+import path2 from "node:path";
+var MAX_STOP_NUDGES = 5;
+function isObserver(env) {
+  const raw = env["HEADSIGN_OBSERVER"];
+  return typeof raw === "string" && raw.length > 0;
+}
+function recordedDriver(state) {
+  return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
+}
+function resolveAgentId(raw) {
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+function withLastStop(fresh, disposition, nowIso) {
+  return { ...fresh, last_stop: { disposition, at: nowIso } };
+}
+function recordUnheld(runDir, nowIso) {
+  withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso), log: stamped(nowIso, { kind: "UNHELD" }) }));
+  return { block: false };
+}
+function findRunDir(startDir) {
+  let dir = startDir;
+  for (; ; ) {
+    if (fs3.existsSync(statePath(dir))) return dir;
+    if (fs3.existsSync(path2.join(dir, ".git"))) return null;
+    const parent = path2.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+function pauseAndAbortHint(runDir, startDir) {
+  const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
+  return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+}
+function withRunLock(runDir, apply) {
+  const lock = acquireLock(runDir);
+  if (!lock.ok) return false;
+  try {
+    const fresh = readState(runDir);
+    if (!fresh || fresh.status !== "running") return false;
+    const { state: nextState, log } = apply(fresh);
+    writeState(runDir, nextState);
+    if (log) appendLog(runDir, logLine(nowIsoOf(log), log, nextState));
+    return true;
+  } finally {
+    releaseLock(runDir);
+  }
+}
+var stamped = (nowIso, event) => ({ ...event, __nowIso: nowIso });
+var nowIsoOf = (event) => event.__nowIso;
+function noteGateThenNudge(runDir, startDir, state, nowIso) {
+  const notePath = path2.join(runDir, ".headsign", "tmp", "stop-note");
+  if (fs3.existsSync(notePath)) {
+    const noteRaw = fs3.readFileSync(notePath, "utf8");
+    const trimmedNote = noteRaw.trim();
+    if (trimmedNote.length > 0) {
+      const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
+      const paused = withRunLock(runDir, (fresh) => {
+        fs3.rmSync(notePath, { force: true });
+        const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso);
+        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
+      });
+      return { block: false };
+    }
+  }
+  const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
+  if (nudges >= MAX_STOP_NUDGES) {
+    withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "stalled", nowIso) }));
+    return { block: false };
+  }
+  const nextNudges = nudges + 1;
+  const counted = withRunLock(runDir, (fresh) => {
+    const nudgedState = withLastStop({ ...fresh, stop_nudges: nextNudges }, "nudged", nowIso);
+    return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : void 0 };
+  });
+  if (!counted) return { block: false };
+  const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
+  const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
+  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) };
+}
+function evaluate(cwd, stdinRaw, nowIso, env) {
+  if (isObserver(env)) return { block: false };
+  try {
+    const input = JSON.parse(stdinRaw);
+    const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
+    const runDir = findRunDir(startDir);
+    if (!runDir) return { block: false };
+    const state = readState(runDir);
+    if (!state) return { block: false };
+    if (state.status !== "running") return { block: false };
+    if (recordedDriver(state) !== null) return { block: false };
+    if (input.stop_hook_active) return recordUnheld(runDir, nowIso);
+    return noteGateThenNudge(runDir, startDir, state, nowIso);
+  } catch {
+    return { block: false };
+  }
+}
+function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
+  if (isObserver(env)) return { block: false };
+  try {
+    const input = JSON.parse(stdinRaw);
+    const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
+    const runDir = findRunDir(startDir);
+    if (!runDir) return { block: false };
+    const state = readState(runDir);
+    if (!state) return { block: false };
+    if (state.status !== "running") return { block: false };
+    if (input.stop_hook_active) {
+      const flaggedAgentId = resolveAgentId(input.agent_id);
+      if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso);
+      return { block: false };
+    }
+    const agentId = resolveAgentId(input.agent_id);
+    const claimPath = path2.join(runDir, ".headsign", "tmp", "claim");
+    if (fs3.existsSync(claimPath) && agentId !== null) {
+      const seated = withRunLock(runDir, (fresh) => {
+        fs3.rmSync(claimPath, { force: true });
+        const adoptedState = { ...fresh, driver_agent: agentId, stop_nudges: 0 };
+        return { state: adoptedState, log: stamped(nowIso, { kind: "CLAIMED" }) };
+      });
+      if (!seated) return { block: false };
+      const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase})` + (runDir === startDir ? ". Run `headsign next` and follow its verdict." : ` in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + pauseAndAbortHint(runDir, startDir);
+      return { block: true, message: adoptionMessage };
+    }
+    const driver = recordedDriver(state);
+    if (driver === null) return { block: false };
+    if (agentId === null || driver !== agentId) return { block: false };
+    return noteGateThenNudge(runDir, startDir, state, nowIso);
+  } catch {
+    return { block: false };
   }
 }
 
@@ -7941,6 +8088,15 @@ function recordedGraphMarker(state) {
 function acceptedGraphChanges(state) {
   const recorded = state.accepted_graph_changes;
   return typeof recorded === "number" && Number.isFinite(recorded) ? recorded : 0;
+}
+var STOP_DISPOSITIONS = ["nudged", "unheld", "paused", "stalled"];
+function recordedLastStop(state) {
+  const recorded = state.last_stop;
+  if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
+  const { disposition, at } = recorded;
+  if (typeof at !== "string" || at.length === 0) return null;
+  if (!STOP_DISPOSITIONS.includes(disposition)) return null;
+  return { disposition, at };
 }
 function graphChangeNote(state) {
   const accepted = acceptedGraphChanges(state);
@@ -8028,13 +8184,13 @@ function step(workflow, state, gateResult, route) {
 var NO_RUN_HERE_MESSAGE = "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
 function readFileOrEmpty(p) {
   try {
-    return fs3.readFileSync(p, "utf8");
+    return fs4.readFileSync(p, "utf8");
   } catch {
     return "";
   }
 }
 function ensureHeadsignGitignored(cwd) {
-  const gitignorePath = path2.join(cwd, ".headsign", ".gitignore");
+  const gitignorePath = path3.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath);
   let content = original;
   for (const entry of ["state.json", "lock", "log", "tmp/"]) {
@@ -8043,20 +8199,20 @@ function ensureHeadsignGitignored(cwd) {
     content = `${content}${sep}${entry}
 `;
   }
-  if (content !== original) fs3.writeFileSync(gitignorePath, content);
+  if (content !== original) fs4.writeFileSync(gitignorePath, content);
 }
 function clearPhaseArtifacts(cwd, phase) {
   const cleared = [];
   for (const rel of phase.clear ?? []) {
-    const full = path2.join(cwd, rel);
+    const full = path3.join(cwd, rel);
     let removedNonEmptyFile = false;
     try {
-      const st = fs3.statSync(full);
+      const st = fs4.statSync(full);
       removedNonEmptyFile = st.isFile() && st.size > 0;
     } catch {
     }
     try {
-      fs3.rmSync(full, { force: true });
+      fs4.rmSync(full, { force: true });
     } catch {
     }
     if (removedNonEmptyFile) cleared.push(rel);
@@ -8089,6 +8245,9 @@ function start2(cwd, workflowPath, nowIso) {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    // No stop has been processed yet, and `start` must not invent one: the field is written only
+    // by the stop-boundary hooks, at a stop they actually saw.
+    last_stop: null,
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -8099,9 +8258,9 @@ function start2(cwd, workflowPath, nowIso) {
   writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
   appendLog(cwd, logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
-  const tmpDir = path2.join(cwd, ".headsign", "tmp");
-  fs3.rmSync(tmpDir, { recursive: true, force: true });
-  fs3.mkdirSync(tmpDir, { recursive: true });
+  const tmpDir = path3.join(cwd, ".headsign", "tmp");
+  fs4.rmSync(tmpDir, { recursive: true, force: true });
+  fs4.mkdirSync(tmpDir, { recursive: true });
   const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared } };
 }
@@ -8234,12 +8393,12 @@ function claim2(cwd) {
   if (current.status !== "running") {
     return { kind: "REFUSED", message: `run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.` };
   }
-  const tmpDir = path2.join(cwd, ".headsign", "tmp");
-  fs3.mkdirSync(tmpDir, { recursive: true });
-  fs3.writeFileSync(path2.join(tmpDir, "claim"), "");
+  const tmpDir = path3.join(cwd, ".headsign", "tmp");
+  fs4.mkdirSync(tmpDir, { recursive: true });
+  fs4.writeFileSync(path3.join(tmpDir, "claim"), "");
   return { kind: "CLAIMED" };
 }
-function status(cwd) {
+function status(cwd, env) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
   if (current.status !== "running") {
@@ -8260,126 +8419,11 @@ function status(cwd) {
     workflowName: current.workflow,
     lastFailure,
     delegated: driverAgent !== null,
+    lastStop: recordedLastStop(current),
+    observer: isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null
   };
-}
-
-// src/stophook.ts
-import fs4 from "node:fs";
-import path3 from "node:path";
-var MAX_STOP_NUDGES = 5;
-function isObserver(env) {
-  const raw = env["HEADSIGN_OBSERVER"];
-  return typeof raw === "string" && raw.length > 0;
-}
-function recordedDriver(state) {
-  return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
-}
-function findRunDir(startDir) {
-  let dir = startDir;
-  for (; ; ) {
-    if (fs4.existsSync(statePath(dir))) return dir;
-    if (fs4.existsSync(path3.join(dir, ".git"))) return null;
-    const parent = path3.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-function pauseAndAbortHint(runDir, startDir) {
-  const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
-  return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
-}
-function withRunLock(runDir, apply) {
-  const lock = acquireLock(runDir);
-  if (!lock.ok) return false;
-  try {
-    const fresh = readState(runDir);
-    if (!fresh || fresh.status !== "running") return false;
-    const { state: nextState, log } = apply(fresh);
-    writeState(runDir, nextState);
-    if (log) appendLog(runDir, logLine(nowIsoOf(log), log, nextState));
-    return true;
-  } finally {
-    releaseLock(runDir);
-  }
-}
-var stamped = (nowIso, event) => ({ ...event, __nowIso: nowIso });
-var nowIsoOf = (event) => event.__nowIso;
-function noteGateThenNudge(runDir, startDir, state, nowIso) {
-  const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
-  if (fs4.existsSync(notePath)) {
-    const noteRaw = fs4.readFileSync(notePath, "utf8");
-    const trimmedNote = noteRaw.trim();
-    if (trimmedNote.length > 0) {
-      const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
-      const paused = withRunLock(runDir, (fresh) => {
-        fs4.rmSync(notePath, { force: true });
-        const pausedState = { ...fresh, stop_nudges: 0 };
-        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
-      });
-      return { block: false };
-    }
-  }
-  const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
-  if (nudges >= MAX_STOP_NUDGES) return { block: false };
-  const nextNudges = nudges + 1;
-  const counted = withRunLock(runDir, (fresh) => {
-    const nudgedState = { ...fresh, stop_nudges: nextNudges };
-    return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : void 0 };
-  });
-  if (!counted) return { block: false };
-  const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
-  const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) };
-}
-function evaluate(cwd, stdinRaw, nowIso, env) {
-  if (isObserver(env)) return { block: false };
-  try {
-    const input = JSON.parse(stdinRaw);
-    const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
-    const runDir = findRunDir(startDir);
-    if (!runDir) return { block: false };
-    if (input.stop_hook_active) return { block: false };
-    const state = readState(runDir);
-    if (!state) return { block: false };
-    if (state.status !== "running") return { block: false };
-    if (recordedDriver(state) !== null) return { block: false };
-    return noteGateThenNudge(runDir, startDir, state, nowIso);
-  } catch {
-    return { block: false };
-  }
-}
-function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
-  if (isObserver(env)) return { block: false };
-  try {
-    const input = JSON.parse(stdinRaw);
-    if (input.stop_hook_active) return { block: false };
-    const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
-    const runDir = findRunDir(startDir);
-    if (!runDir) return { block: false };
-    const state = readState(runDir);
-    if (!state) return { block: false };
-    if (state.status !== "running") return { block: false };
-    const agentId = typeof input.agent_id === "string" && input.agent_id.trim().length > 0 ? input.agent_id.trim() : null;
-    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
-    if (fs4.existsSync(claimPath) && agentId !== null) {
-      const seated = withRunLock(runDir, (fresh) => {
-        fs4.rmSync(claimPath, { force: true });
-        const adoptedState = { ...fresh, driver_agent: agentId, stop_nudges: 0 };
-        return { state: adoptedState, log: stamped(nowIso, { kind: "CLAIMED" }) };
-      });
-      if (!seated) return { block: false };
-      const adoptionMessage = `Claim confirmed: this agent now drives workflow '${state.workflow}' (phase: ${state.phase})` + (runDir === startDir ? ". Run `headsign next` and follow its verdict." : ` in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`) + pauseAndAbortHint(runDir, startDir);
-      return { block: true, message: adoptionMessage };
-    }
-    const driver = recordedDriver(state);
-    if (driver === null) return { block: false };
-    if (agentId === null || driver !== agentId) return { block: false };
-    return noteGateThenNudge(runDir, startDir, state, nowIso);
-  } catch {
-    return { block: false };
-  }
 }
 
 // src/cli.ts
@@ -8509,6 +8553,14 @@ function reportStatus(result) {
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run",
+          // Both conditional, and both absent rather than falsy when there is nothing to say:
+          // `undefined` is what makes a run on which no stop has been processed print exactly
+          // what `status` printed before either line existed. The last stop is the answer to the
+          // question the `driver:` line cannot reach — whether the previous turn end was held —
+          // and the observer line is the only one of these facts that is about the caller rather
+          // than the run.
+          lastStop: result.lastStop ?? void 0,
+          observer: result.observer ? true : void 0,
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported
         }),
@@ -8529,7 +8581,7 @@ function cmdClaim() {
   return reportClaim(claim2(process.cwd()));
 }
 function cmdStatus() {
-  return reportStatus(status(process.cwd()));
+  return reportStatus(status(process.cwd(), process.env));
 }
 function cmdValidate(args) {
   const current = readState(process.cwd());
