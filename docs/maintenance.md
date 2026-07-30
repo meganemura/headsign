@@ -169,32 +169,64 @@ On every PR and push to `main`, ubuntu + Node 24:
 Semver, currently 0.x: minor = features (breaking changes possible),
 patch = fixes only.
 
-1. Bump `version` in **both** `package.json` and
+Every step is marked **[agent]** or **[you]**. The line between them is not
+trust, it is reversibility: an agent may do anything that changes only this
+machine and can be undone here, and everything reserved either leaves the
+machine or is protected against being undone once it has.
+
+1. **[agent]** Bump `version` in **both** `package.json` and
    `plugin/.claude-plugin/plugin.json` (CI enforces equality; without the
    plugin bump, marketplace users never receive the release).
-2. Add the `CHANGELOG.md` entry — curated and user-facing, not a commit-log
-   replay (Keep a Changelog format).
-3. Commit (`Release vX.Y.Z`) and land it on `main`. This is the moment
-   plugin users can receive it.
-4. `git tag vX.Y.Z && git push --tags`. Tags matching `v*` are protected
-   (no deletion, no re-pointing) — one tag is the shared reference point
-   for every channel, which is only trustworthy if it cannot move.
-5. Create the GitHub Release for the tag; its body is the transcription of
-   the `CHANGELOG.md` section.
-6. `gh skill` needs no per-release step. It cannot attach to an existing
-   tag (`gh skill publish` insists on creating the tag itself), and what
-   discovery actually keys on — the `agent-skills` topic — is a one-time
-   repository setting (already in place; publish added it on 2026-07-25).
-   Run `gh skill publish --dry-run` before releasing as a free validation
-   of the skill layout, and nothing else.
-7. `npm publish` from the tagged, CI-green checkout — `prepublishOnly`
-   forces typecheck+test+build; the `files` whitelist ships only `plugin/`,
-   the READMEs, and the CHANGELOG. Sanity-check with `npm pack --dry-run`
-   first — read the *list* rather than the count, and check it against that
-   whitelist: the number changes whenever `plugin/` gains a file, and a count
-   written down here goes stale silently while a wrong list does not.
-   Publishing may prompt for a 2FA OTP. Consider
+2. **[agent]** Add the `CHANGELOG.md` entry — curated and user-facing, not a
+   commit-log replay (Keep a Changelog format).
+3. **[agent]** Commit (`Release vX.Y.Z`). Landing it is the next step, and it
+   is a separate step on purpose: the commit is local and amendable, the push
+   is not.
+4. **[agent]** Pre-flight, both free and both read-only:
+   `npm pack --dry-run` — read the *list* rather than the count, and check it
+   against the `files` whitelist (`plugin/`, the READMEs, the CHANGELOG); the
+   number changes whenever `plugin/` gains a file, and a count written down
+   here goes stale silently while a wrong list does not. And
+   `gh skill publish --dry-run`, which validates the skill layout and nothing
+   else.
+5. **[you]** `git push` — landing it on `main`. **This is the moment plugin
+   users can receive it**, which is why it is yours: the distribution map above
+   is what makes a merge to `main` a publication.
+6. **[agent]** `git tag vX.Y.Z` — creating the tag locally, which is
+   reversible here.
+   **[you]** `git push --tags`. Tags matching `v*` are protected (no deletion,
+   no re-pointing) — one tag is the shared reference point for every channel,
+   which is only trustworthy if it cannot move. So the push is the
+   irreversible half, and the agent stops before it.
+7. **[you]** Create the GitHub Release for the tag; its body is the
+   transcription of the `CHANGELOG.md` section.
+8. **[you]** `npm publish` from the tagged, CI-green checkout —
+   `prepublishOnly` forces typecheck+test+build. It may prompt for a 2FA OTP,
+   which is the mechanical reason this one cannot be delegated. Consider
    `--provenance` once publishing moves into CI instead of a laptop.
+
+`gh skill` needs no per-release step of its own. It cannot attach to an
+existing tag (`gh skill publish` insists on creating the tag itself), and what
+discovery actually keys on — the `agent-skills` topic — is a one-time
+repository setting, already in place (publish added it on 2026-07-25). The
+`--dry-run` in step 4 is the whole of its involvement.
+
+### Yours, and only yours
+
+Everything above that leaves this machine, in order, ready to paste:
+
+```sh
+git push                     # lands on main = plugin users can receive it
+git push --tags              # v* is protected: no deletion, no re-pointing
+npm publish                  # prompts for a 2FA OTP
+```
+
+Plus the GitHub Release for the tag, whose body is the `CHANGELOG.md` section
+verbatim.
+
+Nothing else in a release is yours. If an agent hands you a longer list than
+this, it either has not done its half or is asking permission for something
+reversible — check which before running it.
 
 ## Repository settings (live outside the tree; recorded here to be reproducible)
 
