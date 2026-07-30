@@ -9,6 +9,37 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-30
+
+### Added
+
+- **You can now tell a stop that passed from a hook that never ran.** When Claude
+  Code has already resumed a turn — it sets a flag on the hook's input once a
+  stop hook has held one — headsign lets that turn end pass, and used to record
+  nothing at all: no log line, no state, nothing in `headsign status`. So a
+  driver who noticed the nudge arriving only on alternate turn endings could not
+  tell whether the backstop had run and stood down or was not installed, and had
+  no way to find out except reading the source. The pass now leaves a line,
+  `unheld <phase> a=… i=… by=stop_hook_active`, and `headsign status` grows a
+  `last stop:` line reading how the previous turn end was handled — held and
+  pointed back to `next`, not held because Claude Code had already resumed the
+  turn, paused by a note, or not held because the nudge cap is spent. Both are
+  written in one locked operation, so they cannot disagree, and the field behind
+  the status line is stamped at *every* stop headsign can attribute rather than
+  only at passes — a value written only on passes would still read "not held"
+  long after a later nudge, which is the misreading that produced this report in
+  the first place. `status` also reports `HEADSIGN_OBSERVER` when it is set in the
+  calling environment: of the reasons a turn can end quietly, that is the only
+  one a caller can answer about *itself*. Both lines are conditional, so a run on
+  which no stop has been processed prints exactly what it printed before.
+  Two limits worth knowing: a **missing** `unheld` line does not prove the hook
+  did not run, because the hook's writes are skipped while the run's lock is
+  held; and the line says *some* stop hook held the turn and headsign stood down,
+  not that headsign was the hook that held it. A nudge therefore arrives roughly
+  once per exchange rather than once per turn end, which the skill and the
+  reference now say out loud, along with where to look for each way a turn can
+  end quietly. See [ADR-0025](docs/adr/0025-a-stop-that-passed-and-a-stop-that-never-ran.md).
+
 ### Fixed
 
 - **A restart no longer erases the run before it.** `headsign start` truncated
@@ -74,6 +105,18 @@ changes), and a patch bump means fixes only.
   and *times out* is unchanged and still an ordinary failure — it ran, and the
   limit it ran past is one you wrote. See
   [ADR-0021](docs/adr/0021-a-command-that-never-ran-is-not-an-answer.md).
+
+### Upgrading
+
+- Nothing to do before taking this release: a run already in progress keeps
+  working, and every field added to `.headsign/state.json` reads as absent when
+  it isn't there.
+- One thing to check if you script around headsign: **`headsign status` can now
+  print more lines than it used to.** A `last stop:` line appears once a stop has
+  been processed, and an `observer:` line when `HEADSIGN_OBSERVER` is set in the
+  calling environment. Both are additions in documented positions and the run's
+  own state is still on line 1, so read `status` by its first line or by matching
+  a label — never by line number.
 
 ## [0.3.0] - 2026-07-29
 
