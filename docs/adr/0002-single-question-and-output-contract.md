@@ -100,10 +100,13 @@ number is substituted into the bundle at build time rather than read from
 `package.json` at runtime, because the bundle ships through two channels and that
 file is reliably present in only one of them.
 
-**This ADR is the one place that reasoning is written.** `src/cli.ts`, the release
-runbook, the reference manual and the changelog each state the consequence their
-own reader needs — do the rebuild, run the tests, the number is baked in — and
-defer the *why* here by link. The reason for that division is empirical: this
+**This ADR is the one place the reasoning about the checks is written** — which one
+catches a stale bundle, and when each fires. `src/cli.ts`, the release runbook, the
+reference manual and the changelog each state the consequence their own reader
+needs — do the rebuild, run the tests, the number is baked in — and defer that
+comparison here by link. Why the number is baked in at all is a narrower fact and
+is allowed to sit next to the declaration it explains; it is the checks half that
+has demonstrated it can go wrong. The reason for that division is empirical: this
 reasoning was once restated in nine places, and when it turned out to be wrong it
 was corrected in two of them, leaving the other seven asserting the retracted
 version. A rule with nine copies has no owner, and the copies do not get fixed.
@@ -117,7 +120,10 @@ laptop and inside `prepublishOnly` — before anything leaves the machine. CI's
 because the rebuild bakes the current version and so differs from a stale committed
 bundle byte for byte. But CI runs *after* a push, and pushing to `main` is itself a
 distribution moment for plugin users: that check is the second net, not the one that
-prevents the mistake.
+prevents the mistake. npm is on the other side of that line — `prepublishOnly` runs
+typecheck, test and build before publishing — so the two channels can disagree at
+one commit, with npm correct and `main` reporting the previous number to anyone who
+updates in the window.
 
 Two ways to get a version that is wrong rather than absent, both closed: an
 identifier that was never substituted, and one substituted with the empty string.
