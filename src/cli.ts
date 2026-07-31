@@ -283,10 +283,9 @@ function cmdSubagentStopHook(): never {
 // work from npm and fail from a plugin copy, or worse, silently find some *other* package.json
 // on the way up.
 //
-// Substituting at build time also turns a check this repo already runs into a guarantee, for
-// free: CI runs `npm run build` and then `git diff --exit-code plugin/dist`, so bumping
-// package.json without rebuilding now fails that check. The version the CLI reports can never
-// silently disagree with the version the package claims.
+// Which checks keep the reported number honest, and when each fires, is ADR-0002's to state —
+// it is the one copy of that reasoning, and every other mention should be a pointer to it. This
+// comment used to restate it and was wrong for a day, which is the argument for the rule.
 //
 // Declared, never assigned: esbuild replaces the identifier itself. `| undefined` records that
 // a bundle built outside `npm run build` leaves it unsubstituted, which is why every read of it

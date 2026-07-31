@@ -83,9 +83,10 @@ eight — because the criterion was never "what an agent may type", which
 subject: a run, or a workflow file. These two take the tool.** Nothing they
 print is about the state of anything in `.headsign/`, which is why neither
 answers with a token from the contract below and why both always exit 0. Stated
-precisely, because the loose version is false: `help` names every token in its
-own text. What it never does is *answer* with one — line 1 is not a verdict and
-the exit code is not a verdict. And that last part is worth stating rather than
+precisely, because two looser versions are both false: `help` prints six of the
+seven tokens in its own text — every one but `START`, which appears there only as
+the lowercase command name. What it never does is *answer* with one: line 1 is not
+a verdict and the exit code is not a verdict. And that last part is worth stating rather than
 inferring: asking a tool what it is cannot be a usage error, so `headsign help`
 exits 0 where `headsign --badflag` exits 3.
 
@@ -99,12 +100,21 @@ number is substituted into the bundle at build time rather than read from
 `package.json` at runtime, because the bundle ships through two channels and that
 file is reliably present in only one of them.
 
-What keeps the reported number honest is `npm test`, not CI's rebuild-and-diff:
-an acceptance test drives the **committed** bundle and compares its baked version
-against `package.json`, so a bump without a rebuild fails on any laptop and inside
-`prepublishOnly`. The dist diff proves only that the bundle matches `src`. The
-distinction matters because CI runs *after* a push and pushing to `main` is itself
-a distribution moment — a check that fires there is a second net, not the one that
+**This ADR is the one place that reasoning is written.** Every other mention of it —
+in `src/cli.ts`, the release runbook, the reference manual, the changelog — should
+be a pointer here rather than a restatement, and the reason is empirical: it was
+restated in nine places, and when it turned out to be wrong it was corrected in two
+of them, leaving the other seven asserting the retracted version.
+
+Two checks bind the reported number to `package.json`, and the useful difference
+between them is *when* they fire rather than what they prove. An acceptance test
+drives the **committed** bundle and compares its baked version against
+`package.json`; it runs under `npm test`, so a bump without a rebuild fails on any
+laptop and inside `prepublishOnly` — before anything leaves the machine. CI's
+`npm run build` then `git diff --exit-code plugin/dist` catches the same mistake,
+because the rebuild bakes the current version and so differs from a stale committed
+bundle byte for byte. But CI runs *after* a push, and pushing to `main` is itself a
+distribution moment for plugin users: that check is the second net, not the one that
 prevents the mistake.
 
 Two ways to get a version that is wrong rather than absent, both closed: an

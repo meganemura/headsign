@@ -118,8 +118,10 @@ machine actually runs. When a report comes in that a fix is not there, or that a
 gate behaves differently for one person, establish the version in play before
 reading the workflow file and before reading the gate. `headsign version` — or
 `headsign --version`, which prints the same thing — answers that from the copy
-that is actually running. The number is baked into the bundle when it is built,
-so it cannot drift from the version the package claims. Two older answers are
+that is actually running. The number is baked into the bundle when it is built rather than read from
+`package.json`, which a copy cached from the plugin marketplace does not have above
+it (why, and what actually keeps the two in step, is
+[ADR-0002](adr/0002-single-question-and-output-contract.md)). Two older answers are
 still worth having, because they answer a different question, *where* the copy
 is and which channel it came from, and that is how you tell two installed copies
 apart: an installed plugin copy is identified by the version directory it sits

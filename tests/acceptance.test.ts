@@ -369,29 +369,47 @@ test("the version baked into the bundle is the package's own version", () => {
   assert.equal(result.stdout, `${PACKAGE_VERSION}\n`);
 });
 
-// The case that got through review the first time. `--define` with an EMPTY value is not the
-// same as no `--define`: the identifier is substituted, so a `typeof` guard folds to
-// `if (false)` and `version` prints a blank line with exit 0 — a silent wrong answer from the
-// one command that exists to refuse them. Building a bundle here would need esbuild at test
-// time, so this pins the two halves that are testable from the tree: the build script refuses
-// to run without a version, and the runtime guard treats an empty one as absent.
-test("an empty version cannot reach a user: the build refuses it, and the guard would refuse it", () => {
+// The case that got through review the first time, pinned by behaviour rather than by
+// spelling. `--define` with an EMPTY value is not the same as no `--define`: the identifier is
+// substituted, so a `typeof` guard folds to `if (false)` and `version` prints a blank line with
+// exit 0 — a silent wrong answer from the one command that exists to refuse them.
+//
+// This builds a bundle with exactly that define and runs it. esbuild is a devDependency and is
+// present wherever `npm test` runs, so the behavioural test is available and the earlier
+// text-matching version of this test was pinning a spelling: rewriting the guard as
+// `!HEADSIGN_VERSION` would have failed it while behaving identically.
+test("a bundle built with an empty version refuses instead of printing a blank line", () => {
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "headsign-emptyver-")), "cli.mjs");
+  // esbuild's bin is a native executable, not a JS entry point — spawn it directly.
+  const build = spawnSync(
+    path.join(import.meta.dirname, "..", "node_modules", "esbuild", "bin", "esbuild"),
+    [
+      path.join(import.meta.dirname, "..", "src", "cli.ts"),
+      "--bundle", "--platform=node", "--target=node20", "--format=esm",
+      `--outfile=${out}`,
+      // The empty string literal, which is what the shell produces outside npm's lifecycle.
+      `--define:HEADSIGN_VERSION=""`,
+      "--banner:js=import { createRequire } from \"node:module\";\nconst require = createRequire(import.meta.url);",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(build.status, 0, `esbuild failed: ${build.stderr}`);
+
+  const result = spawnSync(process.execPath, [out, "version"], { encoding: "utf8" });
+  assert.equal(result.status, 3, "an empty version must refuse, not succeed");
+  assert.equal(result.stdout, "", "nothing may be printed on stdout — a blank line is the bug");
+  assert.match(result.stderr, /carries no version/);
+});
+
+// The other half, which no bundle can express: the build script itself refuses to run without a
+// version, so the empty define above cannot come from `npm run build` in the first place.
+test("the build script refuses to bake an unset version", () => {
   const buildScript: string = JSON.parse(
     fs.readFileSync(path.join(import.meta.dirname, "..", "package.json"), "utf8"),
   ).scripts.build;
-  // `:?` — the parameter expansion that makes the shell abort rather than substitute nothing.
-  assert.match(
-    buildScript,
-    /\$\{npm_package_version:\?/,
-    "the build script must fail on an unset version rather than baking in an empty string",
-  );
-
-  const cli: string = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "cli.ts"), "utf8");
-  assert.match(
-    cli,
-    /HEADSIGN_VERSION\.length === 0/,
-    "the runtime guard must treat a substituted-but-empty version as no version",
-  );
+  // `:?` — the parameter expansion that aborts on unset AND on empty, rather than substituting
+  // nothing. `:-` or a bare `$npm_package_version` would both bake in the empty string.
+  assert.match(buildScript, /\$\{npm_package_version:\?/);
 });
 
 test("version and --version print the bare version and a newline, byte-identically, and exit 0", () => {
