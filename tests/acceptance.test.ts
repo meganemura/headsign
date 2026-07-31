@@ -369,6 +369,31 @@ test("the version baked into the bundle is the package's own version", () => {
   assert.equal(result.stdout, `${PACKAGE_VERSION}\n`);
 });
 
+// The case that got through review the first time. `--define` with an EMPTY value is not the
+// same as no `--define`: the identifier is substituted, so a `typeof` guard folds to
+// `if (false)` and `version` prints a blank line with exit 0 — a silent wrong answer from the
+// one command that exists to refuse them. Building a bundle here would need esbuild at test
+// time, so this pins the two halves that are testable from the tree: the build script refuses
+// to run without a version, and the runtime guard treats an empty one as absent.
+test("an empty version cannot reach a user: the build refuses it, and the guard would refuse it", () => {
+  const buildScript: string = JSON.parse(
+    fs.readFileSync(path.join(import.meta.dirname, "..", "package.json"), "utf8"),
+  ).scripts.build;
+  // `:?` — the parameter expansion that makes the shell abort rather than substitute nothing.
+  assert.match(
+    buildScript,
+    /\$\{npm_package_version:\?/,
+    "the build script must fail on an unset version rather than baking in an empty string",
+  );
+
+  const cli: string = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "cli.ts"), "utf8");
+  assert.match(
+    cli,
+    /HEADSIGN_VERSION\.length === 0/,
+    "the runtime guard must treat a substituted-but-empty version as no version",
+  );
+});
+
 test("version and --version print the bare version and a newline, byte-identically, and exit 0", () => {
   const word = run(["version"], { cwd: tmpdir() });
   const flag = run(["--version"], { cwd: tmpdir() });

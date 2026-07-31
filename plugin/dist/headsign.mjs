@@ -8610,7 +8610,7 @@ function cmdSubagentStopHook() {
   return process.exit(0);
 }
 function cmdVersion() {
-  if (false) {
+  if ("0.4.0".length === 0) {
     return errorExit("this build carries no version \u2014 it was not produced by `npm run build`, which is what substitutes it");
   }
   return exitAfter(`${"0.4.0"}

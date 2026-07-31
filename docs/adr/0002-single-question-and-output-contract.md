@@ -82,10 +82,12 @@ eight — because the criterion was never "what an agent may type", which
 `-h`/`--help`/no-args already strained. **The six take a repository as their
 subject: a run, or a workflow file. These two take the tool.** Nothing they
 print is about the state of anything in `.headsign/`, which is why neither
-produces a token from the contract below and why both always exit 0. That
-last part is worth stating rather than inferring: asking a tool what it is
-cannot be a usage error, so `headsign help` exits 0 where `headsign --badflag`
-exits 3.
+answers with a token from the contract below and why both always exit 0. Stated
+precisely, because the loose version is false: `help` names every token in its
+own text. What it never does is *answer* with one — line 1 is not a verdict and
+the exit code is not a verdict. And that last part is worth stating rather than
+inferring: asking a tool what it is cannot be a usage error, so `headsign help`
+exits 0 where `headsign --badflag` exits 3.
 
 `version` exists because of a gap [ADR-0025](0025-a-stop-that-passed-and-a-stop-that-never-ran.md)
 opened. An installed plugin copy is version-scoped, so a released fix does not
@@ -95,9 +97,22 @@ to answer it. It prints the bare version and nothing else: the command name has
 already said which tool, and a bare value composes as well as it reads. The
 number is substituted into the bundle at build time rather than read from
 `package.json` at runtime, because the bundle ships through two channels and that
-file is reliably present in only one of them — and because CI already rebuilds
-and diffs `plugin/dist`, which turns "the reported version matches the packaged
-version" from a convention into something that cannot silently drift.
+file is reliably present in only one of them.
+
+What keeps the reported number honest is `npm test`, not CI's rebuild-and-diff:
+an acceptance test drives the **committed** bundle and compares its baked version
+against `package.json`, so a bump without a rebuild fails on any laptop and inside
+`prepublishOnly`. The dist diff proves only that the bundle matches `src`. The
+distinction matters because CI runs *after* a push and pushing to `main` is itself
+a distribution moment — a check that fires there is a second net, not the one that
+prevents the mistake.
+
+Two ways to get a version that is wrong rather than absent, both closed: an
+identifier that was never substituted, and one substituted with the empty string.
+The second is the one that got through review — `--define` with an empty value
+still substitutes, so a `typeof` guard folds to `if (false)` and the command
+prints a blank line and exits 0. The build script now refuses to run without a
+version at all, and the guard treats an empty one as absent.
 
 `help` is symmetry, and cheap: `-h`, `--help`, no arguments, and `help` are four
 spellings of one text. `-v` is deliberately not a fifth spelling of `version` —

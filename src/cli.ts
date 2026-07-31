@@ -309,7 +309,17 @@ function cmdVersion(): never {
   // instead of guessing: this command exists to answer *which copy is running* when a fix
   // seems missing or a gate behaves differently on one machine, and a version that might be
   // wrong is worse than no version at all.
-  if (typeof HEADSIGN_VERSION !== "string") {
+  //
+  // The empty string is checked as well as the missing identifier, and it is the case that
+  // actually bit. `--define:HEADSIGN_VERSION="\"$npm_package_version\""` outside npm's
+  // lifecycle — the build line pasted into a shell, a Makefile, a runner that does not export
+  // `npm_package_*` — expands to a valid empty string literal rather than to nothing, so the
+  // identifier IS substituted and a `typeof` check alone folds to `if (false)`. The guard
+  // became dead code and `version` printed a blank line with exit 0, which is the silent
+  // wrong answer this whole function exists to refuse. The build script now fails loudly on an
+  // unset variable too; this stays as the second half, because a bundle can be built by
+  // something that is not that script.
+  if (typeof HEADSIGN_VERSION !== "string" || HEADSIGN_VERSION.length === 0) {
     return errorExit("this build carries no version — it was not produced by `npm run build`, which is what substitutes it");
   }
   return exitAfter(`${HEADSIGN_VERSION}\n`, 0);

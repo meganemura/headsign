@@ -181,18 +181,32 @@ machine or is protected against being undone once it has.
    `plugin/dist/headsign.mjs` with the bump. **This step is not optional and
    the release commit is where it belongs**: the build substitutes the version
    into the bundle, so a bump without a rebuild leaves `headsign version`
-   reporting the previous release from a package claiming the new one. CI
-   catches it — `npm run build` then `git diff --exit-code plugin/dist` — so
-   skipping this fails the push rather than shipping the lie. That is the
-   design working: the check is what makes the reported version trustworthy
-   (ADR-0002). Note the consequence for review: a release commit now touches
-   the bundle, where it used to be three text files.
+   reporting the previous release from a package claiming the new one.
+   `npm test` catches that — `tests/acceptance.test.ts` drives the *committed*
+   bundle and compares its baked version against `package.json` — which is why
+   the pre-flight below runs the tests and not only the two dry-runs.
+
+   **Do not rely on CI to catch it.** CI runs on push, and pushing to `main` is
+   itself the distribution moment for plugin users (see the map at the top of
+   this page); there are no branch protections. A red run afterwards retracts
+   nothing, so a stale bundle reaches the marketplace channel in the window
+   before anyone looks. npm is genuinely protected — `prepublishOnly` runs
+   typecheck, test and build — so the two channels can disagree at the same
+   commit, with npm correct and `main` reporting the previous number. The
+   check that makes the reported version trustworthy is a local one; CI is the
+   second net, not the first.
+
+   Note the consequence for review: a release commit now touches the bundle,
+   where it used to be three text files.
 3. **[agent]** Add the `CHANGELOG.md` entry — curated and user-facing, not a
    commit-log replay (Keep a Changelog format).
 4. **[agent]** Commit (`Release vX.Y.Z`) — the two version files, the bundle,
    and the changelog. Landing it is the next step, and it is a separate step
    on purpose: the commit is local and amendable, the push is not.
-5. **[agent]** Pre-flight, both free and both read-only:
+5. **[agent]** Pre-flight. First `npm run typecheck && npm test`, because this is
+   the last point before anything leaves the machine and the tests are what tie
+   the reported version to the packaged one (step 2). Then two dry-runs, both
+   free and both read-only:
    `npm pack --dry-run` — read the *list* rather than the count, and check it
    against the `files` whitelist (`plugin/`, the READMEs, the CHANGELOG); the
    number changes whenever `plugin/` gains a file, and a count written down
