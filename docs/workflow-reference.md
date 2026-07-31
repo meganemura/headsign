@@ -711,7 +711,12 @@ several exchanges needs the note written again before each of them. Tomorrow, `h
 phase and judges its gate, the way any `next` does. `headsign abort
 <reason>` is the other exit, and it is permanent, not a pause: the run
 can't be resumed, and a fresh `headsign start` begins again from the entry
-phase, replaying every phase's gate from scratch. Keeping that replay cheap
+phase, replaying every phase's gate from scratch. What it does not end is
+`.headsign/log` — the reason you type is kept, and so is everything logged
+before it, because `start` appends rather than clears
+([reading the log](#reading-the-log)). So ending a run deliberately costs the
+run and not its history; `state.json` is the part a fresh `start` rewrites
+whole. Keeping that replay cheap
 is a design requirement on the workflow, not something headsign does for
 you: write early phases' gates as fast, idempotent checks (does a file
 exist, does lint pass) rather than ones with real side effects or long
