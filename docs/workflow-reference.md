@@ -1059,16 +1059,20 @@ longer exist. headsign cannot tell: an agent id is meaningful only inside the
 process that was given it, so liveness is not a question this tool can ask. The
 consequence falls on the successor. While a driver is recorded, `Stop` passes
 every session's turn end through, and `SubagentStop` holds only the agent whose
-id matches — so **until the seat changes hands, nothing holds the turns of
-whoever is actually driving.** The run continues; the backstop does not.
+id matches, or the first to name itself under an armed marker — so **until the
+seat changes hands, nothing holds the turns of whoever is actually driving.** The
+run continues; the backstop does not.
 
 So a delegated agent taking over a run should run `headsign claim` and end its
-turn, exactly as the first one did. A *session* taking over cannot: sealing
-happens on `SubagentStop` alone (ADR-0010), which is not an event a session's
-turn end produces. That session can drive the run perfectly well — `next` asks
-nobody's permission — but it drives without a backstop, and the only ways back
-to one are to delegate the driving to an agent that claims it, or to end the run
-and start again.
+turn, exactly as the first one did. A *session* taking over cannot, and should not try:
+sealing happens on `SubagentStop` alone (ADR-0010), which is not an event a
+session's turn end produces. `headsign claim` from a session is not a harmless
+no-op either — it checks only that a run exists, so it leaves a live armed marker
+that the next delegated agent to end a turn anywhere under that directory will
+consume, quite possibly a reviewer with no role in the run at all. That session
+can drive perfectly well — `next` asks nobody's permission — but it drives
+without a backstop, and the only ways back to one are to delegate the driving to
+an agent that claims it, or to end the run and start again.
 
 This is a handshake, not a lock: if some *other* delegated agent ends a
 turn while the marker is armed and can name itself, it gets adopted
