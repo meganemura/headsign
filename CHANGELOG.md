@@ -21,7 +21,9 @@ changes), and a patch bump means fixes only.
   well: `v=$(headsign version)`. It is baked in when the bundle is built rather
   than read from `package.json` at runtime, which a copy cached from the plugin
   marketplace does not have above it — so the number cannot come from some other
-  package.
+  package. See
+  [ADR-0002](docs/adr/0002-single-question-and-output-contract.md) for what keeps
+  it in step with the packaged version.
   `headsign help` is added alongside it: `help` was the one word you could not
   type without dashes, and it prints exactly what `-h`, `--help` and a bare
   `headsign` print.

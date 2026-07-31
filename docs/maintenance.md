@@ -182,19 +182,17 @@ machine or is protected against being undone once it has.
    the release commit is where it belongs**: the build substitutes the version
    into the bundle, so a bump without a rebuild leaves `headsign version`
    reporting the previous release from a package claiming the new one.
-   `npm test` catches that — `tests/acceptance.test.ts` drives the *committed*
-   bundle and compares its baked version against `package.json` — which is why
-   the pre-flight below runs the tests and not only the two dry-runs.
 
    **Do not rely on CI to catch it.** CI runs on push, and pushing to `main` is
    itself the distribution moment for plugin users (see the map at the top of
-   this page); there are no branch protections. A red run afterwards retracts
-   nothing, so a stale bundle reaches the marketplace channel in the window
-   before anyone looks. npm is genuinely protected — `prepublishOnly` runs
-   typecheck, test and build — so the two channels can disagree at the same
-   commit, with npm correct and `main` reporting the previous number. The
-   check that makes the reported version trustworthy is a local one; CI is the
-   second net, not the first.
+   this page); there are no branch protections, so a red run afterwards retracts
+   nothing. `npm test` catches it before anything leaves the machine — an acceptance test drives
+   the bundle on disk and compares its baked version against `package.json` — which is
+   why the pre-flight below runs the tests and not only the two dry-runs. Why
+   that is the check that binds the reported number, and what CI's own check
+   adds after the fact, is
+   [ADR-0002](adr/0002-single-question-and-output-contract.md) — this page states
+   the consequence and leaves the reasoning there.
 
    Note the consequence for review: a release commit now touches the bundle,
    where it used to be three text files.

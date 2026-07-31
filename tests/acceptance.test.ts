@@ -7,7 +7,10 @@ import { execFileSync, spawnSync } from "node:child_process";
 
 // This suite drives the SHIPPED bundle (plugin/dist/headsign.mjs), not src/ directly —
 // it exists to catch anything the build step itself could break that src-level tests
-// (which run under Node's native TS stripping) would never see.
+// (which run under Node's native TS stripping) would never see. One test below is the
+// exception that proves the rule: it builds its own bundle from src/ with a deliberately
+// broken --define, because the failure it pins can only exist in a built artifact and cannot
+// be produced by building normally.
 const BUNDLE = path.join(import.meta.dirname, "..", "plugin", "dist", "headsign.mjs");
 if (!fs.existsSync(BUNDLE)) {
   throw new Error(`${BUNDLE} does not exist — run npm run build first`);
@@ -380,7 +383,9 @@ test("the version baked into the bundle is the package's own version", () => {
 // `!HEADSIGN_VERSION` would have failed it while behaving identically.
 test("a bundle built with an empty version refuses instead of printing a blank line", () => {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "headsign-emptyver-")), "cli.mjs");
-  // esbuild's bin is a native executable, not a JS entry point — spawn it directly.
+  // esbuild's bin is a platform-specific native executable rather than a JS entry point, so it
+  // is spawned directly instead of through `process.execPath`. If that ever stops holding on
+  // some platform, the symptom is a SyntaxError from Node trying to parse a binary.
   const build = spawnSync(
     path.join(import.meta.dirname, "..", "node_modules", "esbuild", "bin", "esbuild"),
     [

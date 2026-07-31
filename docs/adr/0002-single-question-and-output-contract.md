@@ -100,16 +100,18 @@ number is substituted into the bundle at build time rather than read from
 `package.json` at runtime, because the bundle ships through two channels and that
 file is reliably present in only one of them.
 
-**This ADR is the one place that reasoning is written.** Every other mention of it —
-in `src/cli.ts`, the release runbook, the reference manual, the changelog — should
-be a pointer here rather than a restatement, and the reason is empirical: it was
-restated in nine places, and when it turned out to be wrong it was corrected in two
-of them, leaving the other seven asserting the retracted version.
+**This ADR is the one place that reasoning is written.** `src/cli.ts`, the release
+runbook, the reference manual and the changelog each state the consequence their
+own reader needs — do the rebuild, run the tests, the number is baked in — and
+defer the *why* here by link. The reason for that division is empirical: this
+reasoning was once restated in nine places, and when it turned out to be wrong it
+was corrected in two of them, leaving the other seven asserting the retracted
+version. A rule with nine copies has no owner, and the copies do not get fixed.
 
 Two checks bind the reported number to `package.json`, and the useful difference
 between them is *when* they fire rather than what they prove. An acceptance test
-drives the **committed** bundle and compares its baked version against
-`package.json`; it runs under `npm test`, so a bump without a rebuild fails on any
+drives the built bundle on disk — the committed one in a clean checkout — and compares
+its baked version against `package.json`; it runs under `npm test`, so a bump without a rebuild fails on any
 laptop and inside `prepublishOnly` — before anything leaves the machine. CI's
 `npm run build` then `git diff --exit-code plugin/dist` catches the same mistake,
 because the rebuild bakes the current version and so differs from a stale committed
