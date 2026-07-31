@@ -4,12 +4,11 @@ Distilled from the work that produced ADR-0008 through ADR-0015, and added to
 since. Each line is meant to be falsifiable against a diff: if a change violates
 one, say which.
 
-Most of these were found by review — someone reading a change and naming what it
-broke. The last one was found the other way, by a user reporting what they had
-leaned on, which is worth knowing about because the two kinds fail differently. A
-property review notices is one somebody argued for; a property that only shows up
-in use is one everybody assumed. The second kind is the sort that gets optimised
-away by a change nobody objects to.
+Most of these came out of design and review — a stance argued for up front, or
+somebody reading a change and naming what it broke. Any found in use instead say
+so, and the distinction is worth marking because the two kinds fail differently.
+A property somebody argued for has an advocate. A property everybody assumed has
+none, and is the sort that gets optimised away by a change nobody objects to.
 
 1. **A transition is decided by an exit code and a declared edge.** Never by
    what an LLM wrote. What an agent writes can pick among destinations the
@@ -41,10 +40,9 @@ away by a change nobody objects to.
 11. **A record says why it was right then, and why it is different now.**
     Superseding keeps both halves.
 12. **Looking must stay free.** `status` runs no gate, writes no state, takes
-    no lock, and its exit codes do not collide with `next`'s — so a session
-    that is unsure whether it should be driving can always find out without
-    changing anything. The cost of getting this wrong is not a wrong answer,
-    it is that nobody asks: a reader who suspects that observing might spend
-    an attempt reads the run record by hand instead, or guesses. Anything
-    that would have `status` reconcile, consume, or reset is a change to
-    this, whatever it is called.
+    no lock, and never answers with `next`'s 1 or 2 — its 0 means the record
+    was readable, whatever the record says. Anything that would have it
+    reconcile, consume, or reset is a change to this, whatever it is called.
+    Getting it wrong costs not a wrong answer but the question: a reader who
+    suspects that observing might spend an attempt reads the record by hand
+    instead. *(Found in use rather than in review.)*
