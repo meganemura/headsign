@@ -1045,6 +1045,31 @@ neither the recorded driver nor the first to name itself under an armed claim
 marker is never held — a reviewer subagent, or an agent working on
 something else entirely, stops normally.
 
+**A seat outlives the agent sitting in it, and that is the one part of a
+handover nobody is told about.** State on disk is what lets a run survive its
+driver disappearing — an API outage, a context running out, a person stopping
+the work. The phase, the attempt count and the workflow file are all still
+there, so a successor establishes where the run stands with one `headsign
+status` and carries on; and because every gate reads the working tree rather
+than a session's memory, the interruption costs no attempt and changes no
+judgment. That much is the design working.
+
+What also persists is `driver_agent`, holding the name of an agent that may no
+longer exist. headsign cannot tell: an agent id is meaningful only inside the
+process that was given it, so liveness is not a question this tool can ask. The
+consequence falls on the successor. While a driver is recorded, `Stop` passes
+every session's turn end through, and `SubagentStop` holds only the agent whose
+id matches — so **until the seat changes hands, nothing holds the turns of
+whoever is actually driving.** The run continues; the backstop does not.
+
+So a delegated agent taking over a run should run `headsign claim` and end its
+turn, exactly as the first one did. A *session* taking over cannot: sealing
+happens on `SubagentStop` alone (ADR-0010), which is not an event a session's
+turn end produces. That session can drive the run perfectly well — `next` asks
+nobody's permission — but it drives without a backstop, and the only ways back
+to one are to delegate the driving to an agent that claims it, or to end the run
+and start again.
+
 This is a handshake, not a lock: if some *other* delegated agent ends a
 turn while the marker is armed and can name itself, it gets adopted
 instead. Run `headsign claim` again from the right one: a new claim
