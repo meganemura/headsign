@@ -28,6 +28,29 @@ changes), and a patch bump means fixes only.
   Both always exit 0 and neither is a verdict. There is deliberately no `-v`: it
   reads as *verbose* in enough tools to be worth leaving free.
 
+### Fixed
+
+- **`.headsign/log` now records the turn ends headsign held, which is what makes
+  the other stop-boundary lines readable.** The log recorded three of the four
+  things that can happen to a turn end — a deliberate pause, a spent nudge cap,
+  a turn Claude Code had already resumed — and not the one that happens most,
+  the ordinary nudge. Two lines were unreadable because of it. An `unheld` line
+  is read by what comes before it, and the hold that preceded it left nothing
+  behind, so a harmless pass could not be told from a turn that ended with no
+  `headsign next` at all. And `stalled`, which records the cap being exhausted,
+  had no denominator: a run could show the cap tripping with no countable nudge
+  anywhere, which tells a later reader nothing. Every nudge now writes a line of
+  its own — `held <phase> a=… i=… nudges=N` — carrying the count under the same
+  key `stalled` already uses for the same quantity, so counting the holds a run
+  spent between two transitions is one grep. The nudge that trips the cap still
+  writes `stalled` and not `held`, one line per turn end either way, and its
+  `nudges=5` is that fifth hold as well as the moment the cap tripped; stops
+  after a spent cap still write nothing. Unlike `unheld`, a hold cannot go
+  missing from the log: the counter and the line are one write, and a nudge
+  headsign cannot record is one it does not make. See
+  [ADR-0025](docs/adr/0025-a-stop-that-passed-and-a-stop-that-never-ran.md),
+  which weighed this cost, accepted it, and has been amended.
+
 ## [0.4.0] - 2026-07-30
 
 ### Added

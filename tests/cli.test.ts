@@ -1370,6 +1370,45 @@ test("log: after a restart the anchored start grep matches twice, and the slice 
   assert.match(currentRun[1], /^\S+ retry build a=1 i=1 check="/);
 });
 
+// The reconstruction the held line exists for, done the way a person does it: slice the current
+// run out of the log, read the event word off the second field (the anchor the format promises),
+// and count the holds between the lines that moved the run. Written against the bytes rather than
+// against the API, so it fails if the line format drifts.
+const MOVES_THE_RUN = new Set(["start", "advance", "retry", "complete", "escalate", "abort"]);
+const eventWord = (line: string): string => line.split(" ")[1];
+
+test("log: the holds a run spent between two transitions are countable from the log alone", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  run(["stop-hook"], { cwd: dir, input: "{}", env: NO_OBSERVER_ENV });
+  run(["stop-hook"], { cwd: dir, input: "{}", env: NO_OBSERVER_ENV });
+  run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // RETRY: a real judgment, which resets the count
+  run(["stop-hook"], { cwd: dir, input: "{}", env: NO_OBSERVER_ENV });
+  run(["stop-hook"], { cwd: dir, input: "{}", env: NO_OBSERVER_ENV });
+  run(["stop-hook"], { cwd: dir, input: "{}", env: NO_OBSERVER_ENV });
+
+  const currentRun = readLog(dir).slice(Number(sh(dir, LAST_START_LINE_NO)) - 1);
+  const holdsPerStretch: number[] = [];
+  let holds = 0;
+  for (const line of currentRun) {
+    if (eventWord(line) === "held") holds += 1;
+    else if (MOVES_THE_RUN.has(eventWord(line))) {
+      holdsPerStretch.push(holds);
+      holds = 0;
+    }
+  }
+  holdsPerStretch.push(holds);
+  assert.deepEqual(holdsPerStretch, [0, 2, 3], `could not count the holds in:\n${currentRun.join("\n")}`);
+
+  // The count each line carries agrees with the count of the lines, and restarts with the stretch.
+  assert.deepEqual(
+    currentRun.filter((l) => eventWord(l) === "held").map((l) => l.split(" ").at(-1)),
+    ["nudges=1", "nudges=2", "nudges=1", "nudges=2", "nudges=3"],
+  );
+});
+
 test("log: an abort reason containing the word start does not add a match to the anchored grep", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
@@ -1627,7 +1666,7 @@ test("stop-hook: no stop-note -> blocks, and the message names both the stop-not
   assert.match(result.stderr, /headsign abort/);
 });
 
-test("stop-hook: the 5th nudge appends exactly one stalled log line; later stops do not repeat it", () => {
+test("stop-hook: four held lines then exactly one stalled; later stops repeat neither", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir });
@@ -1636,11 +1675,17 @@ test("stop-hook: the 5th nudge appends exactly one stalled log line; later stops
   let stalledLines = readLog(dir).filter((l) => l.includes(" stalled "));
   assert.equal(stalledLines.length, 1);
   assert.match(stalledLines[0], /stalled build a=0 i=0 nudges=5/);
+  assert.deepEqual(
+    readLog(dir).filter((l) => l.includes(" held ")).map((l) => l.split(" ").at(-1)),
+    ["nudges=1", "nudges=2", "nudges=3", "nudges=4"],
+    "the four holds before the cap each carry the count they spent",
+  );
 
   run(["stop-hook"], { cwd: dir, input: "{}" });
   run(["stop-hook"], { cwd: dir, input: "{}" });
   stalledLines = readLog(dir).filter((l) => l.includes(" stalled "));
   assert.equal(stalledLines.length, 1, "stalled must not be repeated on later stops");
+  assert.equal(readLog(dir).filter((l) => l.includes(" held ")).length, 4, "a stop nothing held is not a hold");
 });
 
 // --- stop hook: bounded walk-up (fs-only, bounded by the enclosing git worktree/repo root) ---
@@ -2248,8 +2293,8 @@ test("status: a turn end that Claude Code had already resumed leaves both an unh
   );
 });
 
-// The counterpart claim the documentation makes: a nudge is not silent in the record either, so
-// the field never reads "not held" about a stop that was in fact held.
+// The counterpart claim the documentation makes: a nudge is not silent in the record or the log,
+// so the field never reads "not held" about a stop that was in fact held, and the two agree.
 test("status: a held turn end updates the last-stop line, so a later stop never reads as an earlier pass", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
@@ -2262,7 +2307,7 @@ test("status: a held turn end updates the last-stop line, so a later stop never 
   assert.equal(nudged.status, 2, "an unflagged turn end on an unclaimed run is still held");
   assert.match(run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout, /^last stop: held, and pointed back to headsign next — at \S+$/m);
   assert.equal(readState(dir).stop_nudges, 1);
-  assert.deepEqual(readLog(dir).filter((l) => l.includes(" nudge")), [], "nudges 1-4 have no log line: the field is the only trace");
+  assert.match(readLog(dir).at(-1) as string, /^\S+ held build a=0 i=0 nudges=1$/, "the same stop is a held line carrying the count the field was just given");
 });
 
 // The transitional half of the field's tolerance (state.ts's driver_agent declaration carries the

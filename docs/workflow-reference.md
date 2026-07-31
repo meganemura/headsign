@@ -722,10 +722,14 @@ writing cheap gates, not a cost headsign can absorb on its behalf.
 Stopping *without* a note is pushed back — the hook fails open (never
 traps a session) after 5 consecutive nudges with nothing in between that
 shows someone is still steering: a real evaluation, a consumed note, or a
-sealed claim all reset the count. The 5th nudge leaves a `stalled` line in
-`.headsign/log`, and every stop after that passes silently. That cap is a
-safety net for a stuck or silently departed agent, not the normal way to
-pause — the note above is. To spot an unattended stall from the outside:
+sealed claim all reset the count. Every nudge leaves a `held` line in
+`.headsign/log` carrying the count it just spent (`nudges=3`), and the 5th
+writes a `stalled` line in place of that `held` — one line per turn end
+either way, so `stalled`'s own `nudges=5` is that fifth hold as well as the
+moment the cap tripped. Every stop after that passes silently and writes
+nothing at all. That cap is a safety net for a stuck or silently departed
+agent, not the normal way to pause — the note above is. To spot an
+unattended stall from the outside:
 `headsign status` (read-only, safe to run from any session — see
 [Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
 `.headsign/log`'s tail shows `stalled`, or `status`'s own `last stop:` line reads
@@ -749,7 +753,9 @@ the spent cap has its `stalled` line, while an overruled turn end leaves an
 `unheld` line in `.headsign/log` (naming the field it was told,
 `by=stop_hook_active`) and a `last stop:` line in `headsign status`. Both
 writes are best-effort and skipped while the run's lock is held, so a
-*missing* `unheld` line does not prove the hook did not run.
+*missing* `unheld` line does not prove the hook did not run. The hold that
+was overruled leaves its own line too, which is how an `unheld` is read —
+by the line before it ([reading the log](#reading-the-log)).
 
 ### The graph a run is walking under
 
@@ -890,7 +896,8 @@ stands. `last stop:` appears once headsign has processed one stop it could
 attribute to this run, and says what it did with that turn end, in one of
 four readings:
 
-- `held, and pointed back to headsign next` — the ordinary nudge.
+- `held, and pointed back to headsign next` — the ordinary nudge, and the same
+  stop is a `held` line in `.headsign/log`.
 - `paused by a note` — a `.headsign/tmp/stop-note` was consumed.
 - `not held — the nudge cap is spent` — the backstop had already given up on
   this run (see [the backstop](#the-backstop)).
@@ -1104,22 +1111,43 @@ Anchoring on the second field is the part that matters. A plain
 `grep ' start '` also matches `abort … reason="let's start over"`, and would
 slice the log at somebody's sentence.
 
-Four of the event words are not about the run moving at all, but about a turn
-end: `paused`, `stalled`, `claimed`, and `unheld` — the last of them written
-when headsign was overruled at a stop boundary.
+Five of the event words are not about the run moving at all, but about a turn
+end: `held`, `paused`, `stalled`, `claimed`, and `unheld`.
 
 ```
+2026-07-31T17:10:04+09:00 held implement a=0 i=48 nudges=3
 2026-07-30T23:06:51+09:00 unheld decide a=0 i=21 by=stop_hook_active
 ```
 
-Claude Code had already resumed that turn, so headsign stood down and the
-turn ended (see [the backstop](#the-backstop)). The detail is bare rather
-than quoted because `stop_hook_active` is an identifier — and it is the name
-of a field on the hook's payload from Claude Code, not anything headsign
-sets. It is in the line so that the log, headsign's source, and the payload a
-person can print for themselves all use the one word. A *missing* `unheld`
-line proves nothing on its own: the hook's writes are best-effort and skipped
-while the run's lock is held.
+The first is a turn end headsign pushed back to `headsign next`, carrying the
+number of consecutive holds spent so far — `nudges=` is the key `stalled`
+uses, because it is the same quantity. The second is a turn end Claude Code
+had already resumed, so headsign stood down and the turn ended (see [the
+backstop](#the-backstop)). Its detail is bare rather than quoted because
+`stop_hook_active` is an identifier — and it is the name of a field on the
+hook's payload from Claude Code, not anything headsign sets. It is in the line
+so that the log, headsign's source, and the payload a person can print for
+themselves all use the one word. A *missing* `unheld` line proves nothing on
+its own: the hook's writes are best-effort and skipped while the run's lock is
+held.
+
+**The stop-boundary lines are complete now, so the line before an `unheld`
+says what happened.** A `held` before it means headsign nudged and was then
+overruled: the hold and the pass are the two turn ends of one exchange, which
+is why a nudge arrives about once per exchange. A transition line before it —
+an `advance`, a `retry` — means the work was judged. A `paused` before it
+means somebody stopped on purpose. A `stalled` before it means the cap was
+already spent, and that is the one silence left: the stops after the cap trips
+pass without a line of their own, because `stalled` has already recorded that
+the backstop gave up on this run.
+
+The count on a `held` line is also the denominator `stalled` never had. Count
+the `held` lines since the last line that moved the run and you have how much
+of the cap this stretch has spent; the `stalled` that eventually takes the
+fifth hold's place says the same number back as `nudges=5`. Unlike `unheld`,
+that count does not go missing while the run's lock is held: the counter and
+the line are one write, and a nudge headsign cannot record is one it does not
+make either — it lets the turn end instead.
 
 One of the shipped examples,
 [example.headsign/sweep.yaml](../example.headsign/sweep.yaml), applies a

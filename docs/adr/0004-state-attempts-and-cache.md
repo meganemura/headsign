@@ -254,10 +254,27 @@ trace its own kind of Stop-boundary event otherwise leaves behind — a
 human-initiated pause, a stuck/departed-agent stall, or a driver handed
 off via `headsign claim`. `stophook.ts` appends `paused` when a non-empty
 `.headsign/tmp/stop-note` is consumed, `stalled` once, the moment
-`stop_nudges` reaches its cap — never on the 1st-through-4th nudge, and
-never again on the pass-throughs after the cap trips — and `claimed` once,
+`stop_nudges` reaches its cap — and `claimed` once,
 the moment the adoption gate seats a new driver via a `.headsign/tmp/claim`
-marker (ADR-0009, ADR-0010). All three can now be appended from either
+marker (ADR-0009, ADR-0010).
+
+*(Revised 2026-07-31: the 1st-through-4th nudge are no longer silent. They
+append `held`, carrying the count in the same `nudges=` key `stalled` uses.
+`stalled` is unchanged — still written once, at the moment the guard trips, and
+never again on the pass-throughs after it. So the cap writes `stalled` and not
+`held`, one line per event, and a reader counting holds since the last transition
+finds four plus the `stalled`, which is five.*
+
+*The rule this revises was spam prevention, and it was decided when nudges were
+the whole backstop and nothing else about a turn end was logged. Both halves of
+that stopped being true when [ADR-0025](0025-a-stop-that-passed-and-a-stop-that-never-ran.md)
+added `unheld` — and it left the log recording three of the four dispositions
+`last_stop` tracks, missing the one that happens most. The cost of that was not
+the missing line but the two lines it made unreadable: an `unheld` cannot be
+read by what precedes it when the most common thing preceding it is invisible,
+and `stalled` records a cap being exhausted with no way to count what exhausted
+it. ADR-0025 §7 weighed exactly this and accepted it; field use retracted it a
+day later, and that section carries the retraction.)* All three can now be appended from either
 stop-boundary hook: `paused` and `stalled` from whichever of `Stop` /
 `SubagentStop` is evaluating the driver's own stop, and `claimed` only
 from `SubagentStop`, the sole hook that can seal a claim (ADR-0010).

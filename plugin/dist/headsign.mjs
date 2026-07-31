@@ -7888,6 +7888,8 @@ function eventName(event) {
       return "graph-changed";
     case "PAUSED":
       return "paused";
+    case "HELD":
+      return "held";
     case "STALLED":
       return "stalled";
     case "UNHELD":
@@ -7920,6 +7922,8 @@ function logDetail(event, prevPhase) {
       return `state=${event.disposition} phases=${event.keys.join(",")}`;
     case "PAUSED":
       return `note="${event.note}"`;
+    case "HELD":
+      return `nudges=${event.nudges}`;
     case "STALLED":
       return "nudges=5";
     case "UNHELD":
@@ -8007,7 +8011,8 @@ function noteGateThenNudge(runDir, startDir, state, nowIso) {
   const nextNudges = nudges + 1;
   const counted = withRunLock(runDir, (fresh) => {
     const nudgedState = withLastStop({ ...fresh, stop_nudges: nextNudges }, "nudged", nowIso);
-    return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : void 0 };
+    const event = nextNudges === MAX_STOP_NUDGES ? { kind: "STALLED" } : { kind: "HELD", nudges: nextNudges };
+    return { state: nudgedState, log: stamped(nowIso, event) };
   });
   if (!counted) return { block: false };
   const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;

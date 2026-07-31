@@ -570,6 +570,18 @@ test("logLine: paused reflects the resulting state's attempts/iterations", () =>
   assert.equal(line, `ts paused review a=2 i=6 note="brb"\n`);
 });
 
+// The whole line, to the byte. The detail key is the one `stalled` already uses for the same
+// quantity: one key, one meaning, so counting the holds a run has spent is one grep.
+test("logLine: held carries the nudge count under the same key stalled uses", () => {
+  const line = render.logLine("2026-07-31T17:10:04+09:00", { kind: "HELD", nudges: 3 }, baseState({ phase: "implement", total_iterations: 48 }));
+  assert.equal(line, `2026-07-31T17:10:04+09:00 held implement a=0 i=48 nudges=3\n`);
+});
+
+test("logLine: held reflects the resulting state's phase, attempts and iterations like every other event", () => {
+  const line = render.logLine("ts", { kind: "HELD", nudges: 1 }, baseState({ phase: "review", attempts: { review: 2 }, total_iterations: 6 }));
+  assert.equal(line, `ts held review a=2 i=6 nudges=1\n`);
+});
+
 test("logLine: stalled names the fixed nudges=5 cap", () => {
   const line = render.logLine("ts", { kind: "STALLED" }, baseState({ phase: "build", total_iterations: 5 }));
   assert.equal(line, `ts stalled build a=0 i=5 nudges=5\n`);

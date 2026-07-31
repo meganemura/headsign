@@ -4,6 +4,11 @@
 - Date: 2026-07-30
 - Amends [ADR-0004](0004-state-attempts-and-cache.md): the log gains a twelfth
   event word, `unheld`, and `state.json` gains a `last_stop` field.
+- Revised: 2026-07-31 — §7 is **retracted**. Nudges are logged after all, as a
+  `held` event, and ADR-0004's spam-prevention rule is amended a second time.
+  The retraction notice sits above the original text, which is kept: the section
+  named the cost, accepted it, and was wrong, and being able to read the wrong
+  weighing is worth more than a clean rewrite.
 - Amends [ADR-0006](0006-stop-hook-backstop.md): the `stop_hook_active` check
   stops being a bare early return and gains a body; the record now says how the
   last stop was handled; and the section on the nudge cap gains what the flag
@@ -280,7 +285,48 @@ configuration is *correct*: a lead session that sets `HEADSIGN_OBSERVER`, runs `
 and delegates driving to an agent that runs `claim` is the arrangement ADR-0010 exists
 to support. A warning on the recommended setup teaches people to ignore warnings.
 
-### 7. Nudges 1–4 stay silent
+### 7. Nudges 1–4 stay silent — **retracted 2026-07-31**
+
+> **Retracted by field use, one day after this ADR was accepted.** The section
+> below is kept verbatim, because what it got wrong is more useful than a
+> rewrite: it named this exact cost, weighed it, and accepted it, and the
+> weighing was wrong in a way that is worth being able to see.
+>
+> What it accepted was that "headsign nudged and was then overruled" would be one
+> recorded fact plus one inference. The inference turned out to be not weak but
+> **undecidable**, for a reason this section did not reach: `stalled` records the
+> nudge cap being exhausted, and with nudges unlogged it has **no denominator**. A
+> run can show the guard tripping twice while no nudge is countable anywhere. The
+> argument below — "nudges 1–4 are the mechanism working, `stalled` is the
+> mechanism having failed, and only the failure is news" — assumed the recorded
+> failure would be legible on its own. It is not. A cap that trips out of nowhere
+> tells a later reader nothing.
+>
+> The enumeration was also short. §1 and the documentation derived from it read an
+> `unheld` line by what precedes it and offered two shapes: a transition before it
+> (harmless — the work was judged), or another `unheld` (a turn that ended with no
+> `next` and nothing caught it). There is at least a third, a deliberate pause
+> followed by an `unheld`, and it was never considered. That is not a gap in the
+> list so much as evidence the list could not be completed: a log in which the
+> most frequent disposition is invisible cannot be classified by what precedes
+> what.
+>
+> The clean statement of the mistake is one this ADR had the material to make and
+> did not. §4 gave `last_stop` four dispositions — `nudged`, `unheld`, `paused`,
+> `stalled` — and §1 gave the log three of them. **The record and the log were
+> left disagreeing about what is worth knowing, and the one the log dropped was
+> the one that happens most.** Adding `unheld` had already moved the boundary
+> ADR-0004 drew; this section defended the remaining hole on a rule that the same
+> ADR had just stopped following.
+>
+> So the log gains `held`, carrying the nudge count in the `nudges=` key
+> `stalled` already uses. The cap keeps writing `stalled` and not `held` — one
+> line per event, and `stalled`'s own `nudges=5` still says which hold it was.
+> ADR-0004's spam-prevention rule is amended to match.
+>
+> The volume argument below survives and is worth keeping: it was never the
+> reason. One line per exchange was correctly priced as affordable, and the
+> decision turned on legibility, which is where it was wrong.
 
 The reporter's sketch included a line per nudge. Refused, and not on grounds of volume
 — that cost is one extra line per exchange, since a nudge and a flagged pass are the two
@@ -348,11 +394,23 @@ does not disqualify it.
 - `status` answers "how was my last turn end handled" without anyone reading
   `state.json`. The record's fields remain undocumented beyond the two the reference
   manual already names, each of which answers a question available nowhere else.
-- Whether the flagged window actually costs anything is now **measurable**: `unheld` lines
-  with no transition line between them are turn ends where no real `next` ran. That
-  measurement is the input to a question this ADR does not answer — whether headsign
-  should stop honouring `stop_hook_active` and rely solely on its own cap, which would
-  close the window at the price of blocking a turn the platform asked not to be blocked.
-  Deciding that before the measurement exists would be guessing.
+- Whether the flagged window actually costs anything is now **measurable** — but not by
+  the recipe first written here, which said to count `unheld` lines with no transition
+  line between them. That was wrong twice over, and both faults have the same root as
+  §7's: with nudges unlogged, the line before an `unheld` is usually missing, so the
+  shapes could not be enumerated. A deliberate pause followed by an `unheld` is a third
+  shape the recipe had no place for, and it turned up in the field before this ADR was a
+  day old.
+
+  With `held` logged (see §7's retraction), the reading is direct rather than statistical:
+  **the line before an `unheld` says what happened.** A `held` means headsign nudged and
+  was then overruled. A transition means the work was judged and the pass cost nothing. A
+  `paused` means a deliberate pause was consumed. That measurement is still the input to
+  a question this ADR does not answer — whether headsign should stop honouring
+  `stop_hook_active` and rely solely on its own cap, which would close the window at the
+  price of blocking a turn the platform asked not to be blocked. What field data exists so
+  far points away from urgency: the first `unheld` lines anyone reported were all
+  deliberate pauses rather than missed judgments. Deciding on one run's worth of that
+  would be the same guessing this bullet warned about, from the other side.
 - The reporter is on a released build, which still truncates the log at `start`
   (ADR-0024 is newer than the release). None of this reaches them until a release says so.

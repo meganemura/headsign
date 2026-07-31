@@ -231,6 +231,16 @@ export type LogEvent =
   // function signature is how a log line ends up reporting the wrong one.
   | { kind: "GRAPH_CHANGED"; disposition: "reported" | "accepted"; keys: string[] }
   | { kind: "PAUSED"; note: string }
+  // A turn end headsign held: the nudge branch of both stop-boundary hooks, one line per
+  // nudge. The count rides on the EVENT even though the resulting state also carries it,
+  // because its sibling `stalled` states the same quantity as a constant: one arm reading the
+  // record and the other writing a literal is how one `nudges=` key would come to mean two
+  // things in this file.
+  // Why every nudge and not only the cap: `stalled` records the cap being exhausted, and with
+  // the holds before it unwritten it has no denominator — a run can show the guard tripping
+  // with no countable hold anywhere. It also gives the line before an `unheld` something to
+  // say, which is what makes an `unheld` readable on its own.
+  | { kind: "HELD"; nudges: number }
   | { kind: "STALLED" }
   // A turn end headsign was overruled on: Claude Code's already-continuing flag was set on the
   // hook's input, so the stop was let through (stophook.ts's flagged branches). `unheld` and
@@ -283,6 +293,8 @@ function eventName(event: LogEvent): string {
       return "graph-changed";
     case "PAUSED":
       return "paused";
+    case "HELD":
+      return "held";
     case "STALLED":
       return "stalled";
     case "UNHELD":
@@ -329,7 +341,13 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
       return `state=${event.disposition} phases=${event.keys.join(",")}`;
     case "PAUSED":
       return `note="${event.note}"`;
+    case "HELD":
+      // `nudges=`, the same key `stalled` writes for the same quantity: one key, one meaning,
+      // so counting the holds a run has spent is one grep and not two vocabularies.
+      return `nudges=${event.nudges}`;
     case "STALLED":
+      // The cap-tripping hold writes this INSTEAD of `held`, one line per event, so its
+      // `nudges=5` is also the count of that hold — four `held` lines plus this one.
       return "nudges=5";
     case "UNHELD":
       // Bare, not quoted, by this file's own rule: quotes are for free text, and

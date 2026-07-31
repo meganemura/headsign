@@ -126,8 +126,10 @@ artifact, no second file to keep in sync). Logic, in order:
       it falls through to the nudge flow below.
    3. **Nudge / loop-guard fallback.** If `state.stop_nudges >= 5` →
       **exit 0** (see "the safety-net loop guard", below). Else increment
-      `state.stop_nudges`, persist it, and if that increment just reached
-      5, append a `stalled` line to `.headsign/log`. Either way, **exit 2**
+      `state.stop_nudges`, persist it, and append one line to
+      `.headsign/log`: `stalled` if that increment just reached 5, otherwise
+      `held` carrying the new count (revised 2026-07-31; the nudges below the
+      cap used to write nothing). Either way, **exit 2**
       with stderr naming both remaining exits — `headsign next` to keep
       going, the stop-note to pause, `headsign abort <reason>` to end for
       good — and, only on the nudge that reaches 5, appending "This is the
@@ -237,12 +239,20 @@ and `stalled` (the nudge cap trips) are not `step()` transitions, but they
 are logged anyway because they are the *only* record a departure of type 1
 or type 3 (above) leaves behind. Both are deliberately rare by
 construction — `paused` fires once per note write-and-consume cycle,
-`stalled` fires exactly once per cap-trip (the 1st-through-4th nudge, and
-every pass-through after the cap has tripped, stay silent) — so this stays
+`stalled` fires exactly once per cap-trip — so this stays
 a targeted exception, not a reopening of "log everything the hook
 touches". See ADR-0004 for the line format
 (`<ts> paused <phase> a=<n> i=<n> note="<first line>"` /
 `<ts> stalled <phase> a=<n> i=<n> nudges=5`).
+
+*(Revised 2026-07-31: the parenthetical here used to add that the
+1st-through-4th nudge stay silent, which is no longer true — they append `held`
+(ADR-0004, as amended). What stays true is the sentence it was attached to:
+`stalled` still fires exactly once per cap-trip, and the pass-throughs after the
+cap has tripped still write no line at all. The rarity argument moves rather than
+breaks — `held` is not rare, and it earns its place on the other ground this ADR
+gives, that a departure's only record must exist somewhere. Without it, `stalled`
+records a cap being exhausted while nothing counts what exhausted it.)*
 
 A third hook-boundary event, `claimed`, joins this exception list by
 ADR-0009's claim handshake — logged once per adoption, with an empty

@@ -597,7 +597,10 @@ run は再開できず、新しく `headsign start` すると entry フェーズ
 note を*書かずに*停止した場合は差し戻されます。
 hook は fail-open で(セッションを閉じ込めることはありません)、誰かがまだ舵を取っている証拠を挟まないまま差し戻しが連続 5 回に達すると、そこでやめます。
 実評価、note の消費、claim の成立のいずれかがあれば、カウントは 0 に戻ります。
-5 回目の差し戻しで `.headsign/log` に `stalled` 行が残り、それ以降の停止は静かに通ります。
+差し戻しは 1 回ごとに `.headsign/log` に `held` 行を残し、その行にはそのとき使ったカウント(`nudges=3`)が載ります。
+5 回目は、その `held` の代わりに `stalled` 行を書きます。
+どちらにしてもターン終了 1 回につき 1 行なので、`stalled` の `nudges=5` は上限が切れた瞬間であると同時に、5 回目の差し戻しそのものです。
+それ以降の停止は静かに通り、何も書きません。
 この上限は行き詰まったエージェントや黙って離脱したエージェントのための保険であって、通常の中断手段は上の note のほうです。
 外側から放置状態を見つけるには、`headsign status`(読み取り専用で、どのセッションから実行しても安全です。[複数セッション](#複数セッション)を参照)が `RUNNING` を報告し、かつ `.headsign/log` の末尾に `stalled` が見えるか、`status` 自身の `last stop:` 行が `not held — the nudge cap is spent` と読めるかを確認してください。
 両方がそろえば、駆動していたエージェントが note を残さず離脱したということです。
@@ -616,6 +619,7 @@ hook がターンを引き留めると、Claude Code はその継続に印を付
 上限を使い切ったほうには `stalled` 行があり、覆されたターン終了のほうは `.headsign/log` に `unheld` 行(告げられたフィールド名を `by=stop_hook_active` として載せます)と、`headsign status` の `last stop:` 行を残します。
 どちらの書き込みも best-effort で、run の lock が握られている間は省かれます。
 ですから `unheld` 行が*無い*ことは、hook が動かなかったことの証明にはなりません。
+覆された差し戻しのほうも自分の行を残すので、`unheld` は直前の行から読みます([ログの読み方](#ログの読み方))。
 
 ### run が歩いているグラフ
 
@@ -731,7 +735,7 @@ observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are 
 上の最後の例に出ている 2 行で、どちらも run の現在地ではなくターンの*終わり方*についての行であり、どちらも条件付きです。
 `last stop:` は、この run のものだと帰属できる停止を headsign が 1 回でも処理したあとに現れ、そのターン終了をどう扱ったかを、次の 4 通りのいずれかで述べます。
 
-- `held, and pointed back to headsign next` — 通常の催促です。
+- `held, and pointed back to headsign next` — 通常の催促です。同じ停止が `.headsign/log` の `held` 行です。
 - `paused by a note` — `.headsign/tmp/stop-note` が消費されました。
 - `not held — the nudge cap is spent` — バックストップはすでにこの run を見放していました([バックストップ](#バックストップ)を参照)。
 - `not held — Claude Code had already resumed the turn (stop_hook_active)` — そのターン終了で headsign は覆されました。同じ停止が `.headsign/log` の `unheld` 行です。
@@ -918,19 +922,39 @@ tail -n +"$N" -f .headsign/log
 2 番目のフィールドに当てているところが肝心です。
 素朴な `grep ' start '` は `abort … reason="let's start over"` にも当たってしまい、誰かの書いた文章の途中でログを切ることになります。
 
-イベント名のうち 4 つは、run が動いたことではなくターンの終わりについてのものです。
-`paused`、`stalled`、`claimed`、そして停止境界で headsign が覆されたときに書かれる `unheld` です。
+イベント名のうち 5 つは、run が動いたことではなくターンの終わりについてのものです。
+`held`、`paused`、`stalled`、`claimed`、`unheld` です。
 
 ```
+2026-07-31T17:10:04+09:00 held implement a=0 i=48 nudges=3
 2026-07-30T23:06:51+09:00 unheld decide a=0 i=21 by=stop_hook_active
 ```
 
-Claude Code がそのターンをすでに再開させていたので、headsign は手を引き、ターンは終わりました([バックストップ](#バックストップ)を参照)。
-detail が引用符付きでなく素のままなのは、`stop_hook_active` が識別子だからです。
+1 行目は、headsign が `headsign next` へ差し戻したターン終了で、そこまでに連続して使った差し戻しの回数を載せています。
+`nudges=` というキーは `stalled` が使うものと同じです。
+同じ量だからです。
+2 行目は、Claude Code がそのターンをすでに再開させていたので headsign が手を引き、そのまま終わったターン終了です([バックストップ](#バックストップ)を参照)。
+その detail が引用符付きでなく素のままなのは、`stop_hook_active` が識別子だからです。
 そしてこれは Claude Code から渡される hook payload のフィールド名であって、headsign が決めているものではありません。
 それでも行に載せているのは、ログと、headsign のソースと、人が自分で出力できる payload とを、同じ 1 語で辿れるようにするためです。
 `unheld` 行が*無い*ことは、それだけでは何の証明にもなりません。
 hook の書き込みは best-effort で、run の lock が握られている間は省かれるからです。
+
+**停止境界の行は、いまや欠けていません。**
+ですから `unheld` の直前の行が、何が起きたのかを述べています。
+直前が `held` なら、headsign は差し戻し、そのあと覆されたということです。
+差し戻しとその通過は、1 回のやり取りに含まれる 2 つのターン終了であり、催促がやり取り 1 回につきおよそ 1 度になるのはこのためです。
+直前が run を動かした行(`advance`、`retry` など)なら、その仕事は判定されたということです。
+直前が `paused` なら、誰かが意図して止めたということです。
+直前が `stalled` なら、上限はすでに使い切られていたということです。
+そしてこれが唯一残っている沈黙で、上限が切れたあとの停止は自分の行を残さずに通ります。
+バックストップがこの run を見放したことは、`stalled` がすでに記録しているからです。
+
+`held` 行のカウントは、`stalled` がこれまで持てなかった分母でもあります。
+run を動かした最後の行から `held` 行を数えれば、その区間で上限をどれだけ使ったかが分かります。
+5 回目の `held` の位置に入る `stalled` は、`nudges=5` として同じ数を返してきます。
+このカウントは `unheld` とは違い、run の lock が握られている間に欠けることはありません。
+カウンタとその行は 1 回の書き込みで、記録できなかった差し戻しは、そもそも差し戻していないからです(その場合はターンをそのまま終わらせます)。
 
 同梱のサンプルの一つ [example.headsign/sweep.yaml](../example.headsign/sweep.yaml) は、機械的な変更を待ち行列の先頭から 1 周に 1 件ずつ適用していくワークフローです。
 これをそのままグラフとして描くと、次の形になります。

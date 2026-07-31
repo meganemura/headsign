@@ -201,7 +201,11 @@ test("note: whitespace-only note is treated as absent — still blocks, note lef
   const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
   assert.equal(decision.block, true);
   assert.equal(state.readState(dir)?.stop_nudges, 1);
-  assert.equal(readLog(dir).length, 0);
+  // The hold this produced has its own line; what must not be here is a `paused` one, since a
+  // note of nothing but whitespace is not a pause.
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ held build a=0 i=0 nudges=1$/);
 });
 
 test("note: absent -> blocks, and the message contains both the stop-note instructions and the abort escape hatch", () => {
@@ -215,23 +219,49 @@ test("note: absent -> blocks, and the message contains both the stop-note instru
   assert.ok(decision.message.includes("headsign abort"), "must name the abort escape hatch");
 });
 
-test("stalled: the 5th nudge appends exactly one stalled log line; later stops do not repeat it", () => {
+// One line per event, all the way up the cap: four `held` lines and then the `stalled` that
+// takes the fifth hold's place. The cap-tripping stop writes one of them and not both, which is
+// why `stalled` carries `nudges=5` — it is the fifth hold as well as the moment the guard
+// tripped.
+test("held/stalled: each of the first four nudges appends its own line, the 5th writes stalled instead, and later stops write neither", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
   const stdin = JSON.stringify({ cwd: dir });
 
-  for (let i = 1; i <= 5; i++) stophook.evaluate(dir, stdin, NOW, NO_ENV);
-  let lines = readLog(dir);
-  assert.equal(lines.length, 1);
-  assert.match(lines[0], /^\S+ stalled build a=0 i=0 nudges=5$/);
+  for (let expected = 1; expected <= 4; expected++) {
+    stophook.evaluate(dir, stdin, NOW, NO_ENV);
+    const lines = readLog(dir);
+    assert.equal(lines.length, expected, `nudge #${expected} appends exactly one line`);
+    assert.match(lines[expected - 1], new RegExp(`^\\S+ held build a=0 i=0 nudges=${expected}$`));
+  }
 
-  // 6th and 7th stops must fail open and must not add another stalled line.
+  stophook.evaluate(dir, stdin, NOW, NO_ENV);
+  let lines = readLog(dir);
+  assert.equal(lines.length, 5, "the cap-tripping nudge writes one line, not two");
+  assert.match(lines[4], /^\S+ stalled build a=0 i=0 nudges=5$/);
+  assert.deepEqual(lines.filter((l) => / held /.test(l)).length, 4, "the 5th nudge writes stalled and no held");
+
+  // 6th and 7th stops must fail open and must add nothing: `stalled` is written once, and a
+  // stop nothing held is not a hold.
   const sixth = stophook.evaluate(dir, stdin, NOW, NO_ENV);
   assert.deepEqual(sixth, { block: false });
   const seventh = stophook.evaluate(dir, stdin, NOW, NO_ENV);
   assert.deepEqual(seventh, { block: false });
   lines = readLog(dir);
-  assert.equal(lines.length, 1, "stalled must not be repeated");
+  assert.equal(lines.length, 5, "neither stalled nor held is repeated after the cap is spent");
+});
+
+// The exact bytes of one held line, because every field of it is load-bearing: the event word
+// headsign chose for what it does to a turn, the phase/attempt/iteration head every event
+// carries, and the `nudges=` key — the same key `stalled` uses for the same quantity, so
+// counting holds is one grep rather than two vocabularies.
+test("held: the whole line, to the byte", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "review", attempts: { review: 2 }, total_iterations: 7, stop_nudges: 2 }));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.deepEqual(readLog(dir), [`${NOW} held review a=2 i=7 nudges=3`]);
 });
 
 test("note consumption and paused logging operate on runDir, not startDir, when found via walk-up", () => {
@@ -639,7 +669,7 @@ test("SubagentStop: garbage stdin fails open regardless of state at cwd", () => 
   assert.deepEqual(decision, { block: false });
 });
 
-test("SubagentStop: nudge lifecycle 1 -> 5 with the final reminder only on the 5th, one stalled line, then pass-through", () => {
+test("SubagentStop: nudge lifecycle 1 -> 5 with the final reminder only on the 5th, four held lines then one stalled, then pass-through", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ driver_agent: "agent-alpha", stop_nudges: 0 }));
   const stdin = subagentStdin({ dir, agentId: "agent-alpha" });
@@ -649,21 +679,22 @@ test("SubagentStop: nudge lifecycle 1 -> 5 with the final reminder only on the 5
     assert.equal(result.block, true, `nudge #${expected} should block`);
     assert.equal(state.readState(dir)?.stop_nudges, expected);
     assert.ok(!result.message?.includes("final automatic reminder"), `nudge #${expected} must not carry the final notice`);
+    assert.match(readLog(dir)[expected - 1], new RegExp(`^\\S+ held build a=0 i=0 nudges=${expected}$`));
   }
 
   const fifth = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
   assert.equal(fifth.block, true);
   assert.ok(fifth.message?.includes("final automatic reminder"));
   let lines = readLog(dir);
-  assert.equal(lines.length, 1);
-  assert.match(lines[0], /^\S+ stalled build a=0 i=0 nudges=5$/);
+  assert.equal(lines.length, 5);
+  assert.match(lines[4], /^\S+ stalled build a=0 i=0 nudges=5$/);
 
   const sixth = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
   assert.deepEqual(sixth, { block: false });
   const seventh = stophook.evaluateSubagent(dir, stdin, NOW, NO_ENV);
   assert.deepEqual(seventh, { block: false });
   lines = readLog(dir);
-  assert.equal(lines.length, 1, "stalled must not be repeated");
+  assert.equal(lines.length, 5, "neither stalled nor held is repeated after the cap is spent");
   assert.equal(state.readState(dir)?.stop_nudges, 5);
 });
 
@@ -894,7 +925,7 @@ test("SubagentStop: a flagged stop reaches the record through the same walk-up a
 // written only on passes would still read "not held" long after a later nudge — which is exactly
 // the misreading `stop_nudges: 0` produced for the report that asked for this field.
 
-test("last_stop: a nudge records `nudged` alongside the counter it increments", () => {
+test("last_stop: a nudge records `nudged` alongside the counter it increments, and the line it writes carries the same count", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 0 }));
 
@@ -903,7 +934,8 @@ test("last_stop: a nudge records `nudged` alongside the counter it increments", 
   const after = state.readState(dir);
   assert.equal(after?.stop_nudges, 1);
   assert.deepEqual(after?.last_stop, { disposition: "nudged", at: NOW });
-  assert.deepEqual(readLog(dir), [], "nudges 1-4 stay silent in the log; the field is the only trace");
+  // One locked write, so the counter, the field and the line cannot disagree about one event.
+  assert.deepEqual(readLog(dir), [`${NOW} held build a=0 i=0 nudges=1`]);
 });
 
 test("last_stop: a consumed pause note records `paused`, in the same write as the paused line", () => {

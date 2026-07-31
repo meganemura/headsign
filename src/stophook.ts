@@ -14,10 +14,10 @@
 // other module works only in the directory it is handed.
 // It WRITES, which "allow/block" does not suggest and a caller should not have to discover:
 // a stop that is let through because a pause note was found consumes that note, resets the
-// nudge counter and logs `paused`; a stop that is blocked increments the counter and, on the
-// one that trips the cap, logs `stalled`; and a sealed claim writes the driver into the run's
-// record and logs `claimed`. The decision is the return value, but it is never the only
-// effect.
+// nudge counter and logs `paused`; a stop that is blocked increments the counter and logs
+// `held`, except the one that trips the cap, which logs `stalled` in its place; and a sealed
+// claim writes the driver into the run's record and logs `claimed`. The decision is the
+// return value, but it is never the only effect.
 // It also stamps `last_stop` on EVERY stop it processes and can attribute — a nudge, an
 // `unheld` pass, a pause, and the pass that happens because the cap is spent — so that a reader
 // of `headsign status` is never handed a value from a stop older than the last one. A field
@@ -226,8 +226,9 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   const nudges = typeof state.stop_nudges === "number" && Number.isFinite(state.stop_nudges) ? state.stop_nudges : 0;
   if (nudges >= MAX_STOP_NUDGES) {
     // The cap is spent, so this stop passes — and now says so in the record, on a path that
-    // wrote nothing at all before. No log line: the `stalled` line was written the moment the
-    // guard tripped, and repeating it on every later stop is the spam ADR-0004 forbids.
+    // wrote nothing at all before. Still no log line, and now for two reasons rather than one:
+    // `stalled` records the moment the guard tripped, which happened once and is not made truer
+    // by repetition, and nothing held this stop, so there is no `held` line to write either.
     // Fail-open is exactly as it was: the write is best-effort, and a lock that cannot be had
     // changes nothing and lets the turn end.
     withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "stalled", nowIso) }));
@@ -235,16 +236,23 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   }
 
   const nextNudges = nudges + 1;
-  // The final nudge alone gets a `stalled` log line: 1st-4th nudges (and any pass-through
-  // after the cap trips) are deliberately silent (ADR-0004's spam-prevention rule) — only
-  // the moment the loop guard actually trips is worth a permanent record.
+  // Every nudge leaves a line, and the one that trips the cap writes `stalled` INSTEAD of
+  // `held` rather than as well — one line per event, as it has always been. Nothing is lost by
+  // that: `stalled`'s detail is already `nudges=5`, so a reader counting holds since the last
+  // transition gets four `held` lines plus the `stalled`, which is five.
+  // Silence on 1st-4th was the earlier rule, and it left the log with three of the record's
+  // four dispositions — missing the most frequent one. What that cost was not one absent line
+  // but two unreadable ones: `stalled` had no denominator (a cap can trip with no countable
+  // hold anywhere), and an `unheld` line could not be read on its own, because the hold it
+  // followed left nothing.
   // The disposition is `nudged` for all five, including the one that trips the cap: that stop
   // WAS held, and `stalled` is reserved for the stops afterwards that are not. The log line and
   // the field answer different questions — when the guard tripped, versus what happened to the
   // most recent turn end — and this is the one stop where those two answers differ.
   const counted = withRunLock(runDir, (fresh) => {
     const nudgedState = withLastStop({ ...fresh, stop_nudges: nextNudges }, "nudged", nowIso);
-    return { state: nudgedState, log: nextNudges === MAX_STOP_NUDGES ? stamped(nowIso, { kind: "STALLED" }) : undefined };
+    const event: LogEvent = nextNudges === MAX_STOP_NUDGES ? { kind: "STALLED" } : { kind: "HELD", nudges: nextNudges };
+    return { state: nudgedState, log: stamped(nowIso, event) };
   });
   // Nothing was counted because a lap is in progress: that lap is the proof somebody is
   // steering, which is exactly what a nudge exists to establish. Let the turn end.
