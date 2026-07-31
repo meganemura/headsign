@@ -121,12 +121,13 @@ plugin or `npm install` the package. Do not guess at other paths.
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to
    the user; that's a legitimate exit, but it's permanent: the run cannot be
-   resumed. What it does not end is `.headsign/log`: the reason you type
-   outlives the run, and so does everything logged before it, because a later
-   `headsign start` appends rather than clears. To *pause* rather than end —
-   stepping away to resume later — write one line explaining why to
-   `.headsign/tmp/stop-note` and stop
-   again: the stop-boundary hook passes immediately, and `headsign next`
+   resumed, and a later `headsign start` rewrites `.headsign/state.json` whole.
+   What it does not end is `.headsign/log`: the reason you type outlives the
+   run, and so does everything logged before it. So ending a run deliberately
+   costs the run, not its history. To *pause* rather than end — stepping away
+   to resume later — write one line explaining why to
+   `.headsign/tmp/stop-note` and stop again: the stop-boundary hook passes
+   immediately, and `headsign next`
    picks the run back up later from the same phase. The hook consumes the
    note, so one note covers one turn end — if the wait runs over several
    exchanges, write it again before each turn that ends still waiting. `ESCALATE` means stop
