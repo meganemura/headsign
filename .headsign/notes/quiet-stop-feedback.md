@@ -1,71 +1,61 @@
-# フィードバック原文: Stop hook が「静かに通った」ことが観測できない
+# The problem a quiet stop left behind
 
-headsign を使っている側のプロジェクトから届いた文言。`.headsign/tmp/` は
-`headsign start` で消えるので、原文をここに置く。この run
-(`design-grilling`) が扱う入力そのもの。
+The design run recorded in `quiet-stop-plan.md` started from field feedback. This
+file used to hold that report as it arrived, which was a mistake:
+`docs/maintenance.md` requires the underlying problem to be restated in general
+terms and the general problem to be the thing fixed. What follows is that
+restatement. Nothing here is anyone's words but ours.
 
----
+## What a driver runs into
 
-## 状況
+A session drives a run and advances several phases within one turn, ending turns
+without running `headsign next` each time. The stop-boundary backstop exists for
+exactly that mistake — but the nudge arrives only on some turn endings, in a
+pattern that looks arbitrary from inside the session.
 
-headsign start から settle までを1セッションで駆動していた。1ターンで複数フェーズ（simplify → challenge → decide）を進め、decide の記録まで終えたところで headsign next を実行せずにターンを終える、という進め方を繰り返していた。
+It is not arbitrary. Once a stop hook has held a turn, Claude Code marks the
+continuation, and headsign passes the next stop through rather than holding a turn
+the platform has already resumed. That behaviour is correct and not in question.
 
-## 観測したこと
+## Why it was worth a report
 
-Stop hook の nudge が1ターンおきにしか出なかった。
+The pass wrote nothing anywhere — no log line, no field in the run record, nothing
+in `headsign status`. So a driver could not tell these apart:
 
-| ターン | nudge |
-| --- | --- |
-| ユーザー発言後、1周してターン終了 | 出る |
-| （nudge を受けて継続）もう1周してターン終了 | 出ない |
-| ユーザーが再度発言 → 1周してターン終了 | 出る |
+- the hook ran, found the platform's flag, and stood down; or
+- the hook is not installed, or is not firing at all.
 
-原因は src/stophook.ts の `if (input.stop_hook_active) return { block: false };` でした。Claude Code が無限ループ防止のために立てるフラグを見て黙って通す実装で、これ自体は必須の挙動だと理解しています。
+The first needs no action. The second is a broken setup. Documentation cannot
+separate them, because the question is about one machine right now rather than
+about the design — only a mark the hook left can answer it. Absent that mark, the
+reasonable next step is to go and audit the hook registration, which is wasted
+work.
 
-## 何が困ったか
+## The second half, which was worse
 
-なぜ nudge が出なかったのかを、状態から特定できませんでした。
+Looking for an explanation, a driver finds `stop_nudges` in the run record and
+reasons from it. The name matches one of the documented reasons a turn can end
+quietly, so a value of 0 reads as "not that one, then". That inference is sound
+and the field is not:
 
-headsign status は RUNNING decide (attempt 0/5) を返し、フェーズは正しく分かります。しかし「直前の停止が hook を通過したのか、hook がそもそも動いていないのか」は分かりません。
+- it is never incremented by a platform pass, so it cannot answer the question
+  being asked of it; and
+- every real `headsign next` resets it, so on a run being driven it reads 0 or 1
+  whatever happened.
 
-そこで state.json を見ると "stop_nudges": 0 でした。skill のドキュメントには quiet ending の理由として「an exhausted nudge cap」が挙げられているので、このカウンタが0であることを「キャップ切れではない」= 別の原因があると読み、hook の登録状況やプラグイン構成を調べに行きました。実際には stop_hook_active による通過は state にもログにも何も書かないため、カウンタが0なのは当然でした。
+The documentation named four reasons a turn can end quietly, the record exposed
+one of them, and the exposed one was not the cause. A field that looks like an
+answer is worse than no field, because a reader stops looking.
 
-.headsign/log にも start と advance の行しかなく、通過の記録は残っていません。
+## What came of it
 
-つまり stop_nudges というフィールドが存在することが、かえって誤読を招きました。ドキュメントは quiet ending の理由を4つ挙げていますが、state が露出しているのはそのうち1つだけで、しかも私のケースの原因ではありませんでした。
+[ADR-0025](../../docs/adr/0025-a-stop-that-passed-and-a-stop-that-never-ran.md)
+— the `unheld` log event, the `last_stop` field, and two `status` lines. The
+design reasoning, including the parts that were wrong and were corrected while
+writing it, is in `quiet-stop-plan.md` and `quiet-stop-corrections.md` beside this
+file.
 
-## 提案
-
-### 1. 通過を log に記録する。理由を区別して。
-
-```
-2026-XX-XXTXX:XX:XX+09:00 pass decide reason=stop_hook_active
-2026-XX-XXTXX:XX:XX+09:00 nudge decide n=1
-2026-XX-XXTXX:XX:XX+09:00 pass decide reason=nudge_cap n=1
-2026-XX-XXTXX:XX:XX+09:00 pass decide reason=pause_note
-```
-
-ドキュメントが挙げている4つの理由（claim なし / キャップ切れ / pause note / observer）に stop_hook_active を加えて、どれで通ったかが後から読めると、駆動側の自己診断が一発で終わります。
-
-### 2. headsign status に直前の停止の扱いを出す。
-
-```
-RUNNING decide (attempt 0/5)
-workflow: design-grilling
-driver: not delegated yet — no agent has claimed this run
-last stop: passed through (stop_hook_active) at 23:06:51
-```
-
-この1行があれば、私は state.json を読む必要すらありませんでした。
-
-### 3. ドキュメントの quiet ending の一覧に stop_hook_active を追記する。
-
-現在の一覧（claim なし / キャップ切れ / pause note / HEADSIGN_OBSERVER）に、Claude Code のループ防止フラグによる通過が入っていません。これが実際にはもっとも頻繁に起きる理由だと思われます。あわせて「nudge は実質ユーザー発言1回あたり1度」という運用上の帰結も書かれていると、駆動側が期待値を持てます。
-
-## 運用上の帰結として気づいたこと（仕様変更の要望ではありません）
-
-1ターンで複数フェーズを進める使い方をすると、next の実行忘れを取り逃す窓が構造的に存在します。nudge を受けて継続し、その周回の終わりでまた止まると、そこは黙って通るためです。プラットフォーム側の制約から来るもので headsign 側で塞げるものではないと理解していますが、上記1・2があれば「静かに止まっている」ことに気づく手段にはなります。
-
-## よかった点
-
-headsign status が読み取り専用でゲートを消費しないと明記されているので、状態を調べる行為が run に影響しないと確信して呼べました。原因調査中に next を叩いてリトライを1つ潰す事故が起きなかったのは、この分離のおかげです。
+A follow-up report on the same area is worth knowing about when reading those: the
+first thing the new line ran into was that `unheld` could not be read on its own,
+because the *held* stops around it were still invisible. ADR-0025 §7 carries that
+retraction.

@@ -483,7 +483,7 @@ clause added to a message read by something already skimming makes the first cla
 likely to land.
 
 **And what was actually asked.** The reporter marked this section not a feature request
-("仕様変更の要望ではありません") and asked for the fact to be *documented*. The
+as explicitly not a request for a change in behaviour, and asked for the fact to be *documented* instead. The
 nudge-message idea is this run's invention. That does not make it wrong, but it means the
 addition widens the change past the report on the strength of an idea its reporter did not
 make — worth naming, since it let A and B look like an even contest between two of

@@ -1,8 +1,9 @@
 # Making a quiet stop observable
 
 A plan produced by grilling one piece of feedback from a project that uses headsign. The
-report is kept verbatim at `.headsign/notes/quiet-stop-feedback.md`; this file is what to
-build, and can be read without it.
+problem it started from, restated in general terms, is in
+`.headsign/notes/quiet-stop-feedback.md`; this file is what to build, and can be read
+without it.
 
 ## The problem, in one paragraph
 
