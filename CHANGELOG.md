@@ -9,6 +9,8 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-01
+
 ### Added
 
 - **You can now ask which copy of headsign is running.** An installed plugin copy
@@ -29,6 +31,61 @@ changes), and a patch bump means fixes only.
   `headsign` print.
   Both always exit 0 and neither is a verdict. There is deliberately no `-v`: it
   reads as *verbose* in enough tools to be worth leaving free.
+
+
+- **A turn that ends outside the run's directory now leaves a line instead of
+  nothing.** The stop-boundary hooks find the run by walking up from where the
+  turn ended, stopping at the first enclosing `.git`. A session standing outside
+  that tree found nothing and wrote nothing at all — and from the outside, a hook
+  that ran and found nothing looked exactly like a hook that never ran, a plugin
+  that failed to install, or a `node` that could not start. When that first walk
+  comes up empty, headsign now tries once more, the same bounded way, from
+  Claude Code's `CLAUDE_PROJECT_DIR`. Find a run there and it writes one
+  `unheld` line with the detail `by=CLAUDE_PROJECT_DIR`, and `headsign status`'s
+  `last stop:` line says the session was not standing in the run's tree. **The
+  turn is never held on this path** — it records, it does not stop you — and it
+  is reached only from the branch that used to write nothing, so every case that
+  produced a nudge produces the same nudge and every case that wrote a line
+  writes the same line. It narrows the silent branch rather than closing it: that
+  second walk also only goes up, so a run below the project root or beside it (a
+  package in a monorepo, a linked worktree added outside the checkout) is still
+  unreached, and writes nothing as before. See
+  [ADR-0026](docs/adr/0026-a-second-place-to-look.md), which also records the one
+  rule anything built on this must obey: never let a value the harness supplies
+  decide whether headsign's records are right while headsign still appears to be
+  working.
+
+- **Documented: a shell variable touching non-ASCII text can lose both.** Gate
+  checks run through `/bin/sh -c`, and on macOS that is bash 3.2, where a `run:`
+  string like `"count: $n→"` does not merely expand the variable to nothing — it
+  also swallows the leading byte of the character that follows, so a broken
+  multi-byte sequence reaches the rest of the command. A check written that way
+  does not fail loudly; it compares against text nobody wrote. Brace the
+  variable (`${n}`) whenever non-ASCII text follows it. It is not a full-width
+  punctuation or Japanese-text problem — accented letters, arrows and emoji all
+  do it — and it is specific to that shell and locale: `zsh` and `dash` expand
+  the same string correctly, and `LC_ALL=C` sidesteps it. headsign does not
+  force a locale on the gate's shell, because that would change how every
+  check's commands handle multi-byte output to cover a trap most runs never
+  meet.
+
+- **Documented: a subprocess your program starts is a session too, and gets
+  nudged like any other.** The hooks nudge whoever ends a turn in an unclaimed
+  run's directory. A program that starts Claude Code as a subprocess gets a
+  session standing wherever the caller was — the run's directory, unless it was
+  given another — and that session has no way to know the nudge is not meant for
+  it. It tries to answer, and what comes back to whatever called it is prose
+  about headsign instead of the output it was started to produce. Someone
+  debugging that is looking at their own parser, not at a workflow tool.
+  `HEADSIGN_OBSERVER` already answers this exactly — it is the first branch of
+  both hooks, checked before the payload is parsed, so a turn end from that
+  environment is not nudged and writes nothing at all — and the reference now
+  says to pass it in the subprocess's environment rather than moving that
+  subprocess's working directory out of the run, which can cost it access to
+  files it still needs there. One consequence is recorded and not yet solved: a
+  nudged subprocess spends one from the run's nudge cap like any other, so a
+  subprocess that was never driving anything can exhaust the backstop budget of
+  a run that was.
 
 ### Fixed
 
