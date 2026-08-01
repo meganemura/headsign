@@ -22,6 +22,16 @@
   nothing — see [ADR-0026](0026-a-second-place-to-look.md), which also
   promotes the hook's-own-`PWD` fact below from merely-worth-knowing to
   load-bearing, as the alternative starting point it weighs and refuses.)
+- Revised: 2026-08-01 (`Stop`'s order gains one more read-only comparison,
+  below the claim check and above the already-continuing flag: a stop whose
+  payload session does not match `last_drive.session` passes, silently and
+  unconditionally, before that flag is ever read — see
+  [ADR-0027](0027-recording-who-drove-a-run.md). This narrows "a PENDING
+  answer touches nothing on disk" to "changes nothing about the run's
+  progress": `next`'s PENDING and ceiling paths now write `last_drive` even
+  though they still write no other state, so the guarantee this ADR needs —
+  PENDING never resets `stop_nudges` — survives, though the literal wording
+  about the disk no longer holds.)
 
 ## Context
 

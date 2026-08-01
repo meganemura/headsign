@@ -129,10 +129,16 @@ outside it:
   the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events
   are watched because a turn can end in two ways: `Stop` for a session,
   `SubagentStop` for a delegated agent. Only `SubagentStop` carries an
-  identifier that can name its stopper, so it is the only event that can
-  record a driver — and, since ADR-0013, the only one that compares
-  anything. `Stop` nudges whoever stops while nobody has claimed the run,
-  and passes every session once someone has.
+  identifier that can name its stopper, so it remains the only event that
+  can record a driver — ADR-0013's "one path" claim survives unchanged
+  (ADR-0027). `Stop` now compares one thing too, but not a driver
+  identifier: below the claim check and above the already-continuing flag,
+  it reads `last_drive`, the session `start` or `next` most recently
+  stamped, and passes silently on a mismatch. `Stop` nudges whichever
+  session stops while nobody has claimed the run and `last_drive` either
+  has no session on record or names the one that just stopped, and passes
+  every other session — once someone has claimed the run, it passes all of
+  them.
 
 ## Design records
 

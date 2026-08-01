@@ -885,37 +885,73 @@ since been narrowed to.
 
 There is one way a run learns who drives it, and one kind of driver it can
 learn about: a **delegated agent** that ran `headsign claim` and then ended
-its turn (below). Nothing else records a driver — `start` and `next` stamp
-no one, and no environment variable names anyone. Until a run is claimed,
-headsign does not know who is driving it, and acts on that: every session
-that ends a turn in the run's directory is nudged, and no delegated agent
-is. Once a run is claimed, that agent's turn ends are the only ones held,
-and every session's stop passes.
+its turn (below). That is still the only path to a driver: `start` and
+`next` now stamp something on every call, but what they stamp is
+`last_drive`, the session that most recently ran one of them, not a driver —
+reusing that word would say something the field isn't
+([ADR-0027](adr/0027-recording-who-drove-a-run.md)). Until a run is
+claimed, headsign still does not know who is driving it, but it can now
+tell a session that has moved the run apart from one that never has. A run
+with no session on record in `last_drive` — every run this release
+predates, any run driven from outside Claude Code (nothing there names a
+session, so `start` and `next` have none to record), and any state a person
+edited by hand — falls back to what headsign has always
+done: any session that stops in its directory gets nudged. Once some
+session has run `start` or `next` against a run, only that session's turn
+ends are held; every other session's stop passes without a word, and no
+delegated agent is held either way. Once a run is claimed, that agent's
+turn ends are the only ones held, and every session's stop passes —
+`last_drive` is never even read for a claimed run.
 
 Those two behaviors cover the two shapes a run takes. A session driving its
-own run needs no claiming: it is nudged because nobody else has claimed the
-run, which is exactly the backstop it wants. A run handed to a delegated
-agent does need claiming, because that agent shares its spawning session's
-process and can't otherwise be told apart from it — that is what `headsign
+own run needs no claiming: `start` stamps it as the mover the moment the
+run begins, so from its first turn on it is the one `last_drive` names, and
+it is nudged for exactly as long as nobody else has claimed the run — the
+same backstop it always wanted. A run handed to a delegated agent does need
+claiming, because that agent shares its spawning session's process and
+can't otherwise be told apart from it — that is what `headsign
 claim` is for (below).
 
-What this deliberately does *not* do is tell two **sessions** apart. A run
-belongs to the directory it lives in — one worktree, one run — so a second
-session watching that same directory is nudged like any other while the run
-is unclaimed. That includes a session no person opened: a program that
-starts Claude Code as a subprocess, for any reason, gets a session standing
-wherever the caller was — the run's directory, unless it was given another —
-and that session is nudged like the rest. It has no way to know the nudge
-isn't meant for it, so it tries to answer, and what comes back to whatever
-called it is prose about headsign instead of the output it was started to
-produce. The nudged turn end also spends one from the cap, by the rule
-above: a subprocess that was never driving anything can exhaust the backstop
-budget of a run that was.
-`HEADSIGN_OBSERVER` (below) is how such a session opts out, and it is the
-only manual control headsign offers here. Every session that isn't
-driving — teammates, a subagent that wasn't delegated the run, or any
-session that never ran `headsign start` — should reach for `headsign
-status` instead of `next`.
+What this now does, that it deliberately did not do before, is tell a
+session that has moved a run apart from a second session merely standing
+in the same directory. A run still belongs to the directory it lives in —
+one worktree, one run — but a second session watching that directory, once
+the first has run `start` or `next`, is no longer nudged for it: its stop
+passes silently, spending nothing from the cap and writing no line
+anywhere, the same way a non-driving session's does on a claimed run. That
+includes a session no person opened: a program that starts Claude Code as
+a subprocess, for any reason, gets a session standing wherever the caller
+was — the run's directory, unless it was given another — and once that run
+has been moved by someone else, the subprocess's stop passes the same way.
+This is the failure [ADR-0027](adr/0027-recording-who-drove-a-run.md)
+exists to fix: before it, that subprocess had no way to know a nudge
+wasn't meant for it, so it tried to answer, and what came back to whatever
+called it was prose about headsign instead of the output it was started to
+produce — spending, on the way, one from the cap the run's actual driver
+needed.
+
+A gap remains, and it falls on the opposite party. A session that picks up
+a run someone else began — a **handover** — is not nudged either, from the
+moment it first stops until its own first `next` stamps it in turn. It is
+not a bystander; it is the run's next driver, and it still loses the
+backstop for that stretch, because a mismatched stop and one from a
+session that has simply never touched the run look identical to `Stop` —
+nudging either would nudge every bystander too, and buy the stamp nothing.
+What that costs is discovery as much as backstop: a session opening on a
+repository that already has a run used to find out by being nudged, a side
+effect of nudging everyone nearby rather than the backstop's actual job.
+Its replacement is `headsign status`, read-only and safe to run from
+anywhere.
+`HEADSIGN_OBSERVER` (below) is how a session that knows it is only
+observing opts out explicitly, rather than counting on the fix above to
+spare it. It is still the only manual control headsign offers here, but it
+has moved from the only way such a session could be spared a nudge to a
+deliberate, more certain opt-out: most bystanders no longer need it to be
+left alone. Every session that isn't driving — teammates, a subagent that
+wasn't delegated the run, or any session that never ran `headsign start` —
+should reach for `headsign status` instead of `next`, more than ever now: a
+run someone else has already moved no longer announces itself to whoever
+stops nearby, so `status` is the only way left to find one.
 
 ### `headsign status`
 
@@ -951,6 +987,7 @@ RUNNING decide (attempt 0/5)
 workflow: design-grilling
 driver: not delegated yet — no agent has claimed this run
 last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at 2026-07-30T23:06:51+09:00
+last moved: 2026-08-01T19:45:29+09:00 — turn ends from any other session pass without a nudge
 observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held
 ```
 
@@ -970,11 +1007,11 @@ that a handoff landed. `claim` takes two beats and can fail quietly, so one
 session, the user, a passing observer — checks that the run really did
 change hands.
 
-Two further lines can appear while a run is `RUNNING`, both of them in the
-last example above, and both about how turns *end* rather than where the run
-stands. `last stop:` appears once headsign has processed one stop it could
-attribute to this run, and says what it did with that turn end, in one of
-five readings:
+Three further lines can appear while a run is `RUNNING`, all three in the
+last example above, and all three about how turns *end*, or the run
+*moves*, rather than where it stands. `last stop:` appears once headsign
+has processed one stop it could attribute to this run, and says what it did
+with that turn end, in one of five readings:
 
 - `held, and pointed back to headsign next` — the ordinary nudge, and the same
   stop is a `held` line in `.headsign/log`.
@@ -1002,6 +1039,34 @@ that opted out — leaves the line describing the earlier stop rather than
 blanking it, so a stale disposition is possible and its timestamp is how you
 catch one.
 
+`last moved:` appears once a run has a session on record in `last_drive` —
+absent for a run this release predates, one driven from outside Claude Code,
+or one whose state a person edited by hand — and names when this run was
+last **moved**, by whichever session most recently ran `start` or `next`
+against it:
+
+```
+last moved: 2026-08-01T19:45:29+09:00 — turn ends from any other session pass without a nudge
+```
+
+`last stop:` and `last moved:` answer different questions, and each can go
+stale on its own: the first is when a turn end was last *attributed* to this
+run, the second is when the run was last *moved*. Read together, they tell
+apart two situations that call for different reactions — a fresh `last
+stop:` next to a stale `last moved:` means someone is here but the run isn't
+advancing, while both stale means nobody is. Neither reading says whether
+*you* are the session named: the identifier itself is never printed, and, for
+the same reason `driver:` above cannot, `status` has only the environment to
+ask with and cannot answer "is it me" honestly.
+
+The line can also go away again. `start` and `next` record the session that
+ran them whenever they can name one, so a single run of either from an
+environment that names none — a person driving the run from a terminal —
+records none and clears whatever was stamped before, and the run goes back
+to nudging whoever stops in its directory. That is the safe direction on
+purpose: headsign does not keep a stamp it can no longer vouch for, and an
+unstamped run nudges everyone rather than no one.
+
 `observer:` appears when `HEADSIGN_OBSERVER` is set in the environment
 `status` itself runs in — normally the session's, but not necessarily, since
 what is read is that one process's environment. It is the only quiet-ending
@@ -1009,8 +1074,9 @@ cause a caller can answer about *itself*, since there is no identifier to
 resolve.
 
 Conditional means byte-for-byte conditional: a run on which no stop has been
-processed, read in an environment without the switch, prints exactly what
-`status` printed before either line existed. Neither line is a judgement —
+processed and no `last_drive` recorded, read in an environment without the
+switch, prints exactly what `status` printed before any of these three
+lines existed. None of the three is a judgement —
 `status` still runs no gate, writes nothing, and takes no lock. And because
 the record holds only the most recent stop, while `headsign next` resets the
 nudge counter, `headsign status` is the right **first** command on resuming
@@ -1032,10 +1098,12 @@ another agent armed for itself. If you get that message without having run
 so, and let them claim again.
 
 The implication runs one way only. Ending quietly does *not* prove the
-reverse: six things end a turn quietly, and what you look at to tell them
-apart differs for each one. One of the six is new, and unlike the other
-five it exists only because a second walk (above) found something the
-first one missed.
+reverse: seven things end a turn quietly, and what you look at to tell them
+apart differs for each one. Two of the seven were added after the other
+five: one exists only because a second walk (above) found a run the first
+one missed, and the other only because a stop is now compared against the
+session that last moved the run — and that one, alone in the table, leaves
+nothing to look at in the log.
 
 | a turn ended quietly because | how you tell |
 | --- | --- |
@@ -1043,19 +1111,28 @@ first one missed.
 | the session's own directory led nowhere, but `CLAUDE_PROJECT_DIR` found the run | an `unheld` line in `.headsign/log`, detail `by=CLAUDE_PROJECT_DIR`; the `last stop:` line in `headsign status`, worded differently from the row above |
 | a pause note was consumed | a `paused` line in the log |
 | the nudge cap is spent | a `stalled` line in the log — and no such line means the cap is innocent |
+| this run was last moved by a different session | nothing in the log — the only tell is the `last moved:` line in `headsign status`: if you haven't moved this run since that time, this is why |
 | nobody has claimed the run, or the stopper is not the driver | `driver:` in `status`, which narrows rather than settles |
 | `HEADSIGN_OBSERVER` is set | the `observer:` line in `status` |
 
-A seventh way is not in the table because there is nothing to look at: the
+An eighth way is not in the table because there is nothing to look at: the
 session's own directory led nowhere *and* `CLAUDE_PROJECT_DIR` either was
 not set or led nowhere either. That is the one case the backstop still
 cannot see — see
 [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it),
 above.
 
-Three caveats go with that table, and each one is load-bearing.
+Four caveats go with that table, and each one is load-bearing.
 
-**`driver:` narrows the fifth row rather than settling it.** It reports
+**The fifth row alone leaves nothing in the log.** Every other row has
+something to read there, or in `status`; a stop from a session other than
+the one that last moved the run gets nothing written anywhere, on purpose —
+recording a bystander's turn end on a run it never drove is exactly what
+this row exists to stop doing ([ADR-0027](adr/0027-recording-who-drove-a-run.md)).
+`last moved:` in `status` is the only trace, and it names a time, never a
+session.
+
+**`driver:` narrows the sixth row rather than settling it.** It reports
 whether *some* delegated agent holds the run, never whether the reader is
 that agent (above). Reading the log instead does not rescue it: the log
 spans runs, so a `claimed` line may belong to a run that ended days ago.
@@ -1079,10 +1156,15 @@ consumes the marker — that is the `Claim confirmed` case above, and the other
 agent has to claim again. Spend the probe deliberately rather than
 habitually.
 
-For a *session*, the same test proves nothing at all. `Stop` rules a stop
-out only when a delegated agent holds the run, so while nobody has claimed
-it, every session in the directory is nudged, driver or not. Being held
-there says the run is running, not that you own it.
+For a *session*, the same test now proves more than it used to, though
+still not everything. `Stop` excludes a stop when a delegated agent holds
+the run, or when the run has a `last_drive` stamp naming a different
+session — so a run `last_drive` names holds only the session it names, and
+every other session's stop passes silently, while a run with no stamp on
+record still nudges whichever session stops there, driver or not, exactly
+as before. Being held there now usually means the run currently credits you
+with having moved it — narrower than owning it, and still not certain,
+since an unstamped run nudges anyone.
 
 Exit code follows a deliberately different contract from `next`'s: `status`
 exits 0 whenever `.headsign/state.json` could be read at all — an

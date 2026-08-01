@@ -60,9 +60,17 @@ plugin or `npm install` the package. Do not guess at other paths.
    contender for it because its own turn end always fires the event that
    seals. Another agent naming itself first can take this marker too, so
    re-claim until the confirmation names the agent you meant. A session
-   driving a run on its own does not need `claim` at all: while nobody has
-   claimed a run, the hook nudges whichever session stops in its directory,
-   which is exactly the backstop that session wants. Skipping the claim
+   driving a run on its own does not need `claim` at all: `start` stamps it
+   as the run's mover the moment the run begins, every `next` it runs
+   re-stamps it, and while nobody has claimed the run the hook nudges that
+   stamped session — exactly the backstop that session wants. A second
+   session merely standing in the same directory, once the first has run
+   `start` or `next`, is not nudged for a run it never touched — it does
+   not learn a run is there by being nudged about it; a run with no session
+   on record (one begun before this behavior shipped, one driven from a
+   terminal rather than a session, or one whose state was hand-edited)
+   still falls back to nudging whichever session stops there. Skipping the
+   claim
    fails silently rather than loudly: the run stays unclaimed, so every
    later nudge goes to a *session* — usually the idle one that delegated to
    you — while nothing holds your own turns at all. (Nothing records them
@@ -79,9 +87,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    only works in this direction and only for delegated agents: ending
    quietly proves nothing (not having claimed, Claude Code's
    already-continuing flag, an exhausted nudge cap, a pause note,
-   `HEADSIGN_OBSERVER`, or a directory the walk-up resolved only via
-   `CLAUDE_PROJECT_DIR` all end turns quietly), and a session gets nudged
-   on any run nobody has claimed, whether or not it is driving. A nudge
+   `HEADSIGN_OBSERVER`, a directory the walk-up resolved only via
+   `CLAUDE_PROJECT_DIR`, or a run this session simply never touched while
+   someone else was last recorded moving it, all end turns quietly), and a
+   session gets nudged on any run nobody has claimed and nobody has yet
+   moved, whether or not it is driving — once someone has moved it, only
+   that session is. A nudge
    arrives roughly **once per exchange**, not once per turn end. When the
    hook holds a turn, Claude Code flags the continuation, so the ending of
    *that* turn passes quietly — recorded as an `unheld` line in

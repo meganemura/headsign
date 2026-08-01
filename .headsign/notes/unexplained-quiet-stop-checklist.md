@@ -52,7 +52,7 @@ build has no `held` line, but `unheld` and `last stop:` may well be there.
 
 ### 2. `headsign status`, verbatim
 
-Paste the whole output. Two lines matter.
+Paste the whole output. Three lines matter now.
 
 `last stop:` — record **both** the disposition and the timestamp:
 
@@ -70,6 +70,23 @@ If there is no `last stop:` line at all, say so — that is a finding, not a
 missing detail. The two `not held` lines look similar and mean different
 things — capture the parenthetical verbatim, `(stop_hook_active)` or
 `(CLAUDE_PROJECT_DIR)`; this checklist tells them apart below.
+
+`last moved:` — present only if the run has a session on record in
+`last_drive` (absent for a run this release predates, one driven from
+outside Claude Code, or one whose state was hand-edited). Record its
+timestamp:
+
+```
+last moved: <t> — turn ends from any other session pass without a nudge
+```
+
+It names when this run was last **moved** — when some session most recently
+ran `start` or `next` against it — a different question from `last stop:`'s
+*attributed turn end*. Compare it to when your own turn ended: if `last
+moved:` is stamped by a session other than yours, your stop matched no
+recorded mover and passed silently, by design. This is the one cause below
+with **no trace anywhere else** — not in `.headsign/log`, not in a stale
+`last stop:` — the timestamp comparison is the only evidence there is.
 
 `observer:` — if that line is present, `HEADSIGN_OBSERVER` is set in this
 environment and **the whole question is answered**: turn ends from here are never
@@ -158,6 +175,7 @@ so.**
 | `last stop:` stamped clearly **earlier** than the turn that ended, or absent, **and** no line in the log for it | The hook wrote nothing for that turn end. The rows below separate why. |
 | a transition line timestamped inside the window when the turn ended | Another `headsign next` was probably mid-lap and holding the run's lock, so the hook could not write and let the turn end. Ordinary. |
 | the run is claimed by an agent that is not you | You are a bystander to the backstop by design — a session, or a different agent. Nothing holds your turns until you take the seat. |
+| the run is unclaimed, `last moved:` in `status` is stamped, and it names a time your session cannot account for (you never ran `start` or `next` that recently) | Answered, and there is nothing else to find: your stop matched no recorded mover and passed silently, writing no `unheld` line and no `last stop:` update — the timestamp comparison above is the only evidence this leaves. See section 2. |
 | the session was in another git repository when the turn ended, and `last stop:` says `by=CLAUDE_PROJECT_DIR` | Answered — see the `unheld` / `CLAUDE_PROJECT_DIR` row above. Only reachable if the session has more than one allowed working directory, since Claude Code refuses a `cd` outside them. |
 | the session was in another git repository when the turn ended, and there is no such line | Narrower than it used to be, not gone: this needs the walk from `CLAUDE_PROJECT_DIR` to have also found nothing — unset, or naming a place with no run. On that turn's own evidence, indistinguishable from an uninstalled backstop — though step 7, and the stop before it in `status`, do tell them apart. It needs one `cd` that was never undone, or a session that was never inside, *and* `CLAUDE_PROJECT_DIR` not reaching the run either. |
 | a real nudge arrived, but for a workflow or phase that is not the one you expected | Not silence — a different, older, undocumented shape. The checkout the session drifted into has **its own** run, and the cwd walk finds that one before `CLAUDE_PROJECT_DIR` is ever tried. See "A session can be nudged about the wrong run", below. |
@@ -182,6 +200,17 @@ so.**
   "The loop guard" is headsign's name for the cap; the platform's is the
   already-continuing flag. The log tells them apart: `stalled` for the cap,
   `unheld` for the flag.
+- **A run someone else last moved leaves your stop no trace, anywhere,
+  since 2026-08-01.** `Stop` compares the payload's session against
+  `last_drive.session` before it ever reaches the log-writing branches
+  below; a mismatch passes silently, writing nothing to `.headsign/log` and
+  nothing to `last_stop`. The only signal is `last moved:` in `headsign
+  status`, and it names a time, never a session — see section 2. A run with
+  no session recorded in `last_drive` (one begun before this shipped, one
+  driven from a terminal rather than a session, or one whose state was
+  hand-edited) is unaffected by this and still nudges whichever session
+  stops there — and one `start` or `next` from an environment that names no
+  session clears an existing stamp, putting the run back in that state.
 - **The hooks are bounded by the enclosing repository, with one narrow
   exception since 2026-08-01.** Drift inside the run's own repository is
   harmless. Drift out of it — into a sibling clone, a docs repo, anywhere a
