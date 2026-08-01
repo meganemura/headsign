@@ -219,6 +219,19 @@ test("note: absent -> blocks, and the message contains both the stop-note instru
   assert.ok(decision.message.includes("headsign abort"), "must name the abort escape hatch");
 });
 
+test("Stop: the nudge names the way out for a reader who is not driving this run, last, after the pause/abort hint", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.ok(decision.message);
+  assert.match(
+    decision.message,
+    /headsign abort <reason>`\. If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead\.$/,
+  );
+});
+
 // One line per event, all the way up the cap: four `held` lines and then the `stalled` that
 // takes the fifth hold's place. The cap-tripping stop writes one of them and not both, which is
 // why `stalled` carries `nudges=5` — it is the fifth hold as well as the moment the guard
@@ -456,6 +469,11 @@ test("SubagentStop adoption: a claim marker plus an agent_id seals that agent �
   assert.match(decision.message, /headsign abort/);
   assert.match(decision.message, /\.headsign\/tmp\/stop-note/);
   assert.doesNotMatch(decision.message, /agent-alpha/, "the adopted agent id must never appear in the hook's own message");
+  assert.doesNotMatch(
+    decision.message,
+    /HEADSIGN_OBSERVER/,
+    "the adoption message confirms this agent IS the driver, so the not-driving hint must never appear here",
+  );
 
   const after = state.readState(dir);
   assert.equal(after?.driver_agent, "agent-alpha");
@@ -549,6 +567,10 @@ test("SubagentStop owner check: the recorded driver's own turn end blocks and in
   assert.match(decision.message ?? "", /headsign workflow 'demo' is still running \(phase: build\)\./);
   assert.match(decision.message ?? "", /headsign next`/);
   assert.match(decision.message ?? "", /headsign abort/);
+  assert.match(
+    decision.message ?? "",
+    /If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead\.$/,
+  );
   assert.equal(state.readState(dir)?.stop_nudges, 1);
 });
 

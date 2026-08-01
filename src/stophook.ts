@@ -183,6 +183,25 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
   return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
 
+// Every option a nudge names above this line — run `next`, write a pause note, `abort` — is a
+// driver's action. A subprocess that a program started to answer something else entirely can
+// stop in this run's directory too, and finding no option meant for it, has been seen reaching
+// for one of the driver's anyway. This clause is the one thing it may legitimately do, so it
+// is the exit of last resort: last, after the exits that leave a trace (pause writes `paused`,
+// abort writes `abort` with a reason; this one leaves nothing in the run at all — see ADR-0026).
+// It tests the reader's own situation — "are you driving this run" — rather than naming *who*
+// might be reading, on purpose: "a program started this session" would miss a session that is
+// driving a run of its own and merely standing inside a different checkout, who is in exactly
+// the same position and must recognize themselves too. Phrased this way, a driver reading it
+// can tell it does not apply to them, which is the whole of this clause's safety.
+// Named as a relay, not an instruction to "set this variable": a subprocess cannot set its own
+// environment, only the party that started it can, but the subprocess is the only channel back
+// to that party — so it is told where to send the word, not told to act on it directly.
+// One clause, appended to the NUDGE only, never to the adoption message: `Claim confirmed …`
+// tells an agent it just became this run's driver, the opposite of what this clause is for.
+const NOT_DRIVING_HINT =
+  " If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead.";
+
 // The shared tail of both hooks, entered once the caller has stopped ruling the stopper out.
 // The two callers set a different bar for that, on purpose: evaluateSubagent requires a
 // positive match against the recorded driver, while evaluate only gets here on a run nobody
@@ -306,7 +325,7 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
   // The final-reminder phrase rides only on the nudge that trips the cap: earlier nudges
   // must keep pushing `headsign next`, not dilute it with "this is your last chance".
   const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) };
+  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) + NOT_DRIVING_HINT };
 }
 
 export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: NodeJS.ProcessEnv): HookDecision {

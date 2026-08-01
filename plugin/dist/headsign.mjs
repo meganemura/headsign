@@ -7993,6 +7993,7 @@ function pauseAndAbortHint(runDir, startDir) {
   const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
   return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
+var NOT_DRIVING_HINT = " If you are not driving this run, none of the above is yours to do \u2014 set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead.";
 function withRunLock(runDir, apply) {
   const lock = acquireLock(runDir);
   if (!lock.ok) return false;
@@ -8038,7 +8039,7 @@ function noteGateThenNudge(runDir, startDir, state, nowIso) {
   if (!counted) return { block: false };
   const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
   const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) };
+  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) + NOT_DRIVING_HINT };
 }
 function evaluate(cwd, stdinRaw, nowIso, env) {
   if (isObserver(env)) return { block: false };
