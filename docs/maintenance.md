@@ -199,8 +199,9 @@ machine or is protected against being undone once it has.
 3. **[agent]** Add the `CHANGELOG.md` entry — curated and user-facing, not a
    commit-log replay (Keep a Changelog format).
 4. **[agent]** Commit (`Release vX.Y.Z`) — the two version files, the bundle,
-   and the changelog. Landing it is the next step, and it is a separate step
-   on purpose: the commit is local and amendable, the push is not.
+   and the changelog. Landing it is a separate step on purpose, and not the
+   next one: the commit is local and amendable, and everything between here
+   and the push — the pre-flight, the tag — is still undoable on this machine.
 5. **[agent]** Pre-flight. First `npm run typecheck && npm test`, because this is
    the last point before anything leaves the machine and the tests are what tie
    the reported version to the packaged one (step 2). Then two dry-runs, both
@@ -211,17 +212,31 @@ machine or is protected against being undone once it has.
    here goes stale silently while a wrong list does not. And
    `gh skill publish --dry-run`, which validates the skill layout and nothing
    else.
-6. **[you]** `git push` — landing it on `main`. **This is the moment plugin
-   users can receive it**, which is why it is yours: the distribution map above
-   is what makes a merge to `main` a publication.
-7. **[agent]** `git tag vX.Y.Z` — creating the tag locally, which is
-   reversible here.
-   **[you]** `git push --tags`. Tags matching `v*` are protected (no deletion,
-   no re-pointing) — one tag is the shared reference point for every channel,
-   which is only trustworthy if it cannot move. So the push is the
-   irreversible half, and the agent stops before it.
-8. **[you]** Create the GitHub Release for the tag; its body is the
-   transcription of the `CHANGELOG.md` section.
+6. **[agent]** `git tag vX.Y.Z` — creating the tag locally, which is
+   reversible here. It happens *before* the handover, not after, so that the
+   one command you run pushes the commit and the tag together.
+7. **[you]** `git push && git push --tags` — one command, deliberately.
+   Landing on `main` is the moment plugin users can receive it (the
+   distribution map above is what makes a merge a publication), and tags
+   matching `v*` are protected: no deletion, no re-pointing. Both halves are
+   irreversible, and separating them only creates a window where `main` has
+   shipped and the shared reference point for every other channel does not yet
+   exist. `&&` and not `;` — a rejected push must not be followed by a tag
+   push that succeeds.
+8. **[agent]** Create the GitHub Release for the tag; its body is the
+   transcription of the `CHANGELOG.md` section. Reversible — a release can be
+   deleted, and the protected thing it hangs on is the tag, which already
+   exists by now.
+
+   **Backfilling an older version needs `--latest=false`.** GitHub picks the
+   "Latest" release by publication *time*, not by version, so creating a page
+   for an older tag today silently moves the Latest marker backwards — and
+   `gh skill update` follows it, so skill users would be walked back a version
+   by a bookkeeping fix. Check with
+   `gh api repos/<owner>/<repo>/releases/latest -q .tag_name` after any release
+   made out of order. A backfilled page also carries today's date with no way
+   to set the real one, so say the real date in its first line rather than
+   leaving the two records disagreeing.
 9. **[you]** `npm publish` from the tagged, CI-green checkout —
    `prepublishOnly` forces typecheck+test+build. It may prompt for a 2FA OTP,
    which is the mechanical reason this one cannot be delegated. Consider
@@ -238,17 +253,19 @@ repository setting, already in place (publish added it on 2026-07-25). The
 Everything above that leaves this machine, in order, ready to paste:
 
 ```sh
-git push                     # lands on main = plugin users can receive it
-git push --tags              # v* is protected: no deletion, no re-pointing
+git push && git push --tags  # lands on main; v* is protected once pushed
 npm publish                  # prompts for a 2FA OTP
 ```
 
-Plus the GitHub Release for the tag, whose body is the `CHANGELOG.md` section
-verbatim.
+That is the whole list — two commands. The GitHub Release is *not* yours: it
+can be deleted, which by this page's own rule puts it on the agent's side.
+It was listed here once, and the release it was listed for is the one that
+never got a page — a step an agent could do but a person is marked for is a
+step with nobody actually holding it.
 
-Nothing else in a release is yours. If an agent hands you a longer list than
-this, it either has not done its half or is asking permission for something
-reversible — check which before running it.
+If an agent hands you a longer list than this, it either has not done its half
+or is asking permission for something reversible — check which before running
+it.
 
 ## Repository settings (live outside the tree; recorded here to be reproducible)
 
