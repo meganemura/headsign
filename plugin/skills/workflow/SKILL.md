@@ -165,9 +165,9 @@ plugin or `npm install` the package. Do not guess at other paths.
   walk up stops at the first enclosing `.git`, so if a turn happens to end
   while the session sits in another checkout — a sibling clone, a docs repo,
   anywhere you `cd`'d to and did not come back from — the hook finds no run,
-  writes nothing anywhere, and lets the turn end. Nothing distinguishes that
-  from a backstop that is not installed. If a turn ends unheld and you cannot
-  say why, check where the session was standing.
+  writes nothing anywhere, and lets the turn end. On that turn's own evidence
+  it looks exactly like a backstop that is not installed. If a turn ends unheld
+  and you cannot say why, check where the session was standing.
 - Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
   Read the text, don't treat non-zero as a tool failure. PENDING = the gate
   can't be evaluated yet — not a failure. Produce the artifact it's waiting

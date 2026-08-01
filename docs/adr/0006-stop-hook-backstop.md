@@ -341,8 +341,42 @@ writing the note knows exactly where to put it.
 
 Residual limitation, by design and not a bug: if a run's `.headsign/`
 lives outside the current `.git` root — cwd has been `cd`'d past the repo
-boundary, or the run's `.headsign/` genuinely lives elsewhere — the hook
-still won't find it and exits 0.
+boundary, the session simply started outside the run's tree, or the run's
+`.headsign/` genuinely lives elsewhere — the hook still won't find it and
+exits 0.
+
+**And it exits 0 recording nothing, which is a knowing exemption from the
+rule that this project otherwise holds to** (`what-headsign-protects.md` #4,
+"no silent divergence — make it loud or make it impossible"). The driver
+believes the backstop is holding; it did nothing; nothing says so. Both
+remedies were weighed and both refused:
+
+*Making it impossible* would mean widening the walk past the `.git` bound,
+which is the one thing this section exists to prevent — a turn ending in one
+checkout must never touch a sibling's run.
+
+*Making it loud* has two places to put the signal that do not touch a
+filesystem the bound protects: the hook's own exit-0 output, and a
+machine-scoped file outside every checkout. Both are refused for the same
+reason, and it is not that there is nowhere to write. **This branch is the
+overwhelmingly common one.** The hook fires at every turn end in every
+session on a machine where the plugin is installed, including every project
+that has never heard of headsign, and a signal here is noise in thousands of
+sessions to catch one. Exit-0 output would not even reach the agent that
+needs it, and a machine-scoped file would break ADR-0004's cwd-only contract
+for a problem far smaller than that commitment. So the honest statement is
+not "there is nowhere to put it" but *there is nowhere to put it that is
+worth what it costs everywhere else.*
+
+What is left is documentation, which is why the reference manual and the
+`workflow` skill both name this boundary rather than only the walk-up it
+bounds. A driver who cannot explain an unheld turn end should ask where the
+session was standing. The one thing that would change this calculus is a
+signal from the harness naming the project a session belongs to,
+independently of where its shell has wandered: that would let the walk start
+from a second, stable point and turn this branch from common into rare. That
+is a question about what Claude Code exposes, not about what headsign should
+write, and it is not answered here.
 
 Equally by design, the walk only ever goes up: if the session's cwd sits
 *above* the run's directory — a monorepo root, with the run's `.headsign/`

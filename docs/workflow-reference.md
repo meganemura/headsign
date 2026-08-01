@@ -272,15 +272,20 @@ repo or git-worktree root; each worktree then keeps its own independent run.
 The exceptions are the stop-boundary hooks, which walk up to find the run's
 `.headsign/` (bounded by the worktree root) so the backstop still fires when
 the turn ended in a subdirectory. That walk only goes up, and it stops at the
-first enclosing `.git`, so there are two ways to fall outside it and both are
-silent. From a directory *above* the run — a monorepo root, say — the hook
-won't find it. And from *another checkout entirely* — a sibling clone, a docs
-repository, anywhere a `cd` left the session — the walk stops at that
-repository's root instead, finds no run, and writes nothing at all: no log
-line, no `last stop:`, nothing to tell the difference from a backstop that was
-never installed. Keep the session at the workflow's directory or below, and if
-a turn ended unheld and nothing explains it, ask where the session was
-standing when it ended.
+first enclosing `.git` — or at the filesystem root if there is none — so every
+way of standing outside it is silent. From a directory *above* the run, a
+monorepo root say, the hook won't find it. Nor will it from *another checkout
+entirely*: a sibling clone, a docs repository, anywhere the session happens to
+be standing, whether a `cd` left it there mid-turn or it started there. The walk
+stops at that repository's root, finds no run, and writes nothing at all — no
+log line, no `last stop:`. On that turn's own evidence there is nothing to tell
+it apart from a backstop that was never installed, though `headsign status` in
+the run's own directory still shows the stop before it, and a single nudge
+anywhere in the run proves the hook is wired. Keep the session at the workflow's
+directory or below, and if a turn ended unheld and nothing explains it, ask
+where the session was standing when it ended.
+Why this is documented rather than signalled is in
+[ADR-0006](adr/0006-stop-hook-backstop.md)'s bounded-walk-up section.
 
 ### One worktree, one run
 

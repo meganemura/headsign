@@ -11,9 +11,8 @@ now has its own row below.
 
 What is still open is the first sighting's own hypothesis — that an interrupted
 turn is not a stop-boundary event at all — which no evidence has yet confirmed or
-ruled out. So keep working through this: it closed one question by being followed
-exactly, and the table now separates four answerable causes from the one that is
-not.
+ruled out. So keep working through this: it closed one question by being followed exactly,
+and the table below now answers most of what it used to leave open.
 
 Hand this to the agent, or work through it yourself. Everything here is
 read-only.
@@ -45,9 +44,11 @@ headsign version
 
 Not the version in your checkout — the one the **hook** runs. A plugin copy is
 version-scoped, so the CLI on your `PATH` and the bundle the hook executes can be
-different builds. If `version` answers `unknown command`, that copy predates
-0.4.0 and none of the log lines below exist in it, which by itself explains a
-great deal.
+different builds. `unknown command` means the copy predates `version` itself,
+which is **not** the same as predating everything below — `unheld` and the
+`last stop:` line shipped one release earlier. So an `unknown command` answer
+narrows the build without discarding the evidence you may still have; check the
+changelog for which of the lines below that build knows.
 
 ### 2. `headsign status`, verbatim
 
@@ -84,8 +85,9 @@ and what the line before any `unheld` is.
 
 ### 4. Where the session was standing when the turn ended
 
-`pwd`, and — more to the point — whether the session had `cd`'d anywhere during
-that turn and not come back. A turn that ends while the session sits in *another
+`pwd` first, and then whether the session had `cd`'d anywhere during that turn
+and not come back. A `cd` is the usual way this happens and not the only one — a
+session *started* outside the run's tree is silenced identically. A turn that ends while the session sits in *another
 git repository* is passed in complete silence: the hook's walk up stops at the
 first enclosing `.git`, finds no run there, and writes nothing. Running `git`
 commands against another checkout is the ordinary way this happens.
@@ -127,7 +129,7 @@ so.**
 | `version` says `unknown command`, or predates the `held` line | The lines below may not exist in that build. Establish this before reading anything else. |
 | a `held` line at the turn that ended | The hook ran and **did** hold you. If you did not see the nudge, the question is about your harness surfacing it, not about headsign. |
 | an `unheld` line at that turn | The hook ran and was overruled by the platform. Expected, not a fault. Read the line before it: a `held` means you were nudged first; a transition means a `next` had already run. |
-| `last stop:` stamped clearly **earlier** than the turn that ended, or absent, **and** no line in the log for it | The hook wrote nothing for that turn end. The next three rows separate why. |
+| `last stop:` stamped clearly **earlier** than the turn that ended, or absent, **and** no line in the log for it | The hook wrote nothing for that turn end. The rows below separate why. |
 | a transition line timestamped inside the window when the turn ended | Another `headsign next` was probably mid-lap and holding the run's lock, so the hook could not write and let the turn end. Ordinary. |
 | the run is claimed by an agent that is not you | You are a bystander to the backstop by design — a session, or a different agent. Nothing holds your turns until you take the seat. |
 | the session was in another git repository when the turn ended | Answered, and this is the one to check first. The walk up stops at the first enclosing `.git`, so the hook found no run and wrote nothing. Indistinguishable from an uninstalled backstop, and it needs only one `cd` that was never undone. |
@@ -151,8 +153,8 @@ so.**
   `unheld` for the flag.
 - **The hooks are bounded by the enclosing repository.** Drift inside it is
   harmless; drift out of it — into a sibling clone, a docs repo, anywhere a `cd`
-  left the session — is silent. This was the cause of the first sighting this
-  file was written for, confirmed by reproduction: a turn ending in another
+  left the session — is silent. This was the cause of the sighting this file
+  captured, confirmed by reproduction: a turn ending in another
   checkout produces no line, no `last stop:`, and exit 0.
 - **A run claimed by an agent that has gone leaves its successor unheld.**
   headsign cannot detect a dead driver, so the seat stays filled. If you took
