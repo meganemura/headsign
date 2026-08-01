@@ -17,6 +17,11 @@
   compared against, and the pass-through above is now the whole of this
   hook's ownership logic. The sibling `SubagentStop` hook's owner match
   stays, on the one identifier that can name a delegated agent.)
+- Revised: 2026-08-01 (the bounded walk-up gains a second, narrower attempt
+  from Claude Code's `CLAUDE_PROJECT_DIR` when the first walk finds
+  nothing — see [ADR-0026](0026-a-second-place-to-look.md), which also
+  promotes the hook's-own-`PWD` fact below from merely-worth-knowing to
+  load-bearing, as the alternative starting point it weighs and refuses.)
 
 ## Context
 
@@ -342,8 +347,12 @@ writing the note knows exactly where to put it.
 Residual limitation, by design and not a bug: if a run's `.headsign/`
 lives outside the current `.git` root — cwd has been `cd`'d past the repo
 boundary, the session simply started outside the run's tree, or the run's
-`.headsign/` genuinely lives elsewhere — the hook still won't find it and
-exits 0.
+`.headsign/` genuinely lives elsewhere — this walk alone still won't find
+it. [ADR-0026](0026-a-second-place-to-look.md) gives the hook a second,
+narrower way to look — Claude Code's `CLAUDE_PROJECT_DIR` — tried only once
+this walk has failed; if that one finds the run, the hook writes one line
+and still exits 0, never holding the turn. Only when both walks come up
+empty does the hook exit 0 recording nothing, as below.
 
 **And it exits 0 recording nothing, which is a knowing exemption from the
 rule that this project otherwise holds to** (`.headsign/notes/what-headsign-protects.md` #4,
@@ -372,26 +381,43 @@ not "there is nowhere to put it" but *there is nowhere to put it that is
 worth what it costs everywhere else.*
 
 What is left is documentation, which is why the reference manual and the
-`workflow` skill both name this boundary rather than only the walk-up it
-bounds. A driver who cannot explain an unheld turn end should ask where the
-session was standing. The one thing that would change this calculus is a
+`workflow` skill both name this boundary — and now say where the second walk
+looks and what it writes when it succeeds. A driver who cannot explain an
+unheld turn end should ask where the session was standing, and check
+whether `last stop:` names `CLAUDE_PROJECT_DIR` rather than
+`stop_hook_active`. The one thing that would change this calculus is a
 signal from the harness naming the project a session belongs to,
 independently of where its shell has wandered: that would let the walk start
-from a second, stable point and turn this branch from common into rare. That
-is a question about what Claude Code exposes, not about what headsign should
-write, and it is not answered here.
+from a second, stable point and turn this branch from common into rare.
+That signal exists, and [ADR-0026](0026-a-second-place-to-look.md) is the
+answer: a second, bounded walk from Claude Code's `CLAUDE_PROJECT_DIR`,
+tried only once this one has failed, writing one `unheld` line marked
+`by=CLAUDE_PROJECT_DIR` when it succeeds and nothing when it does not. It
+narrows this branch rather than closing it — `CLAUDE_PROJECT_DIR` names a
+root and the second walk, like the first, only goes up, so a run held below
+that root (a package, a worktree added outside it) stays unreached, and a
+session whose own project has no relation to the run being asked about gets
+no help from it either.
 
 Settled 2026-08-01 by observing four real hook invocations rather than a shell,
 which is what an earlier negative result had measured by mistake. Recorded here
-because three of the four facts are load-bearing for anything built on top:
+because all four of the facts below are load-bearing for anything built on
+top — the second was filed as merely worth knowing when this was first
+written, and [ADR-0026](0026-a-second-place-to-look.md) is why that no
+longer holds:
 
 - **`CLAUDE_PROJECT_DIR` is present in the hook's environment** and holds the
   project root, matching what Claude Code's hooks documentation states. It did
   not move in any of the four. So a second, stable starting point does exist.
 - **The hook process's own `PWD` was the project root every time**, including
-  the invocations where the session's `cwd` had moved. Worth knowing because
-  this hook already falls back to its invocation cwd when the payload omits
-  `cwd`.
+  the invocations where the session's `cwd` had moved — already an argument
+  to the function (`cli.ts` passes `process.cwd()` in) and thrown away on
+  every real invocation because the payload always carries `cwd`. This
+  measurement is what let it be weighed, seriously, as the second starting
+  point ADR-0026 needed; it is also the one ADR-0026 refuses, for the reason
+  this ADR exists to teach: an observed regularity with nothing documenting
+  it is the exact shape of the `stop_hook_active` mistake. `CLAUDE_PROJECT_DIR`,
+  chosen instead, is documented.
 - **The payload's `cwd` does follow a `cd` made during a turn** — a session
   told to `cd src` produced `…/headsign/src`. This ADR and the reference manual
   both assumed that; it is now measured rather than assumed.
