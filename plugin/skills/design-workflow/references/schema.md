@@ -81,7 +81,11 @@ the run you are in the middle of.
 **And what `validate` cannot see at all:** the inside of any shell string.
 It never runs a check, so a typo'd command or a missing binary passes
 validation cleanly. The four semantic traps it also cannot see are in
-`SKILL.md`.
+`SKILL.md`. One trap of the shell's own lives inside that blind spot, and is
+why the boundary is worth stating rather than merely admitting: on macOS
+`/bin/sh` is bash 3.2, where a variable immediately followed by a non-ASCII
+character loses both its value and that character's leading byte — so write
+`${var}`, not `$var`, whenever non-ASCII text follows it.
 
 ## Routing: a phase that branches
 

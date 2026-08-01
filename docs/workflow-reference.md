@@ -585,10 +585,10 @@ variable, expands fine. It's shell- and locale-specific too: `zsh` and
 `dash` expand the same input correctly, and `LC_ALL=C` sidesteps it, so
 whichever `LANG` you're running headsign under is what matters, since
 checks inherit it along with the rest of your environment. Bracing the
-variable (`${now}`) avoids it in every case tested; headsign doesn't
-force a locale to paper over it, since that would change how every
-check's shell commands handle multi-byte output, not just the one that
-hits this.
+variable (`${now}`) avoids it in every case tested (measured, 2026-08-01);
+headsign doesn't force a locale to paper over it, since that would change
+how every check's shell commands handle multi-byte output, not just the one
+that hits this.
 
 Neither a gate nor a budget can end a run as `ABORT`: a failure route can
 say `escalate` (stop and ask a person) but never "stop", and exhausting
