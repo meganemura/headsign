@@ -11,8 +11,8 @@ now has its own row below.
 
 What is still open is the first sighting's own hypothesis — that an interrupted
 turn is not a stop-boundary event at all — which no evidence has yet confirmed or
-ruled out. So keep working through this: it closed one question by being followed exactly,
-and the table below now answers most of what it used to leave open.
+ruled out. So keep working through this: it closed one question by being followed
+exactly, and the table below now answers most of what it used to leave open.
 
 Hand this to the agent, or work through it yourself. Everything here is
 read-only.
@@ -47,8 +47,8 @@ version-scoped, so the CLI on your `PATH` and the bundle the hook executes can b
 different builds. `unknown command` means the copy predates `version` itself,
 which is **not** the same as predating everything below — `unheld` and the
 `last stop:` line shipped one release earlier. So an `unknown command` answer
-narrows the build without discarding the evidence you may still have; check the
-changelog for which of the lines below that build knows.
+narrows the build without discarding the evidence you may still have: such a
+build has no `held` line, but `unheld` and `last stop:` may well be there.
 
 ### 2. `headsign status`, verbatim
 
@@ -58,7 +58,8 @@ Paste the whole output. Two lines matter.
 
 ```
 last stop: held, and pointed back to headsign next — at <t>
-last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at <t>
+last stop: not held — Claude Code had already resumed the turn
+(stop_hook_active) — at <t>
 last stop: paused by a note — at <t>
 last stop: not held — the nudge cap is spent — at <t>
 ```
@@ -87,13 +88,14 @@ and what the line before any `unheld` is.
 
 `pwd` first, and then whether the session had `cd`'d anywhere during that turn
 and not come back. A `cd` is the usual way this happens and not the only one — a
-session *started* outside the run's tree is silenced identically. A turn that ends while the session sits in *another
+session *started* outside the run's tree is silenced identically. A turn that
+ends while the session sits in *another
 git repository* is passed in complete silence: the hook's walk up stops at the
 first enclosing `.git`, finds no run there, and writes nothing. Running `git`
 commands against another checkout is the ordinary way this happens.
 
-This is the first thing to rule out, because it explains the whole symptom on its
-own and leaves exactly the evidence a broken installation leaves.
+Rule this out first: it explains the whole symptom on its own, and on that one
+turn's evidence it looks exactly like a broken installation.
 
 ### 5. The wall-clock time the turn ended
 
@@ -132,7 +134,7 @@ so.**
 | `last stop:` stamped clearly **earlier** than the turn that ended, or absent, **and** no line in the log for it | The hook wrote nothing for that turn end. The rows below separate why. |
 | a transition line timestamped inside the window when the turn ended | Another `headsign next` was probably mid-lap and holding the run's lock, so the hook could not write and let the turn end. Ordinary. |
 | the run is claimed by an agent that is not you | You are a bystander to the backstop by design — a session, or a different agent. Nothing holds your turns until you take the seat. |
-| the session was in another git repository when the turn ended | Answered, and this is the one to check first. The walk up stops at the first enclosing `.git`, so the hook found no run and wrote nothing. Indistinguishable from an uninstalled backstop, and it needs only one `cd` that was never undone. |
+| the session was in another git repository when the turn ended | Answered, and this is the one to check first. The walk up stops at the first enclosing `.git`, so the hook found no run and wrote nothing. On that turn's own evidence, indistinguishable from an uninstalled backstop — though step 7, and the stop before it in `status`, do tell them apart. It needs one `cd` that was never undone, or a session that was never inside. |
 | none of the above, and the turn was **interrupted** | The leading hypothesis: an interrupted turn is not a stop-boundary event, so the hook was never invoked. This is the case that needs a second sighting. |
 | none of the above, the turn ended **on its own**, and nudges do arrive elsewhere in this run | Not explained by anything known. **This is the most valuable sighting of all — report it.** |
 

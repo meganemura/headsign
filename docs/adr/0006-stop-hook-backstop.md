@@ -327,7 +327,7 @@ field is absent), then walks up from there looking for
 `.headsign/state.json`, bounded by the enclosing git worktree/repo root:
 the walk stops at the first directory containing a `.git` entry — a
 directory in a normal checkout, a *file* in a linked worktree — whether or
-not a run is found there. This lets the backstop fire from any
+not a run is found there, and at the filesystem root if it never meets one. This lets the backstop fire from any
 subdirectory of the run's project, while never crossing into a sibling or
 parent checkout's run, preserving the git-worktree parallel-run
 independence ADR-0004 exists to protect. The walk is fs-only (`existsSync`
@@ -346,7 +346,7 @@ boundary, the session simply started outside the run's tree, or the run's
 exits 0.
 
 **And it exits 0 recording nothing, which is a knowing exemption from the
-rule that this project otherwise holds to** (`what-headsign-protects.md` #4,
+rule that this project otherwise holds to** (`.headsign/notes/what-headsign-protects.md` #4,
 "no silent divergence — make it loud or make it impossible"). The driver
 believes the backstop is holding; it did nothing; nothing says so. Both
 remedies were weighed and both refused:
@@ -363,8 +363,11 @@ overwhelmingly common one.** The hook fires at every turn end in every
 session on a machine where the plugin is installed, including every project
 that has never heard of headsign, and a signal here is noise in thousands of
 sessions to catch one. Exit-0 output would not even reach the agent that
-needs it, and a machine-scoped file would break ADR-0004's cwd-only contract
-for a problem far smaller than that commitment. So the honest statement is
+needs it, and a machine-scoped file would be this project's first
+per-machine state — a new class of thing to own, invalidate and explain, for a
+problem far smaller than that. (ADR-0004's cwd-only contract is tempting to
+reach for here and does not apply: it governs how a *run* is resolved, not where
+a diagnostic may live. The volume argument carries the refusal without it.) So the honest statement is
 not "there is nowhere to put it" but *there is nowhere to put it that is
 worth what it costs everywhere else.*
 
@@ -377,6 +380,19 @@ independently of where its shell has wandered: that would let the walk start
 from a second, stable point and turn this branch from common into rare. That
 is a question about what Claude Code exposes, not about what headsign should
 write, and it is not answered here.
+
+Checked 2026-08-01, inconclusively, and recorded so the next attempt starts
+further along: `CLAUDE_PROJECT_DIR` is **not** present in the environment a
+session's own shell tool runs with on this machine, alongside
+`CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID` and others that are. That does not
+settle it — a hook runs as a separate process and may be handed a different
+environment, which is exactly what `${CLAUDE_PLUGIN_ROOT}` in
+`plugin/hooks/hooks.json` demonstrates for hook *arguments*. Settling it means
+observing a real hook invocation's environment, not a shell's. Worth doing
+before designing anything on top of it — and worth knowing in advance that even
+a positive answer narrows this branch rather than closing it, since a project
+directory names where a session *started*: it rescues a session that wandered
+out, not one that was never inside.
 
 Equally by design, the walk only ever goes up: if the session's cwd sits
 *above* the run's directory — a monorepo root, with the run's `.headsign/`
