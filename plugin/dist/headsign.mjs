@@ -7839,11 +7839,13 @@ ${o.lastFailure.outputTail}
   const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next` to accept\n" : "";
   const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} \u2014 at ${o.lastStop.at}
 ` : "";
+  const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} \u2014 turn ends from any other session pass without a nudge
+` : "";
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${lastStopLine}${acceptedLine}${reportedLine}${observerLine}`;
+${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -7956,10 +7958,21 @@ function isObserver(env) {
   const raw = env["HEADSIGN_OBSERVER"];
   return typeof raw === "string" && raw.length > 0;
 }
+function resolveDriveSession(env) {
+  const raw = env["CLAUDE_CODE_SESSION_ID"];
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
 function recordedDriver(state) {
   return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
 }
+function recordedDriveSession(state) {
+  const recorded = state.last_drive;
+  return typeof recorded === "object" && recorded !== null && typeof recorded.session === "string" && recorded.session.length > 0 ? recorded.session : null;
+}
 function resolveAgentId(raw) {
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+function resolveSessionId(raw) {
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 function withLastStop(fresh, disposition, nowIso, cause) {
@@ -8054,6 +8067,8 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
     if (recordedDriver(state) !== null) return { block: false };
+    const drove = recordedDriveSession(state);
+    if (drove !== null && drove !== resolveSessionId(input.session_id)) return { block: false };
     if (input.stop_hook_active) return recordUnheld(runDir, nowIso, "stop_hook_active");
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
@@ -8138,6 +8153,14 @@ function recordedLastStop(state) {
     at,
     ...known ? { cause } : {}
   };
+}
+function recordedLastMoved(state) {
+  const recorded = state.last_drive;
+  if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
+  const { session, at } = recorded;
+  if (typeof session !== "string" || session.length === 0) return null;
+  if (typeof at !== "string" || at.length === 0) return null;
+  return at;
 }
 function graphChangeNote(state) {
   const accepted = acceptedGraphChanges(state);
@@ -8260,7 +8283,11 @@ function clearPhaseArtifacts(cwd, phase) {
   }
   return cleared;
 }
-function start2(cwd, workflowPath, nowIso) {
+function driveStamp(env, nowIso) {
+  const session = resolveDriveSession(env);
+  return session === null ? null : { session, at: nowIso };
+}
+function start2(cwd, workflowPath, nowIso, env) {
   const loaded = load(workflowPath);
   const wf = loaded.workflow;
   if (!wf) return { warnings: null, result: { kind: "WORKFLOW_INVALID", workflowPath, errors: loaded.errors } };
@@ -8289,6 +8316,11 @@ function start2(cwd, workflowPath, nowIso) {
     // No stop has been processed yet, and `start` must not invent one: the field is written only
     // by the stop-boundary hooks, at a stop they actually saw.
     last_stop: null,
+    // Beside `last_stop`, never inside it (state.ts's `last_drive` doc): this answers who
+    // DROVE the run — ran the command — a different question from what happened at a turn
+    // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
+    // run started outside Claude Code, not damage.
+    last_drive: driveStamp(env, nowIso),
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -8305,7 +8337,7 @@ function start2(cwd, workflowPath, nowIso) {
   const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared } };
 }
-function next(cwd, nowIso) {
+function next(cwd, nowIso, env) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
   if (current.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
@@ -8320,7 +8352,11 @@ function next(cwd, nowIso) {
     const fresh = readState(cwd);
     if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
     if (fresh.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(fresh), workflowName: fresh.workflow };
-    return evaluateNext(cwd, wf, fresh, nowIso);
+    const drive = driveStamp(env, nowIso);
+    const diskDrive = fresh.last_drive ?? null;
+    const stamped2 = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
+    if (stamped2 !== fresh) writeState(cwd, stamped2);
+    return evaluateNext(cwd, wf, stamped2, nowIso);
   } finally {
     releaseLock(cwd);
   }
@@ -8461,6 +8497,7 @@ function status(cwd, env) {
     lastFailure,
     delegated: driverAgent !== null,
     lastStop: recordedLastStop(current),
+    lastMoved: recordedLastMoved(current),
     observer: isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null
@@ -8594,13 +8631,15 @@ function reportStatus(result) {
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run",
-          // Both conditional, and both absent rather than falsy when there is nothing to say:
-          // `undefined` is what makes a run on which no stop has been processed print exactly
-          // what `status` printed before either line existed. The last stop is the answer to the
-          // question the `driver:` line cannot reach — whether the previous turn end was held —
-          // and the observer line is the only one of these facts that is about the caller rather
-          // than the run.
+          // All three conditional, and all absent rather than falsy when there is nothing to
+          // say: `undefined` is what makes a run on which none of them has happened print
+          // exactly what `status` printed before any of these lines existed. The last stop is
+          // the answer to the question the `driver:` line cannot reach — whether the previous
+          // turn end was held; the last moved time is a different question again — when the run
+          // itself was last acted on (ADR-0027 §7) — and the observer line is the only one of
+          // these facts that is about the caller rather than the run.
           lastStop: result.lastStop ?? void 0,
+          lastMoved: result.lastMoved ?? void 0,
           observer: result.observer ? true : void 0,
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported
@@ -8610,10 +8649,10 @@ function reportStatus(result) {
   }
 }
 function cmdStart(args) {
-  return reportStart(start2(process.cwd(), resolveWorkflowPath(args), localIso(/* @__PURE__ */ new Date())));
+  return reportStart(start2(process.cwd(), resolveWorkflowPath(args), localIso(/* @__PURE__ */ new Date()), process.env));
 }
 function cmdNext() {
-  return reportNext(next(process.cwd(), localIso(/* @__PURE__ */ new Date())));
+  return reportNext(next(process.cwd(), localIso(/* @__PURE__ */ new Date()), process.env));
 }
 function cmdAbort(args) {
   return reportAbort(abort2(process.cwd(), args.join(" "), localIso(/* @__PURE__ */ new Date())));

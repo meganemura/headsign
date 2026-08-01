@@ -128,6 +128,41 @@ export interface State {
   // reading, which doubles as the fallback for a well-formed record that simply omits it.
   last_stop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause } | null;
 
+  // The session that most recently DROVE this run — ran `start`, or a `next` that reached the
+  // run (ADR-0027) — never who is driving it now. That is `driver_agent`'s question, answered
+  // by a completely different mechanism (the SubagentStop adoption gate above), and this field
+  // is neither read nor written by it: two writers sharing one field is the exact hazard
+  // ADR-0009 had to manage with a stickiness rule, and giving the stamp its own field removes
+  // the hazard instead of reproducing it (see `driver_agent`'s doc above and ADR-0027 §2).
+  //
+  // `null` is not damage here, unlike almost everywhere else in this file: it is the ordinary
+  // value for a run `start`ed or `next`ed from outside Claude Code (a plain shell has no
+  // session id to record). "No stamp" reads as UNKNOWN, never as a mismatch — stophook.ts's
+  // reader falls through to the fail-open nudge (ADR-0006) for a null or missing stamp exactly
+  // as it does for a run that predates this field. That is why the load-bearing half of the
+  // read is "does a stamp exist at all", checked strictly before "does it match".
+  //
+  // Written by `start` (in freshState below, beside `last_stop: null`, never inside it — the
+  // two answer different questions, and nesting one inside the other would force a meaning
+  // onto `last_stop` for a run that has never stopped) and by every `next` that reaches the
+  // run (engine.ts's `next`, under the same lock the rest of the lap already holds) — PENDING
+  // and the global ceiling included, because both are the normal shape of a driver walking
+  // away to wait, exactly what the backstop exists to cover. `abort`, `claim`, `status` and
+  // `validate` never write it.
+  //
+  // Two tolerances, on DIFFERENT clocks — unlike most fields in this file, where one criterion
+  // covers both. A state.json missing the field entirely (written before it existed) is
+  // TRANSITIONAL, on the same criterion `driver_agent`'s doc states above, read for the
+  // release that added THIS field rather than driver_agent's rename: it can go once no run
+  // that predates that release can plausibly still be in progress. A well-formed-but-wrong
+  // value (a hand-edited record) is PERMANENT tolerance, same as everywhere else.
+  //
+  // Read in exactly two places: stophook.ts's recordedDriveSession (the whole `{ session, at
+  // }`, compared against a Stop payload's own session id) and engine.ts's status reader,
+  // which takes only `at` — `session` must never reach render.ts, which is what keeps
+  // `status` from ever printing an identifier (ADR-0027 §7).
+  last_drive: { session: string; at: string } | null;
+
   // --- the graph pin: the rules this run has been running under ---
   //
   // A run re-reads its workflow file every lap and may rewrite it as it goes (ADR-0016 §5,

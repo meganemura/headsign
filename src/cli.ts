@@ -193,13 +193,15 @@ function reportStatus(result: engine.StatusResult): never {
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet — no agent has claimed this run",
-          // Both conditional, and both absent rather than falsy when there is nothing to say:
-          // `undefined` is what makes a run on which no stop has been processed print exactly
-          // what `status` printed before either line existed. The last stop is the answer to the
-          // question the `driver:` line cannot reach — whether the previous turn end was held —
-          // and the observer line is the only one of these facts that is about the caller rather
-          // than the run.
+          // All three conditional, and all absent rather than falsy when there is nothing to
+          // say: `undefined` is what makes a run on which none of them has happened print
+          // exactly what `status` printed before any of these lines existed. The last stop is
+          // the answer to the question the `driver:` line cannot reach — whether the previous
+          // turn end was held; the last moved time is a different question again — when the run
+          // itself was last acted on (ADR-0027 §7) — and the observer line is the only one of
+          // these facts that is about the caller rather than the run.
           lastStop: result.lastStop ?? undefined,
+          lastMoved: result.lastMoved ?? undefined,
           observer: result.observer ? true : undefined,
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
@@ -215,13 +217,17 @@ function reportStatus(result: engine.StatusResult): never {
 // engine.ts takes (cwd, the resolved path or the joined reason, and the timestamp —
 // `localIso(new Date())` is captured here because this is the only file that reads the
 // clock, ADR-0004), then report what comes back. Nothing else belongs in them.
+//
+// `start` and `next` also pass `process.env` now (ADR-0027), the same way `status` already
+// does below: engine.ts stamps `last_drive` with whichever session actually ran the command,
+// and this file stays the only one that reads the process to find out.
 
 function cmdStart(args: string[]): never {
-  return reportStart(engine.start(process.cwd(), resolveWorkflowPath(args), localIso(new Date())));
+  return reportStart(engine.start(process.cwd(), resolveWorkflowPath(args), localIso(new Date()), process.env));
 }
 
 function cmdNext(): never {
-  return reportNext(engine.next(process.cwd(), localIso(new Date())));
+  return reportNext(engine.next(process.cwd(), localIso(new Date()), process.env));
 }
 
 function cmdAbort(args: string[]): never {

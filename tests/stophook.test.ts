@@ -25,6 +25,7 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     stop_nudges: 0,
     driver_agent: null,
     last_stop: null,
+    last_drive: null,
     graph_fingerprint: {},
     graph_change_reported: null,
     accepted_graph_changes: 0,
@@ -361,10 +362,15 @@ test("an unclaimed run (driver_agent null) -> falls through to the normal nudge 
   assert.equal(state.readState(dir)?.stop_nudges, 1);
 });
 
-// The stdin `session_id` is the identifier this hook used to compare against a recorded
-// driver. ADR-0013 removed that comparison outright, so the field must now be inert: the
-// same run, the same state, three different session ids, one identical answer.
-test("the stdin session_id is never read: it changes nothing on either a claimed or an unclaimed run", () => {
+// The stdin `session_id` used to be compared against a recorded DRIVER, until ADR-0013 removed
+// that comparison outright. ADR-0027 brings a session_id comparison back, but against a
+// different field entirely (`last_drive`, never `driver_agent`) and only when that field
+// actually holds a stamp. Every run `runningState` below builds has none (`last_drive: null`
+// is its default), so this specific case is exactly as inert to session_id as it has always
+// been: the same run, the same state, three different session ids, one identical answer. The
+// stamped case, where session_id decides the outcome, is exercised in the ADR-0027 section
+// further down this file.
+test("the stdin session_id changes nothing on a run with no last_drive stamp, claimed or not", () => {
   for (const sessionId of ["session-alpha", "agent-alpha", undefined]) {
     const claimed = tmpdir();
     state.writeState(claimed, runningState({ driver_agent: "agent-alpha", stop_nudges: 2 }));
@@ -1141,6 +1147,105 @@ test("last_stop: a bystander subagent's stop leaves the field describing the ear
   const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId: "agent-beta" }), NOW, NO_ENV);
   assert.deepEqual(decision, { block: false });
   assert.deepEqual(state.readState(dir)?.last_stop, { disposition: "nudged", at: NOW }, "unattributable stops leave the field alone rather than blanking it");
+});
+
+// --- ADR-0027: last_drive, the session that most recently drove this run ---
+//
+// `Stop` is the only hook that reads `last_drive` — `SubagentStop` reads the claim only
+// (ADR-0027 §3) — so every test in this section calls `evaluate`, never `evaluateSubagent`.
+
+test("Stop: a matching session_id nudges exactly as today — block=true, stop_nudges increments, one held line", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ last_drive: { session: "session-alpha", at: NOW }, stop_nudges: 2 }));
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-alpha" }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.equal(state.readState(dir)?.stop_nudges, 3);
+  assert.deepEqual(readLog(dir), [`${NOW} held build a=0 i=0 nudges=3`]);
+});
+
+// The load-bearing half of ADR-0027 §3's new step: "no stamp" must read as UNKNOWN, never as a
+// mismatch, or every run in flight at upgrade time would silently lose its backstop. Both
+// shapes "no stamp" can take — an explicit null, and the field missing entirely (a run started
+// before this field existed) — must land on the identical, ordinary nudge.
+test("Stop: a run with no last_drive at all — null, or the field missing entirely — nudges exactly as today", () => {
+  const withNull = tmpdir();
+  state.writeState(withNull, runningState({ last_drive: null }));
+  const onNull = stophook.evaluate(withNull, JSON.stringify({ cwd: withNull, session_id: "whoever-stopped" }), NOW, NO_ENV);
+  assert.equal(onNull.block, true, "an explicit null must still nudge");
+  assert.equal(state.readState(withNull)?.stop_nudges, 1);
+
+  const missing = tmpdir();
+  fs.mkdirSync(path.join(missing, ".headsign"), { recursive: true });
+  const legacy: Record<string, unknown> = { ...runningState() };
+  delete legacy.last_drive;
+  fs.writeFileSync(state.statePath(missing), JSON.stringify(legacy, null, 2) + "\n");
+  const onMissing = stophook.evaluate(missing, JSON.stringify({ cwd: missing, session_id: "whoever-stopped" }), NOW, NO_ENV);
+  assert.equal(onMissing.block, true, "a state.json predating this field must still nudge, not silently lose its backstop");
+  assert.equal(state.readState(missing)?.stop_nudges, 1);
+});
+
+test("Stop: a mismatched session_id passes silently — no nudge, stop_nudges unchanged, no log line, last_stop unchanged", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ last_drive: { session: "session-alpha", at: NOW }, stop_nudges: 2, last_stop: { disposition: "nudged", at: NOW } }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-beta" }), NOW, NO_ENV);
+
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "nothing at all is written — not stop_nudges, not last_stop");
+  assert.equal(state.readState(dir)?.stop_nudges, 2);
+  assert.deepEqual(state.readState(dir)?.last_stop, { disposition: "nudged", at: NOW });
+  assert.deepEqual(readLog(dir), []);
+});
+
+test("Stop: a mismatched session_id with stop_hook_active also writes nothing — not even an unheld line", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ last_drive: { session: "session-alpha", at: NOW } }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-beta", stop_hook_active: true }), NOW, NO_ENV);
+
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "the already-continuing flag never got a chance to write — the drive-session check returned first");
+  assert.deepEqual(readLog(dir), []);
+});
+
+// The claim check returns above anything last_drive would be read at (ADR-0027 §3): a claimed
+// run is unchanged byte for byte, whichever way session_id happens to fall.
+test("Stop: a claimed run never reaches the last_drive comparison — same pass-through whether session_id matches or not", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: "agent-alpha", last_drive: { session: "session-alpha", at: NOW } }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const matching = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-alpha" }), NOW, NO_ENV);
+  assert.deepEqual(matching, { block: false });
+  const mismatching = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "someone-else" }), NOW, NO_ENV);
+  assert.deepEqual(mismatching, { block: false });
+
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, "a claimed run is unchanged byte for byte, ADR-0027 §3's headline consequence");
+});
+
+test("Stop: no session_id in the payload at all, on a stamped run, passes silently and writes nothing", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ last_drive: { session: "session-alpha", at: NOW } }));
+  const before = fs.readFileSync(state.statePath(dir));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
+});
+
+// --- resolveDriveSession: the one place CLAUDE_CODE_SESSION_ID is read (ADR-0027 §2.1) ---
+
+test("resolveDriveSession: a non-empty CLAUDE_CODE_SESSION_ID is returned trimmed", () => {
+  assert.equal(stophook.resolveDriveSession({ CLAUDE_CODE_SESSION_ID: "  session-abc  " }), "session-abc");
+});
+
+test("resolveDriveSession: unset, empty, or whitespace-only -> null", () => {
+  assert.equal(stophook.resolveDriveSession({}), null);
+  assert.equal(stophook.resolveDriveSession({ CLAUDE_CODE_SESSION_ID: "" }), null);
+  assert.equal(stophook.resolveDriveSession({ CLAUDE_CODE_SESSION_ID: "   " }), null);
 });
 
 // --- isObserver (inlined into stophook.ts when its module lost its other half) ---

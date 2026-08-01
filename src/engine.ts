@@ -24,8 +24,9 @@
 //     same answer, no I/O — which is what lets tests/engine.test.ts enumerate the whole
 //     transition table by calling it directly.
 //   - nothing here reads the clock, and nothing reads the environment. A timestamp arrives as an
-//     argument (`nowIso`), and so does the environment where one operation needs it (`status`,
-//     for the HEADSIGN_OBSERVER line) — the shape stophook.ts already uses across this same
+//     argument (`nowIso`), and so does the environment where an operation needs it (`status`,
+//     for the HEADSIGN_OBSERVER line; `start` and every `next` that reaches the run, for the
+//     `last_drive` stamp, ADR-0027) — the shape stophook.ts already uses across this same
 //     boundary, so the same inputs produce byte-identical output and a test can assert a whole
 //     line.
 
@@ -186,6 +187,25 @@ function recordedLastStop(state: State): NonNullable<State["last_stop"]> | null 
     at,
     ...(known ? { cause: cause as UnheldCause } : {}),
   };
+}
+
+// --- reading the last drive off a run record (ADR-0027) ---
+//
+// `status`'s ONLY window onto `last_drive`, and it takes ONLY `at` — never `session`. That is
+// what keeps the identifier from ever reaching render.ts: this function's return type makes
+// printing one impossible, rather than merely a rule callers have to remember. The tolerance
+// is the same shape recordedLastStop just above uses, and for the same reason: anything that
+// is not a well-formed `{ session: non-empty string, at: string }` reads as "nothing to
+// report" — missing (a run started before this field existed) and malformed (a hand-edited
+// record) are indistinguishable to a reader, and both must mean silence rather than a crash on
+// the one command whose whole promise is that it is safe to run while diagnosing.
+function recordedLastMoved(state: State): string | null {
+  const recorded: unknown = state.last_drive;
+  if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
+  const { session, at } = recorded as { session?: unknown; at?: unknown };
+  if (typeof session !== "string" || session.length === 0) return null;
+  if (typeof at !== "string" || at.length === 0) return null;
+  return at;
 }
 
 // The COMPLETE arm's optional count, spread in the way `routedBy` is spread into ADVANCE: an
@@ -405,6 +425,12 @@ export type StatusResult =
       // its disposition, and render.ts supplies the cause that word carried before the field
       // existed (ADR-0026).
       lastStop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause } | null;
+      // When this run was last MOVED — `start`ed, or reached by a `next` (ADR-0027 §7) — never
+      // who moved it: `recordedLastMoved` returns only the timestamp, so the session id cannot
+      // travel any further than this module even by accident. null when no drive has been
+      // recorded (a run predating this field, or one with a malformed record) — cli.ts prints
+      // no line for either, the same treatment `lastStop` gets above.
+      lastMoved: string | null;
       // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with. The one
       // quiet-ending cause the caller can answer about ITSELF; what it reports is the environment
       // of the process `status` runs in, which is normally the session's but not necessarily.
@@ -469,7 +495,23 @@ function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): string[] {
   return cleared;
 }
 
-export function start(cwd: string, workflowPath: string, nowIso: string): StartResult {
+// The value ADR-0027 §4/§5 stamps at `start` and every `next` that reaches the run: the
+// session `stophook.resolveDriveSession` names, or null if none does (a run driven from
+// outside Claude Code, or its one env var absent for any other reason — named nowhere in this
+// file; stophook.ts's `resolveDriveSession` is where its name lives, per ADR-0027 §2.1's "one
+// source" and the comment there explaining why). One function so `start`'s and `next`'s stamps
+// can never compute this differently — the point of one source for the stamp is one answer,
+// not two call sites that happen to agree today. Calls stophook.ts rather than reading `env`
+// itself: this module never reaches for `process.env` (see the header comment), and the fact
+// that the env value and a Stop payload's `session_id` agree for a session's own stop is a
+// claim that must live in exactly one place (stophook.ts's `resolveDriveSession`) for the
+// comparison stophook.ts makes against this value to mean anything.
+function driveStamp(env: NodeJS.ProcessEnv, nowIso: string): State["last_drive"] {
+  const session = stophook.resolveDriveSession(env);
+  return session === null ? null : { session, at: nowIso };
+}
+
+export function start(cwd: string, workflowPath: string, nowIso: string, env: NodeJS.ProcessEnv): StartResult {
   const loaded = workflowMod.load(workflowPath);
   const wf = loaded.workflow;
   if (!wf) return { warnings: null, result: { kind: "WORKFLOW_INVALID", workflowPath, errors: loaded.errors } };
@@ -497,6 +539,11 @@ export function start(cwd: string, workflowPath: string, nowIso: string): StartR
     // No stop has been processed yet, and `start` must not invent one: the field is written only
     // by the stop-boundary hooks, at a stop they actually saw.
     last_stop: null,
+    // Beside `last_stop`, never inside it (state.ts's `last_drive` doc): this answers who
+    // DROVE the run — ran the command — a different question from what happened at a turn
+    // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
+    // run started outside Claude Code, not damage.
+    last_drive: driveStamp(env, nowIso),
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -523,7 +570,7 @@ export function start(cwd: string, workflowPath: string, nowIso: string): StartR
 // workflow, take the lock, re-read, check again, evaluate, release, answer. The order is the
 // point — it is the part of ADR-0002's transition table that a table cannot draw — and so is
 // the fact that every question that could refuse does so before anything is written.
-export function next(cwd: string, nowIso: string): NextResult {
+export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
   if (current.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
@@ -553,14 +600,43 @@ export function next(cwd: string, nowIso: string): NextResult {
     const fresh = state.readState(cwd);
     if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
 
-    // No driver stamping here (ADR-0013). `next` used to record the calling session's env
-    // identifier, which named the enclosing session even when a delegated agent was the
-    // caller — the wrong identity, and never the one the hooks compare against. Driver
-    // ownership now changes in exactly one place: the SubagentStop adoption gate.
+    // No DRIVER stamping here (ADR-0013). `next` used to record the calling session's env
+    // identifier into `driver_agent`, which named the enclosing session even when a delegated
+    // agent was the caller — the wrong identity, and never the one the hooks compare against.
+    // Driver ownership still changes in exactly one place: the SubagentStop adoption gate. The
+    // stamp just below is a different field, answering a different question (ADR-0027 §4).
 
     if (fresh.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(fresh), workflowName: fresh.workflow };
 
-    return evaluateNext(cwd, wf, fresh, nowIso);
+    // Stamp who ran this lap (ADR-0027 §5): the two commands a driver runs, `start` and every
+    // `next` that reaches this point, record who ran them — including PENDING and the global
+    // ceiling below, neither of which writes anything else to state.json. Skipping either
+    // would switch the backstop off during the one wait it exists to cover (a review in
+    // progress is exactly when somebody walks away).
+    //
+    // Written HERE, once, immediately after the last check that can refuse without reaching the
+    // run — and threaded into evaluateNext as `current` rather than left for that function's
+    // own writeState calls to preserve — because that is what stamps every path below
+    // (PENDING, the ceiling, a graph-change report, gate-unrunnable and route-error REFUSEDs,
+    // ADVANCE/RETRY/COMPLETE/ESCALATE) without an exception list: every one of those either
+    // writes no state of its own, or spreads `...current` into whatever it does write, so the
+    // stamp rides along either way. A REFUSED reached before this line (no run, the lock held,
+    // an invalid workflow) never had the run's own record in hand to begin with, which is why
+    // none of them stamp anything (ADR-0027 §3's list of what does not reach the run).
+    //
+    // The write condition mirrors ADR-0027 §5's "record what there is to record OR clear a
+    // stale record" rule directly: a resolvable session always writes, an unresolvable one
+    // still writes when the disk holds an old stamp (an unnamed `next` is itself a real
+    // "somebody drove this" event, and leaving a stale name on it would keep a backstop pointed
+    // at a party that is no longer the one moving the run — ADR-0027 §5 explains why clearing,
+    // not keeping, is the safe direction), and only a null-to-null pair skips the write, so a
+    // run driven entirely outside Claude Code never gets an unexplained state.json write.
+    const drive = driveStamp(env, nowIso);
+    const diskDrive = fresh.last_drive ?? null;
+    const stamped: State = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
+    if (stamped !== fresh) state.writeState(cwd, stamped);
+
+    return evaluateNext(cwd, wf, stamped, nowIso);
   } finally {
     state.releaseLock(cwd);
   }
@@ -819,8 +895,10 @@ export function claim(cwd: string): ClaimResult {
 //
 // The environment arrives as an ARGUMENT, the shape stophook.ts uses for the same reason
 // ("Nothing here reads the clock or the environment: both arrive as arguments"), rather than
-// this module reaching for process.env — which nothing below cli.ts does. It is the first thing
-// outside the hook path to need one, so it follows the existing shape instead of inventing one.
+// this module reaching for process.env — which nothing below cli.ts does. It was the first
+// thing outside the hook path to need one, so it followed the existing shape instead of
+// inventing one; `start` and `next` follow the same shape now, for the `last_drive` stamp
+// (ADR-0027).
 export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
@@ -868,6 +946,7 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     lastFailure,
     delegated: driverAgent !== null,
     lastStop: recordedLastStop(current),
+    lastMoved: recordedLastMoved(current),
     observer: stophook.isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,

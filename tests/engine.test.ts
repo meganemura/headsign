@@ -29,6 +29,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     stop_nudges: 0,
     driver_agent: null,
     last_stop: null,
+    last_drive: null,
     // The graph pin as a run that has just started carries it: empty rather than absent, since
     // step() and the pure functions below never reconcile it (that is the lap's job) and only
     // ever have to carry it through untouched.
@@ -385,6 +386,12 @@ test("the guards leave every normal answer untouched", () => {
 const START_TIME = "2026-07-29T12:00:00+09:00";
 const LAP_TIME = "2026-07-29T12:00:01+09:00";
 
+// No CLAUDE_CODE_SESSION_ID, so `start`/`next` below never stamp `last_drive` — deliberate for
+// every test in this section, which is about what a lap writes to the REST of state.json and
+// asserts byte-for-byte equality against it. A dedicated last_drive-stamping test using an
+// env that does carry the variable lives with the rest of the ADR-0027 tests further down.
+const NO_ENV: NodeJS.ProcessEnv = {};
+
 function startedRun(workflowYaml: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
   fs.mkdirSync(path.join(dir, ".headsign"));
@@ -392,7 +399,7 @@ function startedRun(workflowYaml: string): string {
   // the repo's own cwd rather than the run's.
   const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
   fs.writeFileSync(workflowPath, workflowYaml);
-  assert.equal(engine.start(dir, workflowPath, START_TIME).result.kind, "STARTED");
+  assert.equal(engine.start(dir, workflowPath, START_TIME, NO_ENV).result.kind, "STARTED");
   return dir;
 }
 
@@ -420,7 +427,7 @@ phases:
 `);
   const before = snapshot(dir);
 
-  const result = engine.next(dir, LAP_TIME);
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
   assert.equal(result.kind, "REFUSED");
   if (result.kind === "REFUSED") {
     assert.match(result.message, /^phase 'build': could not run the gate check 'unit tests' \(`yes`\) — ENOBUFS\./);
@@ -454,7 +461,7 @@ phases:
 `);
   const before = snapshot(dir);
 
-  const result = engine.next(dir, LAP_TIME);
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
   assert.equal(result.kind, "REFUSED");
   if (result.kind === "REFUSED") {
     assert.ok(result.message.startsWith("phase 'review': could not run the readiness probe `x"), "names the phase and the probe");
@@ -495,7 +502,7 @@ function graphLogLines(dir: string): string[] {
 // `next` and then the answer, with the two non-answers (a refusal, an invalid workflow) turned
 // into a test failure that names what came back instead.
 function lap(dir: string): engine.Outcome {
-  const result = engine.next(dir, LAP_TIME);
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
   if (result.kind !== "ANSWERED") assert.fail(`expected an answered lap, got ${result.kind}: ${JSON.stringify(result)}`);
   return result.outcome;
 }
@@ -717,4 +724,69 @@ test("graph pin: an accepted change is carried all the way to COMPLETE, and a ru
   const untouched = startedRun(pinnedWorkflow({ implementGate: "true" }));
   assert.equal(lap(untouched).kind, "ADVANCE");
   assert.deepEqual(lap(untouched), { kind: "COMPLETE" }, "no key at all, so the output is byte-identical to what it always was");
+});
+
+// --- ADR-0027: last_drive, the session that most recently drove this run ---
+//
+// `start` and `next` compute the stamp through the same private helper (`driveStamp`), so
+// these tests exercise it through both entry points rather than in isolation. PENDING and the
+// global ceiling — the two `next` paths that write no other part of state.json — are tested
+// through the CLI in cli.test.ts, alongside the rest of `status`'s `last moved:` line; what
+// belongs here is the plain shape: what gets written, and with which env's session.
+
+const SOLO_WORKFLOW = `
+version: 0.1
+name: solo
+entry: a
+phases:
+  a:
+    description: "A."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`;
+
+function freshWorkflowDir(yaml: string): { dir: string; workflowPath: string } {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(workflowPath, yaml);
+  return { dir, workflowPath };
+}
+
+test("start: a resolvable CLAUDE_CODE_SESSION_ID is stamped into last_drive, at start's own nowIso", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  const result = engine.start(dir, workflowPath, START_TIME, { CLAUDE_CODE_SESSION_ID: "session-alpha" });
+  assert.equal(result.result.kind, "STARTED");
+  assert.deepEqual(runState(dir).last_drive, { session: "session-alpha", at: START_TIME });
+});
+
+test("start: no CLAUDE_CODE_SESSION_ID in the env it is handed -> last_drive is null", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "STARTED");
+  assert.equal(runState(dir).last_drive, null);
+});
+
+test("next: re-stamps last_drive with the CALLING env's own session and the lap's own nowIso, every real evaluation", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  engine.start(dir, workflowPath, START_TIME, { CLAUDE_CODE_SESSION_ID: "session-alpha" });
+
+  const result = engine.next(dir, LAP_TIME, { CLAUDE_CODE_SESSION_ID: "session-beta" });
+  assert.equal(result.kind, "ANSWERED");
+  assert.deepEqual(runState(dir).last_drive, { session: "session-beta", at: LAP_TIME }, "the session that ran THIS lap, and when it ran, replace the old stamp");
+});
+
+// The safe direction (ADR-0027 §5): an unresolvable session on `next` is itself a real "who
+// drove this" answer — nobody Claude Code can name — and a stale name left behind would keep
+// a backstop pointed at a party no longer moving the run. Clearing, not keeping, is correct.
+test("next: a stamped run, called with an env carrying no session id, has last_drive reset to null", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  engine.start(dir, workflowPath, START_TIME, { CLAUDE_CODE_SESSION_ID: "session-alpha" });
+  assert.deepEqual(runState(dir).last_drive, { session: "session-alpha", at: START_TIME });
+
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(result.kind, "ANSWERED");
+  assert.equal(runState(dir).last_drive, null);
 });

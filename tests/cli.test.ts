@@ -7,8 +7,14 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 
 const CLI = path.join(import.meta.dirname, "..", "src", "cli.ts");
 
+// No explicit `env` defaults to the ambient one with CLAUDE_CODE_SESSION_ID stripped (see
+// `envWithout` below), not raw `process.env`: this test runner may itself be running inside a
+// Claude Code session, and an ambient session id would make `start` stamp `last_drive` for
+// every one of the ~250 calls below that never opted into an explicit env — turning stop-hook
+// assertions that predate ADR-0027 into a coin flip on whether that stamp happens to match a
+// payload's own `session_id` (most of which is simply absent in a pre-ADR-0027 test's input).
 function run(args: string[], opts: { cwd: string; input?: string; env?: NodeJS.ProcessEnv }): { stdout: string; stderr: string; status: number | null } {
-  const result = spawnSync(process.execPath, [CLI, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "", env: opts.env ?? process.env });
+  const result = spawnSync(process.execPath, [CLI, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "", env: opts.env ?? envWithout("CLAUDE_CODE_SESSION_ID") });
   return { stdout: result.stdout, stderr: result.stderr, status: result.status };
 }
 
@@ -65,7 +71,10 @@ function envWithout(...keys: string[]): NodeJS.ProcessEnv {
   return e;
 }
 
-const NO_OBSERVER_ENV = envWithout("HEADSIGN_OBSERVER");
+// CLAUDE_CODE_SESSION_ID stripped here too (ADR-0027), for the same ambient-environment reason
+// as HEADSIGN_OBSERVER above and `run`'s own default: a test that wants `last_drive` stamped
+// opts in explicitly with its own env, built on top of this one.
+const NO_OBSERVER_ENV = envWithout("HEADSIGN_OBSERVER", "CLAUDE_CODE_SESSION_ID");
 
 const TWO_PHASE_WORKFLOW = `
 version: 0.1
@@ -1038,6 +1047,21 @@ test("ready non-zero: next prints PENDING <phase> as the first line, exits 1, an
   assert.deepEqual(afterBytes, beforeBytes, "the PENDING path must not call writeState at all");
 });
 
+// ADR-0027 §5: PENDING is the one `next` path most likely to be the normal shape of a driver
+// walking away to wait, and exactly the stretch the backstop exists to cover — so it stamps
+// `last_drive` even though (per the test just above) it writes nothing else to state.json.
+test("PENDING re-stamps last_drive with the calling session, even though nothing else in state.json changes", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, READY_REVIEW_WORKFLOW);
+  const sessionEnv = { ...NO_OBSERVER_ENV, CLAUDE_CODE_SESSION_ID: "session-alpha" };
+  run(["start"], { cwd: dir, env: sessionEnv });
+  assert.equal((readState(dir).last_drive as { session: string })?.session, "session-alpha");
+
+  const pending = run(["next"], { cwd: dir, env: { ...sessionEnv, CLAUDE_CODE_SESSION_ID: "session-beta" } });
+  assert.match(pending.stdout, /^PENDING review\n/);
+  assert.equal((readState(dir).last_drive as { session: string })?.session, "session-beta", "the session that ran THIS next, not the one that ran start");
+});
+
 test("after PENDING, writing the verdict artifact makes the probe pass and next proceeds to a real (counted) evaluation", () => {
   const dir = initRepo();
   writeWorkflow(dir, READY_REVIEW_WORKFLOW);
@@ -1176,6 +1200,29 @@ test("ceiling: ESCALATE is answered, but the run stays running — status is unc
   assert.equal(after.status, "running");
   assert.equal(after.end_reason, null);
   assert.equal(after.phase, "build");
+});
+
+// ADR-0027 §5: the ceiling is the other `next` path that writes no state of its own (no
+// writeState — the run stays at the wall, unmoved), and it stamps too, for the same reason
+// PENDING does.
+test("ceiling: the wall re-stamps last_drive with the calling session, even though total_iterations/attempts/phase are untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, CEILING_WORKFLOW(1));
+  const sessionEnv = { ...NO_OBSERVER_ENV, CLAUDE_CODE_SESSION_ID: "session-alpha" };
+  run(["start"], { cwd: dir, env: sessionEnv });
+  run(["next"], { cwd: dir, env: sessionEnv }); // RETRY: total_iterations -> 1, at the wall
+
+  const atWall = { ...(readState(dir) as Record<string, unknown>) };
+  delete atWall.last_drive;
+
+  const result = run(["next"], { cwd: dir, env: { ...sessionEnv, CLAUDE_CODE_SESSION_ID: "session-beta" } });
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /^ESCALATE/);
+
+  const afterWall = { ...(readState(dir) as Record<string, unknown>) };
+  delete afterWall.last_drive;
+  assert.deepEqual(afterWall, atWall, "everything except last_drive is untouched by hitting the wall");
+  assert.equal((readState(dir).last_drive as { session: string })?.session, "session-beta", "the session that asked at the wall, not the one that hit it first");
 });
 
 test("ceiling: the reason says how to continue and how to end it", () => {
@@ -2347,6 +2394,51 @@ test("status: a malformed last_stop is read as absent rather than crashing, what
     assert.doesNotMatch(result.stdout, /last stop:/, `last_stop = ${JSON.stringify(damaged)} must print no line`);
     assert.match(result.stdout, /^RUNNING build \(attempt 0\)\n/);
   }
+});
+
+// --- status: last moved (ADR-0027 §7) ---
+
+test("status: a run with no last_drive prints byte-identical output to before this line existed, and never a 'last moved:' line", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  // NO_OBSERVER_ENV strips CLAUDE_CODE_SESSION_ID too (ADR-0027), so `start` here stamps
+  // nothing: exactly the run this test needs.
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
+  assert.doesNotMatch(result.stdout, /last moved:/);
+});
+
+test("status: a run with a last_drive stamp prints the exact 'last moved:' line, right after 'last stop:' and before the graph lines", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: { ...NO_OBSERVER_ENV, CLAUDE_CODE_SESSION_ID: "session-alpha" } });
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir, session_id: "session-alpha" }), env: NO_OBSERVER_ENV }); // a real nudge, for last stop: too
+
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  const at = readState(dir).last_drive as { session: string; at: string };
+  assert.equal(typeof at.at, "string");
+  assert.equal(
+    result.stdout,
+    "RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n" +
+      `last stop: held, and pointed back to headsign next — at ${(readState(dir).last_stop as { at: string }).at}\n` +
+      `last moved: ${at.at} — turn ends from any other session pass without a nudge\n`,
+  );
+});
+
+test("status: the run's session id never appears in the output, even though last_drive holds one", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const sessionId = "session-should-not-print-me";
+  run(["start"], { cwd: dir, env: { ...NO_OBSERVER_ENV, CLAUDE_CODE_SESSION_ID: sessionId } });
+
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /last moved:/);
+  assert.doesNotMatch(result.stdout, new RegExp(sessionId));
 });
 
 // The only quiet-ending cause a caller can answer ABOUT ITSELF: no identifier to resolve, just

@@ -499,6 +499,7 @@ function baseState(overrides: Partial<State> = {}): State {
     stop_nudges: 0,
     driver_agent: null,
     last_stop: null,
+    last_drive: null,
     graph_fingerprint: {},
     graph_change_reported: null,
     accepted_graph_changes: 0,

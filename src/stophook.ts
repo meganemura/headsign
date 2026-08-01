@@ -1,9 +1,12 @@
 // Responsibility: stop-boundary hook decisions — stdin JSON -> allow/block (ADR-0006).
-// Two events, ONE identifier space (ADR-0013): only SubagentStop's `agent_id` can name a
-// driver, so `evaluateSubagent` is the only half that compares identifiers at all.
-// `evaluate` answers Stop, which carries a session id headsign no longer records anywhere —
-// it decides on run state alone. They share this module so the run lookup, the exit-note
-// gate and the loop guard can be literally the same code for both boundaries.
+// Two events, ONE identifier space for a DRIVER (ADR-0013, narrowed by ADR-0027 §8): only
+// SubagentStop's `agent_id` can ever name a driver, so `evaluateSubagent` is the only half
+// that compares a driver identifier. `evaluate` answers Stop, and compares one thing too
+// (ADR-0027): the payload's own `session_id` against `last_drive.session`, the session that
+// most recently drove this run — never a driver identifier, and never read on an agent's
+// behalf (that would resolve the enclosing session, the wrong-grain problem ADR-0013 already
+// named). They share this module so the run lookup, the exit-note gate and the loop guard can
+// be literally the same code for both boundaries.
 // It takes the LOCK before every write and re-reads the record under it, and if the lock is
 // held it changes nothing and lets the turn end. A write here replaces the whole record, and
 // `next` holds the lock across a lap that can run a gate for seconds, so a hook that wrote
@@ -83,6 +86,21 @@ export function isObserver(env: NodeJS.ProcessEnv): boolean {
   return typeof raw === "string" && raw.length > 0;
 }
 
+// One source for the session stamp (ADR-0027 §2.1): measured directly, inside a real hook
+// invocation, on 2026-08-01, the env var read below and the Stop payload's own `session_id`
+// are the same string for a session's own turn end. Placed here for the same reason
+// `isObserver` is: engine.ts calls this one function rather than reaching for `process.env`
+// itself (see engine.ts's `driveStamp`), so the fact this comment states — the env value and
+// the payload value agree, for a session's own stop — is written down in exactly the one place
+// that has to stay true for the comparison in `evaluate` below to mean anything.
+// ADR-0013's "trap" was two mechanisms resolving this name in a different order each; naming
+// it in exactly one place in this whole source tree — the line below, nowhere else, and
+// nothing in a comment either — is how this round avoids repeating that.
+export function resolveDriveSession(env: NodeJS.ProcessEnv): string | null {
+  const raw = env["CLAUDE_CODE_SESSION_ID"];
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
 // The recorded driver, read the tolerant way every consumer of state.json reads its
 // fields: a bare `!== null` check would not do, because a legacy state.json carries the old
 // `driver_session` name and this field reads back as undefined — and `undefined !== null`
@@ -97,6 +115,21 @@ function recordedDriver(state: State): string | null {
   return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
 }
 
+// The recorded drive session, read the same tolerant way recordedDriver just above is:
+// anything that is not a well-formed `{ session: non-empty string, at: string }` — missing (a
+// run started before this field existed, or a state.json a person hand-edited), null, a
+// non-object, or a `session` that is not a non-empty string — reads as "no stamp", never as
+// damage. That reading is what keeps evaluate()'s comparison below fail-open on a run this
+// field cannot yet describe: "no stamp" must fall through to the ordinary nudge, exactly like
+// driver_agent's own tolerance, and must never be misread as "a stamp that doesn't match"
+// (state.ts's `last_drive` doc carries the full reasoning).
+function recordedDriveSession(state: State): string | null {
+  const recorded = state.last_drive;
+  return typeof recorded === "object" && recorded !== null && typeof recorded.session === "string" && recorded.session.length > 0
+    ? recorded.session
+    : null;
+}
+
 // The agent's own identifier, never an env-derived fallback: every env identifier describes the
 // enclosing session, not this agent, so falling back to one would seal the wrong identity —
 // exactly the confusion this hook exists to end (and why ADR-0013 deleted the env path rather
@@ -105,6 +138,16 @@ function recordedDriver(state: State): string | null {
 // two branches that must agree: a flagged turn end and an ordinary one have to name the same
 // agent, or the `unheld` line would be attributed by a rule the nudge does not use.
 function resolveAgentId(raw: unknown): string | null {
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+// The Stop payload's own session id, resolved to the same shape resolveAgentId uses just
+// above — but kept a SEPARATE function rather than folded into it (ADR-0027 §2.3). A session
+// id and an agent id are two different identifier spaces: a session drives a run directly, an
+// agent is sealed as its driver by a completely different mechanism. One function serving
+// both would read as one identifier space to the next caller, which is the exact confusion
+// ADR-0013 spent a whole decision clearing up. The one duplicated line is cheaper than that risk.
+function resolveSessionId(raw: unknown): string | null {
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 
@@ -335,9 +378,10 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
   if (isObserver(env)) return { block: false };
 
   try {
-    // `session_id` is deliberately absent from this type (ADR-0013): Stop compares no
-    // identifiers at all, so the field is not read, and naming it here would invite one.
-    const input = JSON.parse(stdinRaw) as { stop_hook_active?: boolean; cwd?: string };
+    // `session_id` (ADR-0027 §8, retracting ADR-0013's "Stop compares no identifiers at all"
+    // in full): Stop now compares exactly one thing, below, and it is not a driver
+    // identifier — see the `last_drive` comparison after the claim check.
+    const input = JSON.parse(stdinRaw) as { stop_hook_active?: boolean; cwd?: string; session_id?: string };
 
     // The stdin `cwd` is the hook's authoritative session cwd per Claude Code's Stop-hook
     // docs (it reflects any `cd` during the session); fall back to the invocation cwd for
@@ -363,13 +407,30 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // asked for — the lead's Stop simply fired first. Not looking is the fix: this hook
     // must neither consume nor honor the marker.
 
-    // The whole of Stop's ownership logic (ADR-0013), and it compares nothing: the only
-    // identifier this run can record is an agent id sealed by SubagentStop, and a Stop is a
+    // The whole of Stop's DRIVER-ownership logic (ADR-0013), and it compares nothing: the
+    // only identifier a driver can be is an agent id sealed by SubagentStop, and a Stop is a
     // *session's* turn end, so a claimed run's stop can never be its driver's. Checked here,
     // BEFORE the exit-note gate below, so an enclosing session's stop can never consume the
-    // driving agent's one-shot pause note. An unclaimed run keeps the fail-open default:
-    // nobody named a driver, so whoever stopped here gets nudged.
+    // driving agent's one-shot pause note. An unclaimed run falls through to the ADR-0027
+    // check just below — a different identifier space entirely — before reaching the
+    // fail-open default: nobody named a driver, so whoever stopped here gets nudged unless
+    // `last_drive` says somebody else moved this run more recently.
     if (recordedDriver(state) !== null) return { block: false };
+
+    // New in ADR-0027, and the only comparison Stop makes: `last_drive` names the session
+    // that most recently DROVE this run — ran `start`, or a `next` that reached it — never a
+    // driver identifier (recordedDriver just above already returned if this run has one of
+    // those). A recorded drive session that does not match this stop's own payload session id
+    // means this turn end did not come from the party that last moved the run: pass silently,
+    // writing nothing — read-only, exactly like every other check above the already-continuing
+    // flag below, which is why this sits above it rather than below (ADR-0027 §3).
+    //
+    // `drove !== null` is load-bearing and must not be simplified away: a run with no
+    // `last_drive` at all — one started by an earlier headsign, or one a person hand-edited —
+    // falls through to the nudge exactly as it does today. Reading "no stamp" as "no match"
+    // would silently strip the backstop from every run already in flight at upgrade time.
+    const drove = recordedDriveSession(state);
+    if (drove !== null && drove !== resolveSessionId(input.session_id)) return { block: false };
 
     // The already-continuing flag (see the two guarantees at the top of this file). Undocumented
     // as of ADR-0006's revision, but still honored when present: it is a strictly stronger "you
@@ -377,11 +438,12 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     //
     // It sits HERE, immediately above the nudge flow, and not at the top of this function where
     // it used to. Everything it now passes over is read-only — the record read, the status test,
-    // the recorded-driver test — and the pause note is opened only inside noteGateThenNudge, so
-    // moving it down spends nothing (guarantee 2) and still blocks nothing (guarantee 1). What it
-    // buys is a line that can name the phase and belong to the right party: from here headsign
-    // knows the phase, and knows the run is unclaimed because a claimed run returned one step
-    // earlier — so the stopper is the very party this hook would otherwise have nudged.
+    // the recorded-driver test, the drive-session comparison above — and the pause note is
+    // opened only inside noteGateThenNudge, so moving it down spends nothing (guarantee 2) and
+    // still blocks nothing (guarantee 1). What it buys is a line that can name the phase and
+    // belong to the right party: from here headsign knows the phase, and knows the run is
+    // unclaimed because a claimed run returned one step earlier — so the stopper is the very
+    // party this hook would otherwise have nudged.
     if (input.stop_hook_active) return recordUnheld(runDir, nowIso, "stop_hook_active");
 
     return noteGateThenNudge(runDir, startDir, state, nowIso);

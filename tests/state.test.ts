@@ -23,6 +23,7 @@ test("round-trips through write/read", () => {
     stop_nudges: 1,
     driver_agent: null,
     last_stop: null,
+    last_drive: null,
     // A non-empty pin here on purpose: the map is the one field of this record that is not a
     // scalar, so it is the one that a serialisation change could quietly flatten.
     graph_fingerprint: { plan: "a".repeat(64), $limits: "b".repeat(64) },
@@ -53,6 +54,30 @@ test("round-trips a non-null driver_agent", () => {
     stop_nudges: 0,
     driver_agent: "agent-claimed",
     last_stop: null,
+    last_drive: null,
+    graph_fingerprint: {},
+    graph_change_reported: null,
+    accepted_graph_changes: 0,
+  };
+  state.writeState(dir, s);
+  assert.deepEqual(state.readState(dir), s);
+});
+
+test("round-trips a non-null last_drive", () => {
+  const dir = tmpdir();
+  const s: state.State = {
+    workflow: "demo",
+    workflow_path: ".headsign/workflow.yaml",
+    status: "running",
+    phase: "plan",
+    attempts: {},
+    total_iterations: 0,
+    last_failure: null,
+    end_reason: null,
+    stop_nudges: 0,
+    driver_agent: null,
+    last_stop: null,
+    last_drive: { session: "session-abc", at: "2026-08-01T19:45:29+09:00" },
     graph_fingerprint: {},
     graph_change_reported: null,
     accepted_graph_changes: 0,
@@ -154,6 +179,7 @@ test("atomic write leaves valid JSON and no leftover temp files", () => {
     stop_nudges: 0,
     driver_agent: null,
     last_stop: null,
+    last_drive: null,
     graph_fingerprint: {},
     graph_change_reported: null,
     accepted_graph_changes: 0,

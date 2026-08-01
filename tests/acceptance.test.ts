@@ -15,8 +15,19 @@ if (!fs.existsSync(BUNDLE)) {
   throw new Error(`${BUNDLE} does not exist — run npm run build first`);
 }
 
+// This suite spawns with no explicit `env`, inheriting `process.env` — including, if this test
+// runner itself happens to be running inside a Claude Code session, CLAUDE_CODE_SESSION_ID.
+// Stripped here (ADR-0027) so `start`/`next` below never stamp `last_drive` on an ambient
+// session none of these tests asked for; a run's shape here must not depend on whether the
+// suite happens to run inside such a session.
+function runEnv(): NodeJS.ProcessEnv {
+  const e = { ...process.env };
+  delete e["CLAUDE_CODE_SESSION_ID"];
+  return e;
+}
+
 function run(args: string[], opts: { cwd: string; input?: string }): { stdout: string; stderr: string; status: number | null } {
-  const result = spawnSync(process.execPath, [BUNDLE, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "" });
+  const result = spawnSync(process.execPath, [BUNDLE, ...args], { cwd: opts.cwd, encoding: "utf8", input: opts.input ?? "", env: runEnv() });
   return { stdout: result.stdout, stderr: result.stderr, status: result.status };
 }
 

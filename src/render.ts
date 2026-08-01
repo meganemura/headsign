@@ -156,6 +156,14 @@ export function statusRunning(o: {
   // reader dropped it — either way `lastStopWording` below reads that absence as
   // `stop_hook_active`, `unheld`'s one cause before this change existed.
   lastStop?: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause };
+  // The other half of the pair `last stop:` above starts (ADR-0027 §7): when the run was last
+  // ATTRIBUTED a stop (`lastStop.at`) versus when it was last MOVED (this). A plain timestamp,
+  // never an identifier — engine.ts's status reader strips the session id before it ever
+  // reaches this module, so "status never prints an id" is a type this function is handed,
+  // not a rule it has to remember to follow. Optional and conditional like every line above:
+  // a run whose `last_drive` doesn't exist says nothing, byte-identical to before this line
+  // existed.
+  lastMoved?: string;
   // HEADSIGN_OBSERVER, read from the environment of the process `status` runs in (engine.ts
   // takes it as an argument; this module reads nothing). The one quiet-ending cause a caller can
   // answer ABOUT ITSELF — there is no identifier to resolve — which makes it worth a line even
@@ -186,9 +194,16 @@ export function statusRunning(o: {
   // reader's timezone, and the stored value already carries its own offset — reformatting or
   // truncating it to a wall clock would be inventing a fact the writer did not record.
   const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} — at ${o.lastStop.at}\n` : "";
+  // Directly after `last stop:` and before the graph lines (ADR-0027 §7), not directly under
+  // `driver:` — that slot would print like an explanation of the claim handshake, which this
+  // line has nothing to do with. The two timestamps belong together instead: one says when a
+  // turn end was last attributed, this one says when the run was last moved, and neither
+  // explains the other. Printed verbatim, like `last stop:`'s own timestamp — this module
+  // reads no clock and cannot know the reader's timezone.
+  const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} — turn ends from any other session pass without a nudge\n` : "";
   // Last, because it is the only line here that is about the CALLER rather than the run.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${acceptedLine}${reportedLine}${observerLine}`;
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for
