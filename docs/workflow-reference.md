@@ -903,12 +903,14 @@ What this deliberately does *not* do is tell two **sessions** apart. A run
 belongs to the directory it lives in — one worktree, one run — so a second
 session watching that same directory is nudged like any other while the run
 is unclaimed. That includes a session no person opened: a program that
-starts Claude Code as a subprocess, for any reason, ends up with a session
-sitting in the run's directory, and it is nudged the same way. The
-subprocess doesn't know the nudge isn't meant for it, so it tries to
-answer — and what comes back to whatever called it is prose about headsign
-instead of the output it was started to produce. That turn end still spends
-one from the run's nudge cap, the same as any other blocked stop.
+starts Claude Code as a subprocess, for any reason, gets a session standing
+wherever the caller was — the run's directory, unless it was given another —
+and that session is nudged like the rest. It has no way to know the nudge
+isn't meant for it, so it tries to answer, and what comes back to whatever
+called it is prose about headsign instead of the output it was started to
+produce. The nudged turn end also spends one from the cap, by the rule
+above: a subprocess that was never driving anything can exhaust the backstop
+budget of a run that was.
 `HEADSIGN_OBSERVER` (below) is how such a session opts out, and it is the
 only manual control headsign offers here. Every session that isn't
 driving — teammates, a subagent that wasn't delegated the run, or any
