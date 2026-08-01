@@ -338,7 +338,7 @@ test("statusRunning: history first, then the outstanding question", () => {
 // The two lines that answer the question `driver:` cannot reach: was the previous turn end held,
 // and if not, why not. Both are conditional, so a run nobody has stopped yet says nothing.
 
-test("statusRunning: each of the four dispositions prints its own last-stop line, verbatim", () => {
+test("statusRunning: each disposition prints its own last-stop line, verbatim", () => {
   const base = { phase: "decide", attempt: 0, attemptUnknown: false, workflowName: "design-grilling", lastFailure: null, driver: "not delegated yet — no agent has claimed this run" } as const;
   const head = `RUNNING decide (attempt 0)\nworkflow: design-grilling\ndriver: not delegated yet — no agent has claimed this run\n`;
   const at = "2026-07-30T23:06:51+09:00";
@@ -350,6 +350,12 @@ test("statusRunning: each of the four dispositions prints its own last-stop line
   assert.equal(
     render.statusRunning({ ...base, lastStop: { disposition: "unheld", at } }),
     `${head}last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n`,
+  );
+  // The second cause of `unheld`, pinned beside the first: these two are the only sentences in
+  // this map a reader has to tell apart, so a change to either has to be a deliberate one.
+  assert.equal(
+    render.statusRunning({ ...base, lastStop: { disposition: "unheld", at, cause: "CLAUDE_PROJECT_DIR" } }),
+    `${head}last stop: not held — the session was not standing in the run's tree (CLAUDE_PROJECT_DIR) — at ${at}\n`,
   );
   assert.equal(
     render.statusRunning({ ...base, lastStop: { disposition: "paused", at } }),
@@ -425,6 +431,37 @@ test("statusRunning: the unheld wording names the field and claims nothing about
   assert.match(actual, /\(stop_hook_active\)/);
   assert.doesNotMatch(actual, /documented|undocumented/);
   assert.doesNotMatch(actual, /loop guard/, "the loop guard is headsign's own stop_nudges, not Claude Code's flag");
+});
+
+// ADR-0026: `unheld` now has two possible causes, and the whole point of carrying `cause` is
+// that a reader can tell them apart on sight without opening the log.
+test("statusRunning: an unheld record explicitly caused by CLAUDE_PROJECT_DIR prints a sentence distinct from the stop_hook_active one", () => {
+  const stopHookActive = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "unheld", at: "T", cause: "stop_hook_active" },
+  });
+  const claudeProjectDir = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "unheld", at: "T", cause: "CLAUDE_PROJECT_DIR" },
+  });
+  assert.match(stopHookActive, /\(stop_hook_active\)/);
+  assert.match(claudeProjectDir, /\(CLAUDE_PROJECT_DIR\)/);
+  assert.notEqual(stopHookActive, claudeProjectDir, "the two causes must print different last-stop sentences");
+});
+
+// An explicit `cause: "stop_hook_active"` and an absent `cause` must read identically: the
+// default is what a pre-this-field record (or a reader that dropped the key) falls back to,
+// and it has to fall back to unheld's one and only historical cause, not to an empty phrase.
+test("statusRunning: an unheld record with no cause at all reads the same as one explicitly caused by stop_hook_active", () => {
+  const explicit = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "unheld", at: "T", cause: "stop_hook_active" },
+  });
+  const absent = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastStop: { disposition: "unheld", at: "T" },
+  });
+  assert.equal(explicit, absent);
 });
 
 test("statusTerminal: complete has no reason line", () => {
@@ -599,13 +636,22 @@ test("logLine: claimed has no detail — the adopted agent id must never appear 
 // identifier. `stop_hook_active` is the one token common to the log line, headsign's source, the
 // hook payload a person can print, and whatever upstream documentation exists.
 test("logLine: unheld names the already-continuing flag as a bare identifier, never quoted", () => {
-  const line = render.logLine("2026-07-30T23:06:51+09:00", { kind: "UNHELD" }, baseState({ phase: "decide", total_iterations: 21 }));
+  const line = render.logLine("2026-07-30T23:06:51+09:00", { kind: "UNHELD", cause: "stop_hook_active" }, baseState({ phase: "decide", total_iterations: 21 }));
   assert.equal(line, `2026-07-30T23:06:51+09:00 unheld decide a=0 i=21 by=stop_hook_active\n`);
   assert.doesNotMatch(line, /"/, "the detail is an identifier, so it carries no quotes");
   assert.doesNotMatch(line, / pass /, "`pass` is this codebase's word for a gate succeeding and must not name this event");
 });
 
 test("logLine: unheld reflects the resulting state's phase, attempts and iterations like every other event", () => {
-  const line = render.logLine("ts", { kind: "UNHELD" }, baseState({ phase: "review", attempts: { review: 2 }, total_iterations: 6 }));
+  const line = render.logLine("ts", { kind: "UNHELD", cause: "stop_hook_active" }, baseState({ phase: "review", attempts: { review: 2 }, total_iterations: 6 }));
   assert.equal(line, `ts unheld review a=2 i=6 by=stop_hook_active\n`);
+});
+
+// ADR-0026's second cause: the second starting point (CLAUDE_PROJECT_DIR) found the run the
+// cwd walk missed. Same event word, same bare-identifier rule, different upstream token named
+// verbatim — the whole reason `cause` exists is so this line and the `stop_hook_active` line
+// above are told apart on sight.
+test("logLine: unheld names CLAUDE_PROJECT_DIR verbatim when that is the cause, distinct from stop_hook_active", () => {
+  const line = render.logLine("ts", { kind: "UNHELD", cause: "CLAUDE_PROJECT_DIR" }, baseState({ phase: "decide", total_iterations: 3 }));
+  assert.equal(line, `ts unheld decide a=0 i=3 by=CLAUDE_PROJECT_DIR\n`);
 });

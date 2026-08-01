@@ -45,7 +45,7 @@ import * as render from "./render.ts";
 // here could drift into reporting an opt-out that the hooks do not act on.
 import * as stophook from "./stophook.ts";
 import type { Workflow, Route } from "./workflow.ts";
-import type { State } from "./state.ts";
+import type { State, UnheldCause } from "./state.ts";
 import type { GateVerdict, CheckFailure, RouteResolution } from "./gate.ts";
 
 type FailureInfo = CheckFailure;
@@ -163,17 +163,29 @@ function acceptedGraphChanges(state: State): number {
 // alternative being a `status` that crashes on a record a person edited, on the one command
 // whose whole promise is that it is safe to run while diagnosing.
 const STOP_DISPOSITIONS: readonly NonNullable<State["last_stop"]>["disposition"][] = ["nudged", "unheld", "paused", "stalled"];
+const UNHELD_CAUSES: readonly UnheldCause[] = ["stop_hook_active", "CLAUDE_PROJECT_DIR"];
 
 function recordedLastStop(state: State): NonNullable<State["last_stop"]> | null {
   const recorded: unknown = state.last_stop;
   if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
-  const { disposition, at } = recorded as { disposition?: unknown; at?: unknown };
+  const { disposition, at, cause } = recorded as { disposition?: unknown; at?: unknown; cause?: unknown };
   if (typeof at !== "string" || at.length === 0) return null;
   // An unknown disposition is dropped rather than passed through: render.ts turns the word into
   // a phrase through a fixed map, so a word it has no phrase for would print nothing useful and
   // a forged one must not choose the sentence a reader sees.
   if (!STOP_DISPOSITIONS.includes(disposition as NonNullable<State["last_stop"]>["disposition"])) return null;
-  return { disposition: disposition as NonNullable<State["last_stop"]>["disposition"], at };
+  // The cause gets the same treatment as the disposition and for the same reason — it also
+  // chooses a sentence — but it is DROPPED rather than failing the whole record: an `unheld`
+  // with no usable cause still has a true disposition to report, and render.ts's fallback is
+  // the cause `unheld` always had before this field existed. Dropping the field and keeping the
+  // line is what a record written by an older headsign needs; failing would blank a line that
+  // used to print (ADR-0026).
+  const known = disposition === "unheld" && UNHELD_CAUSES.includes(cause as UnheldCause);
+  return {
+    disposition: disposition as NonNullable<State["last_stop"]>["disposition"],
+    at,
+    ...(known ? { cause: cause as UnheldCause } : {}),
+  };
 }
 
 // The COMPLETE arm's optional count, spread in the way `routedBy` is spread into ADVANCE: an
@@ -388,7 +400,11 @@ export type StatusResult =
       // backwards to answer this. null when no stop has been attributed yet, and also when the
       // field is malformed (see recordedLastStop): both mean "there is nothing to report", and
       // cli.ts prints no line for either.
-      lastStop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string } | null;
+      // `cause` rides along only on `unheld`, and only when the recorded value is one render.ts
+      // has a sentence for — an `unheld` whose cause is missing or unrecognized still reports
+      // its disposition, and render.ts supplies the cause that word carried before the field
+      // existed (ADR-0026).
+      lastStop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause } | null;
       // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with. The one
       // quiet-ending cause the caller can answer about ITSELF; what it reports is the environment
       // of the process `status` runs in, which is normally the session's but not necessarily.

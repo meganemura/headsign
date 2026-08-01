@@ -14,7 +14,7 @@
 // above it.
 
 import type { Outcome } from "./engine.ts";
-import type { State } from "./state.ts";
+import type { State, UnheldCause } from "./state.ts";
 
 export function start(phase: string, description: string, cleared?: string[]): string {
   return `START ${phase}\n${clearedBlock(cleared)}--- phase: ${phase} ---\n${description}\n`;
@@ -151,8 +151,11 @@ export function statusRunning(o: {
   // `status` has always printed, to the byte. The wordings below say what HEADSIGN did and, for
   // `unheld`, name the upstream field it was told — never what any platform documentation
   // currently says about that field, because a published claim about somebody else's docs rots
-  // silently.
-  lastStop?: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string };
+  // silently. `cause` is optional for the same reason state.ts's field is: absent on every
+  // disposition but `unheld`, and on an `unheld` record only when it predates the field or the
+  // reader dropped it — either way `lastStopWording` below reads that absence as
+  // `stop_hook_active`, `unheld`'s one cause before this change existed.
+  lastStop?: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause };
   // HEADSIGN_OBSERVER, read from the environment of the process `status` runs in (engine.ts
   // takes it as an argument; this module reads nothing). The one quiet-ending cause a caller can
   // answer ABOUT ITSELF — there is no identifier to resolve — which makes it worth a line even
@@ -182,7 +185,7 @@ export function statusRunning(o: {
   // stops. The timestamp is printed VERBATIM: this module reads no clock, cannot know the
   // reader's timezone, and the stored value already carries its own offset — reformatting or
   // truncating it to a wall clock would be inventing a fact the writer did not record.
-  const lastStopLine = o.lastStop ? `last stop: ${LAST_STOP_WORDING[o.lastStop.disposition]} — at ${o.lastStop.at}\n` : "";
+  const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} — at ${o.lastStop.at}\n` : "";
   // Last, because it is the only line here that is about the CALLER rather than the run.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
   return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${acceptedLine}${reportedLine}${observerLine}`;
@@ -191,12 +194,37 @@ export function statusRunning(o: {
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for
 // the two dispositions that blocked, "not held" for the two that could not. `paused` says
 // neither, because a pause is the reader's own doing and "not held" would read as a failure.
-const LAST_STOP_WORDING: Record<"nudged" | "unheld" | "paused" | "stalled", string> = {
+// `unheld` is not here: it is the one disposition with two possible causes, so its wording
+// lives in `UNHELD_WORDING` and `lastStopWording` below picks the right one.
+const LAST_STOP_WORDING: Record<"nudged" | "paused" | "stalled", string> = {
   nudged: "held, and pointed back to headsign next",
-  unheld: "not held — Claude Code had already resumed the turn (stop_hook_active)",
   paused: "paused by a note",
   stalled: "not held — the nudge cap is spent",
 };
+
+// Two sentences for the two things that can make headsign let a stop pass without holding it
+// (state.ts's `UnheldCause`), each naming its own upstream token verbatim in parentheses — the
+// same convention `logDetail`'s `by=` uses, so a reader who has seen one can read the other.
+// Deliberately not "the working directory found nothing, so CLAUDE_PROJECT_DIR was tried
+// instead": that would describe headsign's own procedure, which is `nudged`/`stalled`'s job
+// (they say what headsign did to the turn) — this sentence, like `stop_hook_active`'s, says
+// only what happened.
+const UNHELD_WORDING: Record<UnheldCause, string> = {
+  stop_hook_active: "not held — Claude Code had already resumed the turn (stop_hook_active)",
+  // Names where the session was, not how headsign compensated, for the reason above — and it
+  // is the sentence's most useful half: a reader who cannot explain a quiet turn end is being
+  // told the one fact that explains it. The token goes in the parentheses like its sibling's
+  // rather than inside the prose, which read as a stutter with the name in both halves.
+  CLAUDE_PROJECT_DIR: "not held — the session was not standing in the run's tree (CLAUDE_PROJECT_DIR)",
+};
+
+function lastStopWording(o: { disposition: "nudged" | "unheld" | "paused" | "stalled"; cause?: UnheldCause }): string {
+  // Absence is not damage here (see state.ts's `cause` doc): a record predating the field, or
+  // one a tolerant reader stripped the field from, gets the cause `unheld` always had before
+  // there were two — never an empty or invented sentence.
+  if (o.disposition === "unheld") return UNHELD_WORDING[o.cause ?? "stop_hook_active"];
+  return LAST_STOP_WORDING[o.disposition];
+}
 
 export function statusTerminal(status: "complete" | "escalated" | "aborted", workflowName: string, endReason: string | null): string {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}\n` : "";
@@ -242,14 +270,16 @@ export type LogEvent =
   // say, which is what makes an `unheld` readable on its own.
   | { kind: "HELD"; nudges: number }
   | { kind: "STALLED" }
-  // A turn end headsign was overruled on: Claude Code's already-continuing flag was set on the
-  // hook's input, so the stop was let through (stophook.ts's flagged branches). `unheld` and
-  // not `pass`, deliberately — `pass` is this codebase's word for a GATE SUCCEEDING
+  // A turn end headsign was overruled on: either Claude Code's already-continuing flag was set
+  // on the hook's input (stophook.ts's flagged branches), or the walk from the session's own
+  // directory found no run and the second starting point, CLAUDE_PROJECT_DIR, found one instead
+  // (stophook.ts's fallback, ADR-0026) — `cause` (state.ts's `UnheldCause`) names which. `unheld`
+  // and not `pass`, deliberately — `pass` is this codebase's word for a GATE SUCCEEDING
   // (GateVerdict's passing arm is literally named `pass`), so reusing it here would put the
   // same string in the log for the opposite kind of event. `unheld` negates the verb headsign
   // already uses for what these hooks do to a turn, and claims no choice: headsign did not let
   // go, it was overruled.
-  | { kind: "UNHELD" }
+  | { kind: "UNHELD"; cause: UnheldCause }
   // The claim handshake's adoption event (ADR-0009/0010) — a third hook-boundary exception
   // alongside PAUSED/STALLED. Deliberately detail-free: the identifier that was just
   // adopted must never be written to the log (see logDetail below).
@@ -350,13 +380,14 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
       // `nudges=5` is also the count of that hold — four `held` lines plus this one.
       return "nudges=5";
     case "UNHELD":
-      // Bare, not quoted, by this file's own rule: quotes are for free text, and
-      // `stop_hook_active` is an identifier (see the graph-changed arm above). Naming the
-      // upstream field is deliberate — it is the one token common to the whole diagnostic
-      // chain, from this line through headsign's source to the hook payload a person can
-      // print. Which is also why the event WORD stays inside headsign's own vocabulary: the
-      // line says what headsign did, and names in the detail what it was told.
-      return "by=stop_hook_active";
+      // Bare, not quoted, by this file's own rule: quotes are for free text, and both
+      // `stop_hook_active` and `CLAUDE_PROJECT_DIR` are identifiers (see the graph-changed arm
+      // above). Naming the upstream token is deliberate — it is the one string common to the
+      // whole diagnostic chain, from this line through headsign's source to the hook payload or
+      // environment a person can print. Which is also why the event WORD stays inside
+      // headsign's own vocabulary: the line says what headsign did, and names in the detail
+      // what it was told, whichever of the two causes told it.
+      return `by=${event.cause}`;
     case "CLAIMED":
       // No detail — the whole point of the claimed event is to record *that* an adoption
       // happened, never *who* was adopted (that stays in state.json only, per ADR-0009).

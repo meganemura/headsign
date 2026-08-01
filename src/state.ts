@@ -43,6 +43,15 @@ export interface LastFailure {
   phase: string;
   check: string; run: string; exit_code: number | "timeout"; output_tail: string; timeout_seconds?: number;
 }
+// The two things that can make headsign let an `unheld` stop pass without holding it — named
+// for the Claude Code token each one rests on, spelled exactly as that token is spelled
+// (render.ts:352's rule for this slot: the upstream name travels verbatim from the log line
+// through headsign's source to something a person can print, so the type may not paraphrase
+// it). `stop_hook_active` is Claude Code's own already-continuing flag; `CLAUDE_PROJECT_DIR`
+// is the second starting point the stop-boundary hooks fall back to when the walk up from the
+// session's own directory finds no run (ADR-0026).
+export type UnheldCause = "stop_hook_active" | "CLAUDE_PROJECT_DIR";
+
 export interface State {
   workflow: string; workflow_path: string; status: Status; phase: string;
   attempts: Record<string, number>; total_iterations: number; last_failure: LastFailure | null;
@@ -82,9 +91,18 @@ export interface State {
   //
   // The four dispositions are headsign's own actions, never a claim about what the platform
   // did: `nudged` (the turn was held and pointed back at `headsign next`), `unheld` (the turn
-  // end arrived carrying Claude Code's already-continuing flag, so headsign was overruled and
-  // let it pass — stophook.ts owns that branch), `paused` (a pause note was consumed) and
-  // `stalled` (the nudge cap was already spent, so the stop passed).
+  // end arrived carrying a signal headsign treats as an overrule, so it let the stop pass
+  // without holding it — stophook.ts owns every branch that can produce this), `paused` (a
+  // pause note was consumed) and `stalled` (the nudge cap was already spent, so the stop
+  // passed).
+  //
+  // `cause` says WHICH overrule produced an `unheld` stop — see `UnheldCause` above for what the
+  // two values mean and why they are spelled the way they are. Present only on `unheld` records:
+  // the other three dispositions are entirely headsign's own doing and have nothing upstream to
+  // name, so a `cause` on any of them would claim an overrule that did not happen. Required by
+  // render.ts's `status` wording, which has to say which cause applied rather than hardcoding
+  // one (ADR-0026) — before this field existed, `unheld` had exactly one cause, so nothing
+  // downstream needed to ask.
   //
   // `at` is a local ISO timestamp with a numeric offset — the same `nowIso` value the writers
   // already receive as an argument. Nothing in this module reads the clock, and no reader may
@@ -103,8 +121,12 @@ export interface State {
   // `disposition`/`at` are not one of the four words and a string) as null. The missing-field
   // half of that tolerance is TRANSITIONAL on exactly the criterion written for `driver_agent`
   // above, read for the release that added THIS field; the malformed-value half is permanent,
-  // because a hand-edited state.json is always possible.
-  last_stop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string } | null;
+  // because a hand-edited state.json is always possible. `cause` carries the SAME transitional
+  // tolerance one field later: an `unheld` record written before `cause` existed lacks it
+  // entirely, which a reader must treat as "the only cause `unheld` had back then"
+  // (`stop_hook_active`) rather than as damage — see render.ts's default for exactly that
+  // reading, which doubles as the fallback for a well-formed record that simply omits it.
+  last_stop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause } | null;
 
   // --- the graph pin: the rules this run has been running under ---
   //
