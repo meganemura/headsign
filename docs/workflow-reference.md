@@ -275,10 +275,19 @@ the turn ended in a subdirectory. That walk only goes up, and it stops at the
 first enclosing `.git` — or at the filesystem root if there is none — so every
 way of standing outside it is silent. From a directory *above* the run, a
 monorepo root say, the hook won't find it. Nor will it from *another checkout
-entirely*: a sibling clone, a docs repository, anywhere the session happens to
-be standing, whether a `cd` left it there mid-turn or it started there. The walk
-stops at that repository's root, finds no run, and writes nothing at all — no
-log line, no `last stop:`. On that turn's own evidence there is nothing to tell
+entirely* — a sibling clone, a docs repository — where the walk stops at that
+repository's root, finds no run, and writes nothing at all: no log line, no
+`last stop:`.
+
+How a session comes to be standing there is narrower than it first looks, and
+worth knowing because it tells you whether this can happen to you at all. The
+`cwd` in the hook's payload does follow a `cd` made during a turn — measured,
+2026-08-01 — but Claude Code refuses a `cd` outside the session's **allowed
+working directories**, naming them in the refusal. So a session confined to one
+directory cannot drift out of it. Reaching another checkout takes a session that
+has more than one: a second directory added at startup or later, which is the
+ordinary arrangement when one session works across a project and, say, a notes
+repository beside it. On that turn's own evidence there is nothing to tell
 it apart from a backstop that was never installed, though `headsign status` in
 the run's own directory still shows the stop before it, and a single nudge
 anywhere in the run proves the hook is wired. Keep the session at the workflow's

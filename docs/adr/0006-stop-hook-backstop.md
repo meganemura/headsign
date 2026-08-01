@@ -381,18 +381,33 @@ from a second, stable point and turn this branch from common into rare. That
 is a question about what Claude Code exposes, not about what headsign should
 write, and it is not answered here.
 
-Checked 2026-08-01, inconclusively, and recorded so the next attempt starts
-further along: `CLAUDE_PROJECT_DIR` is **not** present in the environment a
-session's own shell tool runs with on this machine, alongside
-`CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID` and others that are. That does not
-settle it — a hook runs as a separate process and may be handed a different
-environment, which is exactly what `${CLAUDE_PLUGIN_ROOT}` in
-`plugin/hooks/hooks.json` demonstrates for hook *arguments*. Settling it means
-observing a real hook invocation's environment, not a shell's. Worth doing
-before designing anything on top of it — and worth knowing in advance that even
-a positive answer narrows this branch rather than closing it, since a project
-directory names where a session *started*: it rescues a session that wandered
-out, not one that was never inside.
+Settled 2026-08-01 by observing four real hook invocations rather than a shell,
+which is what an earlier negative result had measured by mistake. Recorded here
+because three of the four facts are load-bearing for anything built on top:
+
+- **`CLAUDE_PROJECT_DIR` is present in the hook's environment** and holds the
+  project root, matching what Claude Code's hooks documentation states. It did
+  not move in any of the four. So a second, stable starting point does exist.
+- **The hook process's own `PWD` was the project root every time**, including
+  the invocations where the session's `cwd` had moved. Worth knowing because
+  this hook already falls back to its invocation cwd when the payload omits
+  `cwd`.
+- **The payload's `cwd` does follow a `cd` made during a turn** — a session
+  told to `cd src` produced `…/headsign/src`. This ADR and the reference manual
+  both assumed that; it is now measured rather than assumed.
+- **Claude Code refuses a `cd` outside the session's allowed working
+  directories**, naming them in the refusal. A session confined to one directory
+  therefore cannot drift out of it at all. Reaching another checkout requires a
+  session with more than one allowed directory — verified end to end by starting
+  a session with a second directory added and observing the payload `cwd` land
+  inside that other repository.
+
+The last of these narrows this residual limitation considerably, and the
+documentation that describes it has been narrowed to match: this is not "any
+stray `cd`", it is "a session that works across more than one directory". It
+does not remove the limitation, and it does not change the refusal above — the
+volume argument is about the branch where no run is found, which is common
+regardless of how the session got there.
 
 Equally by design, the walk only ever goes up: if the session's cwd sits
 *above* the run's directory — a monorepo root, with the run's `.headsign/`
