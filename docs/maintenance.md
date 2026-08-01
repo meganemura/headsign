@@ -237,10 +237,18 @@ machine or is protected against being undone once it has.
    made out of order. A backfilled page also carries today's date with no way
    to set the real one, so say the real date in its first line rather than
    leaving the two records disagreeing.
-9. **[you]** `npm publish` from the tagged, CI-green checkout —
-   `prepublishOnly` forces typecheck+test+build. It may prompt for a 2FA OTP,
-   which is the mechanical reason this one cannot be delegated. Consider
-   `--provenance` once publishing moves into CI instead of a laptop.
+9. **[you]** `npm login && npm publish` from the tagged, CI-green checkout.
+   Both halves prompt — for credentials and a 2FA OTP — which is the mechanical
+   reason this one cannot be delegated.
+
+   **`npm login` first, and not only when you know you are logged out.** npm
+   sessions expire, and `npm publish` checks the registry *after* it has run
+   `prepublishOnly`, which forces a full typecheck+test+build. So an expired
+   session does not fail fast: it fails at the end, having spent the whole
+   pipeline, and the retry spends it again. Logging in first turns a late
+   failure into an immediate one, and costs nothing when the session was live.
+
+   Consider `--provenance` once publishing moves into CI instead of a laptop.
 
 `gh skill` needs no per-release step of its own. It cannot attach to an
 existing tag (`gh skill publish` insists on creating the tag itself), and what
@@ -254,7 +262,7 @@ Everything above that leaves this machine, in order, ready to paste:
 
 ```sh
 git push && git push --tags  # lands on main; v* is protected once pushed
-npm publish                  # prompts for a 2FA OTP
+npm login && npm publish     # both prompt; login first so auth fails fast
 ```
 
 That is the whole list — two commands. The GitHub Release is *not* yours: it
