@@ -280,13 +280,23 @@ repository — where the walk stops at that repository's root.
 When that first walk finds nothing, the hook tries once more, the same
 bounded way, from Claude Code's `CLAUDE_PROJECT_DIR` — the project root the
 session was given, independent of where its cwd has since wandered. Find a
-run there and the hook writes one line and lets the turn end, unheld but not
-silent: `.headsign/log` gets an `unheld` line marked `by=CLAUDE_PROJECT_DIR`,
-and `headsign status`'s `last stop:` line names the same reason — worded
+run there that this session last moved — or that nobody has moved yet — and
+the hook writes one line and lets the turn end, unheld but not silent:
+`.headsign/log` gets an `unheld` line marked `by=CLAUDE_PROJECT_DIR`, and
+`headsign status`'s `last stop:` line names the same reason — worded
 differently from what Claude Code's own already-continuing flag produces.
 This closes the ordinary shape of the problem: a session that `cd`'d, or was
 started, outside the run's own git boundary while still inside the project
 Claude Code told it about.
+
+A run that somebody *else* last moved is passed over here in the same
+silence the first walk would have given it, and for the same reason: that
+line is a record of a turn end, and a run has no use for one from a session
+that never drove it. It is the second of the two `unheld` lines
+[ADR-0027](adr/0027-recording-who-drove-a-run.md) stops handing to
+bystanders, and losing it leaves this shape looking exactly like the fully
+silent one below — `last moved:` in `headsign status` is what tells them
+apart.
 
 It does not close all of them. `CLAUDE_PROJECT_DIR` names a root, and this
 second walk, like the first, only goes up from it — so a run that is not on
@@ -1029,6 +1039,12 @@ with that turn end, in one of five readings:
   The same stop is also an `unheld` line in `.headsign/log`, marked
   `by=CLAUDE_PROJECT_DIR` rather than `by=stop_hook_active` — the two share
   a disposition and differ only in which upstream fact caused it.
+  This line is written only for the party the ordinary path would have
+  nudged: a run `last_drive` credits to a different session withholds it
+  here too, the same test the ordinary path applies
+  ([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9) — that stop falls
+  to the fifth row of the table below instead, with nothing in
+  `.headsign/log` to show for it.
 
 Each is followed by ` — at <timestamp>`, printed exactly as it was recorded,
 offset and all. The wording says what headsign did with the field it was
@@ -1272,7 +1288,7 @@ race that remains are in
 | Variable | Set by | Meaning |
 |---|---|---|
 | `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. It is equally the answer for a subprocess your own program starts Claude Code as: pass it in that subprocess's environment rather than moving its working directory outside the run, which can cost the subprocess access to files it still needs there. |
-| `CLAUDE_PROJECT_DIR` | Claude Code | Read only by the stop-boundary hooks, and only on the branch that today writes nothing: a second, bounded walk from this project root, tried once the walk from the session's own directory finds no run. A run found there gets one `unheld` line, detail `by=CLAUDE_PROJECT_DIR`, and the turn is never held on this path — see [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it) and [ADR-0026](adr/0026-a-second-place-to-look.md). Not read anywhere else in headsign. |
+| `CLAUDE_PROJECT_DIR` | Claude Code | Read only by the stop-boundary hooks, and only on the branch that today writes nothing: a second, bounded walk from this project root, tried once the walk from the session's own directory finds no run. A run found there gets one `unheld` line, detail `by=CLAUDE_PROJECT_DIR`, when the stopping session is the one that last moved it or nobody has ([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9), and the turn is never held on this path — see [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it) and [ADR-0026](adr/0026-a-second-place-to-look.md). Not read anywhere else in headsign. |
 
 Headsign reads no session or agent identifier from the environment: neither
 variable above names one, and nothing there could — see

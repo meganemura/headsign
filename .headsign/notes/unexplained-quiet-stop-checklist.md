@@ -177,7 +177,7 @@ so.**
 | the run is claimed by an agent that is not you | You are a bystander to the backstop by design — a session, or a different agent. Nothing holds your turns until you take the seat. |
 | the run is unclaimed, `last moved:` in `status` is stamped, and it names a time your session cannot account for (you never ran `start` or `next` that recently) | Answered, and there is nothing else to find: your stop matched no recorded mover and passed silently, writing no `unheld` line and no `last stop:` update — the timestamp comparison above is the only evidence this leaves. See section 2. |
 | the session was in another git repository when the turn ended, and `last stop:` says `by=CLAUDE_PROJECT_DIR` | Answered — see the `unheld` / `CLAUDE_PROJECT_DIR` row above. Only reachable if the session has more than one allowed working directory, since Claude Code refuses a `cd` outside them. |
-| the session was in another git repository when the turn ended, and there is no such line | Narrower than it used to be, not gone: this needs the walk from `CLAUDE_PROJECT_DIR` to have also found nothing — unset, or naming a place with no run. On that turn's own evidence, indistinguishable from an uninstalled backstop — though step 7, and the stop before it in `status`, do tell them apart. It needs one `cd` that was never undone, or a session that was never inside, *and* `CLAUDE_PROJECT_DIR` not reaching the run either. |
+| the session was in another git repository when the turn ended, and there is no such line | Narrower than it used to be, not gone, and now has two shapes rather than one: the walk from `CLAUDE_PROJECT_DIR` found nothing at all — unset, or naming a place with no run — **or**, since 2026-08-02 (ADR-0027 §9), it found the run but `last_drive` names a session other than this one, the same silent pass the "run is unclaimed, `last moved:` … " row two above this one describes. On that turn's own evidence, both still look indistinguishable from an uninstalled backstop — though step 7, and the stop before it in `status`, do tell them apart. It needs one `cd` that was never undone, or a session that was never inside, *and* `CLAUDE_PROJECT_DIR` either not reaching the run at all, or reaching one it did not most recently drive. |
 | a real nudge arrived, but for a workflow or phase that is not the one you expected | Not silence — a different, older, undocumented shape. The checkout the session drifted into has **its own** run, and the cwd walk finds that one before `CLAUDE_PROJECT_DIR` is ever tried. See "A session can be nudged about the wrong run", below. |
 | none of the above, and the turn was **interrupted** | The leading hypothesis: an interrupted turn is not a stop-boundary event, so the hook was never invoked. This is the case that needs a second sighting. |
 | none of the above, the turn ended **on its own**, and nudges do arrive elsewhere in this run | Not explained by anything known. **This is the most valuable sighting of all — report it.** |
@@ -215,13 +215,16 @@ so.**
   exception since 2026-08-01.** Drift inside the run's own repository is
   harmless. Drift out of it — into a sibling clone, a docs repo, anywhere a
   `cd` left the session — used to be silent unconditionally; now it is silent
-  only if `CLAUDE_PROJECT_DIR` also fails to resolve the run. This was the
-  cause of the sighting this file originally captured, confirmed by
-  reproduction at the time: a turn ending in another checkout produced no
+  only if `CLAUDE_PROJECT_DIR` also fails to resolve the run, or resolves a
+  run this session did not most recently drive (since 2026-08-02, ADR-0027
+  §9 — the same `last_drive` comparison the cwd-walk path already makes).
+  This was the cause of the sighting this file originally captured, confirmed
+  by reproduction at the time: a turn ending in another checkout produced no
   line, no `last stop:`, and exit 0. Reproducing that today additionally
-  needs `CLAUDE_PROJECT_DIR` to be unset or to name somewhere with no run —
-  otherwise it now leaves an `unheld` line marked `by=CLAUDE_PROJECT_DIR`
-  instead of nothing.
+  needs `CLAUDE_PROJECT_DIR` to be unset, to name somewhere with no run, or
+  to name a run whose `last_drive` credits a different session — otherwise
+  it now leaves an `unheld` line marked `by=CLAUDE_PROJECT_DIR` instead of
+  nothing.
 - **A session can be nudged about the wrong run.** If the checkout a session
   drifted into runs its own headsign workflow, the cwd walk finds *that* run
   first and nudges about it — a real nudge, correctly formatted, just not

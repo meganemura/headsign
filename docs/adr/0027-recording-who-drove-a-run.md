@@ -13,6 +13,12 @@
 - Amends [ADR-0006](0006-stop-hook-backstop.md): "a PENDING answer touches
   nothing on disk" narrows to
   "changes nothing about the run's progress".
+- Revised: 2026-08-02 (§9 below. The §3 comparison governs the
+  `CLAUDE_PROJECT_DIR` fallback of [ADR-0026](0026-a-second-place-to-look.md)
+  as well, which the Decision as first written left reading only the claim;
+  "What this gives up" therefore names two lost `unheld` lines rather than
+  one. Nothing above is retracted and no text above is edited — §9 sets out
+  why the extension follows from §3 rather than adding to it.)
 
 ## Context
 
@@ -314,6 +320,50 @@ retracts part of ADR-0013 and amends ADR-0006. ADR-0013 keeps its own text
 unedited and gains a dated `Revised:` line, the way ADR-0008's does — the
 history that made this round possible has to survive for the next reader to
 find the same way this round did.
+
+### 9. The same comparison governs the second starting point
+
+Everything above describes the walk up from the session's own directory.
+[ADR-0026](0026-a-second-place-to-look.md) gave `Stop` a second one — a run
+found from `CLAUDE_PROJECT_DIR` when that walk finds nothing — on which it
+writes `unheld by=CLAUDE_PROJECT_DIR` and returns without holding. §3's
+ordered list passes over that path in a single parenthesis, and the Decision
+as first written left it testing only the claim. **It tests the stamp too.**
+
+That is not a second decision, and the code says so before this record does.
+`src/stophook.ts` states the rule the fallback is built on in its own words:
+the test it applies "mirrors the test each [hook] already runs on the
+ordinary path below." That is an invariant, not a coincidence — and §3
+changed what `Stop`'s ordinary path tests. A fallback left testing only the
+claim would not be a narrower policy arrived at on purpose; it would be a
+mirror that had quietly stopped matching, which is the exact failure the
+sentence was written to prevent.
+
+The reason is also one §3 has already given. A bystander's flagged turn end
+is kept from writing `unheld by=stop_hook_active` because that is "the
+record this design exists to stop handing to parties that never drove the
+run." `unheld by=CLAUDE_PROJECT_DIR` is the same kind of record, written by
+the same function, about the same party, onto the same run. There is no
+reading on which one of the two is a record a bystander may leave behind and
+the other is not.
+
+What the extension costs is nothing the ordinary path does not already cost,
+and what it protects is precisely the population ADR-0026 built the fallback
+for. A driver whose session had wandered out of the run's tree ran `start`
+or `next` and is therefore stamped, so it matches and its line is still
+written. A run with no stamp on record still attributes, by the same
+fail-open rule as everywhere else in this ADR. Only a session that never
+moved the run loses the line — and it now loses it on both paths rather than
+one, which is the whole of the change.
+
+`SubagentStop`'s half of the fallback is untouched, for the reason in §2.3:
+it already demands a positive match against the recorded driver, and it
+still never reads `last_drive`.
+
+**A correction to "What this gives up", which named one lost line where
+there are two.** Both are `unheld` records a bystander used to leave on a
+run it never drove and no longer does. The list below is left as it was
+written; this paragraph is the amendment to it, and the count is two.
 
 ## Rejected
 

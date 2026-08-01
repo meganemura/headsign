@@ -1236,6 +1236,54 @@ test("Stop: no session_id in the payload at all, on a stamped run, passes silent
   assert.deepEqual(fs.readFileSync(state.statePath(dir)), before);
 });
 
+// --- ADR-0027 §9: the same comparison governs the CLAUDE_PROJECT_DIR fallback ---
+//
+// `fallbackUnheld`'s `shouldAttribute` argument, as built by `evaluate`, is now the conjunction
+// of the two tests just exercised above: not claimed, and (no stamp, or a matching one). The
+// "claimed run at CLAUDE_PROJECT_DIR" case is already covered by "fallback (Stop): a claimed
+// run at CLAUDE_PROJECT_DIR is a certain bystander" above (the second starting point section) —
+// nothing new to add there, since the last_drive comparison is never reached once a driver is
+// recorded, on this path exactly as on the ordinary one.
+
+test("fallback (Stop): CLAUDE_PROJECT_DIR names an unclaimed run whose last_drive stamp matches the payload's session_id — unheld by=CLAUDE_PROJECT_DIR is still written", () => {
+  const startDir = tmpdir(); // no .git, no state of its own — the walk finds nothing
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ workflow: "demo", phase: "build", driver_agent: null, last_drive: { session: "session-alpha", at: NOW } }));
+
+  const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir, session_id: "session-alpha" }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+  assert.deepEqual(decision, { block: false }, "the fallback never blocks");
+
+  const after = state.readState(projectDir);
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW, cause: "CLAUDE_PROJECT_DIR" }, "a driver whose session wandered out of the run's tree is still attributed");
+  assert.deepEqual(readLog(projectDir), [`${NOW} unheld build a=0 i=0 by=CLAUDE_PROJECT_DIR`]);
+});
+
+test("fallback (Stop): CLAUDE_PROJECT_DIR names an unclaimed run whose last_drive stamp does NOT match the payload's session_id — nothing is written", () => {
+  const startDir = tmpdir();
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ driver_agent: null, last_drive: { session: "session-alpha", at: NOW } }));
+  const before = fs.readFileSync(state.statePath(projectDir));
+
+  const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir, session_id: "session-beta" }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(projectDir)), before, "a bystander that never drove this run must not overwrite last_stop, the same rule the ordinary path applies");
+  assert.deepEqual(readLog(projectDir), []);
+});
+
+test("fallback (Stop): CLAUDE_PROJECT_DIR names an unclaimed run with no last_drive stamp — unheld by=CLAUDE_PROJECT_DIR is still written (fail-open)", () => {
+  const startDir = tmpdir();
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ workflow: "demo", phase: "build", driver_agent: null, last_drive: null }));
+
+  const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir, session_id: "whoever-stopped" }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+  assert.deepEqual(decision, { block: false });
+
+  const after = state.readState(projectDir);
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW, cause: "CLAUDE_PROJECT_DIR" }, "no stamp reads as UNKNOWN, never as a mismatch, so this path still fails open");
+  assert.deepEqual(readLog(projectDir), [`${NOW} unheld build a=0 i=0 by=CLAUDE_PROJECT_DIR`]);
+});
+
 // --- resolveDriveSession: the one place CLAUDE_CODE_SESSION_ID is read (ADR-0027 §2.1) ---
 
 test("resolveDriveSession: a non-empty CLAUDE_CODE_SESSION_ID is returned trimmed", () => {

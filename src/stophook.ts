@@ -200,13 +200,15 @@ function findRunDir(startDir: string): string | null {
 // for turning a directory into a run does not.
 //
 // `shouldAttribute` is the one thing that differs between the two hooks, and mirrors the test
-// each already runs on the ordinary path below: Stop's recorded-driver test (a claimed run's
-// Stop can never be its driver's), SubagentStop's driver match (only a positive match may be
-// attributed, since most subagent stops belong to reviewers, searchers and workers with no
-// headsign role at all). Everything else is identical and deliberately minimal: read the
-// record, confirm it is running, and either write the line or write nothing — never open the
-// pause note, never touch the claim marker, never increment stop_nudges, and never read
-// `stop_hook_active` (guarantee 2 holds by construction on a path that can never block).
+// each already runs on the ordinary path below: Stop's two tests, conjoined (ADR-0027 §9) — a
+// claimed run's Stop can never be its driver's, and a stamped run's Stop must match the
+// payload's own session id, the same `last_drive` comparison `evaluate` makes below — and
+// SubagentStop's driver match (only a positive match may be attributed, since most subagent
+// stops belong to reviewers, searchers and workers with no headsign role at all). Everything
+// else is identical and deliberately minimal: read the record, confirm it is running, and
+// either write the line or write nothing — never open the pause note, never touch the claim
+// marker, never increment stop_nudges, and never read `stop_hook_active` (guarantee 2 holds by
+// construction on a path that can never block).
 function fallbackUnheld(env: NodeJS.ProcessEnv, nowIso: string, shouldAttribute: (state: State) => boolean): HookDecision {
   const claudeProjectDir = env["CLAUDE_PROJECT_DIR"];
   if (typeof claudeProjectDir !== "string" || claudeProjectDir.length === 0) return { block: false };
@@ -390,10 +392,26 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     const runDir = findRunDir(startDir);
     if (!runDir) {
       // The walk from the session's own directory found nothing: try CLAUDE_PROJECT_DIR
-      // (ADR-0026) before giving up. `shouldAttribute` matches the recorded-driver test a few
-      // lines below — a claimed run's Stop can never be its driver's, so a fallback stop on one
-      // is a certain bystander and must not overwrite that run's `last_stop`.
-      return fallbackUnheld(env, nowIso, (fallbackState) => recordedDriver(fallbackState) === null);
+      // (ADR-0026) before giving up. `shouldAttribute` mirrors the two tests the ordinary path
+      // below runs, conjoined (ADR-0027 §9): a claimed run's Stop can never be its driver's, and
+      // a stamped run's Stop must come from the session that most recently drove it — the exact
+      // `last_drive` comparison a few lines below, applied here to a run reached by the second
+      // starting point instead of the first.
+      //
+      // The payload's session id is resolved once here, OUTSIDE the closure — the same place
+      // evaluateSubagent resolves `fallbackAgentId` just below, so both fallback branches settle
+      // an identifier by one rule rather than two (ADR-0013's named trap: two mechanisms
+      // resolving the same name in a different order each).
+      //
+      // A run with no `last_drive` stamp reads as UNKNOWN, never as a mismatch (same fail-open
+      // rule `recordedDriveSession` documents), so this fallback still writes its `unheld` line
+      // on an unstamped, unclaimed run exactly as it always has.
+      const fallbackSessionId = resolveSessionId(input.session_id);
+      return fallbackUnheld(env, nowIso, (fallbackState) => {
+        if (recordedDriver(fallbackState) !== null) return false;
+        const drove = recordedDriveSession(fallbackState);
+        return drove === null || drove === fallbackSessionId;
+      });
     }
 
     const state = readState(runDir);

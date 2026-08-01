@@ -236,9 +236,13 @@ Claude は `headsign start` を実行してフェーズの作業を進め、答�
 
 最初の探索が何も見つけられなかったとき、hook はもう一度、同じ境界付きのやり方で、Claude Code の `CLAUDE_PROJECT_DIR` から探します。
 これはセッションに渡されたプロジェクトのルートで、cwd がそのあとどこへ迷い出ても変わりません。
-そこで run が見つかれば、hook は1行書いてターンを終えさせます — 引き留めはしませんが、無言でもありません。
+そこで見つかった run を、このセッションが最後に動かしていれば——あるいはまだ誰も動かしていなければ——hook は1行書いてターンを終えさせます。引き留めはしませんが、無言でもありません。
 `.headsign/log` には `by=CLAUDE_PROJECT_DIR` を伴う `unheld` 行が残り、`headsign status` の `last stop:` 行も同じ理由を名指しします — Claude Code 自身の already-continuing フラグが作る文言とは違う言い回しです。
 これで、この問題のありふれた形は塞がります。すなわち、run 自身の git 境界の外へ `cd` した、あるいはその外で立ち上がったが、Claude Code が伝えてきたプロジェクトの内側にはまだいる、というセッションです。
+
+最後に動かしたのが*別の*セッションである run は、ここでも、最初の探索が与えたはずの沈黙のまま通されます。理由も同じです。
+その行はターン終了の記録であり、run を一度も駆動していないセッションの記録を、run は必要としません。
+これは [ADR-0027](adr/0027-recording-who-drove-a-run.md) が部外者に渡すのをやめた2本の `unheld` 行のうちの2本目で、これを失うと、この形は下にある完全な沈黙の形とまったく同じに見えます——見分けるのは `headsign status` の `last moved:` です。
 
 すべてを塞ぐわけではありません。
 `CLAUDE_PROJECT_DIR` が名指すのはルートであり、この2度目の探索も最初のものと同じく上にしか進みません。
@@ -801,7 +805,7 @@ observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are 
 - `paused by a note` — `.headsign/tmp/stop-note` が消費されました。
 - `not held — the nudge cap is spent` — バックストップはすでにこの run を見放していました([バックストップ](#バックストップ)を参照)。
 - `not held — Claude Code had already resumed the turn (stop_hook_active)` — そのターン終了で headsign は覆されました。同じ停止が `.headsign/log` の `unheld` 行です。
-- `not held — the session was not standing in the run's tree (CLAUDE_PROJECT_DIR)` — セッション自身のディレクトリからの探索は run を見つけられず、代わりに `CLAUDE_PROJECT_DIR` からの探索が見つけました。hook は書いて、引き留めずに戻ります。同じ停止は `.headsign/log` でも `unheld` 行ですが、detail は `by=stop_hook_active` ではなく `by=CLAUDE_PROJECT_DIR` です — disposition は同じで、原因になった upstream の事実だけが違います。
+- `not held — the session was not standing in the run's tree (CLAUDE_PROJECT_DIR)` — セッション自身のディレクトリからの探索は run を見つけられず、代わりに `CLAUDE_PROJECT_DIR` からの探索が見つけました。hook は書いて、引き留めずに戻ります。同じ停止は `.headsign/log` でも `unheld` 行ですが、detail は `by=stop_hook_active` ではなく `by=CLAUDE_PROJECT_DIR` です — disposition は同じで、原因になった upstream の事実だけが違います。この行が書かれるのは、通常経路なら催促されていたはずの当事者に限られます。この run の `last_drive` が別のセッションを名指していれば、通常経路と同じ判定によってこちらでも行が差し止められます([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9)——その停止は代わりに下の表の5行目に落ち、`.headsign/log` には何も残りません。
 
 いずれのあとにも ` — at <タイムスタンプ>` が続き、記録されたとおりに、オフセットまで含めてそのまま表示されます。
 この文言が述べるのは、渡されたフィールドを headsign がどう扱ったかであって、そのフィールドについて Claude Code 自身のドキュメントが何と書いているかについては、何も主張しません。
@@ -995,7 +999,7 @@ seal は `SubagentStop` でしか起きず(ADR-0010)、それはセッション�
 | 変数 | 設定する主体 | 意味 |
 |---|---|---|
 | `HEADSIGN_OBSERVER` | あなた自身が明示的に | 空でない任意の値(慣習として `=1`)を設定すると、run を誰が握っているかにかかわらず、そのセッションの停止と、そのセッションが委譲したエージェントの停止が、停止境界の hook を無条件に通過するようになります。自分がもっぱら観察しているだけだと分かっているセッション向けの手動 opt-out であり、誰が催促されるかについて headsign が提供する唯一の制御です。自分のプログラムが Claude Code を子プロセスとして起こす場合の答えも同じで、その子プロセスの環境に渡します。cwd を run の外へ移す代わりにこちらを使えば、子がそこでまだ必要とするファイルへのアクセスを失わずに済みます。 |
-| `CLAUDE_PROJECT_DIR` | Claude Code | 停止境界の hook だけが読み、しかも今日は何も書かずに終わる分岐でだけ読みます。セッション自身のディレクトリからの探索が run を見つけられなかったとき、このプロジェクトのルートから、同じ境界付きのやり方でもう一度だけ探します。そこで run が見つかれば `unheld` 行が1つ残り、detail は `by=CLAUDE_PROJECT_DIR` — この経路でターンが引き留められることはありません。詳細は[実行状態と、headsign がそれを探す場所](#実行状態とheadsign-がそれを探す場所)と [ADR-0026](adr/0026-a-second-place-to-look.md) を参照してください。headsign の他のどこからも読まれません。 |
+| `CLAUDE_PROJECT_DIR` | Claude Code | 停止境界の hook だけが読み、しかも今日は何も書かずに終わる分岐でだけ読みます。セッション自身のディレクトリからの探索が run を見つけられなかったとき、このプロジェクトのルートから、同じ境界付きのやり方でもう一度だけ探します。そこで見つかった run を、止まったセッションが最後に動かしていれば(あるいはまだ誰も動かしていなければ)`unheld` 行が1つ残り、detail は `by=CLAUDE_PROJECT_DIR` — この経路でターンが引き留められることはありません([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9)。詳細は[実行状態と、headsign がそれを探す場所](#実行状態とheadsign-がそれを探す場所)と [ADR-0026](adr/0026-a-second-place-to-look.md) を参照してください。headsign の他のどこからも読まれません。 |
 
 headsign が環境から読むセッション識別子・エージェント識別子はありません。
 上の二つの変数のどちらも、それを名指ししていませんし、環境にはそもそも名指しできるものが無いからです。

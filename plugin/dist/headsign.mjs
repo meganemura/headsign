@@ -8061,7 +8061,12 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
     const runDir = findRunDir(startDir);
     if (!runDir) {
-      return fallbackUnheld(env, nowIso, (fallbackState) => recordedDriver(fallbackState) === null);
+      const fallbackSessionId = resolveSessionId(input.session_id);
+      return fallbackUnheld(env, nowIso, (fallbackState) => {
+        if (recordedDriver(fallbackState) !== null) return false;
+        const drove2 = recordedDriveSession(fallbackState);
+        return drove2 === null || drove2 === fallbackSessionId;
+      });
     }
     const state = readState(runDir);
     if (!state) return { block: false };
