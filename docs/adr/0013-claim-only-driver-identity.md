@@ -12,6 +12,16 @@
   observer opt-out, its read-only `status` command, and its
   non-drivers-call-`status` discipline; ADR-0010's two-beat claim, its
   `SubagentStop` adoption gate, and its positive-match rule.
+- Revised: 2026-08-01 (Decision 1's second clause — that an `agent_id` is
+  "the only identifier headsign records anywhere" — and Decision 2 in full
+  are retracted by [ADR-0027](0027-recording-who-drove-a-run.md), which
+  adds `last_drive`, a session stamp `Stop` compares below the claim check.
+  Decision 1's first clause — the `SubagentStop` adoption gate is the only
+  writer of a driver identifier — is unaffected: `last_drive` records who
+  ran a command, not who drives, so ADR-0027 does not add a second path to
+  a driver. Decisions 3–5 — the `driver_agent` rename and `driver_source`'s
+  deletion, `status`'s two-valued `driver:` line, and the removal of the
+  sticky-ownership rule — stand unchanged.)
 
 ## Context
 
