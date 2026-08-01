@@ -4,10 +4,16 @@ For the agent driving a headsign run that notices, on resuming, that its previou
 turn ended **without** being pushed back to `headsign next` — and that it took a
 human saying "continue" to get going again.
 
-This is an open investigation, not documented behaviour. It exists because it
-happened once in this repository, and the mechanism was never confirmed. One
-sighting is an anecdote; the point of this file is that the second one arrives
-with enough evidence to close the question.
+The file exists because this happened once here with no explanation. The second
+sighting, captured by following it, **was** explained: the session's cwd had
+left the repository, which the hooks are bounded by. That cause is reproduced and
+now has its own row below.
+
+What is still open is the first sighting's own hypothesis — that an interrupted
+turn is not a stop-boundary event at all — which no evidence has yet confirmed or
+ruled out. So keep working through this: it closed one question by being followed
+exactly, and the table now separates four answerable causes from the one that is
+not.
 
 Hand this to the agent, or work through it yourself. Everything here is
 read-only.
@@ -76,12 +82,23 @@ reason="let's start over"` line. Paste the slice, or its last dozen lines.
 What is being read out of it: whether a `held` line sits at the turn that ended,
 and what the line before any `unheld` is.
 
-### 4. The wall-clock time the turn ended
+### 4. Where the session was standing when the turn ended
+
+`pwd`, and — more to the point — whether the session had `cd`'d anywhere during
+that turn and not come back. A turn that ends while the session sits in *another
+git repository* is passed in complete silence: the hook's walk up stops at the
+first enclosing `.git`, finds no run there, and writes nothing. Running `git`
+commands against another checkout is the ordinary way this happens.
+
+This is the first thing to rule out, because it explains the whole symptom on its
+own and leaves exactly the evidence a broken installation leaves.
+
+### 5. The wall-clock time the turn ended
 
 Approximate is fine. It is compared against the timestamps above, and minutes are
 enough resolution.
 
-### 5. Two facts only the human or the transcript has
+### 6. Two facts only the human or the transcript has
 
 - **Was the turn interrupted?** Did the person press Esc, or did the turn end on
   its own? The transcript records an interruption explicitly; look, and ask if it
@@ -90,7 +107,7 @@ enough resolution.
   so a turn that was nudged and then continued is a different situation from one
   never held at all. Quote the nudge if there was one.
 
-### 6. Whether the hook fires at all in this session
+### 7. Whether the hook fires at all in this session
 
 The cheapest evidence: **did a nudge arrive during this run, at any point?** One
 nudge anywhere proves the hook is installed and firing, which removes the largest
@@ -99,18 +116,21 @@ somewhere quite different.
 
 ## Reading what you captured
 
-Since 0.5.0 every nudge writes a `held` line, which makes this much sharper than
-it used to be: **if the hook ran and decided to hold your turn, the log says so.**
+In any build that logs `held` — check with `headsign version` against the
+changelog if unsure — every nudge leaves a line, which makes this much sharper
+than it used to be: **if the hook ran and decided to hold your turn, the log says
+so.**
 
 | what you have | what it means |
 | --- | --- |
 | an `observer:` line in `status` | Answered. This environment opted out; turn ends here are never held. |
-| `version` says `unknown command`, or reports below 0.5.0 | The lines below may not exist in that build. Establish this before reading anything else. |
+| `version` says `unknown command`, or predates the `held` line | The lines below may not exist in that build. Establish this before reading anything else. |
 | a `held` line at the turn that ended | The hook ran and **did** hold you. If you did not see the nudge, the question is about your harness surfacing it, not about headsign. |
 | an `unheld` line at that turn | The hook ran and was overruled by the platform. Expected, not a fault. Read the line before it: a `held` means you were nudged first; a transition means a `next` had already run. |
 | `last stop:` stamped clearly **earlier** than the turn that ended, or absent, **and** no line in the log for it | The hook wrote nothing for that turn end. The next three rows separate why. |
 | a transition line timestamped inside the window when the turn ended | Another `headsign next` was probably mid-lap and holding the run's lock, so the hook could not write and let the turn end. Ordinary. |
 | the run is claimed by an agent that is not you | You are a bystander to the backstop by design — a session, or a different agent. Nothing holds your turns until you take the seat. |
+| the session was in another git repository when the turn ended | Answered, and this is the one to check first. The walk up stops at the first enclosing `.git`, so the hook found no run and wrote nothing. Indistinguishable from an uninstalled backstop, and it needs only one `cd` that was never undone. |
 | none of the above, and the turn was **interrupted** | The leading hypothesis: an interrupted turn is not a stop-boundary event, so the hook was never invoked. This is the case that needs a second sighting. |
 | none of the above, the turn ended **on its own**, and nudges do arrive elsewhere in this run | Not explained by anything known. **This is the most valuable sighting of all — report it.** |
 
@@ -129,6 +149,11 @@ it used to be: **if the hook ran and decided to hold your turn, the log says so.
   "The loop guard" is headsign's name for the cap; the platform's is the
   already-continuing flag. The log tells them apart: `stalled` for the cap,
   `unheld` for the flag.
+- **The hooks are bounded by the enclosing repository.** Drift inside it is
+  harmless; drift out of it — into a sibling clone, a docs repo, anywhere a `cd`
+  left the session — is silent. This was the cause of the first sighting this
+  file was written for, confirmed by reproduction: a turn ending in another
+  checkout produces no line, no `last stop:`, and exit 0.
 - **A run claimed by an agent that has gone leaves its successor unheld.**
   headsign cannot detect a dead driver, so the seat stays filled. If you took
   over a run and are not the recorded driver, that alone explains the silence —
@@ -136,7 +161,7 @@ it used to be: **if the hook ran and decided to hold your turn, the log says so.
 
 ## Where to send it
 
-Into a headsign issue, with sections 1–6 pasted as captured rather than
+Into a headsign issue, with sections 1–7 pasted as captured rather than
 summarised. Include your own reading of the table too, but **keep it visibly
 separate from the evidence**: the previous sighting was diagnosed partly from a
 hypothesis nobody had checked, and keeping what was seen apart from what was

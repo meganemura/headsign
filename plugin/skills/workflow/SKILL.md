@@ -160,9 +160,14 @@ plugin or `npm install` the package. Do not guess at other paths.
   worktree is therefore its own independent run: its state lives in that
   worktree's `.headsign/`, and a run in another worktree of the same
   repository neither shares it nor sees it. The stop-boundary hooks are the
-  exception: they find the run from any subdirectory up to the
-  repo/worktree root, so they still fire even if the session's cwd has
-  drifted.
+  exception, but a bounded one: they find the run from any subdirectory of it,
+  so drift *inside* the repository is harmless. Drift *out* of it is not. The
+  walk up stops at the first enclosing `.git`, so if a turn happens to end
+  while the session sits in another checkout — a sibling clone, a docs repo,
+  anywhere you `cd`'d to and did not come back from — the hook finds no run,
+  writes nothing anywhere, and lets the turn end. Nothing distinguishes that
+  from a backstop that is not installed. If a turn ends unheld and you cannot
+  say why, check where the session was standing.
 - Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
   Read the text, don't treat non-zero as a tool failure. PENDING = the gate
   can't be evaluated yet — not a failure. Produce the artifact it's waiting
