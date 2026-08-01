@@ -203,7 +203,13 @@ plugin or `npm install` the package. Do not guess at other paths.
   a variable writes it into its own `run:` string, e.g. `run: "FOO=bar npm
   test"` — there is no `env:` field), and "end the run here" on failure
   (`on_fail` goes as far as `escalate`, which stops and asks a person, and
-  exhausting `max_attempts` always escalates too).
+  exhausting `max_attempts` always escalates too). On macOS, `/bin/sh`
+  (bash 3.2) can mangle a `run:` string where a variable is immediately
+  followed by a non-ASCII character — not just Japanese text, any
+  non-ASCII (accents, arrows, emoji) — by eating that character's leading
+  byte and passing a corrupted string on. Brace the variable (`${var}`,
+  not `$var`) whenever non-ASCII text directly follows it; text earlier
+  in the string is unaffected, and so are `zsh`, `dash`, and `LC_ALL=C`.
 - **The schema is closed: a key it doesn't define is an error.** `validate`
   rejects any unknown key at any level and prints what that level allows —
   `phase 'implement': unknown key 'max_atempts' (allowed: description,

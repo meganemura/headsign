@@ -571,7 +571,24 @@ at a prompt. Deliberately absent: `needs:`, `${{ }}`, matrices, triggers,
 and a per-phase `env:`. A route's `when:` is not `if:` in disguise either —
 it is a shell command judged by its exit code, not an expression to
 evaluate — so every routing decision is still an exit code choosing among
-destinations you wrote down.
+destinations you wrote down. That inherited environment has a trap on
+macOS: `/bin/sh` there is bash 3.2, and in that shell a `run:` string
+where a variable is immediately followed by a non-ASCII character
+(`"$now→"`, not `"$now foo"`) doesn't just expand the variable to nothing
+— it also eats the leading byte of the character right after it, so a
+corrupted string reaches the rest of the command. This isn't a
+Japanese-text or full-width-punctuation problem: any non-ASCII character
+right after an unbraced variable can trigger it, including accented
+letters, arrows, and emoji, and only that one character is at risk —
+non-ASCII text elsewhere in the string, including right before the
+variable, expands fine. It's shell- and locale-specific too: `zsh` and
+`dash` expand the same input correctly, and `LC_ALL=C` sidesteps it, so
+whichever `LANG` you're running headsign under is what matters, since
+checks inherit it along with the rest of your environment. Bracing the
+variable (`${now}`) avoids it in every case tested; headsign doesn't
+force a locale to paper over it, since that would change how every
+check's shell commands handle multi-byte output, not just the one that
+hits this.
 
 Neither a gate nor a budget can end a run as `ABORT`: a failure route can
 say `escalate` (stop and ask a person) but never "stop", and exhausting
