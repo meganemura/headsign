@@ -761,7 +761,7 @@ test("Stop: a flagged stop on an unclaimed run records an unheld stop — the fi
   assert.deepEqual(decision, { block: false });
 
   const after = state.readState(dir);
-  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW });
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW, cause: "stop_hook_active" });
   assert.equal(after?.stop_nudges, 2, "the already-continuing flag never touches headsign's own nudge counter");
 
   const lines = readLog(dir);
@@ -882,7 +882,7 @@ test("SubagentStop: a flagged stop with an armed claim marker passes through, le
   const after = state.readState(claimed);
   assert.equal(after?.driver_agent, "agent-alpha", "no driver was seated by this stop");
   assert.equal(after?.stop_nudges, 0);
-  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW });
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW, cause: "stop_hook_active" });
   assert.deepEqual(readLog(claimed), [`${NOW} unheld build a=0 i=0 by=stop_hook_active`]);
 });
 
@@ -915,8 +915,133 @@ test("SubagentStop: a flagged stop reaches the record through the same walk-up a
 
   const decision = stophook.evaluateSubagent("anything", subagentStdin({ dir: deepSubdir, agentId: "agent-alpha", stopHookActive: true }), NOW, NO_ENV);
   assert.deepEqual(decision, { block: false });
-  assert.deepEqual(state.readState(root)?.last_stop, { disposition: "unheld", at: NOW });
+  assert.deepEqual(state.readState(root)?.last_stop, { disposition: "unheld", at: NOW, cause: "stop_hook_active" });
   assert.deepEqual(readLog(root), [`${NOW} unheld build a=0 i=0 by=stop_hook_active`]);
+});
+
+// --- the second starting point: CLAUDE_PROJECT_DIR (ADR-0026) ---
+//
+// A quiet stop used to be indistinguishable from a hook that never ran at all: a session whose
+// working directory moved outside its run's tree found nothing on the walk-up and returned
+// having written nothing. The fallback below is consulted ONLY on that branch — never before
+// it — and even then it never blocks: it runs the same free checks the ordinary path does (the
+// record is running, the stop could belong to it), then writes one `unheld` line naming
+// `CLAUDE_PROJECT_DIR` as the cause and returns.
+
+test("fallback: the cwd walk finding a run means CLAUDE_PROJECT_DIR is never consulted, even when it names a different, claimed run", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build", driver_agent: null, stop_nudges: 0 }));
+
+  const elsewhere = tmpdir();
+  state.writeState(elsewhere, runningState({ workflow: "other", phase: "review", driver_agent: "agent-alpha" }));
+  const elsewhereBefore = fs.readFileSync(state.statePath(elsewhere));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, { CLAUDE_PROJECT_DIR: elsewhere });
+  assert.equal(decision.block, true, "the run the cwd walk found is nudged exactly as it would be without CLAUDE_PROJECT_DIR set");
+  assert.equal(state.readState(dir)?.stop_nudges, 1);
+
+  assert.deepEqual(fs.readFileSync(state.statePath(elsewhere)), elsewhereBefore, "the CLAUDE_PROJECT_DIR run must be untouched — the fallback was never reached");
+  assert.deepEqual(readLog(elsewhere), []);
+});
+
+test("fallback (Stop): the cwd walk finds nothing but CLAUDE_PROJECT_DIR names an unclaimed running run — writes unheld with by=CLAUDE_PROJECT_DIR, never blocks", () => {
+  const startDir = tmpdir(); // no .git, no state of its own — the walk finds nothing
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ workflow: "demo", phase: "build", driver_agent: null, stop_nudges: 3 }));
+
+  const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+  assert.deepEqual(decision, { block: false }, "the fallback never blocks");
+
+  const after = state.readState(projectDir);
+  assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW, cause: "CLAUDE_PROJECT_DIR" });
+  assert.equal(after?.stop_nudges, 3, "the fallback never touches the nudge counter, same as the flagged branch");
+  assert.deepEqual(readLog(projectDir), [`${NOW} unheld build a=0 i=0 by=CLAUDE_PROJECT_DIR`]);
+});
+
+test("fallback (Stop): CLAUDE_PROJECT_DIR names a place with no run, is empty, or is unset — nothing is written, same as today", () => {
+  const startDir = tmpdir();
+
+  const unset = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, NO_ENV);
+  assert.deepEqual(unset, { block: false });
+  assert.equal(fs.existsSync(state.statePath(startDir)), false);
+
+  const noRunHere = tmpdir();
+  const pointingNowhere = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, { CLAUDE_PROJECT_DIR: noRunHere });
+  assert.deepEqual(pointingNowhere, { block: false });
+  assert.equal(fs.existsSync(state.statePath(noRunHere)), false, "the fallback must not conjure a run where there is none");
+
+  const emptyValue = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, { CLAUDE_PROJECT_DIR: "" });
+  assert.deepEqual(emptyValue, { block: false }, "an empty value is treated the same as unset");
+});
+
+test("fallback (Stop): a claimed run at CLAUDE_PROJECT_DIR is a certain bystander — nothing is written, the same rule the ordinary path applies", () => {
+  const startDir = tmpdir();
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ driver_agent: "agent-alpha", stop_nudges: 1 }));
+  const before = fs.readFileSync(state.statePath(projectDir));
+
+  const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+  assert.deepEqual(decision, { block: false });
+  assert.deepEqual(fs.readFileSync(state.statePath(projectDir)), before, "a claimed run's Stop can never be its driver's — the fallback must not overwrite last_stop");
+  assert.deepEqual(readLog(projectDir), []);
+});
+
+test("fallback (Stop): a non-running run at CLAUDE_PROJECT_DIR writes nothing", () => {
+  for (const status of ["complete", "escalated", "aborted"] as const) {
+    const startDir = tmpdir();
+    const projectDir = tmpdir();
+    state.writeState(projectDir, runningState({ status, end_reason: status === "complete" ? null : "some reason" }));
+    const before = fs.readFileSync(state.statePath(projectDir));
+
+    const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+    assert.deepEqual(decision, { block: false }, status);
+    assert.deepEqual(fs.readFileSync(state.statePath(projectDir)), before, status);
+    assert.deepEqual(readLog(projectDir), [], status);
+  }
+});
+
+test("fallback (SubagentStop): only a positive driver match is attributed, the same rule the owner check uses", () => {
+  for (const [label, driver, agentId, shouldWrite] of [
+    ["the recorded driver's own stop", "agent-alpha", "agent-alpha", true],
+    ["a bystander agent", "agent-alpha", "agent-beta", false],
+    ["an unnameable agent", "agent-alpha", undefined, false],
+    ["an unclaimed run", null, "agent-alpha", false],
+  ] as const) {
+    const startDir = tmpdir();
+    const projectDir = tmpdir();
+    state.writeState(projectDir, runningState({ workflow: "demo", phase: "build", driver_agent: driver }));
+
+    const decision = stophook.evaluateSubagent(startDir, subagentStdin({ dir: startDir, agentId }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+    assert.deepEqual(decision, { block: false }, label);
+    const after = state.readState(projectDir);
+    if (shouldWrite) {
+      assert.deepEqual(after?.last_stop, { disposition: "unheld", at: NOW, cause: "CLAUDE_PROJECT_DIR" }, label);
+      assert.deepEqual(readLog(projectDir), [`${NOW} unheld build a=0 i=0 by=CLAUDE_PROJECT_DIR`], label);
+    } else {
+      assert.equal(after?.last_stop, null, label);
+      assert.deepEqual(readLog(projectDir), [], label);
+    }
+  }
+});
+
+test("fallback: HEADSIGN_OBSERVER short-circuits before the fallback is ever reached", () => {
+  const startDir = tmpdir();
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ driver_agent: null }));
+
+  const decision = stophook.evaluate(startDir, JSON.stringify({ cwd: startDir }), NOW, { CLAUDE_PROJECT_DIR: projectDir, HEADSIGN_OBSERVER: "1" });
+  assert.deepEqual(decision, { block: false });
+  assert.equal(state.readState(projectDir)?.last_stop, null, "an opted-out caller must never write into any run, including one reached via CLAUDE_PROJECT_DIR");
+});
+
+test("fallback: garbage stdin fails open before the fallback is reached, exactly like the ordinary path", () => {
+  const startDir = tmpdir();
+  const projectDir = tmpdir();
+  state.writeState(projectDir, runningState({ driver_agent: null }));
+
+  const decision = stophook.evaluate(startDir, "not json{{{", NOW, { CLAUDE_PROJECT_DIR: projectDir });
+  assert.deepEqual(decision, { block: false });
+  assert.equal(state.readState(projectDir)?.last_stop, null);
 });
 
 // --- last_stop at every disposition headsign can attribute ---

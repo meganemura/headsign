@@ -7837,7 +7837,7 @@ ${o.lastFailure.outputTail}
   const acceptedLine = accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run
 ` : "";
   const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next` to accept\n" : "";
-  const lastStopLine = o.lastStop ? `last stop: ${LAST_STOP_WORDING[o.lastStop.disposition]} \u2014 at ${o.lastStop.at}
+  const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} \u2014 at ${o.lastStop.at}
 ` : "";
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
   return `RUNNING ${o.phase} (attempt ${n})
@@ -7847,10 +7847,21 @@ ${lastStopLine}${acceptedLine}${reportedLine}${observerLine}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
-  unheld: "not held \u2014 Claude Code had already resumed the turn (stop_hook_active)",
   paused: "paused by a note",
   stalled: "not held \u2014 the nudge cap is spent"
 };
+var UNHELD_WORDING = {
+  stop_hook_active: "not held \u2014 Claude Code had already resumed the turn (stop_hook_active)",
+  // Names where the session was, not how headsign compensated, for the reason above — and it
+  // is the sentence's most useful half: a reader who cannot explain a quiet turn end is being
+  // told the one fact that explains it. The token goes in the parentheses like its sibling's
+  // rather than inside the prose, which read as a stutter with the name in both halves.
+  CLAUDE_PROJECT_DIR: "not held \u2014 the session was not standing in the run's tree (CLAUDE_PROJECT_DIR)"
+};
+function lastStopWording(o) {
+  if (o.disposition === "unheld") return UNHELD_WORDING[o.cause ?? "stop_hook_active"];
+  return LAST_STOP_WORDING[o.disposition];
+}
 function statusTerminal(status2, workflowName, endReason) {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}
 ` : "";
@@ -7927,7 +7938,7 @@ function logDetail(event, prevPhase) {
     case "STALLED":
       return "nudges=5";
     case "UNHELD":
-      return "by=stop_hook_active";
+      return `by=${event.cause}`;
     case "CLAIMED":
       return "";
     case "COMPLETE":
@@ -7951,11 +7962,11 @@ function recordedDriver(state) {
 function resolveAgentId(raw) {
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
-function withLastStop(fresh, disposition, nowIso) {
-  return { ...fresh, last_stop: { disposition, at: nowIso } };
+function withLastStop(fresh, disposition, nowIso, cause) {
+  return { ...fresh, last_stop: cause !== void 0 ? { disposition, at: nowIso, cause } : { disposition, at: nowIso } };
 }
-function recordUnheld(runDir, nowIso) {
-  withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso), log: stamped(nowIso, { kind: "UNHELD" }) }));
+function recordUnheld(runDir, nowIso, cause) {
+  withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso, cause), log: stamped(nowIso, { kind: "UNHELD", cause }) }));
   return { block: false };
 }
 function findRunDir(startDir) {
@@ -7967,6 +7978,16 @@ function findRunDir(startDir) {
     if (parent === dir) return null;
     dir = parent;
   }
+}
+function fallbackUnheld(env, nowIso, shouldAttribute) {
+  const claudeProjectDir = env["CLAUDE_PROJECT_DIR"];
+  if (typeof claudeProjectDir !== "string" || claudeProjectDir.length === 0) return { block: false };
+  const runDir = findRunDir(claudeProjectDir);
+  if (!runDir) return { block: false };
+  const state = readState(runDir);
+  if (!state || state.status !== "running") return { block: false };
+  if (!shouldAttribute(state)) return { block: false };
+  return recordUnheld(runDir, nowIso, "CLAUDE_PROJECT_DIR");
 }
 function pauseAndAbortHint(runDir, startDir) {
   const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
@@ -8025,12 +8046,14 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const input = JSON.parse(stdinRaw);
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
     const runDir = findRunDir(startDir);
-    if (!runDir) return { block: false };
+    if (!runDir) {
+      return fallbackUnheld(env, nowIso, (fallbackState) => recordedDriver(fallbackState) === null);
+    }
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
     if (recordedDriver(state) !== null) return { block: false };
-    if (input.stop_hook_active) return recordUnheld(runDir, nowIso);
+    if (input.stop_hook_active) return recordUnheld(runDir, nowIso, "stop_hook_active");
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
     return { block: false };
@@ -8042,13 +8065,19 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     const input = JSON.parse(stdinRaw);
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
     const runDir = findRunDir(startDir);
-    if (!runDir) return { block: false };
+    if (!runDir) {
+      const fallbackAgentId = resolveAgentId(input.agent_id);
+      return fallbackUnheld(env, nowIso, (fallbackState) => {
+        const driver2 = recordedDriver(fallbackState);
+        return driver2 !== null && fallbackAgentId !== null && driver2 === fallbackAgentId;
+      });
+    }
     const state = readState(runDir);
     if (!state) return { block: false };
     if (state.status !== "running") return { block: false };
     if (input.stop_hook_active) {
       const flaggedAgentId = resolveAgentId(input.agent_id);
-      if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso);
+      if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso, "stop_hook_active");
       return { block: false };
     }
     const agentId = resolveAgentId(input.agent_id);
@@ -8095,13 +8124,19 @@ function acceptedGraphChanges(state) {
   return typeof recorded === "number" && Number.isFinite(recorded) ? recorded : 0;
 }
 var STOP_DISPOSITIONS = ["nudged", "unheld", "paused", "stalled"];
+var UNHELD_CAUSES = ["stop_hook_active", "CLAUDE_PROJECT_DIR"];
 function recordedLastStop(state) {
   const recorded = state.last_stop;
   if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
-  const { disposition, at } = recorded;
+  const { disposition, at, cause } = recorded;
   if (typeof at !== "string" || at.length === 0) return null;
   if (!STOP_DISPOSITIONS.includes(disposition)) return null;
-  return { disposition, at };
+  const known = disposition === "unheld" && UNHELD_CAUSES.includes(cause);
+  return {
+    disposition,
+    at,
+    ...known ? { cause } : {}
+  };
 }
 function graphChangeNote(state) {
   const accepted = acceptedGraphChanges(state);

@@ -12,6 +12,13 @@
 // hooks fire wherever a turn happened to end, so they walk UP from the directory they are
 // given to find a run, stopping at the enclosing repo or worktree root (ADR-0006). Every
 // other module works only in the directory it is handed.
+// A second starting point (ADR-0026) is tried ONLY when that walk finds nothing: Claude Code's
+// `CLAUDE_PROJECT_DIR`, read from the same env argument HEADSIGN_OBSERVER already comes from.
+// It never changes a case that has an answer today — the walk still runs first, unchanged — and
+// on a hit it never blocks: it runs the same free checks the ordinary path does (the record is
+// running, the stop could belong to it), then writes one `unheld` line with `cause:
+// "CLAUDE_PROJECT_DIR"` and returns. See fallbackUnheld below for the one thing that differs
+// between the two hooks on this path.
 // It WRITES, which "allow/block" does not suggest and a caller should not have to discover:
 // a stop that is let through because a pause note was found consumes that note, resets the
 // nudge counter and logs `paused`; a stop that is blocked increments the counter and logs
@@ -48,7 +55,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readState, writeState, statePath, appendLog, acquireLock, releaseLock } from "./state.ts";
-import type { State } from "./state.ts";
+import type { State, UnheldCause } from "./state.ts";
 import { logLine } from "./render.ts";
 import type { LogEvent } from "./render.ts";
 
@@ -105,18 +112,23 @@ type StopDisposition = NonNullable<State["last_stop"]>["disposition"];
 
 // The record half of "what happened at the last stop". Always applied to the record read INSIDE
 // the lock, and returned for the same write that appends the line, so the field and the log can
-// never disagree about one event.
-function withLastStop(fresh: State, disposition: StopDisposition, nowIso: string): State {
-  return { ...fresh, last_stop: { disposition, at: nowIso } };
+// never disagree about one event. `cause` is passed only by the two `unheld` writers below —
+// every other disposition has nothing upstream to name (state.ts's `last_stop` doc) — and its
+// absence must produce an object with no `cause` key at all, not one holding `undefined`: a
+// caller that compares the written record against a literal without the key (every existing
+// last_stop assertion outside `unheld`) would otherwise see two different shapes.
+function withLastStop(fresh: State, disposition: StopDisposition, nowIso: string, cause?: UnheldCause): State {
+  return { ...fresh, last_stop: cause !== undefined ? { disposition, at: nowIso, cause } : { disposition, at: nowIso } };
 }
 
-// The whole body of both hooks' flagged branches: stamp the record, write the line, let the turn
-// end. It reads nothing else and consumes nothing — no pause note, no claim marker — which is
-// guarantee 2 of the two at the top of this file. Fail-open is unchanged from every other write
-// here: a lock that cannot be had means somebody is judging the run right now, so nothing is
-// written and the turn still ends. A missing line therefore never proves the hook did not run.
-function recordUnheld(runDir: string, nowIso: string): HookDecision {
-  withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso), log: stamped(nowIso, { kind: "UNHELD" }) }));
+// The whole body of both hooks' `unheld` writers — the flagged branches AND the CLAUDE_PROJECT_DIR
+// fallback (ADR-0026) — stamp the record, write the line, let the turn end. It reads nothing
+// else and consumes nothing — no pause note, no claim marker — which is guarantee 2 of the two
+// at the top of this file. Fail-open is unchanged from every other write here: a lock that
+// cannot be had means somebody is judging the run right now, so nothing is written and the turn
+// still ends. A missing line therefore never proves the hook did not run.
+function recordUnheld(runDir: string, nowIso: string, cause: UnheldCause): HookDecision {
+  withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso, cause), log: stamped(nowIso, { kind: "UNHELD", cause }) }));
   return { block: false };
 }
 
@@ -135,6 +147,32 @@ function findRunDir(startDir: string): string | null {
     if (parent === dir) return null; // filesystem root
     dir = parent;
   }
+}
+
+// The second starting point (ADR-0026): reached only from the branch that today returns having
+// found no run, so it can only turn silence into a line — it never changes a case that already
+// has an answer. Reuses findRunDir rather than a bare statePath check so a project root without
+// its own `.headsign/` still walks no further than the ordinary bound (the first `.git` it
+// meets, which a documented project root has); the two candidate directories differ, the rule
+// for turning a directory into a run does not.
+//
+// `shouldAttribute` is the one thing that differs between the two hooks, and mirrors the test
+// each already runs on the ordinary path below: Stop's recorded-driver test (a claimed run's
+// Stop can never be its driver's), SubagentStop's driver match (only a positive match may be
+// attributed, since most subagent stops belong to reviewers, searchers and workers with no
+// headsign role at all). Everything else is identical and deliberately minimal: read the
+// record, confirm it is running, and either write the line or write nothing — never open the
+// pause note, never touch the claim marker, never increment stop_nudges, and never read
+// `stop_hook_active` (guarantee 2 holds by construction on a path that can never block).
+function fallbackUnheld(env: NodeJS.ProcessEnv, nowIso: string, shouldAttribute: (state: State) => boolean): HookDecision {
+  const claudeProjectDir = env["CLAUDE_PROJECT_DIR"];
+  if (typeof claudeProjectDir !== "string" || claudeProjectDir.length === 0) return { block: false };
+  const runDir = findRunDir(claudeProjectDir);
+  if (!runDir) return { block: false };
+  const state = readState(runDir);
+  if (!state || state.status !== "running") return { block: false };
+  if (!shouldAttribute(state)) return { block: false };
+  return recordUnheld(runDir, nowIso, "CLAUDE_PROJECT_DIR");
 }
 
 // Both exits (pause via note, or end for good via abort) are named on every block, not only
@@ -287,7 +325,13 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // callers/tests that don't set it.
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
     const runDir = findRunDir(startDir);
-    if (!runDir) return { block: false }; // no headsign run reachable from here — near-no-op
+    if (!runDir) {
+      // The walk from the session's own directory found nothing: try CLAUDE_PROJECT_DIR
+      // (ADR-0026) before giving up. `shouldAttribute` matches the recorded-driver test a few
+      // lines below — a claimed run's Stop can never be its driver's, so a fallback stop on one
+      // is a certain bystander and must not overwrite that run's `last_stop`.
+      return fallbackUnheld(env, nowIso, (fallbackState) => recordedDriver(fallbackState) === null);
+    }
 
     const state = readState(runDir);
     if (!state) return { block: false }; // race: vanished between findRunDir and here
@@ -319,7 +363,7 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // buys is a line that can name the phase and belong to the right party: from here headsign
     // knows the phase, and knows the run is unclaimed because a claimed run returned one step
     // earlier — so the stopper is the very party this hook would otherwise have nudged.
-    if (input.stop_hook_active) return recordUnheld(runDir, nowIso);
+    if (input.stop_hook_active) return recordUnheld(runDir, nowIso, "stop_hook_active");
 
     return noteGateThenNudge(runDir, startDir, state, nowIso);
   } catch {
@@ -343,7 +387,17 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
 
     const startDir = typeof input.cwd === "string" && input.cwd.length > 0 ? input.cwd : cwd;
     const runDir = findRunDir(startDir);
-    if (!runDir) return { block: false }; // no headsign run reachable from here — near-no-op
+    if (!runDir) {
+      // The walk from the session's own directory found nothing: try CLAUDE_PROJECT_DIR
+      // (ADR-0026) before giving up. `shouldAttribute` matches the owner check further down —
+      // only a positive match against the recorded driver may be attributed, since most
+      // subagent stops belong to reviewers, searchers and workers with no headsign role at all.
+      const fallbackAgentId = resolveAgentId(input.agent_id);
+      return fallbackUnheld(env, nowIso, (fallbackState) => {
+        const driver = recordedDriver(fallbackState);
+        return driver !== null && fallbackAgentId !== null && driver === fallbackAgentId;
+      });
+    }
 
     const state = readState(runDir);
     if (!state) return { block: false }; // race: vanished between findRunDir and here
@@ -370,7 +424,7 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     // undecidable, not unimportant.
     if (input.stop_hook_active) {
       const flaggedAgentId = resolveAgentId(input.agent_id);
-      if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso);
+      if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso, "stop_hook_active");
       return { block: false };
     }
 
