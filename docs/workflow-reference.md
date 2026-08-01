@@ -902,9 +902,16 @@ claim` is for (below).
 What this deliberately does *not* do is tell two **sessions** apart. A run
 belongs to the directory it lives in — one worktree, one run — so a second
 session watching that same directory is nudged like any other while the run
-is unclaimed. `HEADSIGN_OBSERVER` (below) is how such a session opts out,
-and it is the only manual control headsign offers here. Every session that
-isn't driving — teammates, a subagent that wasn't delegated the run, or any
+is unclaimed. That includes a session no person opened: a program that
+starts Claude Code as a subprocess, for any reason, ends up with a session
+sitting in the run's directory, and it is nudged the same way. The
+subprocess doesn't know the nudge isn't meant for it, so it tries to
+answer — and what comes back to whatever called it is prose about headsign
+instead of the output it was started to produce. That turn end still spends
+one from the run's nudge cap, the same as any other blocked stop.
+`HEADSIGN_OBSERVER` (below) is how such a session opts out, and it is the
+only manual control headsign offers here. Every session that isn't
+driving — teammates, a subagent that wasn't delegated the run, or any
 session that never ran `headsign start` — should reach for `headsign
 status` instead of `next`.
 
@@ -1180,7 +1187,7 @@ race that remains are in
 
 | Variable | Set by | Meaning |
 |---|---|---|
-| `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. |
+| `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. It is equally the answer for a subprocess your own program starts Claude Code as: pass it in that subprocess's environment rather than moving its working directory outside the run, which can cost the subprocess access to files it still needs there. |
 | `CLAUDE_PROJECT_DIR` | Claude Code | Read only by the stop-boundary hooks, and only on the branch that today writes nothing: a second, bounded walk from this project root, tried once the walk from the session's own directory finds no run. A run found there gets one `unheld` line, detail `by=CLAUDE_PROJECT_DIR`, and the turn is never held on this path — see [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it) and [ADR-0026](adr/0026-a-second-place-to-look.md). Not read anywhere else in headsign. |
 
 Headsign reads no session or agent identifier from the environment: neither
