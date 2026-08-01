@@ -78,8 +78,9 @@ plugin or `npm install` the package. Do not guess at other paths.
    another agent was asking for, so say so and let it claim again. The test
    only works in this direction and only for delegated agents: ending
    quietly proves nothing (not having claimed, Claude Code's
-   already-continuing flag, an exhausted nudge cap, a pause note, or
-   `HEADSIGN_OBSERVER` all end turns quietly), and a session gets nudged
+   already-continuing flag, an exhausted nudge cap, a pause note,
+   `HEADSIGN_OBSERVER`, or a directory the walk-up resolved only via
+   `CLAUDE_PROJECT_DIR` all end turns quietly), and a session gets nudged
    on any run nobody has claimed, whether or not it is driving. A nudge
    arrives roughly **once per exchange**, not once per turn end. When the
    hook holds a turn, Claude Code flags the continuation, so the ending of
@@ -161,17 +162,27 @@ plugin or `npm install` the package. Do not guess at other paths.
   worktree's `.headsign/`, and a run in another worktree of the same
   repository neither shares it nor sees it. The stop-boundary hooks are the
   exception, but a bounded one: they find the run from any subdirectory of it,
-  so drift *inside* the repository is harmless. Drift *out* of it is not. The
-  walk up stops at the first enclosing `.git`, so if a turn happens to end
-  while the session sits in another checkout, the hook finds no run, writes
-  nothing anywhere, and lets the turn end. On that turn's own evidence it looks
-  exactly like a backstop that is not installed.
+  so drift *inside* the repository is harmless. Drift *out* of it is narrower
+  than it used to be. The walk up from the session's own directory still stops
+  at the first enclosing `.git`; if that finds no run, the hook tries once
+  more from Claude Code's `CLAUDE_PROJECT_DIR` — the project root, independent
+  of where the session has wandered. Find a run there and the hook writes one
+  line (`unheld`, detail `by=CLAUDE_PROJECT_DIR`) and `headsign status`'s
+  `last stop:` line says so — the turn is never held on this path, only
+  recorded. Find nothing there either — `CLAUDE_PROJECT_DIR` unset, or naming
+  somewhere with no run — and the hook still writes nothing anywhere, exactly
+  as before: on that turn's own evidence it looks like a backstop that is not
+  installed. One case stays exactly as it was, and is worth naming because it
+  is easy to mistake for the one this just fixed: if the checkout the session
+  drifted into has its *own* run, the first walk finds that one and nudges
+  about it — a real nudge, about the wrong run.
   Reaching another checkout takes more than a stray `cd`: Claude Code refuses to
   `cd` outside the session's allowed working directories. So this needs a session
   that has more than one — a second directory added when it started, or added
   later — and it is only a risk if yours does. If a turn ends unheld and you
-  cannot say why, and this session works across more than one directory, check
-  which one it was standing in.
+  cannot say why, check `last stop:` for which of the two it names, and if
+  this session works across more than one directory, check which one it was
+  standing in.
 - Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
   Read the text, don't treat non-zero as a tool failure. PENDING = the gate
   can't be evaluated yet — not a failure. Produce the artifact it's waiting

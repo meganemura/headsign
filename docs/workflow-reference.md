@@ -272,29 +272,57 @@ repo or git-worktree root; each worktree then keeps its own independent run.
 The exceptions are the stop-boundary hooks, which walk up to find the run's
 `.headsign/` (bounded by the worktree root) so the backstop still fires when
 the turn ended in a subdirectory. That walk only goes up, and it stops at the
-first enclosing `.git` — or at the filesystem root if there is none — so every
-way of standing outside it is silent. From a directory *above* the run, a
-monorepo root say, the hook won't find it. Nor will it from *another checkout
-entirely* — a sibling clone, a docs repository — where the walk stops at that
-repository's root, finds no run, and writes nothing at all: no log line, no
-`last stop:`.
+first enclosing `.git` — or at the filesystem root if there is none. From a
+directory *above* the run — a monorepo root, say — the hook won't find it.
+Nor will it from *another checkout entirely* — a sibling clone, a docs
+repository — where the walk stops at that repository's root.
 
-How a session comes to be standing there is narrower than it first looks, and
-worth knowing because it tells you whether this can happen to you at all. The
-`cwd` in the hook's payload does follow a `cd` made during a turn — measured,
-2026-08-01 — but Claude Code refuses a `cd` outside the session's **allowed
-working directories**, naming them in the refusal. So a session confined to one
-directory cannot drift out of it. Reaching another checkout takes a session that
-has more than one: a second directory added at startup or later, which is the
-ordinary arrangement when one session works across a project and, say, a notes
-repository beside it. On that turn's own evidence there is nothing to tell
-it apart from a backstop that was never installed, though `headsign status` in
-the run's own directory still shows the stop before it, and a single nudge
-anywhere in the run proves the hook is wired. Keep the session at the workflow's
-directory or below, and if a turn ended unheld and nothing explains it, ask
-where the session was standing when it ended.
-Why this is documented rather than signalled is in
-[ADR-0006](adr/0006-stop-hook-backstop.md)'s bounded-walk-up section.
+When that first walk finds nothing, the hook tries once more, the same
+bounded way, from Claude Code's `CLAUDE_PROJECT_DIR` — the project root the
+session was given, independent of where its cwd has since wandered. Find a
+run there and the hook writes one line and lets the turn end, unheld but not
+silent: `.headsign/log` gets an `unheld` line marked `by=CLAUDE_PROJECT_DIR`,
+and `headsign status`'s `last stop:` line names the same reason — worded
+differently from what Claude Code's own already-continuing flag produces.
+This closes the ordinary shape of the problem: a session that `cd`'d, or was
+started, outside the run's own git boundary while still inside the project
+Claude Code told it about.
+
+It does not close all of them. `CLAUDE_PROJECT_DIR` names a root, and this
+second walk, like the first, only goes up from it — so a run that is not on
+the path upward from that root stays unreached, and the hook writes nothing
+at all: no log line, no `last stop:`. That covers a run *below* the root (a
+package in a monorepo) and one *beside* it (a linked worktree added outside
+the checkout, `git worktree add ../wt-feature`) alike: neither is upward.
+The same silence covers a session whose own project genuinely has no run to
+find, wherever it is standing. And one shape was never silent to begin with,
+and this change leaves it exactly as it was: if the checkout a session
+drifted into runs its *own* headsign workflow, the first walk finds that run
+and nudges about it — correctly formatted, and about the wrong run.
+`headsign status` cannot tell the two apart for you; only knowing where the
+session actually was standing can.
+
+How a session comes to be standing there at all is narrower than it first
+looks, and worth knowing because it tells you whether this can happen to you.
+The `cwd` in the hook's payload does follow a `cd` made during a turn —
+measured, 2026-08-01 — but Claude Code refuses a `cd` outside the session's
+**allowed working directories**, naming them in the refusal. So a session
+confined to one directory cannot drift out of it. Reaching another checkout
+takes a session that has more than one: a second directory added at startup
+or later, which is the ordinary arrangement when one session works across a
+project and, say, a notes repository beside it. Whether that turn's own
+evidence tells the story on its own now depends on `CLAUDE_PROJECT_DIR`:
+when it reached the run, `last stop:` says so; when it did not, there is
+still nothing to tell it apart from a backstop that was never installed —
+though `headsign status` in the run's own directory still shows the stop
+before it, and a single nudge anywhere in the run proves the hook is wired.
+Keep the session at the workflow's directory or below, and if a turn ended
+unheld and nothing explains it, ask where the session was standing when it
+ended, and check `last stop:` for which of the two the hook is naming.
+Why this is documented rather than signalled, and why the fallback narrows
+this branch rather than closing it, is in
+[ADR-0006](adr/0006-stop-hook-backstop.md)'s bounded-walk-up section and
+[ADR-0026](adr/0026-a-second-place-to-look.md).
 
 ### One worktree, one run
 
@@ -920,7 +948,7 @@ Two further lines can appear while a run is `RUNNING`, both of them in the
 last example above, and both about how turns *end* rather than where the run
 stands. `last stop:` appears once headsign has processed one stop it could
 attribute to this run, and says what it did with that turn end, in one of
-four readings:
+five readings:
 
 - `held, and pointed back to headsign next` — the ordinary nudge, and the same
   stop is a `held` line in `.headsign/log`.
@@ -930,6 +958,14 @@ four readings:
 - `not held — Claude Code had already resumed the turn (stop_hook_active)` —
   headsign was overruled at that turn end, and the same stop is the `unheld`
   line in `.headsign/log`.
+- `not held — the session was not standing in the run's tree
+  (CLAUDE_PROJECT_DIR)` — the session's own directory led the hook
+  to no run at all; the walk from `CLAUDE_PROJECT_DIR` found one instead, and the
+  hook wrote and returned without holding (see
+  [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it)).
+  The same stop is also an `unheld` line in `.headsign/log`, marked
+  `by=CLAUDE_PROJECT_DIR` rather than `by=stop_hook_active` — the two share
+  a disposition and differ only in which upstream fact caused it.
 
 Each is followed by ` — at <timestamp>`, printed exactly as it was recorded,
 offset and all. The wording says what headsign did with the field it was
@@ -970,20 +1006,30 @@ another agent armed for itself. If you get that message without having run
 so, and let them claim again.
 
 The implication runs one way only. Ending quietly does *not* prove the
-reverse: five things end a turn quietly, and what you look at to tell them
-apart differs for each one.
+reverse: six things end a turn quietly, and what you look at to tell them
+apart differs for each one. One of the six is new, and unlike the other
+five it exists only because a second walk (above) found something the
+first one missed.
 
 | a turn ended quietly because | how you tell |
 | --- | --- |
-| Claude Code had already resumed the turn | an `unheld` line in `.headsign/log`; the `last stop:` line in `headsign status` |
+| Claude Code had already resumed the turn | an `unheld` line in `.headsign/log`, detail `by=stop_hook_active`; the `last stop:` line in `headsign status` |
+| the session's own directory led nowhere, but `CLAUDE_PROJECT_DIR` found the run | an `unheld` line in `.headsign/log`, detail `by=CLAUDE_PROJECT_DIR`; the `last stop:` line in `headsign status`, worded differently from the row above |
 | a pause note was consumed | a `paused` line in the log |
 | the nudge cap is spent | a `stalled` line in the log — and no such line means the cap is innocent |
 | nobody has claimed the run, or the stopper is not the driver | `driver:` in `status`, which narrows rather than settles |
 | `HEADSIGN_OBSERVER` is set | the `observer:` line in `status` |
 
+A seventh way is not in the table because there is nothing to look at: the
+session's own directory led nowhere *and* `CLAUDE_PROJECT_DIR` either was
+not set or led nowhere either. That is the one case the backstop still
+cannot see — see
+[Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it),
+above.
+
 Three caveats go with that table, and each one is load-bearing.
 
-**`driver:` narrows the fourth row rather than settling it.** It reports
+**`driver:` narrows the fifth row rather than settling it.** It reports
 whether *some* delegated agent holds the run, never whether the reader is
 that agent (above). Reading the log instead does not rescue it: the log
 spans runs, so a `claimed` line may belong to a run that ended days ago.
@@ -992,9 +1038,13 @@ spans runs, so a `claimed` line may belong to a run that ended days ago.
 best-effort and skipped while the run's lock is held, so the absence of a
 line does not prove the hook did not run.
 
-**An `unheld` line says that *some* stop hook held the turn** and that
-headsign then stood down — not that headsign was the hook that held it. A
-repository may install more than one.
+**An `unheld` line marked `by=stop_hook_active` says that *some* stop hook
+held the turn** and that headsign then stood down — not that headsign was
+the hook that held it. A repository may install more than one. **One marked
+`by=CLAUDE_PROJECT_DIR` says something different: no stop hook held this
+turn at all** — the session's own directory led the hook to no run, and it
+found the run from `CLAUDE_PROJECT_DIR` instead. Reading the mark, not only
+the disposition, is what tells the two apart.
 
 And a probe is not free. An ordinary nudge back spends one off that cap; a
 probe that passes while your own pause note is armed consumes the note
@@ -1114,9 +1164,10 @@ race that remains are in
 | Variable | Set by | Meaning |
 |---|---|---|
 | `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. |
+| `CLAUDE_PROJECT_DIR` | Claude Code | Read only by the stop-boundary hooks, and only on the branch that today writes nothing: a second, bounded walk from this project root, tried once the walk from the session's own directory finds no run. A run found there gets one `unheld` line, detail `by=CLAUDE_PROJECT_DIR`, and the turn is never held on this path — see [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it) and [ADR-0026](adr/0026-a-second-place-to-look.md). Not read anywhere else in headsign. |
 
-That is the whole list: headsign reads no session or agent identifier from
-the environment, because nothing there can name a delegated agent — see
+Headsign reads no session or agent identifier from the environment: neither
+variable above names one, and nothing there could — see
 [ADR-0013](adr/0013-claim-only-driver-identity.md), which retired the
 two variables that used to appear here.
 

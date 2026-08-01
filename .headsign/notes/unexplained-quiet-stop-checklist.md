@@ -60,12 +60,16 @@ Paste the whole output. Two lines matter.
 last stop: held, and pointed back to headsign next — at <t>
 last stop: not held — Claude Code had already resumed the turn
 (stop_hook_active) — at <t>
+last stop: not held — the session was not standing in the run's tree
+(CLAUDE_PROJECT_DIR) — at <t>
 last stop: paused by a note — at <t>
 last stop: not held — the nudge cap is spent — at <t>
 ```
 
 If there is no `last stop:` line at all, say so — that is a finding, not a
-missing detail.
+missing detail. The two `not held` lines look similar and mean different
+things — capture the parenthetical verbatim, `(stop_hook_active)` or
+`(CLAUDE_PROJECT_DIR)`; this checklist tells them apart below.
 
 `observer:` — if that line is present, `HEADSIGN_OBSERVER` is set in this
 environment and **the whole question is answered**: turn ends from here are never
@@ -92,14 +96,29 @@ here: **does this session work across more than one directory?** Claude Code
 refuses a `cd` outside the session's allowed working directories, so a session
 confined to the run's tree cannot drift out of it. One that has a second
 directory — added at startup or later — can, and that is the arrangement to look
-for. A session *started* outside the tree is silenced the same way. A turn that
-ends while the session sits in *another
-git repository* is passed in complete silence: the hook's walk up stops at the
-first enclosing `.git`, finds no run there, and writes nothing. Running `git`
-commands against another checkout is the ordinary way this happens.
+for. A session *started* outside the tree is silenced the same way, unless
+`CLAUDE_PROJECT_DIR` resolves it (next paragraph).
 
-Rule this out first: it explains the whole symptom on its own, and on that one
-turn's evidence it looks exactly like a broken installation.
+A turn that ends while the session sits in *another git repository* is no
+longer always passed in complete silence, since 2026-08-01. The hook's walk
+up from the session's own directory still stops at the first enclosing
+`.git` and, finding no run there, now tries once more from
+`CLAUDE_PROJECT_DIR` — the project root Claude Code gave the session,
+independent of where it has since `cd`'d. A run found that way is not held —
+it is a stop marked `unheld`, detail `by=CLAUDE_PROJECT_DIR`, with its own
+`last stop:` sentence (section 2, above). Two shapes are still fully silent:
+`CLAUDE_PROJECT_DIR` unset, or naming a directory with no run either. A third
+shape is not silent at all and is worth ruling *in*, not out: if the other
+checkout has **its own** run, the first (cwd) walk finds that one before
+`CLAUDE_PROJECT_DIR` is ever tried, and the session gets a real nudge about a
+run it is not driving — see "A session can be nudged about the wrong run",
+below. Running `git` commands against another checkout is the ordinary way
+any of this happens.
+
+Rule this out first: even where it no longer explains full silence, it
+explains a `last stop:` line naming `CLAUDE_PROJECT_DIR`, or a nudge about
+the wrong run, and on one turn's evidence alone the fully-silent shape still
+looks exactly like a broken installation.
 
 ### 5. The wall-clock time the turn ended
 
@@ -134,11 +153,14 @@ so.**
 | an `observer:` line in `status` | Answered. This environment opted out; turn ends here are never held. |
 | `version` says `unknown command`, or predates the `held` line | The lines below may not exist in that build. Establish this before reading anything else. |
 | a `held` line at the turn that ended | The hook ran and **did** hold you. If you did not see the nudge, the question is about your harness surfacing it, not about headsign. |
-| an `unheld` line at that turn | The hook ran and was overruled by the platform. Expected, not a fault. Read the line before it: a `held` means you were nudged first; a transition means a `next` had already run. |
+| an `unheld` line at that turn, detail `by=stop_hook_active` | The hook ran and was overruled by the platform. Expected, not a fault. Read the line before it: a `held` means you were nudged first; a transition means a `next` had already run. |
+| an `unheld` line at that turn, detail `by=CLAUDE_PROJECT_DIR` | Answered, and a different kind of answer from the row above: no stop hook overruled anything. Your session's own directory led the hook to no run; it found one instead from `CLAUDE_PROJECT_DIR`, Claude Code's project root, and wrote this line without ever holding the turn. See section 4. |
 | `last stop:` stamped clearly **earlier** than the turn that ended, or absent, **and** no line in the log for it | The hook wrote nothing for that turn end. The rows below separate why. |
 | a transition line timestamped inside the window when the turn ended | Another `headsign next` was probably mid-lap and holding the run's lock, so the hook could not write and let the turn end. Ordinary. |
 | the run is claimed by an agent that is not you | You are a bystander to the backstop by design — a session, or a different agent. Nothing holds your turns until you take the seat. |
-| the session was in another git repository when the turn ended | Answered, and this is the one to check first — but only reachable if the session has more than one allowed working directory, since Claude Code refuses a `cd` outside them. The walk up stops at the first enclosing `.git`, so the hook found no run and wrote nothing. On that turn's own evidence, indistinguishable from an uninstalled backstop — though step 7, and the stop before it in `status`, do tell them apart. It needs one `cd` that was never undone, or a session that was never inside. |
+| the session was in another git repository when the turn ended, and `last stop:` says `by=CLAUDE_PROJECT_DIR` | Answered — see the `unheld` / `CLAUDE_PROJECT_DIR` row above. Only reachable if the session has more than one allowed working directory, since Claude Code refuses a `cd` outside them. |
+| the session was in another git repository when the turn ended, and there is no such line | Narrower than it used to be, not gone: this needs the walk from `CLAUDE_PROJECT_DIR` to have also found nothing — unset, or naming a place with no run. On that turn's own evidence, indistinguishable from an uninstalled backstop — though step 7, and the stop before it in `status`, do tell them apart. It needs one `cd` that was never undone, or a session that was never inside, *and* `CLAUDE_PROJECT_DIR` not reaching the run either. |
+| a real nudge arrived, but for a workflow or phase that is not the one you expected | Not silence — a different, older, undocumented shape. The checkout the session drifted into has **its own** run, and the cwd walk finds that one before `CLAUDE_PROJECT_DIR` is ever tried. See "A session can be nudged about the wrong run", below. |
 | none of the above, and the turn was **interrupted** | The leading hypothesis: an interrupted turn is not a stop-boundary event, so the hook was never invoked. This is the case that needs a second sighting. |
 | none of the above, the turn ended **on its own**, and nudges do arrive elsewhere in this run | Not explained by anything known. **This is the most valuable sighting of all — report it.** |
 
@@ -149,19 +171,37 @@ so.**
   turn passes quietly and is recorded as `unheld`. The window is one turn wide.
 - A **missing** line proves less than it looks. The hook's writes are best-effort
   and skipped while the run's lock is held.
-- An `unheld` line means *some* stop hook held the turn and headsign then stood
-  down — not necessarily that headsign was the hook that held it.
+- An `unheld` line with detail `by=stop_hook_active` means *some* stop hook held
+  the turn and headsign then stood down — not necessarily that headsign was the
+  hook that held it. An `unheld` line with detail `by=CLAUDE_PROJECT_DIR` means
+  something different: no stop hook held anything; your session's own directory
+  led nowhere, and headsign found the run from `CLAUDE_PROJECT_DIR` instead.
 - `stop_nudges` in the run record is not the place to look. It is never
   incremented by a platform pass, and every real `headsign next` resets it.
 - headsign's own nudge cap and the platform's flag are **different mechanisms**.
   "The loop guard" is headsign's name for the cap; the platform's is the
   already-continuing flag. The log tells them apart: `stalled` for the cap,
   `unheld` for the flag.
-- **The hooks are bounded by the enclosing repository.** Drift inside it is
-  harmless; drift out of it — into a sibling clone, a docs repo, anywhere a `cd`
-  left the session — is silent. This was the cause of the sighting this file
-  captured, confirmed by reproduction: a turn ending in another
-  checkout produces no line, no `last stop:`, and exit 0.
+- **The hooks are bounded by the enclosing repository, with one narrow
+  exception since 2026-08-01.** Drift inside the run's own repository is
+  harmless. Drift out of it — into a sibling clone, a docs repo, anywhere a
+  `cd` left the session — used to be silent unconditionally; now it is silent
+  only if `CLAUDE_PROJECT_DIR` also fails to resolve the run. This was the
+  cause of the sighting this file originally captured, confirmed by
+  reproduction at the time: a turn ending in another checkout produced no
+  line, no `last stop:`, and exit 0. Reproducing that today additionally
+  needs `CLAUDE_PROJECT_DIR` to be unset or to name somewhere with no run —
+  otherwise it now leaves an `unheld` line marked `by=CLAUDE_PROJECT_DIR`
+  instead of nothing.
+- **A session can be nudged about the wrong run.** If the checkout a session
+  drifted into runs its own headsign workflow, the cwd walk finds *that* run
+  first and nudges about it — a real nudge, correctly formatted, just not
+  about the run the session is driving. This is shipped behaviour, not new,
+  and `CLAUDE_PROJECT_DIR` does not change it: the cwd walk is always tried
+  first, and only reaches `CLAUDE_PROJECT_DIR` when it finds nothing.
+  Undocumented before now, and there is no fix for it here — only `pwd` and
+  the workflow name printed in the nudge tell it apart from the run you
+  expected.
 - **A run claimed by an agent that has gone leaves its successor unheld.**
   headsign cannot detect a dead driver, so the seat stays filled. If you took
   over a run and are not the recorded driver, that alone explains the silence —
