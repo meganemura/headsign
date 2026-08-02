@@ -26,6 +26,18 @@
   `localIso(new Date())` and passes it down — and now has a second module on
   the receiving end of it. The paragraphs below are updated in place; no line
   format, log event or lock rule changes.)
+- Revised: 2026-08-02 (a second, narrower exception next to the cache
+  retraction above: `gate.ts` now times how long a failing check ran, using
+  `process.hrtime.bigint()` — a monotonic clock, not the wall clock this ADR
+  gives `cli.ts` sole custody of. What this ADR actually guarantees is
+  narrowed to what it always meant to protect: the datetime that lands on
+  disk — in `state.json` and `.headsign/log` — comes from exactly one place,
+  and `step()` never holds a clock of its own. Measuring a `spawnSync`
+  interval is a different question, taken inside `gate.ts` because that
+  module already touches the outside world; `engine.ts` still only ever
+  receives a finished, rounded number. The `.headsign/log` paragraph below
+  is updated in place; see `src/gate.ts`'s module header for the same
+  distinction stated at the call site.)
 
 ## Context
 
@@ -216,13 +228,22 @@ lost the word "run-scoped" with it.)*
 All I/O for this file lives in `state.ts` (`appendLog`); its line
 format lives in `render.ts` (`logLine`), pure text formatting with no I/O
 of its own; `cli.ts` captures the timestamp (`localIso(new Date())`) —
-still the one place headsign reads the clock — and passes it down to
-whichever caller needs it. `engine.ts` is the direct caller for every
-transition below (ADR-0018 moved them there from `cli.ts`); `stophook.ts`
-is the other caller (paused/stalled, below). Neither calls `new Date()`
-itself: `cli.ts` captures `localIso(new Date())` per command and hands it
-over as an argument — `nowIso` for both — which is the same
-clock-stays-in-cli.ts split this ADR has kept from the start.
+still the one place headsign reads the **wall** clock for a datetime that
+lands on disk — and passes it down to whichever caller needs it.
+`engine.ts` is the direct caller for every transition below (ADR-0018 moved
+them there from `cli.ts`); `stophook.ts` is the other caller
+(paused/stalled, below). Neither calls `new Date()` itself: `cli.ts`
+captures `localIso(new Date())` per command and hands it over as an
+argument — `nowIso` for both — which is the same clock-stays-in-cli.ts
+split this ADR has kept from the start. A monotonic clock is a different
+matter: `gate.ts` times how long a failing check ran with
+`process.hrtime.bigint()`, entirely inside its own already-world-touching
+work (`spawnSync`), and the number that results arrives at `engine.ts` and
+`state.ts` pre-measured — neither reads a clock to produce it. What this
+ADR actually guarantees, stated narrowly, is that the datetime written into
+`state.json` and this log comes from one place, and that `step()` holds no
+clock of its own; a monotonic interval measurement is outside that
+guarantee, not an exception smuggled past it.
 
 Four call sites, one line each, for real *transitions*: `start` (a `start`
 line), `next`'s iteration-limit branch (a `ceiling` line —
