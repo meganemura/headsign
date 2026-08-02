@@ -102,7 +102,19 @@ phases:
           run: "grep -qx APPROVED .headsign/tmp/verdict"
     on_pass: respond
     on_fail: implement
-    max_attempts: 3
+    # Counts REJECTED verdicts across the whole run, not per visit: `on_fail:
+    # implement` leaves the phase and comes back, and re-entering does not
+    # reset the counter. So this is "how many rounds of review this ticket
+    # gets", and `headsign status`'s `attempt n/5` is rounds already spent —
+    # not, as it reads at a glance, which round is starting.
+    #
+    # Was 3, and 3 turned out to be a review-round budget rather than a
+    # stuck-loop detector: a change that touches a documented invariant
+    # spends rounds on the records around it, one per record the reviewer
+    # can only see once the one before it is fixed. Three such rounds are
+    # progress, not a loop. 5 leaves room for that and still stops a review
+    # that is circling.
+    max_attempts: 5
 
   respond:
     description: >
