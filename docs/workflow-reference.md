@@ -972,7 +972,7 @@ from any session, at any time, as often as you like.
 $ headsign status
 RUNNING implement (attempt 2/5)
 workflow: feature-dev
---- last failure: unit tests (bundle exec rspec, exit 1) ---
+--- last failure: unit tests (bundle exec rspec, exit 1 in 12.3s) ---
 Failures:
   1) Billing::Invoice#total ...
 driver: not delegated yet — no agent has claimed this run
@@ -1365,11 +1365,12 @@ held.
 says what happened.** A `held` before it means headsign nudged and was then
 overruled: the hold and the pass are the two turn ends of one exchange, which
 is why a nudge arrives about once per exchange. A transition line before it —
-an `advance`, a `retry` — means the work was judged. A `paused` before it
-means somebody stopped on purpose. A `stalled` before it means the cap was
-already spent, and that is the one silence left: the stops after the cap trips
-pass without a line of their own, because `stalled` has already recorded that
-the backstop gave up on this run.
+an `advance`, a `retry` — means the work was judged (a failing one also
+carries `dur=<seconds>`, how long the failing check actually ran). A
+`paused` before it means somebody stopped on purpose. A `stalled` before it
+means the cap was already spent, and that is the one silence left: the stops
+after the cap trips pass without a line of their own, because `stalled` has
+already recorded that the backstop gave up on this run.
 
 The count on a `held` line is also the denominator `stalled` never had. Count
 the `held` lines since the last line that moved the run and you have how much

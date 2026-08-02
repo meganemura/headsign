@@ -74,6 +74,35 @@ test("timeout is reported as a failure with a timeout marker, not as an unrunnab
   }
 });
 
+// --- elapsedSeconds: how long the check actually ran, real wall time (not the record's
+// existing timeout_seconds, which is the LIMIT, not a measurement) ---
+
+test("elapsedSeconds: an ordinary failure reports a number with the sleep it waited for as a lower bound (the upper bound is environment noise, so it is not asserted)", () => {
+  const result = gate.runGate([{ run: "sleep 0.3 && exit 1" }], tmpdir());
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
+    assert.equal(typeof result.elapsedSeconds, "number");
+    assert.ok((result.elapsedSeconds as number) >= 0.3, `expected >= 0.3, got ${result.elapsedSeconds}`);
+  }
+});
+
+test("elapsedSeconds: a timed-out check also has one, close to the limit it ran past", () => {
+  const result = gate.runGate([{ run: "sleep 5", timeout: 0.2 }], tmpdir());
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
+    assert.equal(typeof result.elapsedSeconds, "number");
+    assert.ok((result.elapsedSeconds as number) >= 0.2, `expected >= 0.2, got ${result.elapsedSeconds}`);
+  }
+});
+
+test("elapsedSeconds: an unrunnable check carries none — the command never answered, so there is no interval to report", () => {
+  // Same trick as the unrunnable tests below: a nonexistent cwd stops /bin/sh from starting.
+  const brokenCwd = path.join(tmpdir(), "does-not-exist");
+  const result = gate.runGate([{ run: "false" }], brokenCwd);
+  assert.equal(result.kind, "unrunnable");
+  if (result.kind === "unrunnable") assert.equal("elapsedSeconds" in result, false);
+});
+
 // --- a check that could not be run at all: the third result, not a failure ---
 
 test("a check that cannot be launched is unrunnable, naming the check and the errno", () => {

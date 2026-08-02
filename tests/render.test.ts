@@ -21,6 +21,12 @@ test("advance with a failure includes the gate-failed/routed-to line", () => {
   assert.equal(actual, expected);
 });
 
+test("advance with a failure carrying elapsedSeconds adds 'in Ns' to the routed-fail clause", () => {
+  const actual = render.advance("build", "Build it.", { check: "lint", run: "npm run lint", exitCode: 1, elapsedSeconds: 4.2, routedTo: "build" });
+  const expected = `ADVANCE build\n--- gate failed: lint (npm run lint, exit 1 in 4.2s) → routed to build ---\n--- phase: build ---\nBuild it.\n`;
+  assert.equal(actual, expected);
+});
+
 // --- cleared: artifact-clear announcement (start/advance) ---
 
 test("start with cleared artifacts lists one --- cleared: --- line per path, right after the token line", () => {
@@ -104,6 +110,43 @@ test("retry: timeout exit code renders the timed-out clause", () => {
     run: "npm test",
     exitCode: "timeout",
     timeoutSeconds: 5,
+    phase: "build",
+    attempt: 2,
+    maxAttempts: undefined,
+    outputTail: "some output",
+  });
+  const expected = `RETRY 2 build\n--- gate failed: tests (npm test, timed out after 5s) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
+  assert.equal(actual, expected);
+});
+
+// --- elapsedSeconds: the clause() field that names how long the failing check actually ran ---
+
+test("retry: elapsedSeconds present adds 'in Ns' after the exit code", () => {
+  const actual = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    elapsedSeconds: 12.3,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+  });
+  const expected = `RETRY 1/3 build\n--- gate failed: tests (npm test, exit 1 in 12.3s) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
+  assert.equal(actual, expected);
+});
+
+// The timeout arm never gains an 'in Ns' clause, even when elapsedSeconds is present (gate.ts
+// sets it there too, close to timeoutSeconds): "timed out after 5s" already states the
+// duration, so a second number on the same clause would only invite the reader to ask why the
+// two differ, when the answer is "they don't, meaningfully".
+test("retry: elapsedSeconds is ignored on the timeout arm — 'timed out after Ns' already says the duration", () => {
+  const actual = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: "timeout",
+    timeoutSeconds: 5,
+    elapsedSeconds: 5.0,
     phase: "build",
     attempt: 2,
     maxAttempts: undefined,
@@ -261,6 +304,17 @@ test("statusRunning: a timeout last failure renders the timed-out clause, same a
     driver: "a delegated agent",
   });
   const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, timed out after 5s) ---\nsome output\ndriver: a delegated agent\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: a last failure carrying elapsedSeconds adds 'in Ns' to the exit clause", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo",
+    lastFailure: { check: "tests", run: "npm test", exitCode: 1, elapsedSeconds: 7.5, outputTail: "some output" },
+    driver: "a delegated agent",
+  });
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\n--- last failure: tests (npm test, exit 1 in 7.5s) ---\nsome output\ndriver: a delegated agent\n`;
   assert.equal(actual, expected);
 });
 
@@ -524,6 +578,18 @@ test("logLine: retry with a timeout exit code", () => {
   assert.equal(line, `ts retry build a=2 i=4 check="tests" exit=timeout\n`);
 });
 
+test("logLine: retry with elapsedSeconds appends dur= after exit=, the existing fields unchanged", () => {
+  const outcome = {
+    kind: "RETRY" as const,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x", elapsedSeconds: 12.3 },
+  };
+  const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
+  assert.equal(line, `ts retry build a=1 i=1 check="tests" exit=1 dur=12.3s\n`);
+});
+
 test("logLine: pass advance", () => {
   const outcome = { kind: "ADVANCE" as const, phase: "review", description: "Review." };
   const line = render.logLine("ts", outcome, baseState({ phase: "review", total_iterations: 2 }), "implement");
@@ -539,6 +605,17 @@ test("logLine: fail-routed advance names both the origin phase and the failing c
   };
   const line = render.logLine("ts", outcome, baseState({ phase: "implement", attempts: { review: 1 }, total_iterations: 3 }), "review");
   assert.equal(line, `ts advance implement a=0 i=3 from=review routed-fail check="review approved" exit=1\n`);
+});
+
+test("logLine: fail-routed advance with elapsedSeconds appends dur= after exit=", () => {
+  const outcome = {
+    kind: "ADVANCE" as const,
+    phase: "implement",
+    description: "Implement.",
+    failure: { check: "review approved", run: "grep -qx APPROVED verdict", exitCode: 1, outputTail: "x", elapsedSeconds: 0.4, routedTo: "implement" },
+  };
+  const line = render.logLine("ts", outcome, baseState({ phase: "implement", attempts: { review: 1 }, total_iterations: 3 }), "review");
+  assert.equal(line, `ts advance implement a=0 i=3 from=review routed-fail check="review approved" exit=1 dur=0.4s\n`);
 });
 
 test("logLine: routed advance records which when answered", () => {

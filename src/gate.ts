@@ -23,11 +23,26 @@
 // Every command here inherits headsign's own environment unmodified (ADR-0014): a phase
 // cannot declare variables, because `FOO=bar cmd` in the `run:` string already says it, in
 // the shell the workflow author is already writing.
+//
+// One clock reading that is not ADR-0004's: that ADR gives cli.ts sole custody of the WALL
+// clock (the timestamp written into state.json and the log), so a date on disk always comes
+// from one place. Timing how long a spawnSync call ran is a different question with a
+// different clock — process.hrtime.bigint() is monotonic, so it cannot be pushed negative or
+// jumped by a system-clock adjustment mid-check — and this module already touches the outside
+// world (it is the one running the command). engine.ts still never reads a clock of its own:
+// it only receives the finished, rounded number below and carries it through.
 
 import { spawnSync } from "node:child_process";
 import type { Check, Route } from "./workflow.ts";
 
-export interface CheckFailure { check: string; run: string; exitCode: number | "timeout"; outputTail: string; timeoutSeconds?: number }
+export interface CheckFailure {
+  check: string; run: string; exitCode: number | "timeout"; outputTail: string; timeoutSeconds?: number;
+  // How long the check actually ran, wall time, seconds to one decimal. Only ever set on a
+  // `fail` (both arms: an ordinary nonzero exit and a timeout) — never on `unrunnable` (the
+  // command never answered, so no interval it ran for is knowable) and never on `pass` (out of
+  // scope here: `advance` covers several checks and a per-check number would not name one).
+  elapsedSeconds?: number;
+}
 
 // Three outcomes, not two, and the third is not a kind of failure. `fail` is an ANSWER: the
 // check ran and said no, which is exactly what a gate is for. `unrunnable` is the ABSENCE of
@@ -51,10 +66,18 @@ export type GateVerdict = Exclude<GateResult, { kind: "unrunnable" }>;
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const OUTPUT_TAIL_LIMIT = 4000;
 
+// Seconds, one decimal place, rounded rather than truncated — the same unit and precision as
+// `timeoutSeconds`, so a reader can compare the two without doing arithmetic first.
+function elapsedSecondsSince(startedAt: bigint): number {
+  const ms = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+  return Math.round(ms / 100) / 10;
+}
+
 export function runGate(checks: Check[], cwd: string): GateResult {
   for (const c of checks) {
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const check = c.name ?? c.run;
+    const startedAt = process.hrtime.bigint();
     const result = spawnSync("/bin/sh", ["-c", c.run], {
       cwd,
       timeout: timeoutSeconds * 1000,
@@ -63,23 +86,28 @@ export function runGate(checks: Check[], cwd: string): GateResult {
       maxBuffer: 64 * 1024 * 1024,
       encoding: "utf8",
     });
+    const elapsedSeconds = elapsedSecondsSince(startedAt);
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error as NodeJS.ErrnoException | undefined;
     if (spawnError?.code === "ETIMEDOUT") {
       // A timeout is a verdict, deliberately NOT an unrunnable check: the command did run,
       // it reported on the work by being stopped, and the limit it ran past is one the
       // workflow author wrote in this very file. Only "headsign never got an answer at all"
-      // belongs in the arm below.
-      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
+      // belongs in the arm below. `elapsedSeconds` lands close to `timeoutSeconds` here, which
+      // is itself the confirmation that the check really did run to the limit rather than
+      // being cut short some other way.
+      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds };
     }
     if (spawnError) {
       // The runner itself couldn't execute/complete the check (e.g. ENOBUFS despite
       // maxBuffer, or a cwd that vanished): there is no exit code, so there is nothing to
       // route on. The caller stops the run on this (exit 3) instead of spending an attempt.
       // `reason` stays short — the errno, which names the situation to anyone who can fix it.
+      // No `elapsedSeconds`: the command never answered, so there is no "time to an answer" to
+      // report.
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
-    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail };
+    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds };
   }
   return { kind: "pass" };
 }

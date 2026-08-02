@@ -754,7 +754,7 @@ gate は実行されず、state も書き込まれず、lock も取得されま�
 $ headsign status
 RUNNING implement (attempt 2/5)
 workflow: feature-dev
---- last failure: unit tests (bundle exec rspec, exit 1) ---
+--- last failure: unit tests (bundle exec rspec, exit 1 in 12.3s) ---
 Failures:
   1) Billing::Invoice#total ...
 driver: not delegated yet — no agent has claimed this run
@@ -1070,6 +1070,7 @@ hook の書き込みは best-effort で、run の lock が握られている間�
 直前が `held` なら、headsign は差し戻し、そのあと覆されたということです。
 差し戻しとその通過は、1 回のやり取りに含まれる 2 つのターン終了であり、催促がやり取り 1 回につきおよそ 1 度になるのはこのためです。
 直前が run を動かした行(`advance`、`retry` など)なら、その仕事は判定されたということです。
+失敗した判定の行には `dur=<秒数>` も載ります。落ちたチェックが実際に何秒走ったかです。
 直前が `paused` なら、誰かが意図して止めたということです。
 直前が `stalled` なら、上限はすでに使い切られていたということです。
 そしてこれが唯一残っている沈黙で、上限が切れたあとの停止は自分の行を残さずに通ります。

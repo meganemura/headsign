@@ -42,6 +42,10 @@ type Status = "running" | "complete" | "escalated" | "aborted";
 export interface LastFailure {
   phase: string;
   check: string; run: string; exit_code: number | "timeout"; output_tail: string; timeout_seconds?: number;
+  // How long the check actually ran (gate.ts's CheckFailure.elapsedSeconds, carried through
+  // unmodified). Optional for the same reason `timeout_seconds` is: a state.json written
+  // before this field existed simply lacks it, and that must read back fine, not throw.
+  elapsed_seconds?: number;
 }
 // The two things that can make headsign let an `unheld` stop pass without holding it — named
 // for the Claude Code token each one rests on, spelled exactly as that token is spelled

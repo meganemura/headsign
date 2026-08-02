@@ -20,7 +20,12 @@ export function start(phase: string, description: string, cleared?: string[]): s
   return `START ${phase}\n${clearedBlock(cleared)}--- phase: ${phase} ---\n${description}\n`;
 }
 
-type Failure = { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number };
+// `elapsedSeconds` (gate.ts's CheckFailure field, carried through engine.ts unmodified) is
+// optional for two independent reasons that happen to look the same on the page: a legacy
+// `state.json` predating the field, and — permanently — every `unrunnable`/`pass` path that
+// never has one to report. Either way, `clause()` below omits the clause rather than print
+// `undefined`.
+type Failure = { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number };
 
 // `routedBy` is present only for a k-way `on_pass` (ADR-0011) and adds exactly one line, in
 // the same slot the gate-failed line uses (the two never co-occur: one is the pass path, the
@@ -34,7 +39,7 @@ export function advance(
   routedBy?: { when: string } | { default: true },
 ): string {
   const failedLine = failure
-    ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds)}) → routed to ${failure.routedTo} ---\n`
+    ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) → routed to ${failure.routedTo} ---\n`
     : "";
   const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} → ${phase} ---\n` : "";
   return `ADVANCE ${phase}\n${clearedBlock(cleared)}${failedLine}${routedLine}--- phase: ${phase} ---\n${description}\n`;
@@ -62,7 +67,7 @@ export function pending(phase: string, description: string, ready: string): stri
 
 export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string }): string {
   const n = o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
-  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)}) ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
+  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
 }
 
 // The second line exists only for a run that rewrote its own workflow while it was running
@@ -116,8 +121,13 @@ export function validateWarnings(path: string, warnings: string[]): string {
   return `WARNING: ${path}\n${warnings.map((w) => `- ${w}\n`).join("")}`;
 }
 
-function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: number): string {
-  return exitCode === "timeout" ? `${run}, timed out after ${timeoutSeconds}s` : `${run}, exit ${exitCode}`;
+// `timed out after Ns` already states the duration (the limit doubles as the answer, since a
+// timeout by definition ran until it), so `elapsedSeconds` adds nothing on that arm and is
+// left out; the ordinary-exit arm has no duration anywhere else in this line, so it gets one
+// here, when the caller has one to give — an old record or a non-fail caller may not.
+function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: number, elapsedSeconds?: number): string {
+  if (exitCode === "timeout") return `${run}, timed out after ${timeoutSeconds}s`;
+  return elapsedSeconds === undefined ? `${run}, exit ${exitCode}` : `${run}, exit ${exitCode} in ${elapsedSeconds}s`;
 }
 
 // --- status: the read-only observation window (ADR-0002/0008) ---
@@ -178,7 +188,7 @@ export function statusRunning(o: {
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure
-    ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds)}) ---\n${o.lastFailure.outputTail}\n`
+    ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds, o.lastFailure.elapsedSeconds)}) ---\n${o.lastFailure.outputTail}\n`
     : "";
   // After the driver line rather than beside the workflow line: the last-failure block's slot
   // (between `workflow:` and `driver:`) is part of this contract already, and an addendum that
@@ -353,12 +363,21 @@ function eventName(event: LogEvent): string {
   }
 }
 
+// Trailing, not leading: appended after the existing `check=`/`exit=` fields on both lines
+// that carry a failure, so a script already splitting one of those lines on whitespace keeps
+// working unchanged. Empty when there is nothing to report — a `state.json` written before
+// this field existed, or (not a real case in practice, since every `fail` sets it) a caller
+// that never had one — rather than printing `dur=undefineds`.
+function durSuffix(elapsedSeconds?: number): string {
+  return elapsedSeconds === undefined ? "" : ` dur=${elapsedSeconds}s`;
+}
+
 function logDetail(event: LogEvent, prevPhase?: string): string {
   switch (event.kind) {
     case "START":
       return `workflow=${event.workflow}`;
     case "RETRY":
-      return `check="${event.failure.check}" exit=${event.failure.exitCode}`;
+      return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`;
     case "ADVANCE":
       // Which branch of a k-way `on_pass` was taken is recorded here and nowhere else that
       // outlives the run: without it, a routed advance reads exactly like a straight one and
@@ -369,7 +388,7 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
         return `from=${prevPhase} ${why}`;
       }
       return event.failure
-        ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}`
+        ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`
         : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":

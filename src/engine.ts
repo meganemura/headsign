@@ -298,8 +298,8 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
   // Destructure rather than reuse gateResult as-is: it also carries `kind: "fail"`,
   // which must not leak into the outcome's public FailureInfo shape.
-  const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
-  const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds };
+  const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds } = gateResult;
+  const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
 
   const maxAttempts = phase.max_attempts;
   // Exhaustion always escalates (ADR-0014): a budget running out is precisely the moment a
@@ -320,6 +320,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     next.last_failure = {
       phase: phaseName, check: failure.check, run: failure.run,
       exit_code: failure.exitCode, output_tail: failure.outputTail, timeout_seconds: failure.timeoutSeconds,
+      elapsed_seconds: failure.elapsedSeconds,
     };
     return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure } };
   }
@@ -396,7 +397,7 @@ export type ClaimResult = Refused | { kind: "CLAIMED" };
 // The current phase's last recorded failure, field-renamed out of state.json's snake_case
 // into the shape render.ts prints. Reading the run record is this module's job; knowing that
 // `output_tail` is called `outputTail` on the way out is part of it.
-export interface StatusFailure { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; outputTail: string }
+export interface StatusFailure { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number; outputTail: string }
 
 export type StatusResult =
   | Refused
@@ -923,7 +924,10 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   const recorded = current.last_failure ?? null;
   const lastFailure =
     recorded !== null && recorded.phase === current.phase
-      ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail }
+      ? {
+          check: recorded.check, run: recorded.run, exitCode: recorded.exit_code,
+          timeoutSeconds: recorded.timeout_seconds, elapsedSeconds: recorded.elapsed_seconds, outputTail: recorded.output_tail,
+        }
       : null;
 
   // Read through the same tolerant idiom the SubagentStop hook uses (stophook.ts's

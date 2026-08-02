@@ -69,14 +69,14 @@ test("fail defaults to retry", () => {
   assert.equal(state.status, "running");
   assert.equal(state.attempts.a, 1);
   assert.deepEqual(state.last_failure, {
-    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", timeout_seconds: undefined,
+    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", timeout_seconds: undefined, elapsed_seconds: undefined,
   });
   assert.deepEqual(outcome, {
     kind: "RETRY",
     phase: "a",
     attempt: 1,
     maxAttempts: undefined,
-    failure: { check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined },
+    failure: { check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined },
   });
 });
 
@@ -89,7 +89,7 @@ test("fail routes to a named phase (ADVANCE with failure note); attempts of the 
     kind: "ADVANCE",
     phase: "implement",
     description: "implement",
-    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, routedTo: "implement" },
+    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined, routedTo: "implement" },
   });
 });
 
@@ -229,7 +229,7 @@ test("a failing gate never consults the route list: on_fail decides, and routedB
     kind: "ADVANCE",
     phase: "d",
     description: "d",
-    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, routedTo: "d" },
+    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined, routedTo: "d" },
   });
 });
 
@@ -266,6 +266,17 @@ test("a terminal outcome (exhaustion, on_fail: escalate, $end) clears last_failu
 
   const ending = wf({ a: { on_pass: "$end", on_fail: "$end" } });
   assert.equal(engine.step(ending, st("a", { last_failure: STALE }), FAIL()).state.last_failure, null);
+});
+
+// step() carries gate.ts's elapsedSeconds through unchanged, the same way it carries every
+// other CheckFailure field — no measuring, no rounding, here (that is gate.ts's job).
+test("a retry carries the gate verdict's elapsedSeconds into both last_failure.elapsed_seconds and the RETRY outcome", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const verdict: GateVerdict = { kind: "fail", check: "unit", run: "npm test", exitCode: 1, outputTail: "out", elapsedSeconds: 12.3 };
+  const { state, outcome } = engine.step(workflow, st("a"), verdict);
+  assert.equal(state.last_failure?.elapsed_seconds, 12.3);
+  assert.equal(outcome.kind, "RETRY");
+  if (outcome.kind === "RETRY") assert.equal(outcome.failure.elapsedSeconds, 12.3);
 });
 
 // --- stop_nudges loop guard (ADR-0006): step() always resets it, since it only runs on a real evaluation ---
@@ -474,6 +485,38 @@ phases:
   assert.deepEqual(after.state, before.state, "state.json must be byte-identical: a refused probe is not a PENDING and not an attempt");
   assert.deepEqual(after.log, before.log, "no transition happened, so nothing is logged");
   assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "the lock is released before returning");
+});
+
+// A real lap (gate.ts actually spawns the check), so this is the whole path: gate.ts measures
+// it, engine.ts's `next` writes it into state.json's last_failure.elapsed_seconds, and
+// engine.ts's `status` reads it back out as StatusFailure.elapsedSeconds — the SAVED half and
+// the RESTORED half of the field, both real I/O, neither a step() fixture.
+test("a real gate failure's elapsedSeconds is saved to state.json and comes back out of status()", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "sleep 0.2 && exit 1"
+    on_pass: "$end"
+`);
+
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(result.kind, "ANSWERED");
+  if (result.kind === "ANSWERED") assert.equal(result.outcome.kind, "RETRY");
+
+  const saved = (JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8")) as { last_failure: { elapsed_seconds: unknown } }).last_failure
+    .elapsed_seconds;
+  assert.equal(typeof saved, "number");
+  assert.ok((saved as number) >= 0.2, `expected >= 0.2, got ${saved}`);
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") assert.equal(status.lastFailure?.elapsedSeconds, saved, "restored verbatim, the same number status() reads off the record");
 });
 
 // --- the graph pin: a lap notices when its own rules moved under it ---

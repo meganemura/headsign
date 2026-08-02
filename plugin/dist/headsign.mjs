@@ -7691,10 +7691,15 @@ import path3 from "node:path";
 import { spawnSync } from "node:child_process";
 var DEFAULT_TIMEOUT_SECONDS = 120;
 var OUTPUT_TAIL_LIMIT = 4e3;
+function elapsedSecondsSince(startedAt) {
+  const ms = Number(process.hrtime.bigint() - startedAt) / 1e6;
+  return Math.round(ms / 100) / 10;
+}
 function runGate(checks, cwd) {
   for (const c of checks) {
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const check = c.name ?? c.run;
+    const startedAt = process.hrtime.bigint();
     const result = spawnSync("/bin/sh", ["-c", c.run], {
       cwd,
       timeout: timeoutSeconds * 1e3,
@@ -7703,15 +7708,16 @@ function runGate(checks, cwd) {
       maxBuffer: 64 * 1024 * 1024,
       encoding: "utf8"
     });
+    const elapsedSeconds = elapsedSecondsSince(startedAt);
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error;
     if (spawnError?.code === "ETIMEDOUT") {
-      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds };
+      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds };
     }
     if (spawnError) {
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
-    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail };
+    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds };
   }
   return { kind: "pass" };
 }
@@ -7761,7 +7767,7 @@ ${description}
 `;
 }
 function advance(phase, description, failure, cleared, routedBy) {
-  const failedLine = failure ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds)}) \u2192 routed to ${failure.routedTo} ---
+  const failedLine = failure ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) \u2192 routed to ${failure.routedTo} ---
 ` : "";
   const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} \u2192 ${phase} ---
 ` : "";
@@ -7785,7 +7791,7 @@ This is not a failure. Do the work above so the gate can run, then run \`headsig
 function retry(o) {
   const n = o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   return `RETRY ${n} ${o.phase}
---- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds)}) ---
+--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---
 ${o.outputTail}
 Fix the failure above, then run \`headsign next\` again.
 `;
@@ -7825,12 +7831,13 @@ function validateWarnings(path4, warnings) {
 ${warnings.map((w) => `- ${w}
 `).join("")}`;
 }
-function clause(run, exitCode, timeoutSeconds) {
-  return exitCode === "timeout" ? `${run}, timed out after ${timeoutSeconds}s` : `${run}, exit ${exitCode}`;
+function clause(run, exitCode, timeoutSeconds, elapsedSeconds) {
+  if (exitCode === "timeout") return `${run}, timed out after ${timeoutSeconds}s`;
+  return elapsedSeconds === void 0 ? `${run}, exit ${exitCode}` : `${run}, exit ${exitCode} in ${elapsedSeconds}s`;
 }
 function statusRunning(o) {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
-  const lastFailureBlock = o.lastFailure ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds)}) ---
+  const lastFailureBlock = o.lastFailure ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds, o.lastFailure.elapsedSeconds)}) ---
 ${o.lastFailure.outputTail}
 ` : "";
   const accepted = o.acceptedGraphChanges ?? 0;
@@ -7913,18 +7920,21 @@ function eventName(event) {
       throw new Error("logLine: PENDING is never logged");
   }
 }
+function durSuffix(elapsedSeconds) {
+  return elapsedSeconds === void 0 ? "" : ` dur=${elapsedSeconds}s`;
+}
 function logDetail(event, prevPhase) {
   switch (event.kind) {
     case "START":
       return `workflow=${event.workflow}`;
     case "RETRY":
-      return `check="${event.failure.check}" exit=${event.failure.exitCode}`;
+      return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`;
     case "ADVANCE":
       if (event.routedBy) {
         const why = "when" in event.routedBy ? `routed-when="${event.routedBy.when}"` : "routed-default";
         return `from=${prevPhase} ${why}`;
       }
-      return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}` : `from=${prevPhase}`;
+      return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}` : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":
     // Same `reason="…"` shape as the two endings: only the event word separates them, so a
@@ -8214,8 +8224,8 @@ function step(workflow, state, gateResult, route) {
     return { state: next2, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...routedBy && { routedBy } } };
   }
   next2.attempts[phaseName] = (next2.attempts[phaseName] ?? 0) + 1;
-  const { check, run, exitCode, outputTail, timeoutSeconds } = gateResult;
-  const failure = { check, run, exitCode, outputTail, timeoutSeconds };
+  const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds } = gateResult;
+  const failure = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== void 0 && next2.attempts[phaseName] >= maxAttempts) {
     const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
@@ -8232,7 +8242,8 @@ function step(workflow, state, gateResult, route) {
       run: failure.run,
       exit_code: failure.exitCode,
       output_tail: failure.outputTail,
-      timeout_seconds: failure.timeoutSeconds
+      timeout_seconds: failure.timeoutSeconds,
+      elapsed_seconds: failure.elapsedSeconds
     };
     return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], maxAttempts, failure } };
   }
@@ -8490,7 +8501,14 @@ function status(cwd, env) {
   const phase = wf?.phases[current.phase];
   const attempt = current.attempts[current.phase] ?? 0;
   const recorded = current.last_failure ?? null;
-  const lastFailure = recorded !== null && recorded.phase === current.phase ? { check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, timeoutSeconds: recorded.timeout_seconds, outputTail: recorded.output_tail } : null;
+  const lastFailure = recorded !== null && recorded.phase === current.phase ? {
+    check: recorded.check,
+    run: recorded.run,
+    exitCode: recorded.exit_code,
+    timeoutSeconds: recorded.timeout_seconds,
+    elapsedSeconds: recorded.elapsed_seconds,
+    outputTail: recorded.output_tail
+  } : null;
   const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
   return {
     kind: "RUNNING",

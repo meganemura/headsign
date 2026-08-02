@@ -2250,7 +2250,9 @@ test("status: a matching last_failure renders a last-failure block with the fail
   run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // real RETRY -> last_failure set for phase "build"
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
-  assert.match(result.stdout, /--- last failure: marker exists \(test -f marker\.txt, exit 1\) ---\n/);
+  // The duration is real elapsed time (gate.ts's own clock), not a fixed value — assert the
+  // shape (`in <n>s`) rather than a number that would make this test flaky.
+  assert.match(result.stdout, /--- last failure: marker exists \(test -f marker\.txt, exit 1 in \d+(\.\d)?s\) ---\n/);
 });
 
 test("status: a last_failure belonging to a different (stale) phase than the current one is not shown", () => {
