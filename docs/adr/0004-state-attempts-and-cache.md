@@ -26,18 +26,23 @@
   `localIso(new Date())` and passes it down — and now has a second module on
   the receiving end of it. The paragraphs below are updated in place; no line
   format, log event or lock rule changes.)
-- Revised: 2026-08-02 (a second, narrower exception next to the cache
-  retraction above: `gate.ts` now times how long a failing check ran, using
-  `process.hrtime.bigint()` — a monotonic clock, not the wall clock this ADR
-  gives `cli.ts` sole custody of. What this ADR actually guarantees is
-  narrowed to what it always meant to protect: the datetime that lands on
-  disk — in `state.json` and `.headsign/log` — comes from exactly one place,
-  and `step()` never holds a clock of its own. Measuring a `spawnSync`
-  interval is a different question, taken inside `gate.ts` because that
-  module already touches the outside world; `engine.ts` still only ever
-  receives a finished, rounded number. The `.headsign/log` paragraph below
-  is updated in place; see `src/gate.ts`'s module header for the same
-  distinction stated at the call site.)
+- Revised: 2026-08-02 (a second entry next to the cache retraction above,
+  this one narrowing what the guarantee covers rather than retracting any
+  of it: `gate.ts` now times how long a failing check ran, using
+  `process.hrtime.bigint()` — a monotonic clock, not the wall clock this
+  ADR gives `cli.ts` sole custody of. The original wording below said
+  headsign read the clock in exactly one place; that was true as far as
+  it needed to be, because nothing else read any clock yet, and it did
+  not need to draw this distinction to be correct at the time. What this
+  ADR actually guarantees, restated at that finer grain: the datetime
+  that lands on disk — in `state.json` and `.headsign/log` — comes from
+  exactly one place, and `step()` never holds a clock of its own.
+  Measuring a `spawnSync` interval is a different question, outside that
+  guarantee rather than a case carved out of it, taken inside `gate.ts`
+  because that module already touches the outside world; `engine.ts`
+  still only ever receives a finished, rounded number. The
+  `.headsign/log` paragraph below is updated in place; see `src/gate.ts`'s
+  module header for the same distinction stated at the call site.)
 
 ## Context
 

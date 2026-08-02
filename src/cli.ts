@@ -2,7 +2,9 @@
 // command becomes one engine call, and the value it answers with becomes text and a status.
 // Must NOT know about: routing rules — including the order `next` asks its questions in
 // (ADR-0018) — the workflow YAML schema, or what any operation does to a run; it delegates to
-// engine.ts/workflow.ts. It reads the clock, which no module below it does.
+// engine.ts/workflow.ts. It reads the wall clock ADR-0004 gives it sole custody of, the one no
+// module below it reads (gate.ts's monotonic interval timing is a different clock, outside
+// that guarantee — see gate.ts's header).
 
 import fs from "node:fs";
 import * as workflowMod from "./workflow.ts";
@@ -216,7 +218,7 @@ function reportStatus(result: engine.StatusResult): never {
 // The five that operate on a run are one line each on purpose: turn argv into the values
 // engine.ts takes (cwd, the resolved path or the joined reason, and the timestamp —
 // `localIso(new Date())` is captured here because this is the only file that reads the
-// clock, ADR-0004), then report what comes back. Nothing else belongs in them.
+// wall clock, ADR-0004), then report what comes back. Nothing else belongs in them.
 //
 // `start` and `next` also pass `process.env` now (ADR-0027), the same way `status` already
 // does below: engine.ts stamps `last_drive` with whichever session actually ran the command,

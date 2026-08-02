@@ -21,10 +21,10 @@ export function start(phase: string, description: string, cleared?: string[]): s
 }
 
 // `elapsedSeconds` (gate.ts's CheckFailure field, carried through engine.ts unmodified) is
-// optional for two independent reasons that happen to look the same on the page: a legacy
-// `state.json` predating the field, and — permanently — every `unrunnable`/`pass` path that
-// never has one to report. Either way, `clause()` below omits the clause rather than print
-// `undefined`.
+// optional for one reason, not two: a `state.json` written before this field existed reads
+// back as a `last_failure` with no `elapsedSeconds` on it. `unrunnable`/`pass` are not a
+// second reason — neither ever reaches this type at all (see `durSuffix` below: every live
+// `fail` sets it). `clause()` below omits the clause rather than print `undefined`.
 type Failure = { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number };
 
 // `routedBy` is present only for a k-way `on_pass` (ADR-0011) and adds exactly one line, in
@@ -312,7 +312,7 @@ export type LogEvent =
 
 // Pure formatting of one .headsign/log line (state.ts's appendLog owns the I/O).
 // `ts` always originates from cli.ts's local `localIso(new Date())` helper — the one place
-// headsign reads the clock (ADR-0006) — even though neither caller is cli.ts any more:
+// headsign reads the wall clock (ADR-0004) — even though neither caller is cli.ts any more:
 // engine.ts and stophook.ts both receive `ts` as a `nowIso` argument and never call
 // `new Date()` themselves.
 // `state` is the resulting state of this transition — the same object passed to state.writeState —
