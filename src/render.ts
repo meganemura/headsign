@@ -367,9 +367,12 @@ function eventName(event: LogEvent): string {
 
 // Trailing, not leading: appended after the existing `check=`/`exit=` fields on both lines
 // that carry a failure, so a script already splitting one of those lines on whitespace keeps
-// working unchanged. Empty when there is nothing to report — a `state.json` written before
-// this field existed, or (not a real case in practice, since every `fail` sets it) a caller
-// that never had one — rather than printing `dur=undefineds`.
+// working unchanged. Empty rather than `dur=undefineds` when there is nothing to report,
+// which no caller reaching HERE can currently produce: a `LogEvent` is always composed from a
+// freshly built outcome, never from a stored record, and every `fail` sets the field. The
+// old-record case that makes `Failure.elapsedSeconds` optional up top belongs to `clause()`,
+// which `statusRunning` does feed from `state.json`; this guard is the type's shape honoured,
+// not a case observed.
 function durSuffix(elapsedSeconds?: number): string {
   return elapsedSeconds === undefined ? "" : ` dur=${elapsedSeconds}s`;
 }

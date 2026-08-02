@@ -49,9 +49,10 @@ export interface LastFailure {
   // that reason is written; the other two point here instead of repeating it.
   // TRANSITIONAL on the same criterion as this file's `driver_agent` field, read for the
   // release that added this field instead of the one that renamed that one — see
-  // `driver_agent`'s doc for the full criterion, which applies unchanged here. It can go, in
-  // all three places at once, once no run started before that release can plausibly still be
-  // in progress.
+  // `driver_agent`'s doc for the full criterion, which applies unchanged here. It can go in
+  // all three places at once once no run started before that release can plausibly still be in
+  // progress — but not before gate.ts's `CheckFailure.elapsedSeconds` sheds its own `?`, which
+  // expires on a different criterion: cli.ts hands render a `CheckFailure` directly.
   elapsed_seconds?: number;
 }
 // The two things that can make headsign let an `unheld` stop pass without holding it — named

@@ -42,14 +42,17 @@ export interface CheckFailure {
   // never on `unrunnable` (the command never answered, so there is no "time to an answer" to
   // report) and never on `pass` (out of scope here: `advance` covers several checks and a
   // per-check number would not name one).
-  // Optional even though every real `fail` arm above always sets it: `CheckFailure` is built
-  // in exactly one place in production (engine.ts's step(), straight off a live GateVerdict),
-  // so nothing there needs the latitude — but making the field required here also binds
-  // `LogEvent`/`Outcome` test fixtures that predate it (tests/engine.test.ts's `FAIL()`
-  // helper, tests/render.test.ts's pre-`dur=` `logLine` literals), and rewriting those is out
-  // of scope for this change. state.LastFailure.elapsed_seconds, engine.StatusFailure.elapsedSeconds
-  // and render.Failure.elapsedSeconds are optional for a separate, permanent reason — see
-  // state.ts's field for that one.
+  // Optional even though both `fail` arms below always set it: the only value *declared* as a
+  // `CheckFailure` is assembled in one place in production (engine.ts's step(), straight off a
+  // live GateVerdict), so nothing there needs the latitude — but making the field required
+  // here also binds `LogEvent`/`Outcome` test fixtures that predate it
+  // (tests/engine.test.ts's `FAIL()` helper, tests/render.test.ts's pre-`dur=` `logLine`
+  // literals), and rewriting those is out of scope for this change.
+  // state.LastFailure.elapsed_seconds, engine.StatusFailure.elapsedSeconds and
+  // render.Failure.elapsedSeconds are optional for a different reason, transitional on its own
+  // criterion — see state.ts's field for that one. The two expire independently, and this one
+  // has to clear first: render.Failure is fed a `CheckFailure` directly by cli.ts, so it cannot
+  // drop its `?` while this field keeps one.
   elapsedSeconds?: number;
 }
 
