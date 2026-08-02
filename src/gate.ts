@@ -42,6 +42,10 @@ export interface CheckFailure {
   // never on `unrunnable` (the command never answered, so there is no "time to an answer" to
   // report) and never on `pass` (out of scope here: `advance` covers several checks and a
   // per-check number would not name one).
+  // Optional, and it must stay that way: both `fail` arms above always set it, but engine.ts
+  // also rebuilds this shape from a `last_failure` written by a `state.json` that predates
+  // this field, which has none. Making it required here would only relocate that gap to a
+  // cast at the restore site.
   elapsedSeconds?: number;
 }
 
