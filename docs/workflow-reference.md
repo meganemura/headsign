@@ -1367,6 +1367,9 @@ overruled: the hold and the pass are the two turn ends of one exchange, which
 is why a nudge arrives about once per exchange. A transition line before it —
 an `advance`, a `retry` — means the work was judged (a failing one also
 carries `dur=<seconds>`, how long the failing check actually ran). A
+`retry` whose check timed out carries `dur=` too, even though the
+human-readable text above it already states the duration as part of
+`timed out after Ns` and does not repeat it. A
 `paused` before it means somebody stopped on purpose. A `stalled` before it
 means the cap was already spent, and that is the one silence left: the stops
 after the cap trips pass without a line of their own, because `stalled` has

@@ -37,10 +37,11 @@ import type { Check, Route } from "./workflow.ts";
 
 export interface CheckFailure {
   check: string; run: string; exitCode: number | "timeout"; outputTail: string; timeoutSeconds?: number;
-  // How long the check actually ran, wall time, seconds to one decimal. Only ever set on a
-  // `fail` (both arms: an ordinary nonzero exit and a timeout) — never on `unrunnable` (the
-  // command never answered, so no interval it ran for is knowable) and never on `pass` (out of
-  // scope here: `advance` covers several checks and a per-check number would not name one).
+  // How long the check actually ran — elapsed time from a monotonic clock, seconds to one
+  // decimal. Only ever set on a `fail` (both arms: an ordinary nonzero exit and a timeout) —
+  // never on `unrunnable` (the command never answered, so there is no "time to an answer" to
+  // report) and never on `pass` (out of scope here: `advance` covers several checks and a
+  // per-check number would not name one).
   elapsedSeconds?: number;
 }
 

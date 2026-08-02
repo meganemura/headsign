@@ -74,8 +74,8 @@ test("timeout is reported as a failure with a timeout marker, not as an unrunnab
   }
 });
 
-// --- elapsedSeconds: how long the check actually ran, real wall time (not the record's
-// existing timeout_seconds, which is the LIMIT, not a measurement) ---
+// --- elapsedSeconds: how long the check actually ran, timed by a monotonic clock (not the
+// record's existing timeout_seconds, which is the LIMIT, not a measurement) ---
 
 test("elapsedSeconds: an ordinary failure reports a number with the sleep it waited for as a lower bound (the upper bound is environment noise, so it is not asserted)", () => {
   const result = gate.runGate([{ run: "sleep 0.3 && exit 1" }], tmpdir());
