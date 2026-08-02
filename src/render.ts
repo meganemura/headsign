@@ -5,7 +5,8 @@
 // come straight out of what it is handed, so passing the state from before a transition
 // produces a line that reads correctly and counts wrong, and nothing here would notice.
 // The timestamp arrives as an argument. It originates in cli.ts, the one place headsign reads
-// the clock, and reaches this module either directly or by way of engine.ts or stophook.ts.
+// the wall clock (ADR-0004), and reaches this module either directly or by way of engine.ts
+// or stophook.ts.
 // Must NOT know about: HOW any of it was decided — the routing rules, the gates, or what made
 // a counter the number it is. It is handed the run's state and reads values straight out of
 // it (the phase, the attempt count, the iteration count) precisely because reading is all it
@@ -21,10 +22,11 @@ export function start(phase: string, description: string, cleared?: string[]): s
 }
 
 // `elapsedSeconds` (gate.ts's CheckFailure field, carried through engine.ts unmodified) is
-// optional for one reason, not two: a `state.json` written before this field existed reads
-// back as a `last_failure` with no `elapsedSeconds` on it. `unrunnable`/`pass` are not a
-// second reason — neither ever reaches this type at all (see `durSuffix` below: every live
-// `fail` sets it). `clause()` below omits the clause rather than print `undefined`.
+// optional for the one reason state.ts's `LastFailure.elapsed_seconds` documents (see there):
+// a `state.json` written before this field existed reads back as a `last_failure` with no
+// `elapsedSeconds` on it. `unrunnable`/`pass` are not a second reason — neither ever reaches
+// this type at all (see `durSuffix` below: every live `fail` sets it). `clause()` below omits
+// the clause rather than print `undefined`.
 type Failure = { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number };
 
 // `routedBy` is present only for a k-way `on_pass` (ADR-0011) and adds exactly one line, in
@@ -124,7 +126,7 @@ export function validateWarnings(path: string, warnings: string[]): string {
 // `timed out after Ns` already states the duration (the limit doubles as the answer, since a
 // timeout by definition ran until it), so `elapsedSeconds` adds nothing on that arm and is
 // left out; the ordinary-exit arm has no duration anywhere else in this line, so it gets one
-// here, when the caller has one to give — an old record or a non-fail caller may not.
+// here, when the caller has one to give — an old record may not.
 function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: number, elapsedSeconds?: number): string {
   if (exitCode === "timeout") return `${run}, timed out after ${timeoutSeconds}s`;
   return elapsedSeconds === undefined ? `${run}, exit ${exitCode}` : `${run}, exit ${exitCode} in ${elapsedSeconds}s`;

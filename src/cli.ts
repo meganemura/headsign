@@ -2,9 +2,8 @@
 // command becomes one engine call, and the value it answers with becomes text and a status.
 // Must NOT know about: routing rules — including the order `next` asks its questions in
 // (ADR-0018) — the workflow YAML schema, or what any operation does to a run; it delegates to
-// engine.ts/workflow.ts. It reads the wall clock ADR-0004 gives it sole custody of, the one no
-// module below it reads (gate.ts's monotonic interval timing is a different clock, outside
-// that guarantee — see gate.ts's header).
+// engine.ts/workflow.ts. It reads the wall clock ADR-0004 gives it sole custody of (gate.ts
+// reads a different clock, for a different reason — see its header).
 
 import fs from "node:fs";
 import * as workflowMod from "./workflow.ts";

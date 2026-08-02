@@ -397,6 +397,9 @@ export type ClaimResult = Refused | { kind: "CLAIMED" };
 // The current phase's last recorded failure, field-renamed out of state.json's snake_case
 // into the shape render.ts prints. Reading the run record is this module's job; knowing that
 // `output_tail` is called `outputTail` on the way out is part of it.
+// `elapsedSeconds` is optional for the one reason state.ts's `LastFailure.elapsed_seconds`
+// documents (see there): this type is only ever built from a stored `last_failure`, never
+// fresh, so a record predating that field restores as one with no `elapsedSeconds`.
 export interface StatusFailure { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number; outputTail: string }
 
 export type StatusResult =

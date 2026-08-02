@@ -43,8 +43,15 @@ export interface LastFailure {
   phase: string;
   check: string; run: string; exit_code: number | "timeout"; output_tail: string; timeout_seconds?: number;
   // How long the check actually ran (gate.ts's CheckFailure.elapsedSeconds, carried through
-  // unmodified). Optional for the same reason `timeout_seconds` is: a state.json written
-  // before this field existed simply lacks it, and that must read back fine, not throw.
+  // unmodified). Optional here, in engine.StatusFailure.elapsedSeconds, and in
+  // render.Failure.elapsedSeconds, for the one same reason: a `state.json` written before this
+  // field existed simply lacks it, and reading one back must not throw. This is the one place
+  // that reason is written; the other two point here instead of repeating it.
+  // TRANSITIONAL on the same criterion as this file's `driver_agent` field, read for the
+  // release that added this field instead of the one that renamed that one — see
+  // `driver_agent`'s doc for the full criterion, which applies unchanged here. It can go, in
+  // all three places at once, once no run started before that release can plausibly still be
+  // in progress.
   elapsed_seconds?: number;
 }
 // The two things that can make headsign let an `unheld` stop pass without holding it — named
