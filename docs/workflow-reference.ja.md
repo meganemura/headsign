@@ -1073,7 +1073,7 @@ hook の書き込みは best-effort で、run の lock が握られている間�
 失敗した判定の行には `dur=<秒数>` も載ります。
 落ちたチェックが実際に何秒走ったかです。
 チェックがタイムアウトした `retry` や、`routed-fail` を伴う `advance` にも `dur=` は載ります。
-人間向けの RETRY・status の出力はすでに `timed out after Ns` として所要時間を別の言い方で語っているので、そちらでは繰り返しません。
+人間向けの、その失敗自身の行(`retry` なら RETRY 自身の `--- gate failed: … ---` 行、routed-fail なら ADVANCE ブロックの `--- gate failed: … → routed to … ---` 行)はすでに `timed out after Ns` として所要時間を別の言い方で語っているので、そちらでは繰り返しません。
 直前が `paused` なら、誰かが意図して止めたということです。
 直前が `stalled` なら、上限はすでに使い切られていたということです。
 そしてこれが唯一残っている沈黙で、上限が切れたあとの停止は自分の行を残さずに通ります。

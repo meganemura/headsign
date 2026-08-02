@@ -33,16 +33,11 @@
   ADR gives `cli.ts` sole custody of. The original wording below said
   headsign read the clock in exactly one place; that was true as far as
   it needed to be, because nothing else read any clock yet, and it did
-  not need to draw this distinction to be correct at the time. What this
-  ADR actually guarantees, restated at that finer grain: the datetime
-  that lands on disk — in `state.json` and `.headsign/log` — comes from
-  exactly one place, and `step()` never holds a clock of its own.
-  Measuring a `spawnSync` interval is a different question, outside that
-  guarantee rather than a case carved out of it, taken inside `gate.ts`
-  because that module already touches the outside world; `engine.ts`
-  still only ever receives a finished, rounded number. The
-  `.headsign/log` paragraph below is updated in place; see `src/gate.ts`'s
-  module header for the same distinction stated at the call site.)
+  not need to draw this distinction to be correct at the time. The
+  `.headsign/log` paragraph below is updated in place with what this ADR
+  actually guarantees at that finer grain; see it for the restated
+  guarantee, and see `src/gate.ts`'s module header for the same
+  distinction stated at the call site.)
 
 ## Context
 
