@@ -50,9 +50,9 @@ none, and is the sort that gets optimised away by a change nobody objects to.
     leaving the phase.** Clearing happens on the pass branch alone — a phase
     that failed, was routed elsewhere, and was later returned to keeps the
     count it already had. `validate`'s silence about cycles that close on a
-    failure edge depends on this: such a cycle is bounded because the failing
-    phase's `max_attempts` survives every trip away and back, whatever runs
-    in between. Reset attempts on entry instead, and the existing tests can
-    be rewritten to pass again — what goes missing then is not a test but the
-    boundedness `validate` was resting on: the same cycle turns forever,
-    unwarned. *(Found in use rather than in review.)*
+    failure edge depends on this: such a cycle can be bounded by the failing
+    phase's `max_attempts`, where one is declared — the count survives every
+    trip away and back, whatever runs in between. Reset attempts on entry
+    instead and the existing tests can be rewritten to pass again — what goes
+    missing then is not a test but the only bound those cycles had: the same
+    cycle turns forever, unwarned. *(Found in use rather than in review.)*
