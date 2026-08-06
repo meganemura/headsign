@@ -785,9 +785,10 @@ itself costs the run nothing and leaves the phase's artifacts where the
 work left them. What lands in the log is the note's first line, cut to 120
 characters, with a trailing `…` whenever that cut version isn't the whole
 note, so a truncated line is never mistaken for a complete one. One note
-covers one turn end, so a wait that runs over
-several exchanges needs the note written again before each of them. Tomorrow, `headsign next` picks the run up at the same
-phase and judges its gate, the way any `next` does. `headsign abort
+covers one turn end, so a wait that runs over several exchanges needs the
+note written again before each of them. Tomorrow, `headsign next` picks
+the run up at the same phase and judges its gate, the way any `next`
+does. `headsign abort
 <reason>` is the other exit, and it is permanent, not a pause: the run
 can't be resumed, and a fresh `headsign start` begins again from the entry
 phase, replaying every phase's gate from scratch. `state.json` is rewritten

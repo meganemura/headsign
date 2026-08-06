@@ -134,7 +134,9 @@ artifact, no second file to keep in sync). Logic, in order:
       hook (see "The `SubagentStop` sibling", below).
    2. **Exit-note gate.** Read `<runDir>/.headsign/tmp/stop-note`. If it
       exists and is non-empty after `trim()`: take its first line
-      (trimmed, truncated to 120 characters), **delete the note**, reset
+      (trimmed, truncated to 120 characters, and marked with a trailing
+      `…` whenever that is not the whole note — a cut thought must not
+      read as a finished one), **delete the note**, reset
       `state.stop_nudges` to 0, append a `paused` line to `.headsign/log`
       (ADR-0004), and **exit 0**. An absent note, or one that is empty or
       whitespace-only after trimming, is treated exactly like "no note" —

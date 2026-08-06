@@ -196,6 +196,22 @@ test("note: first line is trimmed and truncated to 120 chars, marked as cut", ()
   assert.ok(!lines[0].includes(longLine), "the truncated note must not include the full 200-char line");
 });
 
+// The over-length half of the rule, with nothing else cut: every other marked case here has a
+// dropped second line too, so without this one an implementation that only looked for a
+// newline would pass the whole file.
+test("note: a single line over 120 chars is marked as cut with no second line involved", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
+  writeNote(dir, "x".repeat(200));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="x{120}…"$/);
+});
+
 test("note: a single line at or under 120 chars is recorded with no cut mark", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
