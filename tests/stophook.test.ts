@@ -175,10 +175,12 @@ test("note: a non-empty stop-note pauses instead of blocking — exit 0, note de
 
   const lines = readLog(dir);
   assert.equal(lines.length, 1);
-  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="stepping away for lunch, resume after"$/);
+  // A second line existed and was dropped, so what's recorded doesn't match the note in
+  // full: the trailing mark must be there even though the first line itself fit untrimmed.
+  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="stepping away for lunch, resume after…"$/);
 });
 
-test("note: first line is trimmed and truncated to 120 chars", () => {
+test("note: first line is trimmed and truncated to 120 chars, marked as cut", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
   const longLine = "x".repeat(200);
@@ -190,8 +192,35 @@ test("note: first line is trimmed and truncated to 120 chars", () => {
   const lines = readLog(dir);
   assert.equal(lines.length, 1);
   const expectedFirstLine = longLine.slice(0, 120);
-  assert.ok(lines[0].includes(`note="${expectedFirstLine}"`));
+  assert.ok(lines[0].includes(`note="${expectedFirstLine}…"`));
   assert.ok(!lines[0].includes(longLine), "the truncated note must not include the full 200-char line");
+});
+
+test("note: a single line at or under 120 chars is recorded with no cut mark", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
+  writeNote(dir, "x".repeat(120));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.ok(lines[0].includes(`note="${"x".repeat(120)}"`));
+  assert.ok(!lines[0].includes("…"), "a note that fits in full must not be marked as cut");
+});
+
+test("note: a second line dropped, with no 120-char truncation, is still marked as cut", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
+  writeNote(dir, "short first line\nsecond line ignored");
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.deepEqual(decision, { block: false });
+
+  const lines = readLog(dir);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="short first line…"$/);
 });
 
 test("note: whitespace-only note is treated as absent — still blocks, note left alone is irrelevant since it's deleted only on pause", () => {
@@ -636,7 +665,9 @@ test("SubagentStop: a non-empty stop-note pauses instead of blocking — note de
 
   const lines = readLog(dir);
   assert.equal(lines.length, 1);
-  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="handing back to the human"$/);
+  // Same one-rule cut mark as the Stop path: a dropped second line means the recorded note
+  // doesn't match the note in full.
+  assert.match(lines[0], /^\S+ paused build a=0 i=0 note="handing back to the human…"$/);
 });
 
 test("SubagentStop: an unrelated agent's stop must not consume the driving agent's stop-note", () => {

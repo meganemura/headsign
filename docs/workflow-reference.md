@@ -782,7 +782,10 @@ nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
 has a record. The note is consumed (deleted) the moment it's read, and the
 working tree returns to exactly what it was before — net zero, so the pause
 itself costs the run nothing and leaves the phase's artifacts where the
-work left them. One note covers one turn end, so a wait that runs over
+work left them. What lands in the log is the note's first line, cut to 120
+characters, with a trailing `…` whenever that cut version isn't the whole
+note, so a truncated line is never mistaken for a complete one. One note
+covers one turn end, so a wait that runs over
 several exchanges needs the note written again before each of them. Tomorrow, `headsign next` picks the run up at the same
 phase and judges its gate, the way any `next` does. `headsign abort
 <reason>` is the other exit, and it is permanent, not a pause: the run

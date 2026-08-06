@@ -8040,10 +8040,11 @@ function noteGateThenNudge(runDir, startDir, state, nowIso) {
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
+      const recordedNote = firstLine === trimmedNote ? firstLine : `${firstLine}\u2026`;
       const paused = withRunLock(runDir, (fresh) => {
         fs3.rmSync(notePath, { force: true });
         const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso);
-        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
+        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: recordedNote }) };
       });
       return { block: false };
     }

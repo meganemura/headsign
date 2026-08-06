@@ -302,12 +302,16 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
+      // One check covers both ways a note gets cut short (a dropped second line, or a first
+      // line over 120 chars): compare what's kept against the trimmed note as a whole, and mark
+      // it if they differ, so a truncated thought can never be mistaken for a finished one.
+      const recordedNote = firstLine === trimmedNote ? firstLine : `${firstLine}…`;
       // Consume the note INSIDE the lock, and only if the write lands: a note eaten while
       // another process was mid-lap would be a one-shot pause spent on nothing.
       const paused = withRunLock(runDir, (fresh) => {
         fs.rmSync(notePath, { force: true });
         const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso);
-        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: firstLine }) };
+        return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: recordedNote }) };
       });
       // Either the pause was recorded, or somebody is judging right now — both mean the turn
       // may end, and an unconsumed note simply pauses the next one instead.
