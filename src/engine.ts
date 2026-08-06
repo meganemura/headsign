@@ -282,6 +282,8 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   next.stop_nudges = 0;
 
   if (gateResult.kind === "pass") {
+    // The only place an attempt count is ever cleared — leaving the phase without passing
+    // does not touch it. `.headsign/notes/what-headsign-protects.md` #13.
     delete next.attempts[phaseName];
     next.last_failure = null;
     const { to, routedBy } = passTarget(phase.on_pass, route);
