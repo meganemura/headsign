@@ -54,5 +54,6 @@ none, and is the sort that gets optimised away by a change nobody objects to.
     phase's `max_attempts`, where one is declared — the count survives every
     trip away and back, whatever runs in between. Reset attempts on entry
     instead and the existing tests can be rewritten to pass again — what goes
-    missing then is not a test but the only bound those cycles had: the same
-    cycle turns forever, unwarned. *(Found in use rather than in review.)*
+    missing then is not a test but the per-phase bound that silence rests on:
+    absent `limits.max_total_iterations`, the same cycle turns forever,
+    unwarned. *(Found in use rather than in review.)*
