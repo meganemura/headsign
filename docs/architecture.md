@@ -43,15 +43,15 @@ consumer repository:
 
 ## Module map
 
-Size: `src/` measured **1,113 code lines** on 2026-07-28 (tests excluded, and
+Size: `src/` measured **1,488 code lines** on 2026-08-08 (tests excluded, and
 counting code only — the deliberately dense AI-friendly comments and blank
-lines don't count; raw `wc -l` is ~1945). That is a measurement, not a
+lines don't count; raw `wc -l` is ~3360). That is a measurement, not a
 target. ADR-0001's budget of roughly 500 code lines is retired by
-[ADR-0016](adr/0016-explainability-as-the-fitness-function.md): `src/` went
-past twice the number without the guideline stopping a single feature
-proposal, while every design problem actually found in the ADR-0008..0015
-run was found because an explanation would not come out straight. Recount
-when you want the current number:
+[ADR-0016](adr/0016-explainability-as-the-fitness-function.md): `src/` had
+already gone past twice the number by then without the guideline stopping a
+single feature proposal, while every design problem actually found in the
+ADR-0008..0015 run was found because an explanation would not come out
+straight. Recount when you want the current number:
 
 ```sh
 for f in src/*.ts; do grep -vE '^\s*//' "$f" | grep -vE '^\s*$'; done | wc -l
