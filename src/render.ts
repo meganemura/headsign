@@ -4,9 +4,6 @@
 // A log line is composed from the state AFTER the event it describes: the counters printed
 // come straight out of what it is handed, so passing the state from before a transition
 // produces a line that reads correctly and counts wrong, and nothing here would notice.
-// The timestamp arrives as an argument. It originates in cli.ts, the one place headsign reads
-// the wall clock (ADR-0004), and reaches this module either directly or by way of engine.ts
-// or stophook.ts.
 // Must NOT know about: HOW any of it was decided — the routing rules, the gates, or what made
 // a counter the number it is. It is handed the run's state and reads values straight out of
 // it (the phase, the attempt count, the iteration count) precisely because reading is all it
@@ -47,17 +44,14 @@ export function advance(
   return `ADVANCE ${phase}\n${clearedBlock(cleared)}${failedLine}${routedLine}--- phase: ${phase} ---\n${description}\n`;
 }
 
-// One `--- cleared: <path> ---` line per file clearPhaseArtifacts actually deleted
-// (existed and was non-empty) — announced right after the token line, in both start()
-// and advance(), so a silently-vanished artifact from a previous pass is visible instead
-// of a one-cycle-later surprise.
+// One `--- cleared: <path> ---` line per file clearPhaseArtifacts (engine.ts) reports as
+// removed; that function's own comment is why it is worth announcing.
 function clearedBlock(cleared?: string[]): string {
   return (cleared ?? []).map((p) => `--- cleared: ${p} ---\n`).join("");
 }
 
-// A phase declared `ready:` and the probe hasn't passed yet: nothing was judged, so
-// nothing was counted. Distinct from RETRY (a real, counted, failed judgment) — the whole
-// point of this token is that "not ready" and "failed" must not sound the same.
+// PENDING vs RETRY, and why the `ready:` probe is uncounted: ADR-0002's Consequences
+// (the PENDING paragraph) and its transition-table `ready:` note.
 export function pending(phase: string, description: string, ready: string): string {
   return (
     `PENDING ${phase}\n` +
@@ -72,12 +66,8 @@ export function retry(o: Failure & { phase: string; attempt: number; maxAttempts
   return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
 }
 
-// The second line exists only for a run that rewrote its own workflow while it was running
-// (ADR-0016 §5 allows that, and headsign does not forbid it). It says so HERE, on the run's
-// final answer, because `.headsign/log` is gitignored: a count that lived only in the log would
-// never reach the person reading the pull request. An undefined or zero count adds nothing —
-// the COMPLETE of a run that changed nothing is byte-identical to the one headsign has always
-// printed.
+// ADR-0016 §5 allows a run to rewrite its own workflow while running; ADR-0023 §8 is why the
+// count is reported HERE, on COMPLETE, rather than only in the gitignored log.
 export function complete(name: string, acceptedGraphChanges?: number): string {
   const accepted = acceptedGraphChanges ?? 0;
   const changeLine =
@@ -94,9 +84,7 @@ export function abort(reason: string): string {
 }
 
 // --- claim: the driver-adoption handshake (ADR-0009, re-homed onto SubagentStop by ADR-0010) ---
-// Deliberately fixed, argument-free text: `claim` itself never judges or varies its
-// output by workflow/phase (ADR-0002's "the only judging command is `next`" still holds —
-// this just arms a marker for the SubagentStop hook to act on).
+// Deliberately fixed, argument-free text — ADR-0002's claim paragraph is why.
 export function claim(): string {
   return (
     "CLAIM armed\n" +
@@ -118,7 +106,7 @@ export function validateFail(path: string, errors: string[]): string {
 }
 
 // Warnings never change an exit code — the workflow still loads and the run still starts.
-// Written to stderr by `validate` and `start` only, so `next`'s hot path stays clean.
+// Who prints them and who doesn't: ADR-0011 §6.
 export function validateWarnings(path: string, warnings: string[]): string {
   return `WARNING: ${path}\n${warnings.map((w) => `- ${w}\n`).join("")}`;
 }
@@ -133,10 +121,6 @@ function clause(run: string, exitCode: number | "timeout", timeoutSeconds?: numb
 }
 
 // --- status: the read-only observation window (ADR-0002/0008) ---
-// Its own token vocabulary (RUNNING/COMPLETE/ESCALATED/ABORTED), deliberately distinct
-// from next's (ADVANCE/RETRY/PENDING/COMPLETE/ESCALATE/ABORT) even where the words
-// overlap in meaning — status observes, it never judges, and the two must never be
-// mistaken for each other's output.
 
 export function statusRunning(o: {
   phase: string;
@@ -151,12 +135,8 @@ export function statusRunning(o: {
   // last_failure left over from a since-departed phase must never be shown as if it were
   // about now.
   lastFailure?: (Failure & { outputTail: string }) | null;
-  // Two values, and deliberately neither of them says anything about *who is reading*
-  // (ADR-0013): the recorded driver is an agent id, and only the SubagentStop hook's stdin
-  // ever carries one, so the CLI has no id of its own to compare and must not imply it does.
-  // What this line reports is the one fact the CLI can read off state.json — whether the run
-  // has been claimed — which is exactly the question `headsign claim`'s two-beat handshake
-  // leaves open when it fails quietly (see cli.ts's reportStatus for why the line is kept).
+  // Two values, worded by cli.ts's reportStatus and handed straight through — see it for
+  // why neither says who is reading (ADR-0013) and why the line is worth printing at all.
   driver: "a delegated agent" | "not delegated yet — no agent has claimed this run";
   // What headsign did with the last turn end it could attribute to this run, straight off the
   // record (no log parsing). Optional, so a run on which no stop has been processed prints what
@@ -270,11 +250,8 @@ export function statusTerminal(status: "complete" | "escalated" | "aborted", wor
 export type LogEvent =
   | { kind: "START"; workflow: string }
   | Outcome
-  // The global ceiling (ADR-0017). A synthetic event rather than the ESCALATE outcome it is
-  // printed as, because `escalate` in this file means "the run ended by escalation" for its
-  // two other producers, and this one ends nothing: the run stays `running` and may continue
-  // after someone raises the limit. Logging it as `escalate` would make every reader of a log
-  // that stops here — and of one that carries on past it — read an ending that never happened.
+  // The global ceiling. A synthetic event rather than the ESCALATE outcome it is printed as —
+  // ADR-0017's "The log gets a fourth word: ceiling" is why.
   | { kind: "CEILING"; reason: string }
   // The workflow's own rules moved under a running run (engine.ts's reconcileGraphPin). One
   // event word for both dispositions, distinguished in the detail, because they are two
@@ -291,10 +268,7 @@ export type LogEvent =
   // because its sibling `stalled` states the same quantity as a constant: one arm reading the
   // record and the other writing a literal is how one `nudges=` key would come to mean two
   // things in this file.
-  // Why every nudge and not only the cap: `stalled` records the cap being exhausted, and with
-  // the holds before it unwritten it has no denominator — a run can show the guard tripping
-  // with no countable hold anywhere. It also gives the line before an `unheld` something to
-  // say, which is what makes an `unheld` readable on its own.
+  // Why every nudge and not only the cap: ADR-0025 §7 (the retraction) and its Consequences.
   | { kind: "HELD"; nudges: number }
   | { kind: "STALLED" }
   // A turn end headsign was overruled on: either Claude Code's already-continuing flag was set
@@ -384,10 +358,8 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
     case "RETRY":
       return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`;
     case "ADVANCE":
-      // Which branch of a k-way `on_pass` was taken is recorded here and nowhere else that
-      // outlives the run: without it, a routed advance reads exactly like a straight one and
-      // why the run went this way instead of that way is gone for good. The log is the
-      // human's audit trail, so it may say more than stdout does.
+      // Which branch of a k-way `on_pass` was taken, and why the log is the record of it
+      // that outlives the run: ADR-0011's Consequences.
       if (event.routedBy) {
         const why = "when" in event.routedBy ? `routed-when="${event.routedBy.when}"` : "routed-default";
         return `from=${prevPhase} ${why}`;
@@ -411,12 +383,12 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
     case "PAUSED":
       return `note="${event.note}"`;
     case "HELD":
-      // `nudges=`, the same key `stalled` writes for the same quantity: one key, one meaning,
-      // so counting the holds a run has spent is one grep and not two vocabularies.
+      // `nudges=`, the same key `stalled` writes for the same quantity — ADR-0004's
+      // 2026-07-31 revision note is why the two share it.
       return `nudges=${event.nudges}`;
     case "STALLED":
-      // The cap-tripping hold writes this INSTEAD of `held`, one line per event, so its
-      // `nudges=5` is also the count of that hold — four `held` lines plus this one.
+      // The cap-tripping hold writes this INSTEAD of `held`, one line per event — ADR-0004's
+      // 2026-07-31 revision note spells out the count this leaves a reader.
       return "nudges=5";
     case "UNHELD":
       // Bare, not quoted, by this file's own rule: quotes are for free text, and both
@@ -428,10 +400,8 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
       // what it was told, whichever of the two causes told it.
       return `by=${event.cause}`;
     case "CLAIMED":
-      // No detail — the whole point of the claimed event is to record *that* an adoption
-      // happened, never *who* was adopted (that stays in state.json only, per ADR-0009).
-      // ADR-0010 changed which identifier that is (an agent id, not a session id); it did
-      // not change the rule that it never reaches the log.
+      // No detail — ADR-0004's "Unlike the other two, `claimed`'s detail field is empty" is
+      // why; ADR-0010 is why the identifier itself is an agent id rather than a session id.
       return "";
     case "COMPLETE":
       // No detail form is specified for `complete` in the spec's enumeration (start /

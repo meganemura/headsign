@@ -262,3 +262,68 @@ here.
   `PENDING` explained to a workflow author. Neither ADRs nor `docs/` reach it.
 - **`.headsign/notes/explaining-well.md:84-91`** — pairs `isReady`'s lenient arm
   against `resolveRoute`'s refusal in entirely different vocabulary.
+
+---
+
+## src/render.ts
+
+Comment lines 218 → 188. Deleted 1, turned into pointers 13, kept 35.
+
+**Approved on the first round** — the first lap to manage it since the standard
+settled. The pruner ran its own review before reporting and caught five things
+the judge would have: two pointer headlines that were wrong as new prose, and
+three kept-reasons still shaped as claims about what the tree lacks.
+
+### Where the 13 rules now live
+
+`PENDING`'s uncounted semantics and the `CLAIM` vocabulary — ADR-0002. The
+read-only `status` window — ADR-0008 §5. Warnings that never change an exit
+code — ADR-0011 §6, with the routed-ADVANCE line at its Consequences. The
+graph-change count on `COMPLETE`, and why it is said out loud rather than left
+in a gitignored log — ADR-0016 §5, ADR-0023 §8. The ceiling line — ADR-0017.
+`held`/`stalled` sharing `nudges=`, and `claimed` — ADR-0004's 2026-07-31
+revision, ADR-0010. The `unheld` wording's retraction — ADR-0025. `clearedBlock`
+and the `driver` line point at their producers in `engine.ts` and `cli.ts`.
+
+### Kept — the shape of it
+
+Thirty-five blocks, most of them one of three relations: this module words
+something whose *decision* lives in an ADR (so the ADR is cited and the wording
+stays); this module's line is the other end of a producer in `engine.ts` or
+`cli.ts` (rewrite one and the other is stranded); or a test's section comment
+carries the same distinction as an executable claim while this carries the
+reason. The full list is in the run's proposal; what is worth pulling out here:
+
+- **`logLine`'s doc.** Where the timestamp comes from, that `cli.ts` is the only
+  clock reader, and that both callers take it as an argument. A module-header
+  paragraph saying the same thing was deleted as a restatement of this.
+- **`durSuffix` / `clause` / `Failure.elapsedSeconds`.** Why the timeout arm
+  omits the elapsed clause — `gate.ts` and `state.ts` hold the field's own
+  reasons, this holds what rendering does with it.
+- **`lastStopWording` and `UNHELD_WORDING`.** The two `unheld` sentences name
+  where the session was rather than what headsign did about it.
+
+### Also discussed at — found by the judge
+
+- **`tests/render.test.ts:200`, `:259`** carry section comments *verbatim
+  identical* to two of this file's dividers. Six more dividers there are the
+  same shape.
+- **`tests/render.test.ts:165-166` and `tests/engine.test.ts:756`** give the
+  gitignored-log reason for saying the graph-change count on `COMPLETE`, in
+  nearly the same words as the code comment.
+- **`docs/workflow-reference.ja.md:782-784`, `:803-809`, `:817-826`** print all
+  four `last stop:` readings and the `by=` table in Japanese.
+- **ADR-0027 §7 (`:294-300`)** tells almost the same story about `last drive:`
+  being misread under `driver:` that `lastMovedLine`'s comment tells about its
+  own label.
+
+### Noted, not acted on
+
+- **`state.ts:48` and `docs/adr/0026:101` both cite `render.ts:352`**, which is
+  now `durSuffix`'s closing brace. The rule they mean — the `unheld` arm naming
+  upstream tokens verbatim — is at `render.ts:393-401`. The drift predates this
+  sweep (`src/state.ts`'s section above records it) and this lap moved the
+  target further. Worth one commit after the sweep, in both places at once.
+- `logDetail`'s `COMPLETE` comment lists ADR-0004's detail formats from an older
+  version of that list. Its conclusion — no format is specified for `complete` —
+  holds under either version, and the block was kept unchanged.
