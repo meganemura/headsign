@@ -195,3 +195,70 @@ Only the entries where the second home is somewhere a reader would not look:
   true"). It survives because the claim is grep-true and because
   `src/engine.ts:511-514` names the same place — the two are a pair, and
   rewriting one alone leaves the other pointing at nothing.
+
+---
+
+## src/gate.ts
+
+Comment lines 102 → 88. Deleted 0, turned into pointers 7, kept 11.
+
+Zero deletions was the outcome, not an omission — this file's comments had been
+tightened by hand in recent work, so what was left was either a rule with a home
+elsewhere or a reason with none.
+
+Four rounds. Every rejection was the proposal's prose; the classification of the
+blocks was judged sound in all four. Two of the four were caused by editing the
+proposal with blind string replacement — a superseded sentence left standing next
+to its replacement, and a sentence broken into nonsense. Read what a replacement
+produced before moving on.
+
+### Where the rules now live
+
+`env:` removal and inherited environment — ADR-0014 §1. The three places headsign
+runs a shell, and that a command which never ran is not an answer — ADR-0021,
+whose Consequences name this module header as where that is stated at the call
+site. `when:` ordering, first-match, the default last, and a broken `when:`
+stopping the run — ADR-0011 §1/§5. The monotonic-clock exception to `cli.ts`'s
+sole custody of the wall clock — ADR-0004, whose revision note also points back
+here.
+
+### Kept — and how each stands to the rest
+
+- **Module header ¶1.** The three questions and their shared shape. ADR-0021
+  names this header as the call-site statement of it.
+- **Module header, `Must NOT know about`.** `docs/architecture.md`'s module
+  table carries the same exclusion, wider by one item; this is the code-adjacent
+  version. Over-keeping, which is the safe direction.
+- **Module header, the clock paragraph.** ADR-0004's revision note points at
+  this header; this points back. Rewrite one and the other points at nothing.
+- **`CheckFailure.elapsedSeconds`.** `state.ts` names this field as expiring on
+  a different criterion and gives the *order's* reason after the colon; this
+  carries the criterion itself. The two divide one sentence.
+- **`elapsedSecondsSince`.** Why it rounds to the precision `timeoutSeconds`
+  uses, so the two can be compared without arithmetic.
+- **`runGate`'s `maxBuffer` line, and the non-timeout `spawnError` branch.**
+- **`ReadyResult`.** ADR-0021 §1 spells the three kinds out in prose; this is
+  the same shape as a type, beside the arms that produce it.
+- **`isReady`'s main comment.** The ADRs describe the outcome (`PENDING`,
+  uncounted, `state.json` untouched); this binds the exit code to it.
+- **The section divider, and `resolveRoute`'s unreachable fallback.**
+  `workflow.ts:219-223` guarantees a validated list ends in an entry the loop
+  returns from. That guarantee stops where `validate` stops; this comment
+  answers for a hand-built `Route[]`, and `tests/gate.test.ts:210-213`
+  constructs exactly that and runs the arm.
+
+### Also discussed at — found by the judge
+
+- **`tests/gate.test.ts:210-213`** — the only place the unreachable arm is
+  actually executed, on a hand-built route list. The sweep did not find it.
+- **`src/engine.ts:825-838`** — "the thing that could not be evaluated is the
+  destination itself", the running side of `resolveRoute`'s refusal.
+- **`docs/workflow-reference.ja.md:445`, `:452`, `:1074-1076`** — the same rules
+  in Japanese. An English phrase search cannot reach them, which is the blind
+  spot that cost this sweep several rounds.
+- **`CHANGELOG.md:195-207`** — "a working directory that had gone away, output
+  past the runner's buffer": the plain-language version of the errno branch.
+- **`plugin/skills/design-workflow/references/schema.md:37`** — `ready:` and
+  `PENDING` explained to a workflow author. Neither ADRs nor `docs/` reach it.
+- **`.headsign/notes/explaining-well.md:84-91`** — pairs `isReady`'s lenient arm
+  against `resolveRoute`'s refusal in entirely different vocabulary.

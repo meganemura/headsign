@@ -20,9 +20,8 @@
 // caller owns that ordering (ADR-0011), which is why it lives in engine.ts and not here.
 // Must NOT know about: state.json, git.
 //
-// Every command here inherits headsign's own environment unmodified (ADR-0014): a phase
-// cannot declare variables, because `FOO=bar cmd` in the `run:` string already says it, in
-// the shell the workflow author is already writing.
+// Every command here inherits headsign's own environment unmodified — no phase-level `env:`
+// merges over it (ADR-0014 §1).
 //
 // One clock reading that is not ADR-0004's: that ADR gives cli.ts sole custody of the WALL
 // clock (the timestamp written into state.json and the log), so a date on disk always comes
@@ -56,23 +55,16 @@ export interface CheckFailure {
   elapsedSeconds?: number;
 }
 
-// Three outcomes, not two, and the third is not a kind of failure. `fail` is an ANSWER: the
-// check ran and said no, which is exactly what a gate is for. `unrunnable` is the ABSENCE of
-// one — the command never started, or was killed by this runner before it could finish (a cwd
-// that no longer exists, an output flood past maxBuffer), so there is no exit code to route
-// on. Reporting that as `fail` spends an attempt on a verdict nobody measured, and
-// `max_attempts` failures away it ends the run — a transition decided by something that never
-// ran, which is precisely what ADR-0001 says headsign does not do. Same rule resolveRoute
-// already applies to a `when:` (ADR-0011), now stated in the same vocabulary.
+// Three outcomes, not two, and the third is not a kind of failure: `fail` is an answered gate,
+// `unrunnable` is the absence of one, and the caller refuses the lap on it rather than
+// spending an attempt — ADR-0021 §1, §2.
 export type GateResult =
   | { kind: "pass" }
   | ({ kind: "fail" } & CheckFailure)
   | { kind: "unrunnable"; check: string; run: string; reason: string };
 
-// What a transition may be computed from: the two arms that are actual verdicts. engine.step
-// takes THIS, not GateResult, so "unrunnable never reaches the transition function" is a fact
-// the compiler keeps rather than a comment asking a future caller to remember it — the caller
-// has to deal with the third arm before it can call step at all.
+// What a transition may be computed from: the two arms that are actual verdicts, and why
+// `engine.step` takes this type rather than `GateResult` — ADR-0021 §3.
 export type GateVerdict = Exclude<GateResult, { kind: "unrunnable" }>;
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
@@ -102,12 +94,10 @@ export function runGate(checks: Check[], cwd: string): GateResult {
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error as NodeJS.ErrnoException | undefined;
     if (spawnError?.code === "ETIMEDOUT") {
-      // A timeout is a verdict, deliberately NOT an unrunnable check: the command did run,
-      // it reported on the work by being stopped, and the limit it ran past is one the
-      // workflow author wrote in this very file. Only "headsign never got an answer at all"
-      // belongs in the arm below. `elapsedSeconds` lands close to `timeoutSeconds` here, which
-      // is itself the confirmation that the check really did run to the limit rather than
-      // being cut short some other way.
+      // A timeout is a verdict, deliberately NOT an unrunnable check — ADR-0021 §4.
+      // `elapsedSeconds` lands close to `timeoutSeconds` here, which is itself the
+      // confirmation that the check really did run to the limit rather than being cut short
+      // some other way.
       return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds };
     }
     if (spawnError) {
@@ -142,11 +132,8 @@ export function isReady(sh: string, cwd: string): ReadyResult {
     stdio: "ignore",
   });
   const spawnError = result.error as NodeJS.ErrnoException | undefined;
-  // A timed-out probe still ran, and this stays the one lenient arm in the file: a slow
-  // probe must not silently stall the run behind PENDING forever — running the real gate and
-  // producing an actual verdict is the safer failure mode, and the gate is the thing being
-  // deferred here, not a destination. That leniency was never about the case below: a probe
-  // that could not be started produced nothing to be lenient toward.
+  // A timed-out probe still ran; this stays the one lenient arm in the file, and the gate is
+  // the thing being deferred here, not a destination — ADR-0021 §5.
   if (spawnError?.code === "ETIMEDOUT") return { kind: "ready" };
   if (spawnError) return { kind: "unrunnable", reason: spawnError.code ?? spawnError.message };
   return result.status === 0 ? { kind: "ready" } : { kind: "not-ready" };
@@ -159,16 +146,15 @@ export type RouteResolution =
   | { kind: "default"; to: string }
   | { kind: "error"; when: string; reason: string };
 
-// Evaluated only after the gate has already passed. Entries are tried top to bottom and the
-// first `when:` to exit 0 wins; the entry without a `when:` (validated to be the last one) is
-// the default. Mirrors runGate's spawnSync pattern (same shell, cwd, timeout default), but
-// discards output like isReady does: a `when:` is a predicate, and nothing here is ever
-// shown to the agent.
+// Evaluated only after the gate has already passed, entries tried top to bottom, first
+// `when:` to exit 0 wins, the entry without one (last, by validation) is the default —
+// ADR-0011 §1. Mirrors runGate's spawnSync pattern (same shell, cwd, timeout default), but
+// discards output like isReady does: a `when:` is a predicate, and nothing here is ever shown
+// to the agent.
 //
-// Fails toward stopping, unlike isReady: a nonzero exit is a real answer ("not this branch"),
-// but a probe that could not run at all has produced no answer, and the thing being decided
-// here is the destination itself. Silently taking the default would move the run to a phase
-// nobody declared for that situation — see ADR-0011.
+// Fails toward stopping, unlike isReady: a spawn error or a timeout here has produced no
+// answer, and silently taking the default would move the run to a destination nothing
+// actually selected — ADR-0011 §5.
 export function resolveRoute(routes: Route[], cwd: string): RouteResolution {
   for (const route of routes) {
     if (route.when === undefined) return { kind: "default", to: route.to };
