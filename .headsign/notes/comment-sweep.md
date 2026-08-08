@@ -127,7 +127,7 @@ ADR-0026. `last_drive` and what an absent stamp means — ADR-0027 §2/§3/§9.
 - **`isObserver`.** ADR-0013 says why the check merged here; ADR-0025 says why
   `status` became a second caller. Neither says why the second caller does not
   reopen the first decision, and that is what this paragraph holds.
-- **`resolveDriveSession`.** `src/engine.ts:504-514` states the same fact and
+- **`resolveDriveSession`.** `engine.ts`'s `driveStamp` states the same fact and
   then names *this* function as where it must live. The pointer runs both ways;
   editing one without the other strands the pair.
 - **`resolveAgentId` / `resolveSessionId`.** Why these are two functions over
@@ -143,9 +143,10 @@ ADR-0026. `last_drive` and what an absent stamp means — ADR-0027 §2/§3/§9.
 - **`pauseAndAbortHint`.** Why the message depends only on `runDir`/`startDir`.
 - **`NOT_DRIVING_HINT`.** Why the observer relay comes last, after the
   pause/abort hint.
-- **`withRunLock`'s "Vanished, or ended".** `src/engine.ts:598-616` implements
-  the same guard on the `next` side. A reader is on one side or the other, and
-  each side needs the note beside its own implementation.
+- **`withRunLock`'s "Vanished, or ended".** The re-read-under-lock guard inside
+  `engine.ts`'s `next` implements the same thing on the driving side. A reader
+  is on one side or the other, and each side needs the note beside its own
+  implementation.
 - **`StampedLogEvent`.** The fourth-argument carrier. Nothing else in the tree
   mentions `__nowIso`.
 - **"Either the pause was recorded…".** What a failed lock means for a
@@ -163,7 +164,7 @@ ADR-0026. `last_drive` and what an absent stamp means — ADR-0027 §2/§3/§9.
 
 Only the entries where the second home is somewhere a reader would not look:
 
-- **`resolveDriveSession` → `src/engine.ts:504-514`**, which names this
+- **`resolveDriveSession` → `engine.ts`'s `driveStamp`**, which names this
   function as the one place the claim may live. The strongest pair in the file,
   and the sweep did not find it; a search on the identifier did.
 - **`fallbackUnheld` ¶1 → `docs/workflow-reference.md:280-282`, `:301-305`**,
@@ -193,7 +194,7 @@ Only the entries where the second home is somewhere a reader would not look:
   `docs/adr/0025:274-275`, which makes it a strong keep nobody classified.
 - `src/stophook.ts:55-56` reads as an absolute ("the one place that has to stay
   true"). It survives because the claim is grep-true and because
-  `src/engine.ts:511-514` names the same place — the two are a pair, and
+  `engine.ts`'s `driveStamp` names the same place — the two are a pair, and
   rewriting one alone leaves the other pointing at nothing.
 
 ---
@@ -251,8 +252,9 @@ here.
 
 - **`tests/gate.test.ts:210-213`** — the only place the unreachable arm is
   actually executed, on a hand-built route list. The sweep did not find it.
-- **`src/engine.ts:825-838`** — "the thing that could not be evaluated is the
-  destination itself", the running side of `resolveRoute`'s refusal.
+- **`engine.ts`'s route-error refusal in `evaluateNext`** — "the thing that
+  could not be evaluated is the destination itself", the running side of
+  `resolveRoute`'s refusal.
 - **`docs/workflow-reference.ja.md:445`, `:452`, `:1074-1076`** — the same rules
   in Japanese. An English phrase search cannot reach them, which is the blind
   spot that cost this sweep several rounds.
@@ -327,3 +329,75 @@ reason. The full list is in the run's proposal; what is worth pulling out here:
 - `logDetail`'s `COMPLETE` comment lists ADR-0004's detail formats from an older
   version of that list. Its conclusion — no format is specified for `complete` —
   holds under either version, and the block was kept unchanged.
+
+---
+
+## src/engine.ts
+
+Comment lines 447 → 376. Deleted 2, turned into pointers 33, kept 54.
+
+The largest file, and the one most pointed at from elsewhere. Three rounds; the
+classification survived all three untouched. What failed was a claim about
+*another* file — a kept entry said `stophook.ts`'s guard comment names this side
+as its pair, and it does not; only this note does — and then twice, the mechanics
+of editing prose without reading the result.
+
+### The bundle check has one blind spot, and this lap found it
+
+esbuild keeps a comment that sits directly before an object-literal property
+value. Three of them survive into `plugin/dist/headsign.mjs`, all inside
+`start`'s fresh-state literal. Pointerizing one of those moves the bundle and
+fails the gate on work that touched no code, so it was left alone and recorded
+instead. The check still errs only in the safe direction: it will refuse honest
+work, never pass a code change.
+
+### Where the 33 rules now live
+
+The seam between `cli.ts` and this module, and that the order a lap asks its
+questions in is itself a routing rule — ADR-0018. Exhaustion always escalating,
+and `on_fail: abort` being gone — ADR-0014 §2/§3. A gate result that is not an
+answer never reaching the transition function — ADR-0021 §3. The graph pin's
+four outcomes, checking the graph before using it, and `COMPLETE` naming the
+count only when it is non-zero — ADR-0023 §4/§8. The ceiling that stops without
+ending — ADR-0017. `last_drive` and the one place the session stamp is read —
+ADR-0027 §4/§5, pointing at `stophook.ts`'s `resolveDriveSession`, which points
+back at `driveStamp` here.
+
+### Kept — the shape of it
+
+Fifty-four blocks. Three recurring relations, the same ones the earlier laps
+found: this module implements what an ADR decided and the comment says which
+local action instantiates it; this is one end of a pair whose other end is in
+`state.ts`, `render.ts`, `stophook.ts` or `cli.ts`; or a test's section comment
+states the same distinction as an executable claim while this states the reason.
+Worth naming here:
+
+- **`step`'s pass branch.** The only place an attempt count is cleared, and
+  `what-headsign-protects` #13 is the rule it instantiates.
+- **The totality guards on `start`/`next`/`abort`.** Why the three exported
+  entry points refuse by name rather than throwing at an index.
+- **`driveStamp`.** Names `stophook.ts`'s `resolveDriveSession` as the one place
+  the session is resolved; that comment names this one back.
+- **`unrunnableMessage`.** What a lap that got no verdict leaves behind, which
+  is nothing.
+
+### Also discussed at — found by the judge
+
+- **`tests/engine.test.ts`'s section comments are the single largest duplicate
+  source in the tree for this file** — `:282` on the loop guard, `:332` on the
+  totality of the entry points, `:153` on the iteration limit, `:386` on a lap
+  that got no verdict. Several are near-verbatim with the code comments.
+- **`docs/architecture.md:73`** carries this module's exclusion list wider than
+  the module header does, and `:84-86` gives `next`'s seven steps.
+- **`CHANGELOG.md:164`** — "re-reads the file every lap on purpose — that is how
+  you raise a ceiling" — the user-facing version of the pin's reconcile branch.
+- **`docs/workflow-reference.ja.md:510`** states the ceiling's non-ending
+  behaviour in Japanese.
+
+### Noted, not acted on
+
+This sweep broke five line-number references into `engine.ts` that earlier laps
+of *this note* had written — they had drifted by fifty lines and more while
+still reading as correct. All five are now symbol-keyed, and the record phase
+was changed to forbid line numbers for exactly this reason. It is the same drift
+this sweep keeps finding in the tree, produced by the sweep itself.

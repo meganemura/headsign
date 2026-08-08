@@ -1,34 +1,26 @@
 // Responsibility: one operation on a run — start it, take one lap of `next`, abort it, claim
 // it, describe it — carried out and reported as a value. The ONLY place routing rules live
-// (ADR-0002, ADR-0004), and that now includes the ORDER a lap asks its questions in:
-// ADR-0002's transition table calls itself "the whole routing rule set" and puts the ordering
-// inside it, so the ordering is a routing rule by this project's own documents (ADR-0018).
+// (ADR-0002, ADR-0004), and that now includes the ORDER a lap asks its questions in —
+// ADR-0018's Context makes the case: ADR-0002's transition table calls itself "the whole
+// routing rule set" and puts the ordering inside it, so the ordering is a routing rule too.
 // Arguments arrive RESOLVED. `start` is handed a workflow path, never a name: turning a bare
 // name into `.headsign/<name>.yaml` and refusing one with a slash in it both happen before
 // the call. "Must NOT know about: argv" below rules out reading the command line; it does not
 // by itself say what shape the values arrive in, which a seam sweep had to point out.
 //
-// The directory is the caller's choice and is taken on trust: every operation works in the
-// directory it is handed, looks for the run only there, never searches upward, and never
-// checks the choice against anything. That is the cwd-only rule the README and the workflow
-// skill explain to users, and until a seam sweep asked, it was stated in neither.
+// The directory is the caller's choice and is taken on trust, never searched for — see
+// ADR-0004's cwd-only resolution section.
 // Must NOT know about: argv, stdout/stderr, exit codes. Every answer and every refusal leaves
 // here as data, and cli.ts alone decides how to say it and what to exit with. (The one text
 // this module composes is a `.headsign/log` line, through render.logLine, which owns that
 // format; choosing which event happened is this module's job and nobody else's.)
 //
-// NOT a pure module, and the map says so (ADR-0018): a lap spawns the phase's gate through
-// gate.ts, and four of the five operations read and write `.headsign/`. Two properties
-// survive that move and are kept deliberately:
-//   - step() is still pure, total and exported — same (workflow, state, gate result, route),
-//     same answer, no I/O — which is what lets tests/engine.test.ts enumerate the whole
-//     transition table by calling it directly.
-//   - nothing here reads the clock, and nothing reads the environment. A timestamp arrives as an
-//     argument (`nowIso`), and so does the environment where an operation needs it (`status`,
-//     for the HEADSIGN_OBSERVER line; `start` and every `next` that reaches the run, for the
-//     `last_drive` stamp, ADR-0027) — the shape stophook.ts already uses across this same
-//     boundary, so the same inputs produce byte-identical output and a test can assert a whole
-//     line.
+// NOT a pure module: it spawns the phase's gate through gate.ts, and four of the five
+// operations read and write `.headsign/`. Two properties are kept deliberately, stated in the
+// same words at ADR-0018 §5 ("engine.ts is no longer a pure module, and its row says so"):
+// step() stays pure, total and exported, and the module reads no clock. The environment gets
+// the same treatment as the clock; the argument shape that carries it in, and why, is spelled
+// out at `status` below.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -62,10 +54,9 @@ export type Outcome =
   // answered, or that nothing did and the default was taken. Carried verbatim for render.ts
   // to print and log — the engine decides nothing from it.
   | { kind: "ADVANCE"; phase: string; description: string; failure?: FailureInfo & { routedTo: string }; routedBy?: { when: string } | { default: true } }
-  // `acceptedGraphChanges` is set only when this run accepted at least one change to its own
-  // workflow rules while it was running (see reconcileGraphPin below). Optional, and set
-  // through the same spread `routedBy` uses, so a run that never rewrote its workflow prints
-  // the COMPLETE it always printed, to the byte.
+  // `acceptedGraphChanges` is set only when this run accepted a change (see reconcileGraphPin
+  // below), through the same spread `routedBy` uses — ADR-0023 §8's byte-identical-when-zero
+  // guarantee.
   | { kind: "COMPLETE"; acceptedGraphChanges?: number }
   | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo }
   | { kind: "ESCALATE"; reason: string }
@@ -75,17 +66,9 @@ export type Outcome =
   // pure and clock-free, with no I/O and no shell probe of its own.
   | { kind: "PENDING"; phase: string; ready: string };
 
-// The global ceiling: a wall the run stops in front of, not an ending (ADR-0017). It returns
-// an outcome and NO state, which is the whole of the change — nothing here writes
-// `status: "escalated"`, so the run stays `running` and a person who decides it was merely
-// bigger than declared can raise the limit and continue with `headsign next`. Of the three
-// ESCALATE producers this is the only one that can fire on a run doing nothing wrong; the
-// two that mean something is actually wrong (`max_attempts` exhausted, `on_fail: escalate`)
-// stay terminal in step().
-//
-// The reason names the way out, because a wall nobody can see over is one a person cannot
-// act on. `state.workflow_path` is where the limit is written, and reading it keeps this
-// function as pure as it was — no clock, no I/O.
+// The global ceiling: a wall the run stops in front of, not an ending — ADR-0017's Decision and
+// Context ("only the global ceiling can fire on a run doing nothing wrong") state this in the
+// same words, the reason string's wording and the workflow_path-keeps-this-pure fact included.
 // The ESCALATE arm of Outcome, named because checkIterationLimit only ever produces that one
 // and the caller reads its `reason` (the wider union has arms without one). Same idiom as
 // ResolvedRoute above: narrow the type rather than make the call site re-check what it knows.
@@ -93,21 +76,10 @@ export type CeilingOutcome = Extract<Outcome, { kind: "ESCALATE" }>;
 
 // The three exported entry points below are TOTAL: every input either produces an answer or
 // is refused by name. That is deliberate, and it is what makes them safe to export.
-//
-// Each one has a precondition — the run is still going, or has already ended, or the
-// workflow was validated — and until this guard existed every one of those was satisfied
-// only by the ORDER OF STATEMENTS in the caller. Nothing here said so, so asking a question
-// out of order produced a plausible wrong answer rather than a complaint: a completed run
-// reported as still open, a finished run judged again, a still-running run called aborted, a
-// missing phase surfacing as a raw TypeError about reading a property of undefined.
-//
-// None of those was reachable through the CLI, which checks status first and loads only
-// validated workflows. That is exactly why they were worth closing: an unreachable wrong
-// answer is one refactor away from a reachable one, and the thing keeping it unreachable was
-// written in another file. That caller now lives in this one (ADR-0018) — which changed
-// nothing about these guards, and is why they were done first, as their own change: these
-// three are still exported, so the ordering that keeps them safe is still not the only
-// caller's to choose.
+// ADR-0018's "What this is not about" section, in the same words, names the specific edges
+// this closed (a completed run reported as still open, a finished run judged again, a
+// still-running run called aborted, a missing phase dying on a raw TypeError), why they were
+// unreachable before the seam moved yet worth closing anyway, and why the three stay exported.
 //
 // Refusals throw rather than returning a value. These are caller mistakes, not run outcomes
 // — an outcome is something a workflow author can route on, and there is no sensible route
@@ -224,9 +196,9 @@ export function checkIterationLimit(workflow: Workflow, state: State): CeilingOu
   }
   const limit = workflow.limits?.max_total_iterations;
   if (limit === undefined || state.total_iterations < limit) return null;
-  // Deliberately one line, no embedded newline: the reason is printed as the rest of
-  // ESCALATE's line-1 token line (ADR-0002) and written into one `.headsign/log` record,
-  // and a newline would split both of those in two.
+  // One line, no embedded newline — ADR-0017's own parenthetical on this exact reason string:
+  // it is the tail of ESCALATE's line-1 token line and one `.headsign/log` record, and a
+  // newline would split both in two.
   const reason =
     `${state.phase}: max_total_iterations (${limit}) reached — the run is still open: raise limits.max_total_iterations in ` +
     `${state.workflow_path} and run \`headsign next\` to continue from this phase, or run \`headsign abort <reason>\` to end it`;
@@ -248,8 +220,8 @@ export function terminalOutcome(state: State): Outcome {
 }
 
 // Turns the phase's declared `on_pass` plus (for the k-way form) the branch already resolved
-// by the caller into one destination. String form ignores `route` entirely, so existing
-// workflows keep the exact behavior they had.
+// by the caller into one destination. The string form is unaffected by any of this —
+// ADR-0011's Consequences: "entirely unaffected: same routing, same stdout, same log line."
 function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: string; routedBy?: { when: string } | { default: true } } {
   if (typeof onPass === "string") return { to: onPass };
   // Can't happen through the lap below (it resolves whenever on_pass is a list). Throwing
@@ -262,10 +234,9 @@ function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: stri
 // same output — no clock, no randomness. The shell work behind `route` happened in gate.ts
 // before the call; this function only reads the answer.
 //
-// `gateResult` is a GateVerdict, not a GateResult: the "unrunnable" arm — a check that
-// produced no exit code — is excluded by the type, the same way ResolvedRoute excludes an
-// unresolvable route above. The lap below refuses on it (cli.ts turns that into exit 3), so
-// this function is never handed a non-answer to invent a transition from.
+// `gateResult` is a GateVerdict, not a GateResult, the same way ResolvedRoute above excludes
+// an unresolvable route: ADR-0021 §3's "never handed a non-answer" guarantee, kept by the
+// type rather than a comment asking the caller to remember it.
 export function step(workflow: Workflow, state: State, gateResult: GateVerdict, route?: ResolvedRoute): { state: State; outcome: Outcome } {
   // Without this an already-ended run is judged again: the iteration count rises, a fresh
   // RETRY comes back, and the state handed out still says the run finished — a record that
@@ -277,8 +248,8 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   const phase = workflow.phases[phaseName];
   const next: State = { ...state, attempts: { ...state.attempts } };
   next.total_iterations += 1;
-  // step() runs only on a real gate evaluation, which is exactly the event that
-  // should clear the Stop hook's loop guard (ADR-0006) — reset it unconditionally here.
+  // step() runs only on a real gate evaluation — ADR-0006's loop-guard reset rule — so it
+  // clears the Stop hook's nudge counter unconditionally here.
   next.stop_nudges = 0;
 
   if (gateResult.kind === "pass") {
@@ -304,9 +275,8 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
 
   const maxAttempts = phase.max_attempts;
-  // Exhaustion always escalates (ADR-0014): a budget running out is precisely the moment a
-  // person should be asked, and it is not a fact the workflow author can know better at
-  // authoring time than the run does at exhaustion time.
+  // Exhaustion always escalates — ADR-0014 §2's "spent budget is the canonical moment to ask
+  // [a person]," not a workflow author's call to make at authoring time.
   if (maxAttempts !== undefined && next.attempts[phaseName] >= maxAttempts) {
     const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
     next.last_failure = null;
@@ -317,8 +287,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
 
   const onFail = phase.on_fail ?? "retry";
   if (onFail === "retry") {
-    // Recorded purely so `status` can show what the run is currently stuck on; nothing in
-    // this function ever reads it back.
+    // Recorded purely for `status` to read back — ADR-0004: "status is its only reader."
     next.last_failure = {
       phase: phaseName, check: failure.check, run: failure.run,
       exit_code: failure.exitCode, output_tail: failure.outputTail, timeout_seconds: failure.timeoutSeconds,
@@ -332,9 +301,8 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     next.status = "complete";
     return { state: next, outcome: { kind: "COMPLETE", ...graphChangeNote(next) } };
   }
-  // `escalate` is the only end-the-run token on the failure path (ADR-0014). A run ends as
-  // ABORT only when a person says so through `headsign abort`, which this module writes
-  // directly — never as a verdict this function reaches.
+  // `escalate` is the only end-the-run token on the failure path — ADR-0014 §3. ABORT is never
+  // a verdict this function reaches; only `headsign abort`, a person's own action, produces it.
   if (onFail === "escalate") {
     const reason = `${phaseName}: gate failed (on_fail: escalate)`;
     next.status = "escalated";
@@ -342,35 +310,25 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     return { state: next, outcome: { kind: "ESCALATE", reason } };
   }
 
-  next.phase = onFail; // onFail names a phase to route to
+  next.phase = onFail;
   return { state: next, outcome: { kind: "ADVANCE", phase: onFail, description: describePhase(workflow, onFail), failure: { ...failure, routedTo: onFail } } };
 }
 
 // --- the five operations on a run, and what they answer with (ADR-0018) ---
 
-// Every operation below used to end by building text and calling a helper that printed it
-// and exited. In a module that may not choose an exit code, each has to hand its answer back
-// instead — and the dangerous half of that is the refusals, because every one of them was an
-// `ERROR: <message>` on stderr with exit 3. A refusal dropped on the way back is an error
-// message printed with exit 0: a silent lie to any script that checks its status, and on the
-// ordinary path rather than some unreachable edge.
-//
-// So the refusals are one discriminated kind, every result type below is a union containing
-// it, and cli.ts maps each arm in a `switch` inside a function declared to return `never` —
-// a missed arm makes that function's end reachable, which does not compile. Structure, not a
-// comment asking someone to remember.
+// Every operation below used to end by building text and printing and exiting directly; each
+// now hands its answer back instead, refusals included — ADR-0018 §3's own words, stated once
+// there rather than restated here.
 export type Refused = { kind: "REFUSED"; message: string };
 
-// Kept apart from REFUSED because cli.ts prints it differently — render.validateFail's
-// `INVALID: <path>` block listing every error, not a one-line `ERROR:` — though both exit 3.
+// Kept apart from REFUSED because the two print differently and always did — ADR-0018 §3.
 // Only the two operations that load a workflow (`start`, `next`) can produce it.
 export type WorkflowInvalid = { kind: "WORKFLOW_INVALID"; workflowPath: string; errors: string[] };
 
 export type Rejection = Refused | WorkflowInvalid;
 
-// A load that succeeded but had something to say. Warnings never affect an exit code, and
-// `next` never asks for them: a warning belongs where someone is in a position to act on it
-// (`validate`, and once per run at `start`), not on every lap of the loop.
+// A load that succeeded but had something to say — ADR-0011 §6 says who prints warnings and
+// why not on every lap of `next`'s hot path.
 export interface LoadWarnings { workflowPath: string; warnings: string[] }
 
 export interface StartResult {
@@ -416,10 +374,8 @@ export type StatusResult =
       attemptUnknown: boolean;
       workflowName: string;
       lastFailure: StatusFailure | null;
-      // Whether anyone has claimed this run — never who. Two values, and neither is a
-      // judgment about *who is reading* (ADR-0013): the recorded driver is an agent id, which
-      // the CLI can never resolve for itself, so this reports the one thing the CLI can
-      // honestly know. The words that carry it to the reader are cli.ts's.
+      // Whether anyone has claimed this run — never who: ADR-0013 §4 is why the CLI can only
+      // state that fact, never judge who is reading. Worded by cli.ts, not here.
       delegated: boolean;
       // What headsign did with the last turn end it could attribute to this run, read off the
       // record — never by parsing `.headsign/log`, which spans runs and would have to be read
@@ -437,14 +393,11 @@ export type StatusResult =
       // recorded (a run predating this field, or one with a malformed record) — cli.ts prints
       // no line for either, the same treatment `lastStop` gets above.
       lastMoved: string | null;
-      // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with. The one
-      // quiet-ending cause the caller can answer about ITSELF; what it reports is the environment
-      // of the process `status` runs in, which is normally the session's but not necessarily.
+      // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with — ADR-0025
+      // §6: the one quiet-ending cause a caller can answer about itself.
       observer: boolean;
-      // The graph pin as an observation: how many changes to its own rules this run has
-      // accepted, and whether one is reported but not yet accepted. Read-only like everything
-      // else here — `status` never reconciles the pin, because reconciling can WRITE (accept a
-      // change, clear a marker) and the observation window judges nothing (ADR-0002/0008).
+      // The graph pin as an observation — ADR-0023 §8's two lines. Read-only like everything
+      // else here: reconciling can WRITE, and looking must stay free (protects #12).
       acceptedGraphChanges: number;
       graphChangeReported: boolean;
     };
@@ -464,10 +417,9 @@ function readFileOrEmpty(p: string): string {
 }
 
 function ensureHeadsignGitignored(cwd: string): void {
-  // headsign self-manages these entries so run state and the concurrency lock can
-  // never be committed by accident.
+  // headsign self-manages these entries — ADR-0004's start/abort details section states why.
   const gitignorePath = path.join(cwd, ".headsign", ".gitignore");
-  const original = readFileOrEmpty(gitignorePath); // "" if no .gitignore yet
+  const original = readFileOrEmpty(gitignorePath);
   let content = original;
   for (const entry of ["state.json", "lock", "log", "tmp/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
@@ -534,10 +486,9 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
     };
   }
 
-  // A new run always begins undelegated (ADR-0013): the CLI process can never learn who is
-  // running it at agent granularity, so `start` has nothing honest to stamp. Until a
-  // delegated agent claims the run, both stop-boundary hooks fall back to nudging whoever
-  // stopped, which is the same behavior a pre-ownership headsign always had.
+  // A new run always begins undelegated — ADR-0013: the CLI cannot learn who is running it at
+  // agent granularity. Until claimed, both hooks nudge whoever stopped — ADR-0008's
+  // Consequences, "behaves exactly as it did before this ADR."
   const freshState: State = {
     workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
     attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
@@ -559,12 +510,10 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
   };
   state.writeState(cwd, freshState);
   ensureHeadsignGitignored(cwd);
-  // Record the run's first transition. The log is never cleared here: it is gitignored, so a
-  // previous run's history exists nowhere else, and a restart must not be the cheap way to
-  // erase it (see state.ts). This `start` line is what marks where the new run begins.
+  // Record the run's first transition — ADR-0024: the log is never cleared here, appended
+  // only, and survives a restart. This `start` line is what marks where the new run begins.
   state.appendLog(cwd, render.logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
-  // Every run starts with a clean scratch dir: artifacts from a previous run (verdicts,
-  // tickets, notes) must not leak into this one.
+  // Every run starts with a clean scratch dir — ADR-0004's start/abort details section.
   const tmpDir = path.join(cwd, ".headsign", "tmp");
   fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -590,11 +539,8 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextR
     return { kind: "REFUSED", message: `another \`headsign next\` is running in this repo (pid ${lock.pid}); wait for it to finish, or remove .headsign/lock if it is stale.` };
   }
 
-  // Everything from here to the `finally` runs under the lock, and the release is structural
-  // rather than remembered: this body and the evaluation it calls have five exits between
-  // them, and every one of them used to need its own release call before the caller printed
-  // and exited — five calls, kept correct by a comment. One acquire, one release, and no exit
-  // that can skip it.
+  // Everything from here to the `finally` runs under the lock, release structural rather than
+  // remembered — ADR-0018 §4's "one acquire... cannot skip it," restated here at the call site.
   try {
     // Re-read state now that we hold the lock: the lock only serializes evaluation, it does
     // not make `current` (read before we even attempted to acquire it) current. Another
@@ -606,11 +552,10 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextR
     const fresh = state.readState(cwd);
     if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
 
-    // No DRIVER stamping here (ADR-0013). `next` used to record the calling session's env
-    // identifier into `driver_agent`, which named the enclosing session even when a delegated
-    // agent was the caller — the wrong identity, and never the one the hooks compare against.
-    // Driver ownership still changes in exactly one place: the SubagentStop adoption gate. The
-    // stamp just below is a different field, answering a different question (ADR-0027 §4).
+    // No DRIVER stamping here — ADR-0013: next's old env-based stamp named the wrong party
+    // whenever a delegated agent called it. Ownership changes only via the SubagentStop
+    // adoption gate. The stamp just below is last_drive, answering a different question
+    // (ADR-0027 §4).
 
     if (fresh.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(fresh), workflowName: fresh.workflow };
 
@@ -680,8 +625,8 @@ type PinResult = { kind: "CONTINUE"; state: State } | { kind: "REPORT"; outcome:
 // Same skeleton as the ceiling's reason, because it is the same kind of answer: an ESCALATE
 // that ends nothing. So it has to name both ways forward — put the file back, or ask again —
 // and say what asking again will cost, since accepting is counted and reported at the end.
-// Deliberately one line, no embedded newline: it is the tail of ESCALATE's token line
-// (ADR-0002) and one `.headsign/log` record.
+// One line, no embedded newline, for the reason ADR-0017's own ceiling-reason parenthetical
+// gives: the tail of ESCALATE's token line and one `.headsign/log` record.
 function graphChangedReason(state: State, changed: string[]): string {
   const noun = changed.length === 1 ? "phase" : "phases";
   const named = changed.map((key) => `'${key}'`).join(", ");
@@ -768,39 +713,28 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
     };
   }
 
-  // The graph pin, and its position is the whole of it: after the phase-missing guard (which
-  // is about the phase the run is standing on, not about the rules) and before EVERYTHING that
-  // reads a rule. The ceiling reads `limits`, the readiness probe and the gate read the phase,
-  // step() reads its edges — every one of them would be acting on the very definitions this is
-  // about to check. Check the graph before using the graph. Where in the lap this sits is a
-  // routing rule, so it belongs to this module (ADR-0018).
+  // The graph pin's position is the whole of it — ADR-0023 §4's own words: "Check the graph
+  // before using the graph," after the phase-missing guard and before everything that reads a
+  // rule.
   const pin = reconcileGraphPin(cwd, wf, incoming, nowIso);
   if (pin.kind === "REPORT") return { kind: "ANSWERED", outcome: pin.outcome, workflowName: wf.name, wf };
   const current = pin.state;
 
-  // The ceiling (ADR-0017): answered as ESCALATE, but no writeState — the run stays
-  // `running`, so raising `limits.max_total_iterations` and running `next` again resumes
-  // this very phase. Short-circuited before the gate, so the wall costs no iteration
-  // either; that is what keeps a runaway from advancing by being asked repeatedly.
+  // The ceiling — ADR-0017's Decision, stated here at the call site: ESCALATE with no
+  // writeState, short-circuited before the gate so standing at the wall costs no iteration.
   const limitOutcome = checkIterationLimit(wf, current);
   if (limitOutcome) {
-    // Logged as `ceiling`, not `escalate`: the log's job is to let a later reader tell a run
-    // that ended from one that was merely stopped at the wall, and reusing the ending's word
-    // for a run still open is exactly the confusion to avoid (see render.ts's LogEvent).
-    // `current` is passed unchanged because nothing was written — the line reports the state
-    // that is on disk, same as every other log line does.
-    //
-    // Repeated `next` calls at the wall therefore repeat this line. That is deliberate: each
-    // one is a real request that was really refused, and hiding the repetition would make the
-    // log understate how long the run sat here.
+    // Logged as `ceiling`, not `escalate`, and repeated calls repeat the line — ADR-0004's log
+    // section states both in the same words. `current` is passed unchanged because nothing was
+    // written; the line reports what's on disk, same as every other log line does.
     state.appendLog(cwd, render.logLine(nowIso, { kind: "CEILING", reason: limitOutcome.reason }, current));
     return { kind: "ANSWERED", outcome: limitOutcome, workflowName: wf.name, wf };
   }
 
   const phase = wf.phases[current.phase];
-  // Ready probe: before the gate, and the one path that answers without judging. Not
-  // ready -> PENDING without touching state.json at all (no writeState on this path):
-  // "stay put, don't count it" — the cell the transition table was missing.
+  // Ready probe: before the gate, answering without judging — ADR-0002's transition-table
+  // note: uncounted, state.json untouched on this path. "stay put, don't count it," the cell
+  // the table was missing.
   if (phase.ready !== undefined) {
     const readiness = gate.isReady(phase.ready, cwd);
     if (readiness.kind === "unrunnable") {
@@ -812,19 +746,16 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   }
 
   const gateResult = gate.runGate(phase.gate.checks, cwd);
-  // A check that produced no exit code is refused on exactly like an unresolvable route
-  // below, and for the same reason: headsign has no verdict, so it has nothing to transition
-  // on. Nothing has been written at this point — state.json, the log, this phase's attempt
-  // count and total_iterations are all as they were before the lap, which is what makes
-  // "run `headsign next` again" honest advice rather than a resumption mid-transition.
+  // A check that produced no exit code refuses exactly like an unresolvable route below —
+  // ADR-0021 §2's own words: nothing written, so "run `headsign next` again" is honest advice,
+  // not a resumption mid-transition.
   if (gateResult.kind === "unrunnable") {
     const what = `the gate check '${gateResult.check}' (\`${gateResult.run}\`)`;
     return { kind: "REFUSED", message: unrunnableMessage(current, what, gateResult.reason) };
   }
 
-  // k-way `on_pass` (ADR-0011): resolved here, after the gate passed and before step(), so
-  // the transition function stays free of shell execution. Only the pass path ever routes —
-  // a failed gate never evaluates a `when:`.
+  // k-way `on_pass` (ADR-0011 Decision 1): resolved after the gate passed, never on the
+  // failure path, so the transition function stays free of shell execution.
   let route: ResolvedRoute | undefined;
   if (gateResult.kind === "pass" && Array.isArray(phase.on_pass)) {
     const resolution = gate.resolveRoute(phase.on_pass, cwd);
@@ -873,11 +804,9 @@ export function abort(cwd: string, reason: string, nowIso: string): AbortResult 
   return { kind: "ABORTED", reason };
 }
 
-// Arms the driver-adoption marker (the claim handshake, ADR-0009 as re-homed by ADR-0010) —
-// cwd-only, like next/abort/status. Deliberately writes nothing to state.json: the CLI
-// process itself can never learn who is running it at agent granularity (only the
-// SubagentStop hook's stdin carries an agent id), so `claim` can only ask that hook to do
-// the actual adoption when this agent's own turn ends.
+// Arms the driver-adoption marker — ADR-0009's two-beat claim procedure, re-homed onto
+// SubagentStop by ADR-0010. Writes nothing to state.json: the CLI cannot resolve identity at
+// agent granularity, only the hook's own stdin can.
 export function claim(cwd: string): ClaimResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };

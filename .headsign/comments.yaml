@@ -1,0 +1,300 @@
+# comments.yaml — one lap per file in src/, pruning comments that carry nothing.
+#
+#   inventory ──> prune ──> judge ──> record ──> $end
+#                   │  ^       │         │
+#      (nothing to  │  └REJECTED         │ (queue not empty)
+#       prune here) └────────────────────┘
+#                   └──────> record ──────┘
+#
+# Why this repository needs it, and why it is dangerous here. `src/` carries
+# more comment lines than code lines (1,626 vs 1,488 as of 2026-08-08), and
+# they are deliberately dense — architecture.md says so, and ADR-0016 replaced
+# a line budget with explainability precisely to license that. So a sweep run
+# on the plain question "can the code be read without this comment?" would
+# delete almost all of them: a comment that states a constraint sits above
+# readable code BY CONSTRUCTION. That question is banned in `prune` below and
+# replaced with one that is not the same: which decision stops being
+# recoverable if this block goes?
+#
+# What it is actually hunting is the failure `what-headsign-protects` #5
+# names — "the same rule written in nine places was corrected in eight of
+# them, five reviews running". Those restatements are invisible one file at a
+# time and expensive at every edit.
+#
+# Every check below was composed for this workflow except `npm run build` and
+# `npm run typecheck`, which are package.json scripts.
+#
+# No `timeout:` anywhere: the slowest check is `npm run build`, measured under
+# 10s on 2026-08-08, against a default of 120.
+version: 0.1
+name: comment-sweep
+entry: inventory
+
+phases:
+  inventory:
+    description: >
+      Write one line per file under src/ to .headsign/tmp/queue — the path as
+      `src/<name>.ts`, nothing else on the line — ordered by comment density
+      (comment lines divided by code lines) with the densest first. Densest
+      first because a rule restated from somewhere else is likeliest to be
+      sitting where the commentary is thickest. Edit nothing in this phase.
+    clear: [.headsign/tmp/queue]
+    # `ready:` because an empty queue is "hasn't been written yet", and a
+    # `next` before that must PENDING-wait rather than spend an attempt on a
+    # gate with nothing to read.
+    ready: "test -s .headsign/tmp/queue"
+    gate:
+      checks:
+        # Anchored, and this is the anchor everything downstream borrows from:
+        # every later phase locates its work through this queue. Guarding it
+        # here is what stops a queue naming files that do not exist — or files
+        # outside src/, which is how a sweep quietly widens its own scope.
+        - name: every queued line names a file under src/
+          # `|| [ -n "$f" ]` so a final line with no trailing newline is still
+          # checked; without it `read` fails on that line and the loop drops
+          # the file silently — which for a guard means the one unchecked
+          # entry is the one nobody looked at.
+          run: |
+            while read -r f || [ -n "$f" ]; do
+              case "$f" in src/*.ts) ;; *) exit 1 ;; esac
+              test -f "$f" || exit 1
+            done < .headsign/tmp/queue
+    on_pass: prune
+    max_attempts: 2
+
+  prune:
+    description: >
+      This lap's file is the first line of .headsign/tmp/queue. Copy that
+      path into .headsign/tmp/lap-file, then go through the file one comment
+      block at a time, in file order, sorting each block into exactly one of
+      three. (1) It restates the mechanics the code already shows — delete
+      it. (2) It restates a rule that is stated somewhere else — an ADR,
+      another module's header, the reference manual — so replace it with the
+      shortest pointer that names where the rule lives, leaving the rule
+      exactly one home. **A pointer is new prose, and new prose can be
+      wrong**: the clause naming what is over there must be checked against
+      the code it sits on, not only against the destination it names. A
+      sweep that swaps a correct paragraph for a shorter sentence
+      contradicting the three lines below it has made the file worse while
+      every count says it improved. (3) It is the only place a why, a
+      constraint, or a rejected alternative lives — keep it, untouched.
+      **Do not ask whether the code can be read without the block.** Nearly
+      every (3) sits above perfectly readable code; that is what a constraint
+      comment is for, and that question deletes the ones worth keeping. Ask
+      instead: if this block were gone, which decision could no longer be
+      recovered from anywhere in the tree? None — (1) or (2). One — (3).
+      Touch no code line, and commit nothing here; `record` commits. Run no
+      headsign command: this phase is work, not driving.
+      Write .headsign/tmp/proposal: one entry per block you changed, and then
+      a `## Kept` section naming every (3) and the decision it is the only
+      home of. An entry gives three things — where the block was, which of
+      the three it was, and for a (2) the place the rule now lives.
+      **A `## Kept` entry states a relation and nothing else** — how this
+      block stands to whatever else discusses the same thing. The code
+      points here. They state the rule; this states what it costs on this
+      line. The notes quote this wording, so this wording is the referent.
+      Every entry has one: an entry with a blank reason is not a kept block,
+      it is an unfinished decision.
+      **State the relation positively. A reason that turns on what the tree
+      does NOT contain is not admissible** — not "the only home", not "no
+      ADR twin", not "the ADR does not carve this out", not 「ここにしか
+      ない」. You will search; nothing sorts (2) from (3) without looking.
+      But a search tells you where a rule is and never that you have found
+      everywhere it is, so no amount of searching earns the negative. This
+      is the one rule that has failed most often, and each time it came
+      back wearing different words rather than in the form it was banned
+      in — which is why it is written here as a shape and not as a list of
+      phrases. A positive relation is always available and says more: *the
+      ADR names this header as where the distinction is stated at the call
+      site* beats *the ADR does not state it*, and unlike the negative it
+      survives being checked. Cite what you found where it helps the relation, and stop
+      there. **Enumerating the homes is the judge's job, and it always
+      was** — it is the party doing an adversarial search, and it found the
+      real duplicates in every one of those five rounds while the claim
+      that provoked it was scored as the pruner's failure. Take the search
+      terms from the thing being talked about — an identifier, a file, a
+      mechanism — never from the block's own wording: a phrase lifted out
+      of the comment finds the comment, and cannot find the paragraph that
+      says the same thing in different words.
+      **It must never quote or paraphrase the text you removed.** The judge
+      reads this file, and its blindness to the deleted words is the whole
+      of what the next phase proves; one pasted line ends that without
+      anything failing. Locate a block by the symbol it sat above, or by its
+      position in the file AFTER your edit — a line number from before the
+      edit points somewhere else by the time the judge reads it.
+    # Only the proposal is cleared, and `on_fail: retry` keeps it through a
+    # failed gate — the pairing is deliberate both ways. Re-entering from
+    # `judge` must force a fresh proposal, so it clears; a retry within the
+    # phase is the same proposal being corrected, so it does not.
+    # `lap-file` is cleared with it: a rejected lap has to re-declare against
+    # the queue head rather than keep pointing at whatever it pointed at.
+    clear: [.headsign/tmp/proposal, .headsign/tmp/lap-file]
+    ready: "test -s .headsign/tmp/proposal"
+    gate:
+      checks:
+        # The guard for this phase's anchor, first because checks stop at the
+        # first failure and everything below reads `lap-file`. Equality with
+        # the queue head is what makes the declaration anchored rather than
+        # fakeable: the agent says which file it worked on, and the queue
+        # decides whether that was the file it was supposed to work on.
+        # Chained with `&&` rather than written one test per line: a multi-line
+        # `run:` exits with the status of its LAST command, so a middle line
+        # that fails is simply overwritten by a later one that passes. Caught
+        # on 2026-08-08 by running this check against a lap-file pointing at
+        # the wrong file — it passed, which is the one thing it exists to stop.
+        - name: lap-file names the queue head and exists
+          run: |
+            test -s .headsign/tmp/queue &&
+            test -s .headsign/tmp/lap-file &&
+            test "$(cat .headsign/tmp/lap-file)" = "$(head -n 1 .headsign/tmp/queue)" &&
+            test -f "$(cat .headsign/tmp/lap-file)"
+        # Unfakeable, and the spine of the whole workflow: esbuild strips
+        # comments, so a comment-only edit rebuilds to a byte-identical
+        # bundle and any touched code line moves it. Verified both ways on
+        # 2026-08-08 — deleting one comment line left plugin/dist unchanged,
+        # changing one character of a string literal changed it.
+        #
+        # `&&`, not two checks and not `;`: a build that FAILS leaves the
+        # previous bundle on disk untouched, so a failed build followed by an
+        # independent `git diff --quiet` passes. The conjunction is what
+        # makes the failure reach the gate.
+        #
+        # There is no `npm test` in this gate on purpose. For this job the
+        # bundle-identity check is strictly stronger than the suite: the
+        # suite samples behaviour, this proves the compiled output did not
+        # move at all.
+        #
+        # It errs in one direction, and only that one. esbuild keeps a
+        # comment that sits directly before an object-literal property
+        # value, so editing THAT comment moves the bundle and fails this
+        # check on work that touched no code. Found in the engine.ts lap,
+        # on one comment out of four hundred. Leave such a block alone and
+        # say so in the proposal rather than trading the guarantee for one
+        # edit: a check that occasionally refuses honest work is worth
+        # keeping, one that occasionally passes a code change is not.
+        - name: nothing but comments moved (the bundle is byte-identical)
+          run: "npm run build && git diff --quiet -- plugin/dist"
+        - name: typecheck
+          run: "npm run typecheck"
+    # Branching on the pass path, so "a file with nothing worth pruning" is a
+    # destination rather than a gate failure — a clean file must not look
+    # like failed work. Anchored on `lap-file`, which the gate above has
+    # already tied to the queue head.
+    on_pass:
+      # `git show HEAD:<file>` is the baseline because nothing is committed
+      # until `record`, so HEAD is this lap's starting point. If the agent
+      # commits here anyway — the description forbids it — the counts come
+      # out equal and the lap routes to `record`, which still demands its
+      # note. Wrong route, not a way through.
+      - when: |
+          f="$(cat .headsign/tmp/lap-file)"
+          test "$(grep -cE '^[[:space:]]*//' "$f")" -lt "$(git show "HEAD:$f" | grep -cE '^[[:space:]]*//')"
+        to: judge
+      - to: record
+    on_fail: retry
+    # Four: the gate can reject for a reason that is real work to answer (a
+    # code line moved, so the bundle shifted), and finding which of several
+    # blocks did it takes a pass or two. Exhausting it ends the run.
+    max_attempts: 4
+
+  judge:
+    description: >
+      Spawn a read-only judge subagent (Read/Grep/Glob) and give it exactly
+      two things: this lap's file AS IT NOW STANDS, and
+      .headsign/tmp/proposal. **Do not tell it what the deleted text said** —
+      withholding that is the entire test. Withholding it from the agent is
+      not enough on its own: forbid it, in its own instructions, from
+      reading this file's git history — `git show`, `git diff`, `git log -p`
+      against the swept file all hand back every removed line, and a judge
+      that reaches for the diff to "check the work" defeats the phase while
+      appearing to do it more carefully. The pointers it must verify live in
+      the working tree, so nothing it legitimately needs is behind that ban. For each entry in the proposal it
+      answers one question from what is left: is the decision that entry
+      claims was redundant still recoverable? A (2) entry it must check by
+      following the pointer and confirming the rule really is stated there,
+      in those words. It must also read the `## Kept` list from the other
+      side: for each kept block, search the tree for whatever else discusses
+      the same thing, and say what you find. **That enumeration is this
+      phase's other product, and it is not a verdict** — a kept block with
+      three other homes is often the right one to keep, so finding them
+      blocks nothing. Report them as findings; `record` writes them down.
+      What does block: a relation stated as the reason that is not true, a
+      pointer that lands somewhere the rule is not, a decision the proposal
+      calls redundant that nothing left can recover, or a claim that
+      something is the only home of anything. Have it REPORT exactly
+      APPROVED or REJECTED with reasons, then write that verdict verbatim
+      to .headsign/tmp/verdict yourself.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -s .headsign/tmp/verdict"
+    gate:
+      # Fakeable: writing the word passes it. What it proves is that a judge
+      # that could not see the deleted text was asked and answered — not that
+      # the answer was right. The strength here is procedural, and it lives
+      # in the description above, not in this check.
+      checks:
+        - name: judge approved
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: record
+    on_fail: prune
+    # Was 4, on the reasoning that three rounds of rework means the standard
+    # is being argued with rather than applied. That reasoning assumed a
+    # fixed standard. This run changed it twice — first requiring a sole-home
+    # claim to be established by search, then banning the claim outright once
+    # four rounds had shown it is usually false here and cannot be
+    # established by the search it was verified with. Rounds spent against a
+    # bar that no longer exists are not rounds of arguing, so 6 buys back the
+    # ones the changes cost. Raise it again only for the same kind of reason:
+    # a budget is not the thing to spend when the work is failing on its
+    # merits.
+    max_attempts: 6
+
+  record:
+    description: >
+      Append one section to .headsign/notes/comment-sweep.md for the file in
+      .headsign/tmp/lap-file: the before and after comment-line counts, each
+      (2) rewrite with where the rule now lives, and the `## Kept` list. The
+      kept list is the part worth the run — across seven laps it becomes this
+      repository's inventory of decisions that have exactly one home, which
+      is the thing nobody can grep for today. Then write down what the judge
+      found and did not block on — above all **the other places it found the
+      same thing discussed**, which is the sweep's second product and the
+      one no single file can show you: where a rule has drifted into three
+      homes, only a search across all of them says so. A pointer that lands
+      near the rule rather than on it, and drift that was already there, go
+      here too. None of these are failures, so no gate stops for them, and
+      without a named place they are lost with the subagent that found them.
+      Create the note if this is the first lap.
+      **Cite by symbol, never by line number.** Every file in this queue is
+      going to have its line numbers moved by a later lap — the note written
+      in lap 1 pointed into `engine.ts` five times, and lap 5 shifted every
+      one of them by fifty lines or more while the note went on looking
+      correct. A function name survives that; `:598-616` does not. This is
+      the sweep's own version of the drift it keeps finding in the tree.
+      Commit src/, the rebuilt bundle and the note together. Then delete the
+      first line of .headsign/tmp/queue.
+    gate:
+      checks:
+        # Fakeable — a line with the filename in it passes. It is here to
+        # stop a lap from ending with nothing written down, not to judge what
+        # was written.
+        - name: the note names this lap's file
+          run: 'grep -qF "$(cat .headsign/tmp/lap-file)" .headsign/notes/comment-sweep.md'
+        # Unfakeable, and scoped to paths: an unstaged edit under src/ means
+        # the lap was not actually committed, and the next lap would rebuild
+        # on top of it. `.headsign/` itself is untracked in a fresh adoption,
+        # so a bare `git status --porcelain` would never come back empty.
+        - name: the lap is committed
+          run: "test -z \"$(git status --porcelain -- src/ plugin/dist .headsign/notes)\""
+    on_pass:
+      - when: "test -s .headsign/tmp/queue"
+        to: prune
+      - to: "$end"
+    on_fail: retry
+    max_attempts: 3
+
+limits:
+  # Seven files at three evaluations each is 21, plus one for inventory. The
+  # rest is room for rework: a rejected judge costs a lap two more. Well under
+  # fitness.yaml's 300, because this sweep has a fixed queue rather than one
+  # that grows as it descends.
+  max_total_iterations: 60
