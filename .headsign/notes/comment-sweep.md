@@ -522,3 +522,42 @@ can be wrong, and why `-v` is not a fifth spelling — ADR-0002's "Six commands"
 - "the one place all three are supplied" is true and verified, but it is shaped
   like the claim this sweep spent six rounds learning not to make. "The call
   site where all three are supplied" says the same thing without the shape.
+
+---
+
+## What the sweep cost, and the one thing it got past its own gate
+
+Comment lines across `src/`: **1,626 → 1,221**, against 1,488 code lines. Seven
+laps, twenty-one review rounds, one file approved first time.
+
+**The gate had a hole, and the last lap fell in it.** `prune` checked that the
+rebuilt bundle was byte-identical and that the types still checked, on the
+reasoning that bundle identity is strictly stronger than the test suite. It is
+not. A test may read a source *file* rather than run the built code, and exactly
+one in this tree does: `tests/cli.test.ts` asserts that `cli.ts`'s module header
+still says "six commands". The sweep reworded that paragraph, esbuild stripped
+the comment as it strips every other, the bundle came out identical, and the
+gate passed a red suite. Six laps had gone by without meeting the only test that
+could show it. `npm test` is now the gate's last check, and the header carries a
+line telling the next editor that the suite reads it.
+
+The shape of that mistake is worth more than the fix. **"Strictly stronger" was
+a claim about what one check contains, made without looking at what the other
+one actually reads** — the same species as every claim this sweep spent its
+review rounds refuting, made by the person who wrote the refutation standard.
+
+### The other three things worth carrying forward
+
+- **The standard changed twice mid-run**, and both changes came from the same
+  discovery: the pruner was being asked to certify a negative about the whole
+  tree. First the certification was required with a search, then the claim was
+  banned and the enumeration moved to the judge, which had been producing it
+  correctly all along. Six rounds on one file bought that.
+- **The ban had to be written as a shape, not a list of phrases.** It came back
+  as "sole record", 「ここにしかない」,「〜でしかない」, "no ADR twin", "the ADR
+  does not carve this out", "Neither A nor B states this", "not a rule stated
+  elsewhere" — seven wordings, each after the previous was named.
+- **Locator drift is the sweep's own recurring defect**, in three forms: line
+  numbers into a file a later lap would move, a section name that was wrong, a
+  position reference inside prose. All three read as correct until someone
+  followed them.

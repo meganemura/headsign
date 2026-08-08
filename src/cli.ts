@@ -4,6 +4,11 @@
 // (ADR-0018) — the workflow YAML schema, or what any operation does to a run; it delegates to
 // engine.ts/workflow.ts. It reads the wall clock ADR-0004 gives it sole custody of (gate.ts
 // reads a different clock, for a different reason — see its header).
+//
+// The six commands are start / next / abort / validate / status / claim; `help` and `version`
+// are typeable and do not make it eight, because they take the tool as their subject rather
+// than a repository (ADR-0002). tests/cli.test.ts asserts that this paragraph says "six
+// commands" — it is a comment the suite reads, so edit it and run `npm test`.
 
 import fs from "node:fs";
 import * as workflowMod from "./workflow.ts";

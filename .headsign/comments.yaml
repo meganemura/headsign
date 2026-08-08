@@ -159,10 +159,22 @@ phases:
         # independent `git diff --quiet` passes. The conjunction is what
         # makes the failure reach the gate.
         #
-        # There is no `npm test` in this gate on purpose. For this job the
-        # bundle-identity check is strictly stronger than the suite: the
-        # suite samples behaviour, this proves the compiled output did not
-        # move at all.
+        # This gate ran without `npm test` for the whole of the first sweep,
+        # on the reasoning that bundle identity is strictly stronger than the
+        # suite — the suite samples behaviour, this proves the compiled
+        # output did not move at all. **That reasoning was wrong, and the
+        # last lap of that sweep is the counterexample.** A test may read a
+        # source FILE rather than run the built code: `tests/cli.test.ts`
+        # asserts that `cli.ts`'s module header still says "six commands",
+        # and the sweep reworded that paragraph away. esbuild had stripped
+        # the comment, so the bundle was byte-identical and this gate passed
+        # a red suite. One such test exists in the tree, which is why six
+        # laps went by without meeting it.
+        #
+        # Bundle identity proves nothing moved *into the compiled output*.
+        # It says nothing about anything that reads the source, and comments
+        # are source. The two checks answer different questions and the
+        # cheaper one does not contain the dearer one.
         #
         # It errs in one direction, and only that one. esbuild keeps a
         # comment that sits directly before an object-literal property
@@ -176,6 +188,14 @@ phases:
           run: "npm run build && git diff --quiet -- plugin/dist"
         - name: typecheck
           run: "npm run typecheck"
+        # Added after the sweep above shipped a red suite past the two checks
+        # ahead of it. Last because it is the slowest by an order of magnitude
+        # and checks stop at the first failure: a lap that moved a code line
+        # fails on the bundle in ten seconds rather than on the suite in
+        # seventy.
+        - name: tests
+          run: "npm test"
+          timeout: 300
     # Branching on the pass path, so "a file with nothing worth pruning" is a
     # destination rather than a gate failure — a clean file must not look
     # like failed work. Anchored on `lap-file`, which the gate above has
