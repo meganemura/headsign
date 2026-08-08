@@ -1,2 +1,9 @@
 node_modules/
 .headsign/state.json
+
+# Task specs handed to delegated agents. Working notes, not source: they carry
+# the context a piece of work was decided in, and this repository is public
+# while the feedback that drives some of that work is not. Excluded here rather
+# than only in a machine's global ignore, so the exclusion travels with the
+# checkout instead of with one laptop.
+.claude-team/
