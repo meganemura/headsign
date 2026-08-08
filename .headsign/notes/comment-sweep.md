@@ -459,3 +459,66 @@ place in the vocabulary — ADR-0003.
   time either is touched.
 - `rejectUnknownKeys`'s block also carries the no-did-you-mean sentence, which
   no entry classifies. It stayed with the block either way.
+
+---
+
+## src/cli.ts
+
+Comment lines 130 → 117. Deleted 2, turned into pointers 5, kept 21.
+
+The smallest reduction of the seven, and the right one: this module's comments
+are mostly about *its own* seam — which shape a caller here got, which line
+`status` prints conditionally — and a seam has no home in an ADR that decides
+the rule on both sides of it.
+
+Two rounds. Both rejections were relations that read plausibly and were false,
+and both were caught by the judge opening the destination rather than trusting
+the citation. ADR-0018 item 2 says "the reason is in the code" — and then gives
+the reason itself, near-verbatim with the comment that claimed to be its sole
+statement. `render.ts`'s `observer` field doc does not carry the
+absent-not-falsy contract the other two carry; it says where the value comes
+from.
+
+### Where the 5 rules now live
+
+The timestamp's format and why it is local time with a numeric offset —
+ADR-0004's "Line format". One report function per command, each returning
+`never` so a dropped case fails the build instead of exiting 0 — ADR-0018
+Decision item 3. The bare `version` output, the two ways a substituted version
+can be wrong, and why `-v` is not a fifth spelling — ADR-0002's "Six commands".
+
+### Kept — the shape of it
+
+- **The module header.** This is the only place the wall clock and
+  `process.env` are read; `docs/architecture.md`'s table row says the same from
+  the map's side.
+- **`loadWorkflowOrExit`.** ADR-0018 item 3 gives the rule — a module that may
+  not choose an exit code hands the answer back. This says which side each
+  caller here is on: the loader exits, the two engine operations return
+  `engine.WorkflowInvalid`.
+- **`printOutcome`'s `ctx`**, paired with `engine.ts`'s `NextResult` ANSWERED
+  fields.
+- **The `lastStop`/`lastMoved`/`observer` block** inside `render.statusRunning`'s
+  call — the call site where all three are supplied. It is also one of the few
+  comments esbuild keeps in the bundle.
+- **`cmdVersion`'s three paragraphs**, and `cmdValidate`'s two.
+
+### Also discussed at — found by the judge
+
+- **`tests/cli.test.ts`'s section comments** carry the ADR number for four of
+  these blocks (`:545` help, `:680` validate's no-args default, `:1344` the
+  timestamp format, `:3029` the five moved operations).
+- **`tests/acceptance.test.ts:432`** pins `version`'s output byte-for-byte.
+- **`docs/workflow-reference.ja.md:90`, `:393`, `:405`** state the command
+  surface in Japanese.
+- **ADR-0027 §7** describes the conditional-line/byte-identical shape that the
+  `statusRunning` block states from the call site.
+
+### Noted, not acted on
+
+- A kept reason says "the preceding sentence of the same paragraph" where the
+  clause it means is in the same sentence. Position references inside prose
+  break the same way line numbers do, one scale down.
+- "the one place all three are supplied" is true and verified, but it is shaped
+  like the claim this sweep spent six rounds learning not to make. "The call
+  site where all three are supplied" says the same thing without the shape.

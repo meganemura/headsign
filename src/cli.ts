@@ -12,10 +12,9 @@ import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
 
-// Local-time ISO 8601 with a numeric UTC offset, second precision, no milliseconds — e.g.
-// "2026-07-24T23:00:17+09:00". The log's reader is a human or agent writing a run report in
-// the user's own timezone, and a numeric offset keeps the line unambiguous and
-// machine-parseable without forcing a mental UTC conversion.
+// Local-time ISO 8601, numeric UTC offset, second precision — the format and why it is
+// shaped this way is ADR-0004's, "`.headsign/log` (the transition log)" section, "Line
+// format" paragraph.
 function localIso(d: Date): string {
   const pad = (n: number, width = 2) => String(n).padStart(width, "0");
   const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -121,11 +120,9 @@ function readStdin(): string {
 // --- reporting: engine result -> text + exit code ---
 //
 // One function per command, each a `switch` in a function declared to return `never`, so a
-// result arm nobody handles makes the end of the function reachable and the build fails.
-// That is deliberate and not decoration: every REFUSED arm below was an `errorExit` inside
-// the command itself before ADR-0018 moved the command out, and a refusal quietly dropped on
-// the way back here would print an error and exit 0 — a silent lie to any script that checks
-// the status, on the ordinary path rather than an unreachable edge.
+// result arm nobody handles makes the end of the function reachable and the build fails —
+// deliberate, not decoration. Why a dropped REFUSED arm would be a silent, ordinary-path lie
+// to any script that checks the status is ADR-0018's Decision, item 3.
 
 function reportStart(result: engine.StartResult): never {
   // Warnings first, on stderr, exactly where `start` printed them before: at load time,
@@ -265,7 +262,7 @@ function cmdValidate(args: string[]): never {
 }
 
 function cmdStopHook(): never {
-  const raw = readStdin(); // no stdin piped -> "", which evaluate() fails open on
+  const raw = readStdin();
   const decision = stophook.evaluate(process.cwd(), raw, localIso(new Date()), process.env);
   if (decision.block) stderrExit(`${decision.message}\n`, 2);
   return process.exit(0);
@@ -275,7 +272,7 @@ function cmdStopHook(): never {
 // different identifier space: this one is answered from the stdin `agent_id`, and it is the
 // only path that can seal a claim.
 function cmdSubagentStopHook(): never {
-  const raw = readStdin(); // no stdin piped -> "", which evaluateSubagent() fails open on
+  const raw = readStdin();
   const decision = stophook.evaluateSubagent(process.cwd(), raw, localIso(new Date()), process.env);
   if (decision.block) stderrExit(`${decision.message}\n`, 2);
   return process.exit(0);
@@ -300,8 +297,8 @@ function cmdSubagentStopHook(): never {
 // `undefined`, it does not exist, and anything but `typeof` would throw reading it.
 declare const HEADSIGN_VERSION: string | undefined;
 
-// Prints the bare version and a newline — not "headsign 0.4.0". The command name already said
-// which tool, and a bare value composes (`v=$(headsign version)`) as well as it reads.
+// Prints the bare version and a newline, not "headsign 0.4.0" — why a bare value is the right
+// shape is ADR-0002's, "Six commands, one (driver's) question" section.
 //
 // Exit 0, and not a verdict. ADR-0002 gives `next` the 1 = RETRY/PENDING, 2 = ESCALATE/ABORT
 // contract and reserves 3 for usage and configuration errors; `version` (like `help`) answers a
@@ -311,29 +308,19 @@ declare const HEADSIGN_VERSION: string | undefined;
 // now would foreclose the shorter, more useful meaning later, and `--version` is not long
 // enough to need an abbreviation. Its absence is a decision — do not add it "for consistency".
 function cmdVersion(): never {
-  // An unsubstituted constant means this bundle was not built by `npm run build`. Say that
-  // instead of guessing: this command exists to answer *which copy is running* when a fix
-  // seems missing or a gate behaves differently on one machine, and a version that might be
-  // wrong is worse than no version at all.
-  //
-  // The empty string is checked as well as the missing identifier, and it is the case that
-  // actually bit. `--define:HEADSIGN_VERSION="\"$npm_package_version\""` outside npm's
-  // lifecycle — the build line pasted into a shell, a Makefile, a runner that does not export
-  // `npm_package_*` — expands to a valid empty string literal rather than to nothing, so the
-  // identifier IS substituted and a `typeof` check alone folds to `if (false)`. The guard
-  // became dead code and `version` printed a blank line with exit 0, which is the silent
-  // wrong answer this whole function exists to refuse. The build script now fails loudly on an
-  // unset variable too; this stays as the second half, because a bundle can be built by
-  // something that is not that script.
+  // Refuses rather than guesses: an unsubstituted or empty-string HEADSIGN_VERSION both mean
+  // this bundle was not produced by `npm run build`. The two ways a version can be wrong
+  // rather than absent, and why the empty-string case needed a guard term of its own, are
+  // ADR-0002's, "Six commands, one (driver's) question" section, to state.
   if (typeof HEADSIGN_VERSION !== "string" || HEADSIGN_VERSION.length === 0) {
     return errorExit("this build carries no version — it was not produced by `npm run build`, which is what substitutes it");
   }
   return exitAfter(`${HEADSIGN_VERSION}\n`, 0);
 }
 
-// Human convenience only — outside the agent-facing contract (ADR-0002). The two hidden
-// hook subcommands are deliberately omitted; those six commands are the whole surface a run is
-// driven through, and the two below them answer about the tool rather than about a run.
+// Human convenience only, outside the agent-facing contract — why the two hidden hook
+// subcommands are omitted here and why `help`/`version` differ from the six run-facing
+// commands is ADR-0002's, "Six commands, one (driver's) question" section.
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
