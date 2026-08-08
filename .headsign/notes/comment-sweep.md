@@ -243,7 +243,7 @@ here.
 - **`isReady`'s main comment.** The ADRs describe the outcome (`PENDING`,
   uncounted, `state.json` untouched); this binds the exit code to it.
 - **The section divider, and `resolveRoute`'s unreachable fallback.**
-  `workflow.ts:219-223` guarantees a validated list ends in an entry the loop
+  `workflow.ts`'s `validateRoutes` guarantees a validated list ends in one the loop
   returns from. That guarantee stops where `validate` stops; this comment
   answers for a hand-built `Route[]`, and `tests/gate.test.ts:210-213`
   constructs exactly that and runs the arm.
@@ -401,3 +401,61 @@ of *this note* had written — they had drifted by fifty lines and more while
 still reading as correct. All five are now symbol-keyed, and the record phase
 was changed to forbid line numbers for exactly this reason. It is the same drift
 this sweep keeps finding in the tree, produced by the sweep itself.
+
+---
+
+## src/workflow.ts
+
+Comment lines 150 → 108. Deleted 1, turned into pointers 17, kept 16.
+
+Two rounds. The one rejection was a locator drift of a kind this sweep has now
+produced three times in three different forms: a quotation attributed to
+ADR-0011's Consequences that lives in its §6. A wrong section name sends the
+next reader somewhere the rule is not, exactly as a stale line number does.
+
+### Where the 17 rules now live
+
+`on_fail: abort`'s removal — ADR-0014 §3. The closed schema, `version: 0.1`
+being an exact match, and why no did-you-mean guess is offered — ADR-0015. Why
+`validate` asks whether a run can *end* and not only whether every phase can be
+reached, and why a fail-edge cycle is left unwarned — ADR-0022. The fingerprint:
+one hash per reachable phase plus `$limits`, `description` excluded, and why the
+report marker is a digest rather than a flag — ADR-0023. The readiness probe's
+place in the vocabulary — ADR-0003.
+
+### Kept — the shape of it
+
+- **`Route`'s doc and `validateRoutes`.** The positional rules — only the last
+  entry may omit `when:`, and no earlier one may — stated beside the checks that
+  enforce them. `gate.ts`'s `resolveRoute` leans on exactly this.
+- **`routeTargets` and `passTargets`.** Which edges each walk follows, and that
+  `on_fail` is deliberately absent from the pass-cycle walk.
+- **`unboundedPassCycles`'s file-order paragraph.** Why the same file must
+  produce the same warning every time.
+- **`LIMITS_KEY` and `graphFingerprint`.** Why `$limits` is always present even
+  when no ceiling is declared — a key that appeared only once a ceiling existed
+  would make declaring one look like a widened reachable set.
+- **`rejectUnknownKeys`'s `where` doc**, and the module header's remaining
+  paragraphs about reading the file fresh every lap.
+
+### Also discussed at — found by the judge
+
+- **`tests/workflow.test.ts:365`** turns the file-order determinism into an
+  executable claim ("two separate pass cycles are warned about one at a time, in
+  file order").
+- **`plugin/skills/design-workflow/references/schema.md`** carries the positional
+  route rules and the closed-schema rule for a workflow author — a reader who
+  never opens an ADR.
+- **`docs/workflow-reference.ja.md:539`, `:568`, `:421`, `:674`** state the same
+  rules in Japanese.
+- **`src/state.ts`** declares the fingerprint's shape from the record's side, and
+  `src/engine.ts` owns the four-branch reconcile — ADR-0023's Consequences names
+  all three owners.
+
+### Noted, not acted on
+
+- A kept entry quotes this note's own gate.ts section slightly off ("an entry"
+  for "one"). The relation holds; the quotation should be made verbatim next
+  time either is touched.
+- `rejectUnknownKeys`'s block also carries the no-did-you-mean sentence, which
+  no entry classifies. It stayed with the block either way.

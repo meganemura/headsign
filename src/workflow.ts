@@ -4,19 +4,14 @@
 // the call.
 // NOTHING here throws — not a missing file, not broken YAML, not a file of nonsense. Every
 // problem comes back as text in the error list, and the workflow comes back only when that
-// list is empty, so "no workflow" is how a fatal problem is reported. Warnings come back
-// alongside a perfectly usable workflow and are never shown from here: who sees them is the
-// caller's call (`validate` and `start` print them once, `next` never does, so the hot path
-// of a run stays quiet).
+// list is empty, so "no workflow" is how a fatal problem is reported.
 // Nothing is remembered between calls: the file is read and parsed afresh every time, so a
 // run re-loading it on every lap sees an edit made mid-run on the next lap. That is what
 // makes a workflow rewritable while it is being walked (ADR-0016), and it is a property of
 // this module rather than of its callers.
 // It also computes the GRAPH FINGERPRINT (bottom of the file) — the hash of the rules a run is
-// currently walking under. That lives here and not with the run record because it is a fact
-// about the schema and the reachability walk, both of which are this module's alone; who
-// stores it, when it is compared and what is said about a difference are somebody else's
-// (state.ts, engine.ts, render.ts respectively).
+// currently walking under. Why it lives here rather than with the run record, and which of
+// state.ts/engine.ts/render.ts owns what about a difference, is ADR-0023's Consequences.
 // Must NOT know about: state.json, gate execution, git.
 
 import fs from "node:fs";
@@ -39,15 +34,12 @@ export interface Phase {
 }
 export interface Workflow { version: number; name: string; entry: string; phases: Record<string, Phase>; limits?: { max_total_iterations?: number } }
 
-// No `abort` here (ADR-0014): a gate failure is a machine verdict, and ending a run for good
-// is a human-directed act — `headsign abort <reason>` — so the only end-the-run token a
-// workflow can declare on failure is `escalate`, which hands the call to a person.
+// No `abort` here — ADR-0014 §3: ending a run for good is `headsign abort`'s job, a person's
+// own action, not a gate verdict. `escalate` is the only end-the-run token left to declare.
 const ON_FAIL_TOKENS = new Set(["retry", "$end", "escalate"]);
 
-// The only value `version:` may take. Exact match, and it stays exact when this becomes 0.2
-// (ADR-0015): while the schema is pre-1.0 a changed schema must be answered by an explicit
-// edit to the file, not by a file that keeps loading with fields that no longer mean
-// anything. `1` used to be the value and claimed a stability we don't have.
+// The only value `version:` may take, matched exactly — and it stays exact past 0.2, too:
+// ADR-0015 §4/§5 is why, and what `1` used to claim.
 const SCHEMA_VERSION = 0.1;
 
 // The schema's key set, in one place. Each level's allowed keys are listed here and nowhere
@@ -77,9 +69,9 @@ function rejectUnknownKeys(level: keyof typeof ALLOWED_KEYS, m: Record<string, u
   }
 }
 
-// Warnings are things a run can proceed with; errors are not (they leave `workflow` null).
-// The caller decides who gets to see the warnings: `validate` and `start` print them once,
-// `next` never does — see engine.ts (and cli.ts, which still loads for `validate`).
+// Warnings are things a run can proceed with; errors are not (they leave `workflow` null) —
+// ADR-0011 §6 decides who gets to see them. In this codebase that's engine.ts (and cli.ts,
+// which still loads for `validate`), never here.
 export function load(path: string): { workflow: Workflow | null; errors: string[]; warnings: string[] } {
   let doc: unknown;
   try {
@@ -127,14 +119,13 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
     }
   }
 
-  // Warnings, not errors (ADR-0011): a half-written phase or a temporarily commented-out
-  // edge must not stop the run that is being used to write it. Only computed once the shape
-  // is otherwise valid, since the walks below trust the schema.
+  // Warnings, not errors — ADR-0022 §2 ("ADR-0011's reason unchanged"). Only computed once the
+  // shape is otherwise valid, since the walks below trust the schema.
   if (errors.length === 0) {
     const graph = phases as unknown as Record<string, Phase>;
     warnings.push(...unreachable(doc.entry as string, graph, names));
-    // Nothing to say when a ceiling is declared: `max_total_iterations` is the answer to a
-    // graph that turns forever (ADR-0017), so a bounded run needs no advice about it.
+    // Nothing to say when a ceiling is declared — ADR-0022 §3, and ADR-0017's answer to a
+    // graph that turns forever.
     const bounded = isMap(doc.limits) && doc.limits.max_total_iterations !== undefined;
     if (!bounded) warnings.push(...unboundedPassCycles(doc.entry as string, graph, names));
   }
@@ -170,8 +161,8 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
     }
   }
 
-  // `ready` is a readiness probe, not a routing field: it never adds a graph edge, so it
-  // takes no part in the `unreachable()` walk below.
+  // `ready` is a readiness probe, not a routing field — ADR-0003: it adds no edge, so it takes
+  // no part in the `unreachable()` walk below.
   if (p.ready !== undefined && (typeof p.ready !== "string" || !p.ready)) {
     errors.push(`phase '${name}': ready must be a non-empty shell string`);
   }
@@ -185,9 +176,9 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
     errors.push(`phase '${name}': on_fail '${String(p.on_fail)}' is not a valid route`);
   }
   if (p.max_attempts !== undefined && !isPosInt(p.max_attempts)) errors.push(`phase '${name}': max_attempts must be a positive integer`);
-  // engine.ts step() checks max_attempts exhaustion before on_fail, but on_fail
-  // 'escalate' ends the run on the very first failure — attempts never gets a
-  // chance to reach max_attempts, so one of the two settings is always dead.
+  // ADR-0003's validate list rejects this pairing outright. The reason lives in engine.ts's
+  // step(): it checks max_attempts exhaustion before on_fail, but 'escalate' ends the run on
+  // the very first failure, so max_attempts never gets a chance to be reached.
   if (p.max_attempts !== undefined && p.on_fail === "escalate") {
     errors.push(`phase '${name}': max_attempts has no effect when on_fail is 'escalate' — the first failure already ends the run; remove one of them`);
   }
@@ -253,10 +244,9 @@ function unreachable(entry: string, phases: Record<string, Phase>, names: Set<st
 }
 
 // The pass edges only — every `to:` of a k-way on_pass, or the single string form, minus
-// `$end`. `on_fail` is deliberately absent: a cycle that turns on a failure edge (verify
-// --fail--> apply --pass--> verify) can be bounded by the failing phase's max_attempts,
-// because attempts survive until that phase passes. A cycle made of passes cannot be, which
-// is exactly what the warning below is for.
+// `$end`. `on_fail` is deliberately absent: ADR-0022 §4 is why a fail-edge cycle needs no
+// warning here, and the warning below is for the passes-only cycle that would otherwise
+// go unbounded.
 function passTargets(p: Phase): string[] {
   const targets = Array.isArray(p.on_pass) ? p.on_pass.map((r) => r.to) : [p.on_pass];
   return targets.filter((t): t is string => typeof t === "string" && t !== "$end");
@@ -279,19 +269,14 @@ function passClosure(from: string, phases: Record<string, Phase>, names: Set<str
 }
 
 // A graph that can turn forever on passes alone, with no `limits.max_total_iterations` under
-// it, has nothing that stops it: `max_attempts` counts a phase's failures SINCE IT LAST
-// PASSED and engine.ts clears the count on a pass, so a loop whose every edge is a pass keeps
-// resetting the only other counter there is.
+// it, has nothing that stops it — ADR-0022's Context is why (`max_attempts` resets on every
+// pass), and this warning is the fix.
 //
-// Found the plain way rather than with Tarjan (ADR-0016 — the fitness function is "can this
-// be explained to a middle schooler"): ask each phase whether it can walk back to itself,
-// then put two such phases in the same group when each can reach the other. Phase counts here
-// are in the tens, so the cost of asking one phase at a time does not matter.
+// Found the plain way rather than with Tarjan — ADR-0022 §5 (ADR-0016's fitness function: can
+// this be explained to a middle schooler).
 //
-// Cycles that need a fail edge to close are left alone on purpose (see passTargets): deciding
-// whether such a loop is really unbounded means enumerating the cycles and checking that
-// nobody on one carries max_attempts, and the false positives that would cost outweigh what
-// it would catch.
+// Cycles that need a fail edge to close are left alone on purpose (see passTargets) —
+// ADR-0022 §4 is why enumerating them isn't worth it.
 function unboundedPassCycles(entry: string, phases: Record<string, Phase>, names: Set<string>): string[] {
   // File order, not walk order: the same file must produce the same warning every time.
   // Unreachable phases are skipped — they already have a warning of their own, and a loop
@@ -307,8 +292,8 @@ function unboundedPassCycles(entry: string, phases: Record<string, Phase>, names
     if (grouped.has(n)) continue;
     const group = onCycle.filter((m) => m === n || (forward.get(n)!.has(m) && forward.get(m)!.has(n)));
     for (const m of group) grouped.add(m);
-    // Long, because this warning cannot be acted on without its reason: told only that the
-    // graph loops, an author reaches for max_attempts, which is the one thing that cannot help.
+    // Long, on purpose — ADR-0022 §6 is why a warning that names no reason teaches an author to
+    // reach for max_attempts, the one thing that cannot help.
     // A group of one is a phase whose on_pass names itself; saying "phases 'build'" there
     // would be the machine mis-hearing its own finding.
     const noun = group.length === 1 ? "phase" : "phases";
@@ -322,17 +307,9 @@ function unboundedPassCycles(entry: string, phases: Record<string, Phase>, names
 
 // --- the graph fingerprint: one hash per rule a run is currently depending on ---
 //
-// A run re-reads this file every lap (see the header), which is deliberate and stays: ADR-0016
-// §5 lets a run rewrite its own workflow, and ADR-0017 tells a person to raise the ceiling and
-// resume with `next`. What was missing is not a lock but a RECORD — with nothing pinned, a run
-// that failed a gate three times and then had that gate loosened looks exactly like a run that
-// passed it, and the loosening is indistinguishable from the edit the documents recommend.
-// A fingerprint is what lets the difference be noticed and said out loud; nothing here forbids
-// anything.
-//
-// The map is name -> hash, and it is a map rather than one whole-file hash because a
-// difference has to be reportable as "which rules moved" — a single digest can only say "the
-// file is not what it was", which is unactionable and would fire on a comment.
+// Why this exists and what problem "nothing pinned" leaves open is ADR-0023's Context. The map
+// is name -> hash rather than one whole-file hash because a difference has to be reportable as
+// "which rules moved" (ADR-0023's Alternatives, "Keep a list of every fingerprint").
 
 export type GraphFingerprint = Record<string, string>;
 
@@ -344,29 +321,20 @@ export type GraphFingerprint = Record<string, string>;
 // so `limits` wins and the phase rides along with it.
 export const LIMITS_KEY = "$limits";
 
-// The field every phase hash leaves out, and the ONLY one — an exclusion list, not an
-// allow-list. ADR-0003 makes `description` advisory (it is prose for the agent, changed
-// constantly and routed on never), so a run must be able to reword it mid-flight without
-// anyone being asked about it. Everything else is in, including fields added to the schema
-// after this line was written: an allow-list would let a new routing field ship silently
-// unpinned, which is the same trap ADR-0015 closes by rejecting unknown keys instead of
-// ignoring them.
-//
-// `clear:` being in matters more than it looks. Deleting a `clear:` entry leaves the previous
-// pass's artifact (a stale `APPROVED` verdict) in place for the next gate to find, which is a
-// way of loosening a gate without touching the gate.
+// The field every phase hash leaves out, and the only one — an exclusion list, not an
+// allow-list. ADR-0023 §2 is why: what `description` is exempt for, why a field added to the
+// schema later is pinned by default, and why `clear:` counts as a rule rather than an
+// instruction.
 const UNPINNED_PHASE_KEY = "description";
 
 function sha256(text: string): string {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
-// Recursively key-sorted JSON, so the hash is of the PARSED STRUCTURE and not of the bytes.
-// Comments, indentation, quoting style and key order are things YAML does not make the author
-// keep; hashing raw bytes would report every one of them as a change to the rules, and a
-// report that fires on reflowing a comment is a report nobody reads. Arrays keep their order:
-// a gate's checks run in order and a k-way `on_pass` is resolved in order (ADR-0011), so
-// moving an entry there IS a different rule.
+// Recursively key-sorted JSON, so the hash is of the PARSED STRUCTURE and not of the bytes —
+// ADR-0023 §2 says why comments, indentation, quoting and key order don't count, and why
+// array order still does (a gate's checks and a k-way `on_pass` both resolve in order,
+// ADR-0011).
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (!isMap(value)) return value;
@@ -386,10 +354,7 @@ function hashOf(value: unknown): string {
 }
 
 // The rules a run sitting on `from` is actually depending on: every phase reachable from
-// there, plus `$limits`. Scoped that way because ADR-0016 §5 says what a run is owed — the
-// definitions of the phases it has NOT ENTERED YET. A phase it has already walked past can be
-// rewritten freely (that is how a workflow improves itself mid-run), and reporting such an
-// edit would make the ordinary case noisy enough to train everyone to ignore the report.
+// there, plus `$limits`. Scoped that way per ADR-0023 §3 (ADR-0016 §5's rule, made mechanical).
 // Reachability is the same walk `unreachable()` uses, `on_fail` edges included: a phase a
 // failure can still route to is one this run can still land in.
 export function graphFingerprint(wf: Workflow, from: string): GraphFingerprint {
@@ -410,22 +375,15 @@ export function graphFingerprint(wf: Workflow, from: string): GraphFingerprint {
   return fingerprint;
 }
 
-// One digest standing for a whole computed map. Its only job is to answer "is this the same
-// difference I already reported?", which is why it is a hash rather than a flag: after a report
-// the file can be edited AGAIN, and a flag would let that second edit through unreported.
+// One digest standing for a whole computed map, answering "is this the same difference I
+// already reported?" — ADR-0023 §5 is why a hash and not a flag.
 export function fingerprintDigest(fingerprint: GraphFingerprint): string {
   return hashOf(fingerprint);
 }
 
 // What moved, in the computed map's order. Only keys present in BOTH sides count, and that is
-// the rule rather than an optimisation:
-//   - computed-only means the run can now reach a phase it could not reach before (it walked
-//     an edge, or an edit added one). It has never depended on that phase's rules, so there is
-//     nothing to have changed under it — adopt it in silence.
-//   - saved-only means the run has moved past a phase and can no longer reach it. Nothing it
-//     does now depends on those rules — drop them in silence.
-// Comparing the maps whole would report both as "changed" and turn every ordinary advance into
-// an escalation.
+// the rule rather than an optimisation — ADR-0023 §3 says why a computed-only or saved-only
+// key is adopted or dropped in silence rather than reported.
 export function changedFingerprintKeys(saved: GraphFingerprint, computed: GraphFingerprint): string[] {
   return Object.keys(computed).filter((key) => key in saved && saved[key] !== computed[key]);
 }
