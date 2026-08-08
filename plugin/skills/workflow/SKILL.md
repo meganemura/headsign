@@ -23,13 +23,17 @@ it and no install is needed. `headsign <cmd>` below means:
 node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 ```
 
-(If the package is installed via npm, `npx headsign` — or a PATH-installed
-`headsign` — works too.)
+(A PATH-installed `headsign` works too, and so does `npx headsign` once the
+package is installed. Check which you have before reaching for either —
+`command -v headsign` names a PATH copy if one exists. **`npx headsign` with
+nothing installed does not fail; it installs from the registry**, at a version
+npm chooses rather than the one this plugin ships, and that copy will read and
+write the same `.headsign/state.json` the bundled one has been driving.)
 
 If the bundled path above does not exist, this file is a copy running
 outside its plugin (e.g. placed in `.claude/skills/`) — the bundle only
-ships with the plugin. Use `npx headsign` or a PATH-installed `headsign`
-if available; otherwise stop and tell the user to either install the
+ships with the plugin. Use a PATH-installed `headsign`, or `npx headsign`
+on the terms above; otherwise stop and tell the user to either install the
 plugin or `npm install` the package. Do not guess at other paths.
 
 ## The discipline
