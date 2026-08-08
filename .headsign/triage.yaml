@@ -29,33 +29,88 @@ phases:
       Judgment section: decision (accept / reject / defer) plus a reason.
       Then move it with `git mv`: accept and defer go to feedback/judged/;
       reject goes straight to feedback/done/ with the reason written
-      carefully. Commit in the feedback repository. When triage is done —
-      one ticket judged, or the inbox turned out empty — touch
-      .headsign/tmp/triage-done and run `headsign next`. A reject, defer
-      or empty inbox means no implementation this run — the gate below
-      then ends the run cleanly; that is the intended outcome, not a
-      failure.
+      carefully. Commit in the feedback repository. **If the decision was
+      reject or defer, also touch .headsign/tmp/judged-not-accepted** —
+      that is what sends the reason to be reviewed instead of straight to
+      the reporter. When triage is done — one ticket judged, or the inbox
+      turned out empty — touch .headsign/tmp/triage-done and run `headsign
+      next`.
     # ready: is this run's own "I finished triaging" declaration, NOT a
     # probe of the queue: the queue alone cannot distinguish "just
     # rejected the last ticket" (should end cleanly) from "haven't
     # started yet" (should keep waiting), and a premature `next` before
-    # judging must PENDING-wait here rather than fall through to the
-    # clean-exit fail below.
+    # judging must PENDING-wait here rather than be routed anywhere.
     ready: "test -f .headsign/tmp/triage-done"
     gate:
+      # What the gate judges is no longer WHICH decision was reached — that
+      # is a destination, and destinations belong on the routes below
+      # (ADR-0011). It judges the one thing that can actually be wrong
+      # here: a ticket that was judged and then left where unjudged tickets
+      # live. `- decision: ` with something after it is the mark of a
+      # judged ticket, so a template scaffold copied in with the field
+      # still empty does not trip it.
+      #
+      # This used to be "is there an accepted ticket in judged/", with
+      # `on_fail: $end` carrying reject, defer and an empty inbox out of
+      # the run. That made a gate FAILURE the way a normal outcome was
+      # expressed, which is the shape `what-headsign-protects` #7 exists to
+      # remove: branching belongs on the pass path so nobody has to ask
+      # whether ending cleanly costs an attempt.
       checks:
-        # Judged state lives in the ticket files themselves: an accepted
-        # ticket sitting in judged/ IS the work queue (capacity one by
-        # convention). Deferred tickets may sit in judged/ too — the grep
-        # keys on the decision, so they never trigger implementation.
-        - name: accepted ticket in judged/
-          run: 'grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/judged/*.md'
-    on_pass: implement
-    # Triage that produced no accepted ticket (reject, defer, or an empty
-    # inbox) ends the run cleanly (COMPLETE). Deliberately no max_attempts
-    # here — with $end on the first fail, a second attempt can never
-    # happen.
-    on_fail: "$end"
+        - name: no judged ticket left in inbox/
+          run: '! grep -qs "^- decision: ." "$(git config --global headsign.feedbackDir)"/feedback/inbox/*.md'
+    # Judged state lives in the ticket files themselves: an accepted ticket
+    # sitting in judged/ IS the work queue (capacity one by convention),
+    # which is why the first route reads the durable ticket rather than a
+    # marker — an accepted ticket left over from an earlier run has to find
+    # its way to implement too. The second route cannot be read off the
+    # queue that way: a rejected ticket lands in done/ next to every
+    # previously rejected one, so "did THIS run reject something" is the
+    # phase's own declaration, exactly like `ready:` above.
+    on_pass:
+      - when: 'grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/judged/*.md'
+        to: implement
+      - when: "test -f .headsign/tmp/judged-not-accepted"
+        to: review_judgment
+      - to: "$end"
+    # An empty inbox takes the default route and ends the run cleanly
+    # (COMPLETE); that is the intended outcome, not a failure. A real
+    # failure here means a judged ticket is still sitting in inbox/ — move
+    # it, then ask again.
+    on_fail: retry
+    max_attempts: 3
+
+  review_judgment:
+    description: >
+      The ticket judged this run was rejected or deferred, so nothing will
+      be built and **the reason IS the whole answer the reporter gets**.
+      Until now nothing has reviewed it. Spawn a read-only reviewer
+      subagent (Read/Grep/Glob) and point it at that ticket's Judgment and
+      Response in the feedback repository. Have it check three things
+      against THIS tree rather than on trust: every factual claim about
+      headsign (a file, a symbol, an ADR, a default, a documented
+      sentence) is verified where it lives; every unconditional statement
+      is tested for the condition that would falsify it — an optional
+      field left undeclared, a limit nobody set; and each of the
+      reporter's own proposals is answered rather than restated. Have it
+      REPORT exactly APPROVED or REJECTED with reasons, then write that
+      verdict verbatim to .headsign/tmp/verdict yourself. On REJECTED, fix
+      the ticket text in the feedback repository and commit there before
+      asking again.
+    # Re-entering rather than staying (`on_fail: review_judgment`, not
+    # `retry`): the stale verdict has to go, and `clear:` runs on entry.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - name: judgment review approved
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: "$end"
+    on_fail: review_judgment
+    # Same reading as review's below — rounds already spent, not the round
+    # starting. Fewer than review's 5 because there is no code here to
+    # ripple through: what a round can move is one ticket's text.
+    max_attempts: 4
 
   implement:
     description: >
