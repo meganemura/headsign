@@ -3,13 +3,27 @@
 One section per file swept by `.headsign/comments.yaml`. Each comment block in
 `src/` is sorted into exactly one of three: (1) it restates the mechanics the
 code already shows, and goes; (2) it restates a rule stated somewhere else, and
-becomes the shortest pointer to that place; (3) it is the only home a decision
-has anywhere in the tree, and stays untouched.
+becomes the shortest pointer to that place; (3) it earns its place beside this
+code for a reason someone can read, and stays untouched.
 
-**The `Kept` lists are the point of this file.** Taken together they become
-something the repository has never had: an index of the decisions that exist in
-exactly one place, and would be lost by an edit nobody would think to question.
-The counts are bookkeeping; the lists are the product.
+**The two lists under each file are the point of this file.** `Kept` says why a
+block stays — how it stands to whatever else discusses the same thing. `Also
+discussed at` says where those others are. Together they are something no single
+file can show you: a rule that has drifted into three homes is only visible from
+above all three. The counts are bookkeeping; the lists are the product.
+
+That framing is the third one this sweep has used, and the change is worth
+recording because it cost six rounds on one file. The first two asked the
+pruner to certify that a kept block was the **only** home of its decision.
+That claim is about the whole tree, it is usually false here — a test's
+section comment states a rule as fully as an ADR paragraph does — and the
+search used to verify it was drawn from the comment's own wording, so it could
+never find the paragraph that says the same thing differently. Meanwhile the
+judge, searching adversarially, found real duplicates every single round. The
+enumeration moved to the party that was already producing it, and the pruner
+now states a relation instead of an absolute. **`src/state.ts`'s section below
+predates that change** and still reads in the old vocabulary; it has not been
+re-audited.
 
 The question each block is judged by is deliberately not "can the code be read
 without this". Almost every (3) sits above readable code — that is what a
@@ -84,3 +98,100 @@ are over-keeping, which is the safe direction, and neither was changed.
 A comment here points at `render.ts:352` for a rule that has since moved to
 `render.ts:405-406`. ADR-0026 §3 cites the same stale line, so this is
 repository-wide line-number drift rather than anything this sweep introduced.
+
+---
+
+## src/stophook.ts
+
+Comment lines 364 → 190. Deleted 1, turned into pointers ~40, kept 14.
+
+Six rounds of review. Rounds 1 and 5 caught defects the sweep itself introduced
+— a pointer headline saying `held` is logged for nudges 1-5 when the line below
+it logs `stalled` on the fifth, and a headline crediting `withRunLock`'s five
+call sites with a distinction that belongs to the two hooks upstream of
+`noteGateThenNudge`. Rounds 2, 3 and 4 were the standard failing, not the work;
+that story is in the header above.
+
+### Where the rules now live
+
+`.headsign/` lock protocol and the cwd-only rule — ADR-0004. The exit-note
+gate, the bounded walk-up, the nudge cap and why the driver check precedes the
+gate — ADR-0006. The two-beat claim and the adoption gate — ADR-0009,
+ADR-0010. Owner comparison and the identifier split — ADR-0010 §3, ADR-0013.
+`last_stop`, the already-continuing flag, and the `held`/`stalled` split —
+ADR-0025 §4/§5 and §7's retraction. The `CLAUDE_PROJECT_DIR` second walk —
+ADR-0026. `last_drive` and what an absent stamp means — ADR-0027 §2/§3/§9.
+
+### Kept — and how each stands to the rest
+
+- **`isObserver`.** ADR-0013 says why the check merged here; ADR-0025 says why
+  `status` became a second caller. Neither says why the second caller does not
+  reopen the first decision, and that is what this paragraph holds.
+- **`resolveDriveSession`.** `src/engine.ts:504-514` states the same fact and
+  then names *this* function as where it must live. The pointer runs both ways;
+  editing one without the other strands the pair.
+- **`resolveAgentId` / `resolveSessionId`.** Why these are two functions over
+  two id spaces rather than one. ADR-0010 argues the spaces; the split itself
+  is decided here.
+- **`withLastStop`.** The shape constraint — an absent `cause` key versus a
+  present `undefined` — which the ADRs discuss in behaviour, not in shape.
+- **`fallbackUnheld` ¶1.** Why the second walk reuses `findRunDir` rather than
+  a looser search. ADR-0026 and the reference manual say the walk is bounded
+  the same way; the reuse is the reason it is.
+- **`fallbackUnheld` ¶2.** ADR-0027 §9 quotes this comment verbatim and calls
+  it the invariant's statement in code — so the wording here is the referent.
+- **`pauseAndAbortHint`.** Why the message depends only on `runDir`/`startDir`.
+- **`NOT_DRIVING_HINT`.** Why the observer relay comes last, after the
+  pause/abort hint.
+- **`withRunLock`'s "Vanished, or ended".** `src/engine.ts:598-616` implements
+  the same guard on the `next` side. A reader is on one side or the other, and
+  each side needs the note beside its own implementation.
+- **`StampedLogEvent`.** The fourth-argument carrier. Nothing else in the tree
+  mentions `__nowIso`.
+- **"Either the pause was recorded…".** What a failed lock means for a
+  one-shot note.
+- **The loop-guard block.** Tests pin the `"x" + 1` coercion behaviour; this
+  states the mechanism. A reader asking why the guard expression is that
+  elaborate needs the mechanism, not a test name.
+- **The final-reminder phrase.** `.headsign/notes/quiet-stop-corrections.md`
+  quotes this comment's own words when it discusses the dilution rule, which
+  makes this wording the thing being referred to.
+- **`evaluate`'s "resolved once here, OUTSIDE the closure".** Paired with the
+  same shape at the `fallbackAgentId` site.
+
+### Also discussed at — found by the judge, not claimed by the sweep
+
+Only the entries where the second home is somewhere a reader would not look:
+
+- **`resolveDriveSession` → `src/engine.ts:504-514`**, which names this
+  function as the one place the claim may live. The strongest pair in the file,
+  and the sweep did not find it; a search on the identifier did.
+- **`fallbackUnheld` ¶1 → `docs/workflow-reference.md:280-282`, `:301-305`**,
+  which say the second walk is bounded "the same way" in entirely different
+  words. A search keyed on `findRunDir` cannot reach them — the same blind spot
+  that cost this lap three rounds, still live.
+- **`pauseAndAbortHint` → `docs/adr/0006:352-357`**, which describes this
+  function's own `runDir`/`startDir` branch.
+- **`NOT_DRIVING_HINT` → `docs/workflow-reference.md:1294`**, which carries the
+  reason for relaying the variable into a child's environment.
+- **`isObserver`** is discussed in eleven places across `docs/`, `src/`,
+  `tests/` and `.headsign/notes/`. The keep still holds — none of them answers
+  the question this paragraph answers — but eleven is worth knowing.
+
+### Noted, not acted on
+
+- The `## Kept` entry for the loop-guard block cites lines 255-264; the block
+  is at 242-251. The lines it cites are ones this lap pointerized.
+- `withRunLock`'s call sites are at 116/231/256/264/388, not 116/230/255/263/387
+  — four of those point at the comment line above the call.
+- `resolveAgentId` is called three times in `evaluateSubagent`, not twice; the
+  comment's "resolves it twice" counts the flagged and ordinary paths and omits
+  the fallback branch. Kept unchanged, so this is pre-existing.
+- Blocks in neither list: the module header's third paragraph (`:12-17`), the
+  marker-consumed-inside-the-lock comment in `evaluateSubagent`'s closure, and
+  six one-line inline comments. `:12-17` is quoted verbatim by
+  `docs/adr/0025:274-275`, which makes it a strong keep nobody classified.
+- `src/stophook.ts:55-56` reads as an absolute ("the one place that has to stay
+  true"). It survives because the claim is grep-true and because
+  `src/engine.ts:511-514` names the same place — the two are a pair, and
+  rewriting one alone leaves the other pointing at nothing.
