@@ -439,14 +439,29 @@ do next depends on **where each command came from** — the axis that is about
 
 **Try the failing path too, not only the passing one. This is recommended,
 with conditions.** A check that has only been seen to pass has not been seen
-to work. The dangerous shape is the one that asserts an *absence* — no
-secret in the diff, no deleted line in the log, nothing past the deadline —
-because a misspelled pattern in it passes on a clean tree exactly as a
-correct one does, forever, and no amount of running it in that state tells
-them apart. Make the condition the check is hunting for actually occur, and
-confirm the check notices. Composing read-only predicates makes *running* a
-check harmless; making one fail is a separate act, which is what these
-conditions are for:
+to work. Two shapes are dangerous, and they look identical from outside —
+both are simply green.
+
+The first **asserts an *absence*** — no secret in the diff, no deleted line
+in the log, nothing past the deadline. A misspelled pattern in it passes on
+a clean tree exactly as a correct one does, forever, and no amount of
+running it in that state tells them apart.
+
+The second is **a check that is correct, runs correctly, and is not about
+the work** — its reach stops short of where the work is. A test command
+whose glob covers the directories the runner was written for says nothing
+about a tree it never visits, and it says nothing in the same green it uses
+for real approval. **Suspect this one whenever you are swapping a gate
+rather than writing the first one.** A substitution is usually made because
+the original was not reaching something, and nothing has yet been shown to
+reach it — so the case that made you replace the gate is the case the new
+one is likeliest to miss as well.
+
+Make the condition each check is hunting for actually occur — for the
+second shape, break something *in the area the swapped-in gate is supposed
+to cover* — and confirm the check notices. Composing read-only predicates
+makes *running* a check harmless; making one fail is a separate act, which
+is what these conditions are for:
 
 - **Look for a way that touches no tracked file first.** A scratch file
   outside the repository, an environment variable, pointing a path argument
