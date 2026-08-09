@@ -5,7 +5,10 @@
 # headsign.feedbackDir` (never a relative/sibling path — that breaks under
 # git worktrees). Tickets carry frontmatter (severity, created), a Judgment
 # section (decision: accept / reject / defer + reason) and a Response
-# section, and move feedback/inbox/ -> judged/ -> done/ as they progress.
+# section, and move feedback/headsign/inbox/ -> judged/ -> done/ as they
+# progress. That hub holds several tools' queues side by side, one directory
+# per tool, so every path below names this one — a ticket sitting in a
+# sibling tool's inbox is not this run's work and must not trip its gate.
 #
 # This repository is PUBLIC. Nothing that identifies a feedback source may
 # enter any artifact here (code, commit messages, docs, tests): no private
@@ -19,17 +22,18 @@ entry: triage
 phases:
   triage:
     description: >
-      Let FB="$(git config --global headsign.feedbackDir)". If
-      feedback/judged/ under it already holds a ticket with "decision:
+      Let FB="$(git config --global headsign.feedbackDir)/feedback/headsign".
+      If judged/ under it already holds a ticket with "decision:
       accept", that is your work item from an earlier run — touch
       .headsign/tmp/triage-done and run `headsign next` to proceed.
-      Otherwise take exactly ONE ticket from feedback/inbox/ — severity
+      Otherwise take exactly ONE ticket from inbox/ — severity
       high before mid before low (frontmatter), oldest `created` first
       within a severity — and judge it alone; never batch. Fill its
       Judgment section: decision (accept / reject / defer) plus a reason.
-      Then move it with `git mv`: accept and defer go to feedback/judged/;
-      reject goes straight to feedback/done/ with the reason written
-      carefully. Commit in the feedback repository. **If the decision was
+      Then move it with `git mv`: accept and defer go to judged/;
+      reject goes straight to done/ with the reason written
+      carefully, and its frontmatter `status:` follows the directory it
+      lands in. Commit in the feedback repository. **If the decision was
       reject or defer, also touch .headsign/tmp/judged-not-accepted** —
       that is what sends the reason to be reviewed instead of straight to
       the reporter. When triage is done — one ticket judged, or the inbox
@@ -58,7 +62,7 @@ phases:
       # whether ending cleanly costs an attempt.
       checks:
         - name: no judged ticket left in inbox/
-          run: '! grep -qs "^- decision: ." "$(git config --global headsign.feedbackDir)"/feedback/inbox/*.md'
+          run: '! grep -qs "^- decision: ." "$(git config --global headsign.feedbackDir)"/feedback/headsign/inbox/*.md'
     # Judged state lives in the ticket files themselves: an accepted ticket
     # sitting in judged/ IS the work queue (capacity one by convention),
     # which is why the first route reads the durable ticket rather than a
@@ -68,7 +72,7 @@ phases:
     # previously rejected one, so "did THIS run reject something" is the
     # phase's own declaration, exactly like `ready:` above.
     on_pass:
-      - when: 'grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/judged/*.md'
+      - when: 'grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/headsign/judged/*.md'
         to: implement
       - when: "test -f .headsign/tmp/judged-not-accepted"
         to: review_judgment
@@ -115,7 +119,7 @@ phases:
   implement:
     description: >
       Implement the accepted ticket (the "decision: accept" file in the
-      feedback repository's feedback/judged/). Work test-first where
+      feedback repository's feedback/headsign/judged/). Work test-first where
       practical, keep engine.ts pure, respect docs/architecture.md module
       boundaries, keep README.md / README.ja.md in parity, and rebuild the
       bundle before asking for the verdict. PUBLIC-REPO RULE: commit
@@ -175,14 +179,15 @@ phases:
     description: >
       Close the loop on the private side: fill the ticket's Response
       section with what was done and the public commit hash(es), `git mv`
-      the ticket from feedback/judged/ to feedback/done/, and commit the
+      the ticket from feedback/headsign/judged/ to feedback/headsign/done/
+      with its frontmatter `status:` following the move, and commit the
       feedback repository. The link always points private -> public; never
       add the reverse link in this repository.
     gate:
       checks:
         # Mechanical: the accepted ticket really left the queue.
         - name: no accepted ticket left in judged/
-          run: '! grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/judged/*.md'
+          run: '! grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/headsign/judged/*.md'
     on_pass: "$end"
     max_attempts: 3
 
