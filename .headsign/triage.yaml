@@ -61,6 +61,15 @@ phases:
       # remove: branching belongs on the pass path so nobody has to ask
       # whether ending cleanly costs an attempt.
       checks:
+        # Reachability first, because the check under it asserts an ABSENCE: a
+        # glob that expands to nothing makes `grep -qs` report no match, and
+        # `!` turns that into a pass identical to a clean inbox. An unset
+        # `headsign.feedbackDir` or a hub that moved would otherwise report a
+        # tidy queue while never looking at one. A gate check rather than
+        # `ready:` on purpose — a missing config is a thing to surface, not a
+        # thing to wait for.
+        - name: feedback queue is reachable
+          run: 'test -d "$(git config --global headsign.feedbackDir)/feedback/headsign/inbox"'
         - name: no judged ticket left in inbox/
           run: '! grep -qs "^- decision: ." "$(git config --global headsign.feedbackDir)"/feedback/headsign/inbox/*.md'
     # Judged state lives in the ticket files themselves: an accepted ticket
@@ -185,6 +194,12 @@ phases:
       add the reverse link in this repository.
     gate:
       checks:
+        # Reachability first, for the reason the triage gate states: the check
+        # under it asserts an absence, and an unreachable path satisfies it
+        # without reading anything — here that would certify a loop closed
+        # while the ticket sits in judged/.
+        - name: feedback queue is reachable
+          run: 'test -d "$(git config --global headsign.feedbackDir)/feedback/headsign/judged"'
         # Mechanical: the accepted ticket really left the queue.
         - name: no accepted ticket left in judged/
           run: '! grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/headsign/judged/*.md'
