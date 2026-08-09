@@ -756,8 +756,11 @@ runs pass through too; those are correct endings.
 
 Which turns those are depends on whether anyone has claimed the run, and
 the two hooks answer an unclaimed one in opposite directions, on purpose.
-`Stop` nudges: a session stopping in the run's own directory is probably
-driving it, and missing the real driver is worse than one stray reminder.
+`Stop` nudges, but which session it nudges turns on what `last_drive` has
+on record rather than on who stopped in the run's own directory: a session
+on record is held, any other passes, and a run with nothing on record
+nudges whoever stops — missing the real driver is worse than one stray
+reminder (see [Multiple sessions](#multiple-sessions) for both halves).
 `SubagentStop` passes, because most delegated agents stopping nearby are
 reviewers and workers with no role in the run at all, and holding one of
 those hostage is worse than a missed reminder.
@@ -765,9 +768,10 @@ those hostage is worse than a missed reminder.
 Once a run's driver *has* been seated by `headsign claim`, what's recorded
 is an agent identifier, so `Stop` passes every session through
 unconditionally — no session can be that agent — and `SubagentStop` holds
-that one agent and no other. That is the whole of the ownership question
-either hook asks; neither compares session identifiers, and headsign
-records none. See [Multiple sessions](#multiple-sessions).
+that one agent and no other. Before a run is claimed, `Stop` makes one
+session-identifier comparison: when `last_drive` names a session, it checks
+the payload's against it and passes on a mismatch. See
+[Multiple sessions](#multiple-sessions).
 
 Two hooks, because a turn can end in two ways: `Stop` fires when a
 session's turn ends, `SubagentStop` when a delegated agent's does. A
