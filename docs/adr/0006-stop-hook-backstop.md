@@ -235,6 +235,33 @@ backstop for the rest of the run. A signal that was true once must not be
 read as still true indefinitely. Consumption is what makes the note mean
 "I am pausing *now*", not "I paused once, a while back".
 
+### Why an observable condition cannot stand in for the rewrite
+
+A wait that spans several turn ends is written once per turn end, and the
+obvious way out is to let the note name a condition — the files it waits
+on, the process it expects to end — and stay valid until that condition
+resolves. The condition and the note do not report the same thing. A
+condition reports the state of the thing being waited on; the note reports
+that at this stop there is still someone steering who can say what the wait
+is. The case this hook exists for is where those two diverge: the awaited
+thing has not moved *and* the driver has stopped steering — actor 2 above,
+giving up or going off-script — which a condition-scoped note reads as
+"still waiting" for as long as the run lasts, without ever spending a
+nudge. Naming a process rather than a file narrows this, since the process
+ending resolves the condition; it does not close it, because a driver can
+walk off while what it waits for is still running.
+
+That divergence is also what the rewrite is buying. The nudge is this
+project's one unprompted channel — everything else about a run is read by
+asking (`headsign status`, `.headsign/log`), and a session that is not the
+one on record in `last_drive` ends its turns silently, so finding a run
+someone else moved means going to `status` for it
+([ADR-0027](0027-recording-who-drove-a-run.md) §6). Nudges only begin once
+the note stops appearing, so a note that renews itself from a condition
+takes away the signal its own absence carries. Silence after the cap is
+spent is not the same thing: it arrives with a `stalled` line behind it,
+and that line is the difference.
+
 ### Net zero: pausing leaves nothing behind
 
 Writing the note and then having the hook delete it returns
