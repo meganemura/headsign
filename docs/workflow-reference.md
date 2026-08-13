@@ -1069,6 +1069,15 @@ stops nearby, so `status` is the only way left to find one.
 Read-only: no gate runs, no state is written, no lock is taken. Safe to run
 from any session, at any time, as often as you like.
 
+While a run is `RUNNING`, it ends with the current phase's instructions, in the
+same `--- phase: <name> ---` block `start` and `next` print. That is the one
+way to re-read what the phase asks for without judging it — `next` would run
+the gate and can spend an attempt. It matters most where the work is delegated:
+an agent that never runs headsign cannot see the gate's requirements at all,
+so this block is what gets handed over, verbatim rather than from memory. If
+the workflow file cannot be read, or no longer defines the phase this run is
+on, the block is absent and the output is exactly what it was before.
+
 ```
 $ headsign status
 RUNNING implement (attempt 2/5)

@@ -47,7 +47,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    one driving the run should touch it: obeying a nudge you weren't meant to
    answer can burn a retry or advance a phase nobody asked you to touch.
    Want to know what's happening without touching anything? Run `headsign
-   status` — it's read-only, and safe to call at any time.
+   status` — it's read-only, and safe to call at any time. It also prints the
+   current phase's instructions, in the same block `next` uses. **If you are
+   delegating the work to someone who does not run headsign — a subagent, a
+   teammate — that block is what you hand them.** They cannot see the gate's
+   requirements any other way, and requirements you paraphrase from memory are
+   the ones that come back as a gate failure a lap later.
 2. **If you are a delegated agent and were entrusted with driving a run,
    claim it first — don't just start calling `next`.** This applies when
    you are a teammate (Claude Code's agent-teams feature) or a subagent:
