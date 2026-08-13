@@ -8,6 +8,16 @@
   evaluation is renamed `last_failure` and trimmed to what `status` shows.
   Everything else here — the state shape, per-phase attempts, cwd-only
   resolution, the lock, and `.headsign/log` — stands.)
+- Revised: 2026-08-13 (`last_failure` gains `repeats`: how many times in a row
+  the same failure has landed, counting the one being recorded. Same is a
+  five-field comparison against the previous record — phase, check name, the
+  check's `run:` text, exit code, output tail — and any difference resets it to
+  1. Optional and tolerantly read for the same reason `elapsed_seconds` is, and
+  the criterion for dropping that tolerance is the one written at that field.
+  This field exists because of what the record could NOT support: a report
+  wanted to know whether a gate was unpassable, which requires running an
+  arbitrary shell to answer, while "nothing this check reads has changed since
+  last time" is already on disk and was being thrown away every lap.)
 - Revised: 2026-07-27 (the two ownership fields become one:
   [ADR-0013](0013-claim-only-driver-identity.md) retired the
   environment-derived driver stamp, so the stored driver is always an agent

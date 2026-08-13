@@ -612,6 +612,22 @@ loaded with whatever still happens to fit
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
 
+**A `RETRY` says when it is the same failure again.** From the second identical
+failure onward — same check, same command, same exit code, same output as the
+lap before — the block carries one more line naming how many in a row, and its
+closing advice changes: not "fix the failure above", which assumes the failure
+is one you can fix, but the two readings actually left open. Either something
+did change and this check is not reading it, or nothing changed and the
+question worth answering before spending the rest of the attempts is whether
+this gate can pass at all. Exhaustion says the same thing in its reason, so
+three attempts against a moving target and three against an unchanged one no
+longer arrive in identical words.
+
+What none of that claims is that a gate is unpassable. Checks are arbitrary
+shell, so nothing here can decide that — the streak is a fact about what has
+already happened, offered because a gate that cannot pass and a gate you have
+not fixed yet look identical until someone reads the check itself.
+
 Exit 3 is a configuration/usage error — which includes a check or a `ready:`
 probe that **could not be run at all** (the command never started, or headsign
 had to kill it before it finished). That is not a gate failure: headsign got no

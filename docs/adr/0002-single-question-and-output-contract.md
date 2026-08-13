@@ -2,6 +2,19 @@
 
 - Status: accepted
 - Date: 2026-07-23
+- Revised: 2026-08-13 (the `RETRY` block and the exhaustion `ESCALATE` gain a
+  distinction they were collapsing. A repeated failure — the same check, the
+  same command, the same exit code and the same output as the lap before, from
+  `last_failure.repeats` (ADR-0004) — adds one line naming the streak, and
+  replaces the closing sentence: "fix the failure above" is advice that assumes
+  a fixable failure, and the second identical failure is where that assumption
+  is worth questioning out loud. The exhaustion reason gains a clause when every
+  attempt since the last pass shared one signature, so "spent three attempts on
+  a moving target" and "spent three attempts on an unchanged one" stop arriving
+  in identical words. What is NOT claimed is that the gate cannot pass: that
+  needs an arbitrary shell to decide, and the six tokens keep their meanings.
+  A first failure's output is byte-identical to what this ADR already
+  specified.)
 - Revised: 2026-07-28 (the transition table's failure rows are narrowed by
   [ADR-0014](0014-removing-three-unused-knobs.md): `on_fail` loses its
   `abort` value and `on_exhausted` is removed, so exhaustion always
