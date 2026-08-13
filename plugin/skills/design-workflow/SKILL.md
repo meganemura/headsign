@@ -529,6 +529,59 @@ is what these conditions are for:
   rewritten history. Those are not "read-only" bent a little; they are a
   different act, and undoing them is not free.
 
+**A loop wants two checks, and only one of them is about progress.** The three
+shapes above are all a gate going green when it should be red. This one is the
+other direction, and it comes from the same confusion, so it is worth having
+both sides in view.
+
+**A measure is not a stopping condition.** A gate that demands "fewer left than
+last round" is a measure. The standard way of arguing that a loop terminates
+keeps those apart, and has since Floyd put it in print in 1967: the quantity
+falls in a well-founded order on every round *that goes around again*, while
+leaving the loop is licensed by a **separate** claim about the state where it
+can fall no further. Floyd's W-function into a well-ordered set, Dijkstra's
+variant function beside his invariant relation, `loop variant` beside `loop
+invariant` in ACSL, `decreases` beside `invariant` in Dafny — four
+formulations, same division of labour.
+
+**Your measure has a floor, and the round that lands on it is the round that
+must be allowed to leave.** A count of unfinished items bottoms out at zero, so
+a gate that asks for a decrease *there* cannot be passed by a loop that has
+legitimately finished — nothing is smaller than zero. ACSL says as much
+directly: the variant's value at loop exit may fall below the bound without
+compromising termination. Dafny says it from the other side: once the measure
+reaches the bottom of the order, control must leave the loop. Neither treats
+the floor as a round the decrease obligation applies to.
+
+Write them as two named checks, each guarded so it is vacuously true outside
+its own regime — the conjunction is then the whole obligation, and a failure
+still says which half broke:
+
+```yaml
+checks:
+  - name: unfinished count fell
+    run: '[ ! -f .headsign/tmp/prev ] || [ "$(sh count.sh)" -eq 0 ] || [ "$(sh count.sh)" -lt "$(cat .headsign/tmp/prev)" ]'
+  - name: an empty queue is a real one
+    run: '[ "$(sh count.sh)" -gt 0 ] || sh verify-really-done.sh'
+```
+
+**The second check is not politeness.** A zero that came from a miscount, a
+renamed directory, or a counter that quietly stopped working looks exactly like
+finished work — so "pass whenever the count is zero", which is the obvious
+repair when the first check blocks a legitimate finish, trades an unpassable
+gate for one that passes on a broken tree. That is the same confusion coming
+back inverted.
+
+Two details decide whether this works in practice. **Record the number you
+compare against in the gate's *last* check**, so only a round that passed every
+judging check moves the mark and a retry never reaches it — a gate runs after
+the work, so "the count at the start of this round" is not a number you can
+take, while "the count the last passing round left" is the same number and is.
+And **compute the exit predicate from the tree, not from the run's own
+bookkeeping**: the claim is about the repository, while anything under
+`.headsign/tmp/` is folded away by the next `start` — which is also why the
+first check has to tolerate a missing mark rather than failing on it.
+
 **When a check fails, sort the failure into one of four kinds. Only one of
 them is yours to fix.**
 
