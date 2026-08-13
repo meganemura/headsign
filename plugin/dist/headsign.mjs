@@ -7863,10 +7863,13 @@ ${o.lastFailure.outputTail}
   const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} \u2014 turn ends from any other session pass without a nudge
 ` : "";
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
+  const phaseBlock = o.description !== void 0 ? `--- phase: ${o.phase} ---
+${o.description}
+` : "";
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}`;
+${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -8554,7 +8557,8 @@ function status(cwd, env) {
     lastMoved: recordedLastMoved(current),
     observer: isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
-    graphChangeReported: recordedGraphMarker(current) !== null
+    graphChangeReported: recordedGraphMarker(current) !== null,
+    description: phase?.description
   };
 }
 
@@ -8703,7 +8707,8 @@ function reportStatus(result) {
           lastMoved: result.lastMoved ?? void 0,
           observer: result.observer ? true : void 0,
           acceptedGraphChanges: result.acceptedGraphChanges,
-          graphChangeReported: result.graphChangeReported
+          graphChangeReported: result.graphChangeReported,
+          description: result.description
         }),
         0
       );

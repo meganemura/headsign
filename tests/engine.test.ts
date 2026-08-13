@@ -595,6 +595,96 @@ phases:
   if (status.kind === "RUNNING") assert.equal(status.lastFailure?.elapsedSeconds, saved, "restored verbatim, the same number status() reads off the record");
 });
 
+// --- status: the current phase's description, read straight off the same lookup attemptUnknown uses ---
+
+test("status(): a resolvable phase reports its description, and status writes nothing to disk", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`);
+  const before = snapshot(dir);
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.attemptUnknown, false);
+    assert.equal(status.description, "Build the thing.");
+  }
+
+  const after = snapshot(dir);
+  assert.deepEqual(after.state, before.state, "status() must never write state.json");
+  assert.deepEqual(after.log, before.log, "status() must never write the log");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "lock")), false, "status() takes no lock");
+});
+
+test("status(): an unreadable workflow.yaml leaves the description undefined, the same condition attemptUnknown already names", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`);
+  fs.rmSync(path.join(dir, ".headsign", "workflow.yaml"));
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.attemptUnknown, true);
+    assert.equal(status.description, undefined);
+  }
+});
+
+test("status(): a phase no longer defined in the (readable) workflow.yaml also leaves the description undefined", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`);
+  fs.writeFileSync(
+    path.join(dir, ".headsign", "workflow.yaml"),
+    `
+version: 0.1
+name: demo
+entry: otherphase
+phases:
+  otherphase:
+    description: "Other."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.attemptUnknown, true);
+    assert.equal(status.description, undefined);
+  }
+});
+
 // --- clear: what clearPhaseArtifacts (engine.ts) reports, on a real filesystem ---
 //
 // A non-empty file is removed and reported in `cleared`; a directory is left standing (rmSync's

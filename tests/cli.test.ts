@@ -2221,7 +2221,7 @@ test("status: a claimed run reports driver: a delegated agent, and never the age
   // claim to know whether the reader is that agent.
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /driver: a delegated agent\n$/);
+  assert.match(result.stdout, /driver: a delegated agent\n/);
   assert.doesNotMatch(result.stdout, /agent-alpha/);
 });
 
@@ -2274,7 +2274,10 @@ phases:
   run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
   const before = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(before.status, 0);
-  assert.equal(before.stdout, `RUNNING build (attempt 0/3)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
+  assert.equal(
+    before.stdout,
+    `RUNNING build (attempt 0/3)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n--- phase: build ---\nBuild.\n`,
+  );
 
   run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // real RETRY -> attempts.build = 1
   const after = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
@@ -2290,7 +2293,11 @@ test("status: no max_attempts on the phase -> bare attempt number (no slash)", (
   assert.match(result.stdout, /^RUNNING build \(attempt 0\)\n/);
 });
 
-test("status: an unreadable workflow.yaml degrades the attempt display to n/? without erroring", () => {
+// The one case the phase-block feature must leave untouched byte-for-byte: description can't
+// be resolved (same condition attemptUnknown already names), so there is nothing to place in
+// the block and none is printed — pinned as the WHOLE line, not just a prefix, against the
+// exact text `status` printed before the phase block existed.
+test("status: an unreadable workflow.yaml degrades the attempt display to n/? without erroring, and the whole line is byte-identical to before the phase block existed", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
@@ -2298,10 +2305,12 @@ test("status: an unreadable workflow.yaml degrades the attempt display to n/? wi
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /^RUNNING build \(attempt 0\/\?\)\n/);
-  assert.match(result.stdout, /^workflow: demo$/m, "the workflow name comes from state.json, not the (now-missing) workflow.yaml");
+  assert.equal(result.stdout, `RUNNING build (attempt 0/?)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
 });
 
+// Same pin, the other way a description fails to resolve: the workflow loads fine but no
+// longer defines the phase the run is currently on — also byte-identical to before the phase
+// block existed.
 test("status: current phase no longer defined in a (readable) workflow.yaml also degrades to n/?", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
@@ -2324,7 +2333,7 @@ phases:
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /^RUNNING build \(attempt 0\/\?\)\n/);
+  assert.equal(result.stdout, `RUNNING build (attempt 0/?)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
 });
 
 test("status: a matching last_failure renders a last-failure block with the failing check and output tail", () => {
@@ -2365,17 +2374,17 @@ test("status: the driver line is two-valued — undelegated before a claim, a de
   run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
 
   const before = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
-  assert.match(before.stdout, /driver: not delegated yet — no agent has claimed this run\n$/);
+  assert.match(before.stdout, /driver: not delegated yet — no agent has claimed this run\n/);
 
   // A `claim` on its own is only the first beat: nothing is sealed until the claiming
   // agent's own turn end, so the line must not change yet.
   run(["claim"], { cwd: dir });
   const armed = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
-  assert.match(armed.stdout, /driver: not delegated yet — no agent has claimed this run\n$/);
+  assert.match(armed.stdout, /driver: not delegated yet — no agent has claimed this run\n/);
 
   run(["subagent-stop-hook"], { cwd: dir, input: JSON.stringify({ agent_id: "agent-alpha" }), env: NO_OBSERVER_ENV });
   const after = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
-  assert.match(after.stdout, /driver: a delegated agent\n$/);
+  assert.match(after.stdout, /driver: a delegated agent\n/);
   assert.doesNotMatch(after.stdout, /agent-alpha/, "the recorded agent id is never printed");
 });
 
@@ -2391,7 +2400,7 @@ test("status: a state.json still carrying the pre-rename driver_session field re
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /driver: not delegated yet — no agent has claimed this run\n$/);
+  assert.match(result.stdout, /driver: not delegated yet — no agent has claimed this run\n/);
   assert.doesNotMatch(result.stdout, /session-mine/);
 });
 
@@ -2422,7 +2431,8 @@ test("status: a turn end that Claude Code had already resumed leaves both an unh
   assert.equal(
     result.stdout,
     `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n` +
-      `last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n`,
+      `last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n` +
+      `--- phase: build ---\nBuild the thing.\n`,
   );
 });
 
@@ -2493,7 +2503,10 @@ test("status: a run with no last_drive prints byte-identical output to before th
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.equal(result.stdout, `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
+  assert.equal(
+    result.stdout,
+    `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n--- phase: build ---\nBuild the thing.\n`,
+  );
   assert.doesNotMatch(result.stdout, /last moved:/);
 });
 
@@ -2511,7 +2524,8 @@ test("status: a run with a last_drive stamp prints the exact 'last moved:' line,
     result.stdout,
     "RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n" +
       `last stop: held, and pointed back to headsign next — at ${(readState(dir).last_stop as { at: string }).at}\n` +
-      `last moved: ${at.at} — turn ends from any other session pass without a nudge\n`,
+      `last moved: ${at.at} — turn ends from any other session pass without a nudge\n` +
+      `--- phase: build ---\nBuild the thing.\n`,
   );
 });
 
@@ -2675,6 +2689,54 @@ test("status: aborted -> ABORTED token with reason line, exit 0", () => {
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
   assert.equal(result.stdout, `ABORTED\nworkflow: demo\nreason: changed my mind\n`);
+});
+
+// A finished run has no "current phase" to instruct anyone about — the phase block is a
+// RUNNING-only line, and all three terminal statuses above already pin their full output
+// bytewise with no such block. This test names the constraint directly, across all three.
+test("status: no terminal status (complete/escalated/aborted) ever prints the phase block", () => {
+  for (const stdout of [
+    (() => {
+      const dir = initRepo();
+      writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+      run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+      fs.writeFileSync(path.join(dir, "marker.txt"), "");
+      run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // ADVANCE
+      run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // COMPLETE
+      return run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout;
+    })(),
+    (() => {
+      const dir = initRepo();
+      writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+      run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+      run(["abort", "changed", "my", "mind"], { cwd: dir, env: NO_OBSERVER_ENV });
+      return run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout;
+    })(),
+    (() => {
+      const dir = initRepo();
+      writeWorkflow(
+        dir,
+        `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "exit 1"
+    on_pass: "$end"
+    on_fail: escalate
+`,
+      );
+      run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+      run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // ESCALATE
+      return run(["status"], { cwd: dir, env: NO_OBSERVER_ENV }).stdout;
+    })(),
+  ]) {
+    assert.doesNotMatch(stdout, /--- phase:/);
+  }
 });
 
 test("status: read-only — state.json bytes are identical before and after, and it never acquires the lock", () => {

@@ -447,6 +447,11 @@ export type StatusResult =
       // else here: reconciling can WRITE, and looking must stay free (protects #12).
       acceptedGraphChanges: number;
       graphChangeReported: boolean;
+      // The current phase's instruction, the same field `start`/`next` print — undefined
+      // exactly when `attemptUnknown` is true, since both come from the same lookup (`phase`
+      // below): the workflow could not be read, or no longer defines this phase. render.ts
+      // decides nothing about when to show it; it prints the block only when this is present.
+      description?: string;
     };
 
 // Shared by next, claim and status (ADR-0004/0008): all three are cwd-only lookups of the
@@ -962,5 +967,6 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     observer: stophook.isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
+    description: phase?.description,
   };
 }

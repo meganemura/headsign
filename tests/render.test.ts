@@ -621,6 +621,35 @@ test("statusRunning: an unheld record with no cause at all reads the same as one
   assert.equal(explicit, absent);
 });
 
+// --- status: the current phase's instruction, in the same block `next`/`start` use ---
+
+test("statusRunning: description present -> the phase block lands last, same shape as start/next", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo", driver: "a delegated agent", description: "Build the thing.",
+  });
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n--- phase: build ---\nBuild the thing.\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: description omitted -> byte-identical to before the phase block existed", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
+    workflowName: "demo", driver: "a delegated agent",
+  });
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n`;
+  assert.equal(actual, expected);
+});
+
+test("statusRunning: the phase block lands after every other conditional line, not between them", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo", driver: "a delegated agent",
+    lastStop: { disposition: "nudged", at: "T" }, acceptedGraphChanges: 1, observer: true,
+    description: "Build the thing.",
+  });
+  assert.match(actual, /observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n--- phase: build ---\nBuild the thing\.\n$/);
+});
+
 test("statusTerminal: complete has no reason line", () => {
   const actual = render.statusTerminal("complete", "demo", null);
   assert.equal(actual, `COMPLETE\nworkflow: demo\n`);

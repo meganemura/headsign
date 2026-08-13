@@ -219,6 +219,7 @@ function reportStatus(result: engine.StatusResult): never {
           observer: result.observer ? true : undefined,
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
+          description: result.description,
         }),
         0,
       );

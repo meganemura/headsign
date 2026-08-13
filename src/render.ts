@@ -189,6 +189,15 @@ export function statusRunning(o: {
   // `graphChangeReported` is a standing question (one was shown and has not been accepted).
   acceptedGraphChanges?: number;
   graphChangeReported?: boolean;
+  // The current phase's instruction, in the same block `next`/`start` print it in — so a
+  // driver reading `status` after compaction, or copying the block to a delegate, gets the
+  // identical shape `next` would have given. Absent (not just empty) whenever engine.ts
+  // could not resolve it — workflow unreadable, or the phase gone from it, the same condition
+  // `attemptUnknown` already names — so this module never has to judge that itself; render.ts
+  // does not judge, it only places what it is handed. Last in the block, after every other
+  // line, because a description can run to several lines and must not sit in the middle of
+  // the single-line lines above it.
+  description?: string;
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure
@@ -215,9 +224,11 @@ export function statusRunning(o: {
   // explains the other. Printed verbatim, like `last stop:`'s own timestamp — this module
   // reads no clock and cannot know the reader's timezone.
   const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} — turn ends from any other session pass without a nudge\n` : "";
-  // Last, because it is the only line here that is about the CALLER rather than the run.
+  // The only line here that is about the CALLER rather than the run — last among the
+  // conditional lines above the phase block, which comes after everything else in turn.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}`;
+  const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for
