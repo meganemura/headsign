@@ -240,8 +240,8 @@ test("retry: repeats 2 adds one line after the gate-failed line and replaces the
     `--- gate failed: tests (npm test, exit 1) ---\n` +
     `--- same check, same exit code, same output as last time — 2 in a row ---\n` +
     `some output\n` +
-    "What this check reads has not changed since last time. If you meant to change it, this check is not seeing that change; " +
-    "if you did not, check whether this gate can pass at all before spending the rest of your attempts.\n";
+    "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; " +
+    "if you did not, work out whether this gate can pass at all before spending the rest of your attempts.\n";
   assert.equal(actual, expected);
 });
 

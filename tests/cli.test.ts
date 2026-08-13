@@ -216,7 +216,7 @@ phases:
   const second = run(["next"], { cwd: dir });
   assert.equal(second.status, 1);
   assert.match(second.stdout, /^RETRY 2\/3 build\n--- gate failed: .* ---\n--- same check, same exit code, same output as last time — 2 in a row ---\n/);
-  assert.match(second.stdout, /check whether this gate can pass at all/);
+  assert.match(second.stdout, /work out whether this gate can pass at all/);
 });
 
 test("start refuses to clobber a running workflow", () => {

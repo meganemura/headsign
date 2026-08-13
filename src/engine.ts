@@ -317,11 +317,13 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     // `repeats >= 2` is a deliberate floor: at max_attempts=1 the streak is trivially "1 in a
     // row" on the very first-ever failure, which has nothing before it to repeat, and reporting
     // it as a repeated failure would misreport a plain single failure as one. Above that floor,
-    // the streak can only reach `maxAttempts` here, never pass it — attempts and repeats grow
-    // together while every failure keeps matching (see sameFailureStreak) — so `repeats >=
-    // maxAttempts` means every attempt since the last pass shared one (phase, check, exit_code,
-    // output_tail) signature. `repeats`, not `maxAttempts`, is what the sentence counts: the two
-    // are equal in the ordinary case, but `repeats` is the number the record actually supports.
+    // `repeats >= maxAttempts` means every attempt since the last pass matched the one before
+    // it — attempts and repeats climb together while the failures keep matching, so the streak
+    // reaching the budget is the budget having been spent on one unchanging failure. The
+    // comparison is `>=` rather than `===` because the two can come apart: `max_attempts` is a
+    // pinned rule a run may lower mid-walk and accept (ADR-0023), which leaves a streak already
+    // longer than the new budget. `repeats`, not `maxAttempts`, is what the printed sentence
+    // counts — it is the number the record supports, and it stays true when they diverge.
     const reason =
       repeats >= 2 && repeats >= maxAttempts
         ? `${phaseName}: max_attempts (${maxAttempts}) exhausted — ${repeats} attempts in a row failed the same check with the same output`

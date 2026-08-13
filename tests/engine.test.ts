@@ -300,8 +300,9 @@ test("a retry carries the gate verdict's elapsedSeconds into both last_failure.e
   if (outcome.kind === "RETRY") assert.equal(outcome.failure.elapsedSeconds, 12.3);
 });
 
-// --- repeats: how many times in a row the SAME failure (phase, check, exit_code, output_tail
-// — all four) has just landed (2026-08-13) ---
+// --- repeats: how many times in a row the SAME failure has just landed (2026-08-13). What
+// counts as the same lives in `sameFailureStreak` and is not restated here — the tests below
+// each name the one field they vary. ---
 
 test("two identical failures in the same phase set repeats to 2", () => {
   const workflow = wf({ a: { on_pass: "$end" } });

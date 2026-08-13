@@ -583,7 +583,13 @@ checks:
     run: '[ ! -f .headsign/tmp/prev ] || [ "$(sh count.sh)" -eq 0 ] || [ "$(sh count.sh)" -lt "$(cat .headsign/tmp/prev)" ]'
   - name: an empty queue is a real one
     run: '[ "$(sh count.sh)" -gt 0 ] || sh verify-really-done.sh'
+  - name: record the count this round leaves
+    run: 'sh count.sh > .headsign/tmp/prev'
 ```
+
+That third check is not decoration and it is not optional: without it the mark
+never appears, the first check is vacuously true forever, and the gate you just
+built measures nothing. It goes last for the reason the next paragraph gives.
 
 **The second check is not politeness.** A zero that came from a miscount, a
 renamed directory, or a counter that quietly stopped working looks exactly like
@@ -940,7 +946,10 @@ commented out, rewritten to always succeed, or pointed somewhere harmless.
 Since the file can always be edited, forbidding the decision achieves nothing.
 Prefer arrangements where relaxing a gate leaves a trace in the run — a phase
 that has to write down what was accepted, rather than a check that quietly
-stops being run.
+stops being run. The same shape turns up in a phase's *instructions* rather
+than its gate, where a rule that forbids a legitimate case sends the work into
+a record that is not true; *Work that arrives from outside the run*, above, is
+that version of it.
 
 ## What goes in the comments
 

@@ -83,7 +83,7 @@ export function retry(o: Failure & { phase: string; attempt: number; maxAttempts
   const repeating = o.repeats !== undefined && o.repeats >= 2;
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time — ${o.repeats} in a row ---\n` : "";
   const closing = repeating
-    ? "What this check reads has not changed since last time. If you meant to change it, this check is not seeing that change; if you did not, check whether this gate can pass at all before spending the rest of your attempts.\n"
+    ? "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.\n"
     : "Fix the failure above, then run `headsign next` again.\n";
   return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${repeatLine}${o.outputTail}\n${closing}`;
 }
