@@ -7801,11 +7801,14 @@ This is not a failure. Do the work above so the gate can run, then run \`headsig
 }
 function retry(o) {
   const n = o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  const repeating = o.repeats !== void 0 && o.repeats >= 2;
+  const repeatLine = repeating ? `--- same check, same exit code, same output as last time \u2014 ${o.repeats} in a row ---
+` : "";
+  const closing = repeating ? "What this check reads has not changed since last time. If you meant to change it, this check is not seeing that change; if you did not, check whether this gate can pass at all before spending the rest of your attempts.\n" : "Fix the failure above, then run `headsign next` again.\n";
   return `RETRY ${n} ${o.phase}
 --- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---
-${o.outputTail}
-Fix the failure above, then run \`headsign next\` again.
-`;
+${repeatLine}${o.outputTail}
+${closing}`;
 }
 function complete(name, acceptedGraphChanges2) {
   const accepted = acceptedGraphChanges2 ?? 0;
@@ -8215,6 +8218,12 @@ function passTarget(onPass, route) {
   if (route === void 0) throw new Error("step: on_pass is a route list but no resolution was given");
   return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
 }
+function sameFailureStreak(prev, phaseName, failure) {
+  if (prev === null || prev.phase !== phaseName || prev.check !== failure.check || prev.run !== failure.run || prev.exit_code !== failure.exitCode || prev.output_tail !== failure.outputTail) {
+    return 1;
+  }
+  return (prev.repeats ?? 1) + 1;
+}
 function step(workflow, state, gateResult, route) {
   if (state.status !== "running") {
     refuse("step", `run is already ${state.status}; nothing left to step`);
@@ -8238,9 +8247,10 @@ function step(workflow, state, gateResult, route) {
   next2.attempts[phaseName] = (next2.attempts[phaseName] ?? 0) + 1;
   const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds } = gateResult;
   const failure = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
+  const repeats = sameFailureStreak(state.last_failure, phaseName, failure);
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== void 0 && next2.attempts[phaseName] >= maxAttempts) {
-    const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
+    const reason = repeats >= 2 && repeats >= maxAttempts ? `${phaseName}: max_attempts (${maxAttempts}) exhausted \u2014 ${repeats} attempts in a row failed the same check with the same output` : `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
     next2.last_failure = null;
     next2.end_reason = reason;
     next2.status = "escalated";
@@ -8255,9 +8265,10 @@ function step(workflow, state, gateResult, route) {
       exit_code: failure.exitCode,
       output_tail: failure.outputTail,
       timeout_seconds: failure.timeoutSeconds,
-      elapsed_seconds: failure.elapsedSeconds
+      elapsed_seconds: failure.elapsedSeconds,
+      repeats
     };
-    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], maxAttempts, failure } };
+    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], maxAttempts, failure, repeats } };
   }
   next2.last_failure = null;
   if (onFail === "$end") {
@@ -8601,7 +8612,10 @@ function printOutcome(outcome, workflowName, ctx) {
     case "COMPLETE":
       return exitAfter(complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
-      return exitAfter(retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure }), 1);
+      return exitAfter(
+        retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, repeats: outcome.repeats, ...outcome.failure }),
+        1
+      );
     case "ESCALATE":
       return exitAfter(escalate(outcome.reason), 2);
     case "ABORT":

@@ -181,7 +181,42 @@ phases:
   assert.match(run(["next"], { cwd: dir }).stdout, /^RETRY 1\/2 build\n/);
   const second = run(["next"], { cwd: dir });
   assert.equal(second.status, 2);
-  assert.match(second.stdout, /^ESCALATE build: max_attempts \(2\) exhausted\n/);
+  // Both attempts ran the identical `run: "false"` check and got the identical (no) output, so
+  // the streak reaches max_attempts right as the budget exhausts.
+  assert.match(second.stdout, /^ESCALATE build: max_attempts \(2\) exhausted — 2 attempts in a row failed the same check with the same output\n/);
+});
+
+// End-to-end: a real gate, run twice, so the second RETRY's body actually contains the
+// same-failure line and the changed closing sentence — not just what step()/render.retry
+// produce from hand-built fixtures.
+test("a second identical gate failure in a row shows '2 in a row' in the RETRY body", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+    max_attempts: 3
+`,
+  );
+  run(["start"], { cwd: dir });
+
+  const first = run(["next"], { cwd: dir });
+  assert.match(first.stdout, /^RETRY 1\/3 build\n/);
+  assert.doesNotMatch(first.stdout, /in a row/, "the first-ever failure has nothing to repeat yet");
+
+  const second = run(["next"], { cwd: dir });
+  assert.equal(second.status, 1);
+  assert.match(second.stdout, /^RETRY 2\/3 build\n--- gate failed: .* ---\n--- same check, same exit code, same output as last time — 2 in a row ---\n/);
+  assert.match(second.stdout, /check whether this gate can pass at all/);
 });
 
 test("start refuses to clobber a running workflow", () => {

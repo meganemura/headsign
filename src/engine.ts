@@ -38,7 +38,7 @@ import * as render from "./render.ts";
 // here could drift into reporting an opt-out that the hooks do not act on.
 import * as stophook from "./stophook.ts";
 import type { Workflow, Route } from "./workflow.ts";
-import type { State, UnheldCause } from "./state.ts";
+import type { State, UnheldCause, LastFailure } from "./state.ts";
 import type { GateVerdict, CheckFailure, RouteResolution } from "./gate.ts";
 
 type FailureInfo = CheckFailure;
@@ -58,7 +58,11 @@ export type Outcome =
   // below), through the same spread `routedBy` uses — ADR-0023 §8's byte-identical-when-zero
   // guarantee.
   | { kind: "COMPLETE"; acceptedGraphChanges?: number }
-  | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo }
+  // `repeats`: how many consecutive times (state.LastFailure's field, computed by
+  // sameFailureStreak below) this exact failure has just happened — always a real number here,
+  // never carried over from an old record the way `state.last_failure.repeats` sometimes is,
+  // because this Outcome is always built fresh off a live gate verdict.
+  | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; repeats: number }
   | { kind: "ESCALATE"; reason: string }
   | { kind: "ABORT"; reason: string }
   // Constructed only by the lap below (the `ready` probe, short-circuited before the gate
@@ -230,6 +234,34 @@ function passTarget(onPass: string | Route[], route?: ResolvedRoute): { to: stri
   return route.kind === "matched" ? { to: route.to, routedBy: { when: route.when } } : { to: route.to, routedBy: { default: true } };
 }
 
+// How many times in a row, ending with the failure just handed in, the exact same failure has
+// landed: same phase, same check name, same `run:` text, same exit_code, same output_tail.
+// `run:` is in the comparison because the line this feeds says "same check", and a check whose
+// command was edited mid-run is not the same check even when its name and output are — a
+// changed `run:` is a changed rule, which the graph pin reports separately. Its timeout is left
+// out: it cannot change without `run:`'s own phase entry changing too, and a failure that
+// timed out already says so through `exit_code`.
+// Compared here and not in gate.ts: gate.ts only ever answers whether ONE run passed, and
+// giving it a memory of the run before it would blur that boundary. Never asserts the gate
+// CANNOT pass — that would need running an arbitrary shell to know, which is exactly the
+// question this function is not answering; it only counts what already happened.
+function sameFailureStreak(prev: LastFailure | null, phaseName: string, failure: FailureInfo): number {
+  if (
+    prev === null ||
+    prev.phase !== phaseName ||
+    prev.check !== failure.check ||
+    prev.run !== failure.run ||
+    prev.exit_code !== failure.exitCode ||
+    prev.output_tail !== failure.outputTail
+  ) {
+    return 1;
+  }
+  // `prev.repeats ?? 1`: the same tolerant read `elapsed_seconds` uses, for the same reason —
+  // a record written before this field existed simply lacks it, and an absent count on a
+  // failure that otherwise matches is read as "that one was the first", not as damage.
+  return (prev.repeats ?? 1) + 1;
+}
+
 // step() is fully deterministic: same (workflow, state, gateResult, route) always yields the
 // same output — no clock, no randomness. The shell work behind `route` happened in gate.ts
 // before the call; this function only reads the answer.
@@ -273,12 +305,27 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   // which must not leak into the outcome's public FailureInfo shape.
   const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds } = gateResult;
   const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
+  // Computed once, ahead of both branches below that can use it (exhaustion and retry): it
+  // reads `state.last_failure`, which the exhaustion branch is about to null out, so it has to
+  // run before that happens either way.
+  const repeats = sameFailureStreak(state.last_failure, phaseName, failure);
 
   const maxAttempts = phase.max_attempts;
   // Exhaustion always escalates — ADR-0014 §2's "spent budget is the canonical moment to ask
   // [a person]," not a workflow author's call to make at authoring time.
   if (maxAttempts !== undefined && next.attempts[phaseName] >= maxAttempts) {
-    const reason = `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
+    // `repeats >= 2` is a deliberate floor: at max_attempts=1 the streak is trivially "1 in a
+    // row" on the very first-ever failure, which has nothing before it to repeat, and reporting
+    // it as a repeated failure would misreport a plain single failure as one. Above that floor,
+    // the streak can only reach `maxAttempts` here, never pass it — attempts and repeats grow
+    // together while every failure keeps matching (see sameFailureStreak) — so `repeats >=
+    // maxAttempts` means every attempt since the last pass shared one (phase, check, exit_code,
+    // output_tail) signature. `repeats`, not `maxAttempts`, is what the sentence counts: the two
+    // are equal in the ordinary case, but `repeats` is the number the record actually supports.
+    const reason =
+      repeats >= 2 && repeats >= maxAttempts
+        ? `${phaseName}: max_attempts (${maxAttempts}) exhausted — ${repeats} attempts in a row failed the same check with the same output`
+        : `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
     next.last_failure = null;
     next.end_reason = reason;
     next.status = "escalated";
@@ -291,9 +338,9 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     next.last_failure = {
       phase: phaseName, check: failure.check, run: failure.run,
       exit_code: failure.exitCode, output_tail: failure.outputTail, timeout_seconds: failure.timeoutSeconds,
-      elapsed_seconds: failure.elapsedSeconds,
+      elapsed_seconds: failure.elapsedSeconds, repeats,
     };
-    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure } };
+    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure, repeats } };
   }
 
   next.last_failure = null;

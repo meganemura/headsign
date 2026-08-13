@@ -71,9 +71,21 @@ export function pending(phase: string, description: string, ready: string): stri
   );
 }
 
-export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string }): string {
+// `repeats` (engine.ts's sameFailureStreak, carried on the RETRY Outcome) is optional here for
+// the same reason `elapsedSeconds` above is: a caller can omit it, and 1 or fewer means nothing
+// to add — the byte-identical output every RETRY produced before this field existed. Only
+// `repeats >= 2` — a SECOND identical failure, not the first — changes anything: one extra line
+// naming the count, and the closing sentence itself, which says what changed and what it means
+// (check the check, not "fix and retry") rather than asserting the gate cannot pass — that
+// would need running an arbitrary shell to know, and is not this function's business.
+export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string; repeats?: number }): string {
   const n = o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
-  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${o.outputTail}\nFix the failure above, then run \`headsign next\` again.\n`;
+  const repeating = o.repeats !== undefined && o.repeats >= 2;
+  const repeatLine = repeating ? `--- same check, same exit code, same output as last time — ${o.repeats} in a row ---\n` : "";
+  const closing = repeating
+    ? "What this check reads has not changed since last time. If you meant to change it, this check is not seeing that change; if you did not, check whether this gate can pass at all before spending the rest of your attempts.\n"
+    : "Fix the failure above, then run `headsign next` again.\n";
+  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${repeatLine}${o.outputTail}\n${closing}`;
 }
 
 // ADR-0016 §5 allows a run to rewrite its own workflow while running; ADR-0023 §8 is why the

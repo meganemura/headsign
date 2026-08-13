@@ -98,7 +98,10 @@ function printOutcome(
     case "COMPLETE":
       return exitAfter(render.complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
-      return exitAfter(render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, ...outcome.failure }), 1);
+      return exitAfter(
+        render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, repeats: outcome.repeats, ...outcome.failure }),
+        1,
+      );
     case "ESCALATE":
       return exitAfter(render.escalate(outcome.reason), 2);
     case "ABORT":

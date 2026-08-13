@@ -198,6 +198,67 @@ test("retry: elapsedSeconds is ignored on the timeout arm — 'timed out after N
   assert.equal(actual, expected);
 });
 
+// --- repeats: the same-failure-in-a-row line (2026-08-13) ---
+
+test("retry: repeats explicitly 1 prints byte-identical to omitting it entirely — a first failure changes nothing", () => {
+  const withOne = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+    repeats: 1,
+  });
+  const withoutField = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+  });
+  assert.equal(withOne, withoutField);
+  assert.equal(withOne, `RETRY 1/3 build\n--- gate failed: tests (npm test, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`);
+});
+
+test("retry: repeats 2 adds one line after the gate-failed line and replaces the closing sentence", () => {
+  const actual = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    phase: "build",
+    attempt: 2,
+    maxAttempts: 3,
+    outputTail: "some output",
+    repeats: 2,
+  });
+  const expected =
+    `RETRY 2/3 build\n` +
+    `--- gate failed: tests (npm test, exit 1) ---\n` +
+    `--- same check, same exit code, same output as last time — 2 in a row ---\n` +
+    `some output\n` +
+    "What this check reads has not changed since last time. If you meant to change it, this check is not seeing that change; " +
+    "if you did not, check whether this gate can pass at all before spending the rest of your attempts.\n";
+  assert.equal(actual, expected);
+});
+
+test("retry: repeats 2 never asserts the gate cannot pass", () => {
+  const actual = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    phase: "build",
+    attempt: 2,
+    maxAttempts: 3,
+    outputTail: "some output",
+    repeats: 2,
+  });
+  assert.doesNotMatch(actual, /cannot pass|can't pass|this gate will not/i);
+});
+
 test("complete", () => {
   const actual = render.complete("demo");
   const expected = `COMPLETE\nWorkflow 'demo' finished.\n`;
@@ -609,13 +670,26 @@ test("logLine: start", () => {
 });
 
 test("logLine: retry", () => {
-  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 1, maxAttempts: 3, failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x" } };
+  const outcome = {
+    kind: "RETRY" as const,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x" },
+    repeats: 1,
+  };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
   assert.equal(line, `ts retry build a=1 i=1 check="tests" exit=1\n`);
 });
 
 test("logLine: retry with a timeout exit code", () => {
-  const outcome = { kind: "RETRY" as const, phase: "build", attempt: 2, failure: { check: "tests", run: "npm test", exitCode: "timeout" as const, outputTail: "x", timeoutSeconds: 5 } };
+  const outcome = {
+    kind: "RETRY" as const,
+    phase: "build",
+    attempt: 2,
+    failure: { check: "tests", run: "npm test", exitCode: "timeout" as const, outputTail: "x", timeoutSeconds: 5 },
+    repeats: 1,
+  };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 2 }, total_iterations: 4 }));
   assert.equal(line, `ts retry build a=2 i=4 check="tests" exit=timeout\n`);
 });
@@ -627,6 +701,7 @@ test("logLine: retry with elapsedSeconds appends dur= after exit=, the existing 
     attempt: 1,
     maxAttempts: 3,
     failure: { check: "tests", run: "npm test", exitCode: 1, outputTail: "x", elapsedSeconds: 12.3 },
+    repeats: 1,
   };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
   assert.equal(line, `ts retry build a=1 i=1 check="tests" exit=1 dur=12.3s\n`);

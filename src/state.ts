@@ -43,6 +43,14 @@ export interface LastFailure {
   // progress — but not before gate.ts's `CheckFailure.elapsedSeconds` sheds its own `?`, which
   // expires on a different criterion: cli.ts hands render a `CheckFailure` directly.
   elapsed_seconds?: number;
+
+  // How many times in a row, ending with this one, the SAME failure has landed — same phase,
+  // same check, same exit_code, same output_tail, all four (engine.ts's step() is where the
+  // comparison and the increment both happen; this field only carries the number). 1 the first
+  // time; any of the four differing from the previous record resets it back to 1 rather than
+  // continuing the count. Optional for the one reason `elapsed_seconds` above documents (see
+  // there): a `state.json` written before this field existed simply lacks it.
+  repeats?: number;
 }
 // The two things that can make headsign let an `unheld` stop pass without holding it, spelled
 // exactly as Claude Code spells each token (render.ts:352's rule for this slot) — see

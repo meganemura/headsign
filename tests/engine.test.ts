@@ -69,7 +69,7 @@ test("fail defaults to retry", () => {
   assert.equal(state.status, "running");
   assert.equal(state.attempts.a, 1);
   assert.deepEqual(state.last_failure, {
-    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", timeout_seconds: undefined, elapsed_seconds: undefined,
+    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", timeout_seconds: undefined, elapsed_seconds: undefined, repeats: 1,
   });
   assert.deepEqual(outcome, {
     kind: "RETRY",
@@ -77,6 +77,7 @@ test("fail defaults to retry", () => {
     attempt: 1,
     maxAttempts: undefined,
     failure: { check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined },
+    repeats: 1,
   });
 });
 
@@ -108,13 +109,33 @@ test("fail routes to $end (COMPLETE)", () => {
   assert.deepEqual(outcome, { kind: "COMPLETE" });
 });
 
-// Exhaustion has one destination (ADR-0014): a spent budget always asks a person.
+// Exhaustion has one destination (ADR-0014): a spent budget always asks a person. Both FAIL()
+// calls here are identical (same check/exitCode/outputTail, default on_fail: retry), so the
+// streak reaches max_attempts right as it exhausts — the reason names that.
 test("exhaustion escalates", () => {
   const workflow = wf({ a: { on_pass: "$end", max_attempts: 2 } });
   const s1 = engine.step(workflow, st("a"), FAIL()).state;
   const { state, outcome } = engine.step(workflow, s1, FAIL());
   assert.equal(state.attempts.a, 2);
   assert.equal(state.status, "escalated");
+  assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: max_attempts (2) exhausted — 2 attempts in a row failed the same check with the same output" });
+});
+
+// The floor documented on sameFailureStreak's call site in step(): max_attempts: 1 exhausts on
+// the very first failure ever seen, which is not a repetition of anything (there was nothing
+// before it to repeat), so the reason stays the plain form.
+test("exhaustion at max_attempts: 1 keeps the plain reason — one failure is not a repeated one", () => {
+  const workflow = wf({ a: { on_pass: "$end", max_attempts: 1 } });
+  const { outcome } = engine.step(workflow, st("a"), FAIL());
+  assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: max_attempts (1) exhausted" });
+});
+
+// Two different failures still exhaust the budget, but with nothing in common to report as a
+// streak: the reason stays the plain form, same as before this change.
+test("exhaustion on two DIFFERENT failures keeps the plain reason", () => {
+  const workflow = wf({ a: { on_pass: "$end", max_attempts: 2 } });
+  const s1 = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1)).state;
+  const { outcome } = engine.step(workflow, s1, FAIL("lint", "eslint", 2));
   assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: max_attempts (2) exhausted" });
 });
 
@@ -277,6 +298,61 @@ test("a retry carries the gate verdict's elapsedSeconds into both last_failure.e
   assert.equal(state.last_failure?.elapsed_seconds, 12.3);
   assert.equal(outcome.kind, "RETRY");
   if (outcome.kind === "RETRY") assert.equal(outcome.failure.elapsedSeconds, 12.3);
+});
+
+// --- repeats: how many times in a row the SAME failure (phase, check, exit_code, output_tail
+// — all four) has just landed (2026-08-13) ---
+
+test("two identical failures in the same phase set repeats to 2", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const s1 = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1)).state;
+  const { state, outcome } = engine.step(workflow, s1, FAIL("unit", "npm test", 1));
+  assert.equal(state.last_failure?.repeats, 2);
+  assert.equal(outcome.kind, "RETRY");
+  if (outcome.kind === "RETRY") assert.equal(outcome.repeats, 2);
+});
+
+test("a different output_tail resets repeats to 1, even though phase/check/exit_code all match", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const first: GateVerdict = { kind: "fail", check: "unit", run: "npm test", exitCode: 1, outputTail: "out one" };
+  const second: GateVerdict = { kind: "fail", check: "unit", run: "npm test", exitCode: 1, outputTail: "out two" };
+  const s1 = engine.step(workflow, st("a"), first).state;
+  const { state, outcome } = engine.step(workflow, s1, second);
+  assert.equal(state.last_failure?.repeats, 1);
+  if (outcome.kind === "RETRY") assert.equal(outcome.repeats, 1);
+});
+
+test("a different check name resets repeats to 1", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const s1 = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1)).state;
+  const { state } = engine.step(workflow, s1, FAIL("lint", "eslint", 1));
+  assert.equal(state.last_failure?.repeats, 1);
+});
+
+test("a different exit code resets repeats to 1", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const s1 = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1)).state;
+  const { state } = engine.step(workflow, s1, FAIL("unit", "npm test", 2));
+  assert.equal(state.last_failure?.repeats, 1);
+});
+
+test("a stored failure from a DIFFERENT phase does not extend the streak, even with the same check/exit_code/output_tail", () => {
+  const workflow = wf({ a: { on_pass: "b" }, b: { on_pass: "$end" } });
+  const stale: NonNullable<State["last_failure"]> = { phase: "a", check: "c", run: "r", exit_code: 1, output_tail: "out", repeats: 1 };
+  const { state } = engine.step(workflow, st("b", { last_failure: stale }), FAIL("c", "r", 1));
+  assert.equal(state.last_failure?.repeats, 1);
+});
+
+// Tolerant read (state.ts's `repeats?:` doc): a state.json written before this field existed
+// has a last_failure with no `repeats` on it at all. A matching second failure must still
+// count it as the streak's first entry and become 2, not throw and not treat the record as
+// undamaged-but-repeats-0.
+test("a last_failure predating the repeats field reads as an implicit 1, so a matching second failure becomes 2", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const legacy = { phase: "a", check: "c", run: "r", exit_code: 1, output_tail: "out" } as State["last_failure"];
+  const { state, outcome } = engine.step(workflow, st("a", { last_failure: legacy }), FAIL("c", "r", 1));
+  assert.equal(state.last_failure?.repeats, 2);
+  if (outcome.kind === "RETRY") assert.equal(outcome.repeats, 2);
 });
 
 // --- stop_nudges loop guard (ADR-0006): step() always resets it, since it only runs on a real evaluation ---
@@ -948,4 +1024,17 @@ test("next: a stamped run, called with an env carrying no session id, has last_d
   const result = engine.next(dir, LAP_TIME, NO_ENV);
   assert.equal(result.kind, "ANSWERED");
   assert.equal(runState(dir).last_drive, null);
+});
+
+// `run:` is in the streak comparison because the line it feeds says "same check". A command
+// edited mid-run is a changed rule the graph pin reports on its own, and calling the failure it
+// produces a repeat of the previous one would say something false in the RETRY block.
+test("a failure whose check kept its name but changed its command is not a repeat", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const first = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1)).state;
+  assert.equal(first.last_failure?.repeats, 1);
+  const second = engine.step(workflow, first, FAIL("unit", "npm test", 1)).state;
+  assert.equal(second.last_failure?.repeats, 2, "same everything: a repeat");
+  const third = engine.step(workflow, second, FAIL("unit", "npm run test:ci", 1)).state;
+  assert.equal(third.last_failure?.repeats, 1, "same name, different command: not a repeat");
 });
