@@ -84,13 +84,17 @@ function loadWorkflowOrExit(workflowPath: string, showWarnings = false): workflo
 
 // `ctx` carries what the Outcome type itself deliberately doesn't (per-call-site render
 // extras, not routing state): the loaded workflow (to resolve a PENDING phase's
-// description) and the ADVANCE path's cleared-artifact list. Only a real evaluation has both
-// available and can produce ADVANCE/PENDING; a terminal reprint only ever carries
-// COMPLETE/ESCALATE/ABORT, which don't need it.
-function printOutcome(outcome: engine.Outcome, workflowName: string, ctx?: { wf: workflowMod.Workflow; cleared?: string[] }): never {
+// description) and the ADVANCE path's cleared/not-cleared artifact lists. Only a real
+// evaluation has both available and can produce ADVANCE/PENDING; a terminal reprint only
+// ever carries COMPLETE/ESCALATE/ABORT, which don't need it.
+function printOutcome(
+  outcome: engine.Outcome,
+  workflowName: string,
+  ctx?: { wf: workflowMod.Workflow; cleared?: string[]; notCleared?: string[] },
+): never {
   switch (outcome.kind) {
     case "ADVANCE":
-      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, outcome.routedBy), 0);
+      return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, ctx?.notCleared, outcome.routedBy), 0);
     case "COMPLETE":
       return exitAfter(render.complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
@@ -139,7 +143,7 @@ function reportStart(result: engine.StartResult): never {
     case "REFUSED":
       return errorExit(result.result.message);
     case "STARTED":
-      return exitAfter(render.start(result.result.phase, result.result.description, result.result.cleared), 0);
+      return exitAfter(render.start(result.result.phase, result.result.description, result.result.cleared, result.result.notCleared), 0);
   }
 }
 
@@ -150,7 +154,11 @@ function reportNext(result: engine.NextResult): never {
     case "REFUSED":
       return errorExit(result.message);
     case "ANSWERED":
-      return printOutcome(result.outcome, result.workflowName, result.wf ? { wf: result.wf, cleared: result.cleared } : undefined);
+      return printOutcome(
+        result.outcome,
+        result.workflowName,
+        result.wf ? { wf: result.wf, cleared: result.cleared, notCleared: result.notCleared } : undefined,
+      );
   }
 }
 

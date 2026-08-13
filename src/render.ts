@@ -14,8 +14,8 @@
 import type { Outcome } from "./engine.ts";
 import type { State, UnheldCause } from "./state.ts";
 
-export function start(phase: string, description: string, cleared?: string[]): string {
-  return `START ${phase}\n${clearedBlock(cleared)}--- phase: ${phase} ---\n${description}\n`;
+export function start(phase: string, description: string, cleared?: string[], notCleared?: string[]): string {
+  return `START ${phase}\n${clearedBlock(cleared)}${notClearedBlock(notCleared)}--- phase: ${phase} ---\n${description}\n`;
 }
 
 // `elapsedSeconds` (gate.ts's CheckFailure field, carried through engine.ts unmodified) is
@@ -35,19 +35,29 @@ export function advance(
   description: string,
   failure?: Failure & { routedTo: string },
   cleared?: string[],
+  notCleared?: string[],
   routedBy?: { when: string } | { default: true },
 ): string {
   const failedLine = failure
     ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) → routed to ${failure.routedTo} ---\n`
     : "";
   const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} → ${phase} ---\n` : "";
-  return `ADVANCE ${phase}\n${clearedBlock(cleared)}${failedLine}${routedLine}--- phase: ${phase} ---\n${description}\n`;
+  return `ADVANCE ${phase}\n${clearedBlock(cleared)}${notClearedBlock(notCleared)}${failedLine}${routedLine}--- phase: ${phase} ---\n${description}\n`;
 }
 
 // One `--- cleared: <path> ---` line per file clearPhaseArtifacts (engine.ts) reports as
 // removed; that function's own comment is why it is worth announcing.
 function clearedBlock(cleared?: string[]): string {
   return (cleared ?? []).map((p) => `--- cleared: ${p} ---\n`).join("");
+}
+
+// One `--- not cleared: <path> (...) ---` line per entry clearPhaseArtifacts (engine.ts) found
+// and could not remove — a directory, which is the one thing it classifies here. The reason
+// is written into the line itself rather than left for the reader to look up, same as every
+// other line this module prints. Sits right after clearedBlock's lines, in the same slot: what
+// `clear:` did, and then what it could not, before anything else start/advance has to say.
+function notClearedBlock(notCleared?: string[]): string {
+  return (notCleared ?? []).map((p) => `--- not cleared: ${p} (a directory — \`clear:\` removes files only) ---\n`).join("");
 }
 
 // PENDING vs RETRY, and why the `ready:` probe is uncounted: ADR-0002's Consequences

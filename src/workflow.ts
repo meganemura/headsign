@@ -128,6 +128,21 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
     // graph that turns forever.
     const bounded = isMap(doc.limits) && doc.limits.max_total_iterations !== undefined;
     if (!bounded) warnings.push(...unboundedPassCycles(doc.entry as string, graph, names));
+    // Also a warning, not an error, for a different reason than the two above: whether a path
+    // IS a directory can't be decided here at all — validate never touches the filesystem, so a
+    // trailing '/' is only ever a hint that the author meant one. ADR-0021 §2 draws the line for
+    // refusing outright at "before anything is written for this lap" — but `clear:` runs at
+    // phase entry, after a transition has already been decided and state already written, so
+    // rejecting this at validate time (which `start`/`next` both do on every lap) would stop a
+    // run already under way instead of protecting one that hasn't started. A warning says the
+    // entry does nothing, without doing that.
+    for (const [name, p] of Object.entries(graph)) {
+      (p.clear ?? []).forEach((rel, i) => {
+        if (rel.endsWith("/")) {
+          warnings.push(`phase '${name}': clear[${i}] '${rel}' names a directory — clear: removes files only, so nothing happens here`);
+        }
+      });
+    }
   }
   return { errors, warnings };
 }

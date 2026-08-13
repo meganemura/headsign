@@ -52,16 +52,50 @@ test("advance with cleared artifacts and no failure", () => {
   assert.equal(actual, expected);
 });
 
+// --- not cleared: the report for a `clear:` entry that named a directory (engine.ts's
+// clearPhaseArtifacts never removes one) ---
+
+test("start with a not-cleared directory lists a --- not cleared: --- line after the cleared lines", () => {
+  const actual = render.start("plan", "Plan the work.", ["a.txt"], ["scratch/"]);
+  const expected = `START plan\n--- cleared: a.txt ---\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n--- phase: plan ---\nPlan the work.\n`;
+  assert.equal(actual, expected);
+});
+
+test("start with only a not-cleared directory (no cleared files) still lists the line", () => {
+  const actual = render.start("plan", "Plan the work.", [], ["scratch/"]);
+  const expected = `START plan\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n--- phase: plan ---\nPlan the work.\n`;
+  assert.equal(actual, expected);
+});
+
+test("start with an empty (or omitted) notCleared array has no not-cleared lines", () => {
+  assert.equal(render.start("plan", "Plan the work.", ["a.txt"], []), `START plan\n--- cleared: a.txt ---\n--- phase: plan ---\nPlan the work.\n`);
+  assert.equal(render.start("plan", "Plan the work.", ["a.txt"], []), render.start("plan", "Plan the work.", ["a.txt"]));
+});
+
+test("advance with a not-cleared directory: the line lands after the cleared lines and before the gate-failed line", () => {
+  const actual = render.advance(
+    "build",
+    "Build it.",
+    { check: "lint", run: "npm run lint", exitCode: 1, routedTo: "build" },
+    ["artifact.txt"],
+    ["scratch/"],
+  );
+  const expected =
+    `ADVANCE build\n--- cleared: artifact.txt ---\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n` +
+    `--- gate failed: lint (npm run lint, exit 1) → routed to build ---\n--- phase: build ---\nBuild it.\n`;
+  assert.equal(actual, expected);
+});
+
 // --- routed: the one line a k-way on_pass adds (ADR-0011) ---
 
 test("advance routed by a matching when quotes the command and names the destination", () => {
-  const actual = render.advance("fix-bug", "Fix it.", undefined, undefined, { when: "grep -qx fix-bug .headsign/tmp/route" });
+  const actual = render.advance("fix-bug", "Fix it.", undefined, undefined, undefined, { when: "grep -qx fix-bug .headsign/tmp/route" });
   const expected = `ADVANCE fix-bug\n--- routed: when "grep -qx fix-bug .headsign/tmp/route" → fix-bug ---\n--- phase: fix-bug ---\nFix it.\n`;
   assert.equal(actual, expected);
 });
 
 test("advance routed by the default names the destination without a command", () => {
-  const actual = render.advance("implement", "Do it.", undefined, undefined, { default: true });
+  const actual = render.advance("implement", "Do it.", undefined, undefined, undefined, { default: true });
   const expected = `ADVANCE implement\n--- routed: default → implement ---\n--- phase: implement ---\nDo it.\n`;
   assert.equal(actual, expected);
 });
@@ -71,8 +105,16 @@ test("advance with a string on_pass (no routedBy) prints exactly what it always 
 });
 
 test("the routed line sits where the gate-failed line sits: after the cleared block, before the phase line", () => {
-  const actual = render.advance("docs", "Write it.", undefined, ["artifact.txt"], { default: true });
+  const actual = render.advance("docs", "Write it.", undefined, ["artifact.txt"], undefined, { default: true });
   const expected = `ADVANCE docs\n--- cleared: artifact.txt ---\n--- routed: default → docs ---\n--- phase: docs ---\nWrite it.\n`;
+  assert.equal(actual, expected);
+});
+
+test("not cleared and routed together: not-cleared sits before the routed line too", () => {
+  const actual = render.advance("docs", "Write it.", undefined, ["artifact.txt"], ["scratch/"], { default: true });
+  const expected =
+    `ADVANCE docs\n--- cleared: artifact.txt ---\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n` +
+    `--- routed: default → docs ---\n--- phase: docs ---\nWrite it.\n`;
   assert.equal(actual, expected);
 });
 

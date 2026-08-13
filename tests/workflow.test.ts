@@ -98,6 +98,39 @@ test("warnings are not computed while errors stand: an invalid workflow reports 
   assert.deepEqual(result.warnings, []);
 });
 
+// --- clear: a trailing '/' warns, since it names a directory and clear: removes files only ---
+
+test("a clear: entry ending with '/' warns instead of erroring — it names a directory, and clear: only removes files", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.clear = ["scratch/"];
+  assert.deepEqual(errors(doc), []);
+  assert.deepEqual(warnings(doc), ["phase 'plan': clear[0] 'scratch/' names a directory — clear: removes files only, so nothing happens here"]);
+});
+
+test("a clear: entry not ending with '/' warns about nothing", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.clear = ["scratch"];
+  assert.deepEqual(warnings(doc), []);
+});
+
+test("multiple clear: entries in one phase are each warned about individually, keeping their index", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.clear = ["keep-me.txt", "scratch/", "also-scratch/"];
+  assert.deepEqual(warnings(doc), [
+    "phase 'plan': clear[1] 'scratch/' names a directory — clear: removes files only, so nothing happens here",
+    "phase 'plan': clear[2] 'also-scratch/' names a directory — clear: removes files only, so nothing happens here",
+  ]);
+});
+
+test("clear: still rejects an absolute path or a '..' segment as an error, trailing slash or not, and suppresses the warning pass entirely", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.clear = ["/abs/scratch/", "../escape/"];
+  const result = workflow.validate(doc);
+  assert.ok(result.errors.some((e) => e.includes("clear[0]")));
+  assert.ok(result.errors.some((e) => e.includes("clear[1]")));
+  assert.deepEqual(result.warnings, [], "warnings are not computed while errors stand, the same rule as any other error");
+});
+
 test("non-positive max_attempts is rejected", () => {
   const doc = validWorkflow();
   phases(doc).plan.max_attempts = 0;

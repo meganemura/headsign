@@ -7436,6 +7436,13 @@ function validate(doc) {
     warnings.push(...unreachable(doc.entry, graph, names));
     const bounded = isMap(doc.limits) && doc.limits.max_total_iterations !== void 0;
     if (!bounded) warnings.push(...unboundedPassCycles(doc.entry, graph, names));
+    for (const [name, p] of Object.entries(graph)) {
+      (p.clear ?? []).forEach((rel, i) => {
+        if (rel.endsWith("/")) {
+          warnings.push(`phase '${name}': clear[${i}] '${rel}' names a directory \u2014 clear: removes files only, so nothing happens here`);
+        }
+      });
+    }
   }
   return { errors, warnings };
 }
@@ -7760,24 +7767,28 @@ ${tail}` : tail;
 }
 
 // src/render.ts
-function start(phase, description, cleared) {
+function start(phase, description, cleared, notCleared) {
   return `START ${phase}
-${clearedBlock(cleared)}--- phase: ${phase} ---
+${clearedBlock(cleared)}${notClearedBlock(notCleared)}--- phase: ${phase} ---
 ${description}
 `;
 }
-function advance(phase, description, failure, cleared, routedBy) {
+function advance(phase, description, failure, cleared, notCleared, routedBy) {
   const failedLine = failure ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) \u2192 routed to ${failure.routedTo} ---
 ` : "";
   const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} \u2192 ${phase} ---
 ` : "";
   return `ADVANCE ${phase}
-${clearedBlock(cleared)}${failedLine}${routedLine}--- phase: ${phase} ---
+${clearedBlock(cleared)}${notClearedBlock(notCleared)}${failedLine}${routedLine}--- phase: ${phase} ---
 ${description}
 `;
 }
 function clearedBlock(cleared) {
   return (cleared ?? []).map((p) => `--- cleared: ${p} ---
+`).join("");
+}
+function notClearedBlock(notCleared) {
+  return (notCleared ?? []).map((p) => `--- not cleared: ${p} (a directory \u2014 \`clear:\` removes files only) ---
 `).join("");
 }
 function pending(phase, description, ready) {
@@ -8284,12 +8295,15 @@ function ensureHeadsignGitignored(cwd) {
 }
 function clearPhaseArtifacts(cwd, phase) {
   const cleared = [];
+  const notCleared = [];
   for (const rel of phase.clear ?? []) {
     const full = path3.join(cwd, rel);
     let removedNonEmptyFile = false;
+    let wasADirectory = false;
     try {
       const st = fs4.statSync(full);
       removedNonEmptyFile = st.isFile() && st.size > 0;
+      wasADirectory = st.isDirectory();
     } catch {
     }
     try {
@@ -8297,8 +8311,9 @@ function clearPhaseArtifacts(cwd, phase) {
     } catch {
     }
     if (removedNonEmptyFile) cleared.push(rel);
+    else if (wasADirectory) notCleared.push(rel);
   }
-  return cleared;
+  return { cleared, notCleared };
 }
 function driveStamp(env, nowIso) {
   const session = resolveDriveSession(env);
@@ -8351,8 +8366,8 @@ function start2(cwd, workflowPath, nowIso, env) {
   const tmpDir = path3.join(cwd, ".headsign", "tmp");
   fs4.rmSync(tmpDir, { recursive: true, force: true });
   fs4.mkdirSync(tmpDir, { recursive: true });
-  const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared } };
+  const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
 }
 function next(cwd, nowIso, env) {
   const current = readState(cwd);
@@ -8460,10 +8475,11 @@ function evaluateNext(cwd, wf, incoming, nowIso) {
   }
   const { state: nextState, outcome } = step(wf, current, gateResult, route);
   let cleared;
-  if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
+  let notCleared;
+  if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
   writeState(cwd, nextState);
   appendLog(cwd, logLine(nowIso, outcome, nextState, current.phase));
-  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared };
+  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared, notCleared };
 }
 function abort2(cwd, reason, nowIso) {
   const current = readState(cwd);
@@ -8578,7 +8594,7 @@ function loadWorkflowOrExit(workflowPath, showWarnings = false) {
 function printOutcome(outcome, workflowName, ctx) {
   switch (outcome.kind) {
     case "ADVANCE":
-      return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, outcome.routedBy), 0);
+      return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, ctx?.notCleared, outcome.routedBy), 0);
     case "COMPLETE":
       return exitAfter(complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
@@ -8610,7 +8626,7 @@ function reportStart(result) {
     case "REFUSED":
       return errorExit(result.result.message);
     case "STARTED":
-      return exitAfter(start(result.result.phase, result.result.description, result.result.cleared), 0);
+      return exitAfter(start(result.result.phase, result.result.description, result.result.cleared, result.result.notCleared), 0);
   }
 }
 function reportNext(result) {
@@ -8620,7 +8636,11 @@ function reportNext(result) {
     case "REFUSED":
       return errorExit(result.message);
     case "ANSWERED":
-      return printOutcome(result.outcome, result.workflowName, result.wf ? { wf: result.wf, cleared: result.cleared } : void 0);
+      return printOutcome(
+        result.outcome,
+        result.workflowName,
+        result.wf ? { wf: result.wf, cleared: result.cleared, notCleared: result.notCleared } : void 0
+      );
   }
 }
 function reportAbort(result) {

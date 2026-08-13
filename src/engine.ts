@@ -337,7 +337,7 @@ export interface StartResult {
   // refused because a run is already in progress. Null when there were none — and also when
   // the workflow did not load at all, which is the one case `start` never warned about.
   warnings: LoadWarnings | null;
-  result: Rejection | { kind: "STARTED"; phase: string; description: string; cleared: string[] };
+  result: Rejection | { kind: "STARTED"; phase: string; description: string; cleared: string[]; notCleared: string[] };
 }
 
 export type NextResult =
@@ -345,10 +345,10 @@ export type NextResult =
   // One lap's answer. `workflowName` is what a COMPLETE prints as the finished workflow, and
   // it comes from two different places on purpose: a terminal reprint uses the name recorded
   // in state.json (the workflow file may not even have been read), a real evaluation uses the
-  // loaded workflow's own name. `wf` and `cleared` are render extras the Outcome deliberately
-  // doesn't carry: the workflow resolves a PENDING phase's description, and `cleared` is only
-  // ever set alongside an ADVANCE.
-  | { kind: "ANSWERED"; outcome: Outcome; workflowName: string; wf?: Workflow; cleared?: string[] };
+  // loaded workflow's own name. `wf`, `cleared` and `notCleared` are render extras the Outcome
+  // deliberately doesn't carry: the workflow resolves a PENDING phase's description, and
+  // `cleared`/`notCleared` are only ever set alongside an ADVANCE.
+  | { kind: "ANSWERED"; outcome: Outcome; workflowName: string; wf?: Workflow; cleared?: string[]; notCleared?: string[] };
 
 export type AbortResult = Refused | { kind: "ABORTED"; reason: string };
 
@@ -429,28 +429,38 @@ function ensureHeadsignGitignored(cwd: string): void {
   if (content !== original) fs.writeFileSync(gitignorePath, content);
 }
 
-// Returns the relative paths (as written in `clear:`) of files that actually existed and
-// were non-empty before deletion — i.e. the ones whose removal is worth announcing to the
-// agent, so a silently-vanished artifact from a previous pass doesn't go unnoticed for a
-// whole extra cycle. Directories are never reported here (see the EISDIR note below: they
-// were never actually removed either).
-function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): string[] {
+// Splits the relative paths named in `clear:` by what happened to each. `cleared` is the ones
+// that existed, were a non-empty file, and are now gone — worth announcing to the agent so a
+// silently-vanished artifact from a previous pass doesn't go unnoticed for a whole extra cycle.
+// `notCleared` is the ones that turned out to be a directory: `clear:` only ever removes files
+// (rmSync's EISDIR on a directory is still swallowed below, same as before), so a directory
+// named here was never going anywhere, and this function says so instead of leaving the silence
+// a swallowed exception would otherwise leave. Directory, not merely "not a file", because the
+// line the caller prints names one: anything else stat can find is removable, and is removed as
+// quietly as a file always was. An empty file and a path that never existed appear in neither
+// list — nothing worth announcing happened to them.
+function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): { cleared: string[]; notCleared: string[] } {
   const cleared: string[] = [];
+  const notCleared: string[] = [];
   for (const rel of phase.clear ?? []) {
     const full = path.join(cwd, rel);
     let removedNonEmptyFile = false;
+    let wasADirectory = false;
     try {
       const st = fs.statSync(full);
       removedNonEmptyFile = st.isFile() && st.size > 0;
+      wasADirectory = st.isDirectory();
     } catch {
       // ENOENT: nothing there to clear, nothing to announce.
     }
-    // Best-effort: force suppresses ENOENT; a directory (EISDIR) or any other
-    // error is ignored so a bad `clear` entry never wedges a transition.
+    // Best-effort: force suppresses ENOENT. Any rmSync error past that (a directory's EISDIR
+    // included) is still ignored here so a bad `clear` entry never wedges a transition — the
+    // statSync classification above, not this catch, is what tells the caller what happened.
     try { fs.rmSync(full, { force: true }); } catch { /* best effort */ }
     if (removedNonEmptyFile) cleared.push(rel);
+    else if (wasADirectory) notCleared.push(rel);
   }
-  return cleared;
+  return { cleared, notCleared };
 }
 
 // The value ADR-0027 §4/§5 stamps at `start` and every `next` that reaches the run: the
@@ -517,8 +527,8 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
   const tmpDir = path.join(cwd, ".headsign", "tmp");
   fs.rmSync(tmpDir, { recursive: true, force: true });
   fs.mkdirSync(tmpDir, { recursive: true });
-  const cleared = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared } };
+  const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
 }
 
 // One lap of `headsign next`: read the record, check the run is still going, load the
@@ -778,10 +788,11 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
 
   const { state: nextState, outcome } = step(wf, current, gateResult, route);
   let cleared: string[] | undefined;
-  if (outcome.kind === "ADVANCE") cleared = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]);
+  let notCleared: string[] | undefined;
+  if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
   state.writeState(cwd, nextState);
   state.appendLog(cwd, render.logLine(nowIso, outcome, nextState, current.phase));
-  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared };
+  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared, notCleared };
 }
 
 export function abort(cwd: string, reason: string, nowIso: string): AbortResult {

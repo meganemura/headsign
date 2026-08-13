@@ -519,6 +519,78 @@ phases:
   if (status.kind === "RUNNING") assert.equal(status.lastFailure?.elapsedSeconds, saved, "restored verbatim, the same number status() reads off the record");
 });
 
+// --- clear: what clearPhaseArtifacts (engine.ts) reports, on a real filesystem ---
+//
+// The split is statSync's, not rmSync's: a non-empty file is removed and reported in `cleared`;
+// anything statSync finds that is not a file — a directory, here — is left standing (rmSync's
+// EISDIR is still swallowed, same as before this change) and reported in `notCleared` instead
+// of the silence the old behaviour left. An empty file and a path that never existed keep the
+// meaning they already had: neither list mentions them.
+
+test("start: a non-empty file clears, a directory does not (and stays on disk) — an empty file and a missing path say nothing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  fs.writeFileSync(path.join(dir, "artifact.txt"), "leftover\n");
+  fs.writeFileSync(path.join(dir, "empty.txt"), "");
+  fs.mkdirSync(path.join(dir, "scratch-dir"));
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(
+    workflowPath,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: [artifact.txt, empty.txt, missing.txt, scratch-dir]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "STARTED");
+  if (result.result.kind !== "STARTED") return;
+  assert.deepEqual(result.result.cleared, ["artifact.txt"]);
+  assert.deepEqual(result.result.notCleared, ["scratch-dir"]);
+  assert.equal(fs.existsSync(path.join(dir, "artifact.txt")), false, "the non-empty file is gone");
+  assert.equal(fs.existsSync(path.join(dir, "scratch-dir")), true, "the directory is left standing — clear: never removes directories");
+});
+
+test("next (ADVANCE): the destination phase's directory clear entry comes back as notCleared, same as at start", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: review
+  review:
+    description: "Review."
+    clear: [scratch-dir]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`);
+  fs.mkdirSync(path.join(dir, "scratch-dir"));
+
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(result.kind, "ANSWERED");
+  if (result.kind !== "ANSWERED") return;
+  assert.equal(result.outcome.kind, "ADVANCE");
+  assert.deepEqual(result.cleared, []);
+  assert.deepEqual(result.notCleared, ["scratch-dir"]);
+  assert.equal(fs.existsSync(path.join(dir, "scratch-dir")), true, "the directory survives — clear: never removes directories");
+});
+
 // --- the graph pin: a lap notices when its own rules moved under it ---
 //
 // Whole laps again, and again they have to be: the claim is about what a lap wrote, in which
