@@ -785,6 +785,71 @@ validates clean and misbehaves later.
    unchanged verdict is a reason to suspect the route that feeds it, not only
    the work in front of you.
 
+## How much gate is enough
+
+The questions this section answers are quantitative — how many phases, how many
+checks in one gate, whether a check that always passes is worth keeping — and
+they have better answers than taste. Phase-gate methods have been written about
+for decades, and two of the answers below are borrowed rather than invented.
+Where a claim is this project's reading of borrowed material rather than the
+material itself, it says so.
+
+**Before adding a check, answer two questions.** Is its passing a claim no
+other check in this gate makes? And when it goes red, does that call for a
+different next move than the other checks' red does? Two unrelated fields
+converge on this. Certification guidance for airborne software will let a tool
+take over a verification activity, and requires the tool itself to be shown
+trustworthy only when its output is *the only* evidence for the claim — the
+question is what a signal is the sole evidence of, not how many signals there
+are. Alarm-design guidance for chemical plants says each alarm must have a
+defined operator response, and that a condition which is true all the time must
+not be an alarm at all. Read together, the cost of another check is not the
+minute it takes to write: it is paid when one red no longer tells you what to
+do next. Checks whose red leads to the same move can be one check.
+
+**Phase count follows the risk of the work, not a number.** The rule the
+literature offers is that heavier work gets more stages, and that one shape
+should not be used for every job — supported by an observation worth having:
+where an organisation ran everything through its full multi-stage process, the
+small jobs went around it, and those small jobs turned out to consume most of
+the development effort. The remedy was not fewer stages but *several versions*,
+with a single gate at the entrance deciding which version a job goes through.
+Applied here: if this repository's work is one kind, size the phases to that
+kind; if it is several, that is what having several workflow files, or a router
+phase at the entrance, is for. Whether seven phases is too many is not settled
+by seven. It is settled by whether those seven look at seven different things —
+adjacent phases watching the same thing can be one phase.
+
+**A check that always passes: ask whether it is the only evidence.** If it is
+the sole check making its claim, dropping it takes the claim's evidence to
+zero. If another check confirms the same thing independently, dropping it costs
+nothing. And keeping it is not sufficient either, which is the part worth
+sitting with: a check broken into permanent success and a check passing
+honestly emit the same green. Automation ergonomics has said since 1983 that
+you cannot confirm a rarely-changing signal's health by watching it — the
+question in that literature is who notices that the alarm system itself has
+stopped working. Measurement agrees from another direction: large-scale
+mutation analysis at Google found that code with satisfactory statement
+coverage still had significant numbers of places where lines ran but results
+were never checked. So an always-green check you have never seen go red buys
+about as much regression detection as deleting it would. If you keep one,
+deliberately break the thing it watches once and confirm the red.
+
+**You cannot close the way around a gate; you can make it expensive and
+recorded.** This is the part that changes most when the gatekeeper is a shell,
+and it is this project's reading rather than a borrowed claim. Human-run gates
+carry a legitimate "does not meet it, proceeds anyway" path: one large
+engineering process writes it into the entry criteria themselves — all
+technical requirements met *or a waiver exists* — and its reviews complete not
+when every issue is gone but when the open ones have an agreed plan and a named
+decision-maker signs. An exit code has no value for that state. So work that
+lands in it either stops, or takes a route nobody records: the check gets
+commented out, rewritten to always succeed, or pointed somewhere harmless.
+Since the file can always be edited, forbidding the decision achieves nothing.
+Prefer arrangements where relaxing a gate leaves a trace in the run — a phase
+that has to write down what was accepted, rather than a check that quietly
+stops being run.
+
 ## What goes in the comments
 
 **The rule is a purpose, not a list: write down what a reader cannot get by
