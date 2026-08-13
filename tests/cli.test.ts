@@ -909,6 +909,55 @@ phases:
   assert.equal(advanceResult.stdout, `ADVANCE review\n--- cleared: .headsign/verdict ---\n--- phase: review ---\nReview.\n`);
 });
 
+// The engine classifies a directory and render has the line for it, but each is tested on its
+// own, and the field carrying the answer between them is optional — so dropping it here would
+// typecheck, pass both of those, and take the report away without failing anything. That is the
+// same shape of silence the report was added to end, so it is asserted where the user reads it:
+// stdout, on both paths that clear.
+test("clear announcement: a directory named in clear: is announced as not cleared, at start and on ADVANCE", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: [artifacts]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: review
+  review:
+    description: "Review."
+    clear: [artifacts]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+  fs.mkdirSync(path.join(dir, "artifacts"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "artifacts", "round-1.md"), "from an earlier run\n");
+
+  const startResult = run(["start"], { cwd: dir });
+  assert.equal(startResult.status, 0);
+  assert.equal(
+    startResult.stdout,
+    "START build\n--- not cleared: artifacts (a directory — `clear:` removes files only) ---\n--- phase: build ---\nBuild.\n",
+  );
+
+  const advanceResult = run(["next"], { cwd: dir });
+  assert.equal(advanceResult.status, 0);
+  assert.equal(
+    advanceResult.stdout,
+    "ADVANCE review\n--- not cleared: artifacts (a directory — `clear:` removes files only) ---\n--- phase: review ---\nReview.\n",
+  );
+  assert.equal(fs.existsSync(path.join(dir, "artifacts", "round-1.md")), true, "the directory and its contents are untouched");
+});
+
 test("clear announcement: an absent or empty cleared file is not announced", () => {
   const dir = initRepo();
   writeWorkflow(
