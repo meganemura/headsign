@@ -334,6 +334,46 @@ this branch rather than closing it, is in
 [ADR-0006](adr/0006-stop-hook-backstop.md)'s bounded-walk-up section and
 [ADR-0026](adr/0026-a-second-place-to-look.md).
 
+### What a run folds away, and what outlives it
+
+A run is bounded, and knowing where those bounds fall is what lets a workflow
+author decide which side of one to put something on.
+
+**Folded away when `start` runs.** `.headsign/tmp/` is run-scoped scratch:
+`start` deletes it whole and recreates it empty, so nothing a previous run left
+there can be read as this run's. A phase's `clear:` folds its own listed files
+away again on every entry. Nothing else resets either one. That makes `tmp/`
+the place for anything that must be new each run — an identifier minted by the
+entry phase is new in every run without the workflow having to arrange it.
+
+**Kept, and growing.** Everything a workflow writes outside `tmp/` outlives the
+run that wrote it; that is what makes it an artifact rather than scratch.
+`.headsign/log` is kept too, and only ever appended to — `start` does not clear
+it, so a new run's first line lands after the old run's last one.
+
+**Per run, not per tree.** `limits.max_total_iterations` counts this run's
+laps: `start` sets the count to zero. Starting a second run over the same tree
+therefore gives that second run a fresh allowance, and a phase's
+`max_attempts` starts over with it. **Running a workflow several times over one
+tree is not refused, and the budgets do not span the runs** — so a ceiling
+bounds one walk, never the total work done in a directory. If what you want
+bounded is the whole job, the run that must not be restarted is the unit to
+bound, and a loop inside one run — a route that goes back a phase — is what
+keeps one budget, one log, and one set of round numbers across the laps.
+
+**What `abort` costs.** It ends the run: the phase it was standing on, the
+attempt counts, and the position in the graph all go, and no later command
+resumes it. It costs nothing else. `state.json` is gitignored, so ending a run
+leaves the repository's tracked files exactly as they were; the reason typed
+into `headsign abort <reason>` is appended to `.headsign/log` and outlives the
+run; artifacts already written are untouched, and committed ones are safe by
+definition. A later `headsign start` rewrites `state.json` whole and begins at
+the entry phase — it inherits nothing from the aborted run except that log.
+So the question to ask before aborting is only ever *how much walking will it
+cost to get back here*, and the answer is in how expensive the workflow's
+early gates are to re-pass ([the contract](#the-contract) has the reasoning
+about keeping them cheap).
+
 ### One worktree, one run
 
 **One worktree, one run** is the whole of headsign's worktree support, and it
@@ -871,6 +911,20 @@ what the agent is told to do is invisible to this, while `gate`, `ready`,
 rule because dropping it is how a stale `APPROVED` verdict passes a review
 gate.) Comments and formatting are invisible too: the fingerprint is of the
 parsed file, not its bytes.
+
+**The pin ends at the file.** A check's `run:` string is part of the rules and
+is pinned; whatever that string goes on to execute is not. A gate written as
+`run: "sh checks/coverage.sh"` pins those five words, and editing
+`checks/coverage.sh` to reverse its verdict changes what the gate decides
+while the fingerprint stays as it was — the next lap judges by the new rule and
+reports nothing. This is not a gap that can be closed by trying harder: `run:`
+is an arbitrary shell string, and there is no way to know from it what a
+command will read. So it is stated instead, because the consequence is a
+decision a driver has to make: **editing a script a gate calls, mid-run, is
+changing the rules under the run** — with none of the reporting that editing
+the workflow file gets. If you want that change on the record, abort and start
+again; the artifacts already written are not what a restart costs (see [what a
+run folds away](#what-a-run-folds-away-and-what-outlives-it)).
 
 When a lap finds those rules changed, it says so once — an `ESCALATE` that
 leaves the run `running`, spends no attempt and no iteration, and names the
