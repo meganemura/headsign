@@ -5,6 +5,22 @@
 - Revises: [ADR-0002](0002-single-question-and-output-contract.md) — the
   transition table's `limits.max_total_iterations` row, and the exception this
   decision creates in "`next` is idempotent on terminal states".
+- Revised: 2026-08-13 (all three budgets close over a **run**, and a report
+  made it clear that had never been said: someone read the ceiling as the
+  budget for the job, started four runs over one tree, and afterwards could
+  not say what the number had protected. Nothing here changes — what is added
+  is that the scope is deliberate and now stated in the reference manual,
+  along with the distinction it kept collapsing into. Two questions were being
+  answered as one: *how many runs at once* is decided and enforced — `start`
+  refuses a `running` state with exit 3 — while *how many runs in total* is
+  not bounded by anything, on purpose. Worth naming a precedent for keeping
+  those apart rather than presenting it as headsign's invention: Temporal
+  gives the same duration two names by scope, a Workflow Run Timeout bounding
+  one run and a Workflow Execution Timeout bounding the chain a run can
+  continue into, and documents why the per-run one is where the engine's own
+  limit lives. The lesson taken from it is the naming discipline, not a second
+  budget: a bound that spans runs is something a workflow counts for itself,
+  in a place a run cannot fold away.)
 
 ## Context
 

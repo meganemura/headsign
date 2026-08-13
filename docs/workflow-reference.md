@@ -354,12 +354,25 @@ it, so a new run's first line lands after the old run's last one.
 **Per run, not per tree.** `limits.max_total_iterations` counts this run's
 laps: `start` sets the count to zero. Starting a second run over the same tree
 therefore gives that second run a fresh allowance, and a phase's
-`max_attempts` starts over with it. **Running a workflow several times over one
-tree is not refused, and the budgets do not span the runs** — so a ceiling
-bounds one walk, never the total work done in a directory. If what you want
-bounded is the whole job, the run that must not be restarted is the unit to
-bound, and a loop inside one run — a route that goes back a phase — is what
-keeps one budget, one log, and one set of round numbers across the laps.
+`max_attempts` starts over with it. **Running a workflow over one tree many
+times, one after another, is what headsign is written for; running two at once
+is not.** Those are separate answers and it is worth keeping them apart. The
+concurrent side is decided and enforced: `start` will not overwrite a
+`running` state — it exits 3 and tells you to `next` or `abort` first — while a
+run that has ended is overwritten by the next `start` without complaint. The
+cumulative side is not bounded at all, and that is a decision rather than an
+omission: there is no ceiling that counts across runs, and nothing limits how
+many times you may start one. So a ceiling bounds one walk, never the total
+work done in a directory.
+
+If what you need bounded is the whole job rather than one walk, that bound has
+to be something the workflow itself counts — a check reading a tally kept
+where a run cannot fold it away, which means outside `.headsign/tmp/`. And if
+the work arrives in instalments, the choice between starting again and looping
+inside one run comes down to one question: **does the next lap need to see the
+previous lap's attempt counts and working files?** If it does, the loop is the
+form that keeps them — one budget, one log, one set of round numbers. If each
+instalment can be judged on its own, starting again carries less state.
 
 **What `abort` costs.** It ends the run: the phase it was standing on, the
 attempt counts, and the position in the graph all go, and no later command
