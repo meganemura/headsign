@@ -232,6 +232,26 @@ script that validates the base and then measures), so there is no arrangement
 of the gate's lines that can skip it. The gate then holds one check per claim
 rather than a sequence that has to stay in the right order.
 
+**Names to hand someone who does not use this vocabulary.** These three
+positions are this skill's own scheme, and a handover report written in them
+has to define them first. Neighbouring fields have named the tiers separately,
+so a report can borrow rather than define. *Fakeable* is what supply-chain
+provenance work calls trivial to bypass or forge at its lowest level, and
+in-toto names the specific attack — a **fake-check**, where a step reports a
+verification it never performed. *Anchored* is the shape remote attestation is
+built on: a claim is appraised against a reference, and **freshness** is its
+own named property, because an appraisal against a stale anchor is a different
+thing from one against a current anchor. The strongest position has no single
+borrowed name in what was surveyed; reproducible builds and implicit
+attestation each name a particularly strong form of it rather than the class.
+
+**One neighbouring contrast is the wrong one to borrow: "measured versus
+asserted".** It is tempting, and it reads as though it maps onto fakeable
+versus unfakeable. It does not: the trusted-computing framework that defines
+those terms makes a measurement *a kind of* assertion, so importing the pair
+would put a reader who knows that field at odds with the text. Prefer the tier
+names above, or say what the check reads.
+
 **Provenance is a different axis, and mixing the two is a real mistake.**
 A check you composed yourself out of `git diff` is every bit as strong as one
 lifted from `package.json`; a check that greps a file the agent wrote a
@@ -868,6 +888,17 @@ coverage still had significant numbers of places where lines ran but results
 were never checked. So an always-green check you have never seen go red buys
 about as much regression detection as deleting it would. If you keep one,
 deliberately break the thing it watches once and confirm the red.
+
+That last move has a name in the testing literature, which is worth knowing
+because it means the failure is a known type rather than your oversight: a
+test that passes whether or not the code is broken is a **rotten green test**,
+and the method it covers without ever exercising an assertion is
+**pseudo-tested**. The detection procedure in that work is exactly the one
+above — change the thing under it and see whether it goes red. Note where this
+lands relative to the three positions: **it is a different axis from what a
+check reads.** An unfakeable check can be rotten green too. Sorting a gate into
+unfakeable/anchored/fakeable says what a check would prove if it failed, and
+says nothing about whether it can fail.
 
 **You cannot close the way around a gate; you can make it expensive and
 recorded.** This is the part that changes most when the gatekeeper is a shell,
