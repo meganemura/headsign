@@ -439,8 +439,8 @@ do next depends on **where each command came from** — the axis that is about
 
 **Try the failing path too, not only the passing one. This is recommended,
 with conditions.** A check that has only been seen to pass has not been seen
-to work. Two shapes are dangerous, and they look identical from outside —
-both are simply green.
+to work. Three shapes are dangerous, and they look identical from outside —
+all three are simply green.
 
 The first **asserts an *absence*** — no secret in the diff, no deleted line
 in the log, nothing past the deadline. A misspelled pattern in it passes on
@@ -457,9 +457,25 @@ the original was not reaching something, and nothing has yet been shown to
 reach it — so the case that made you replace the gate is the case the new
 one is likeliest to miss as well.
 
+The third is **a check that is correct, reaches the work, and is green
+because an earlier run's output is still lying there.** `start` empties
+`.headsign/tmp/`, and that is the whole of the boundary between one run and
+the next — a file listed in a phase's `clear:` is gone by the time the phase
+is entered, but everything a workflow writes outside `tmp/` outlives the run
+that wrote it, which is exactly what makes it an artifact. A gate that reads
+those artifacts passes on the previous run's work, in the same green it uses
+for this one, and the second run can reach that phase and do nothing at all.
+The tell is in how a path is composed: **if a gate reads a path built from a
+value that `clear:` resets, the path repeats itself every run while what it
+names does not.** Compose the path from something a run cannot repeat — mint
+an identifier into `.headsign/tmp/` when the entry phase runs and put that in
+the path — or have the gate demand something only this run can have produced.
+
 Make the condition each check is hunting for actually occur — for the
 second shape, break something *in the area the swapped-in gate is supposed
-to cover* — and confirm the check notices. Composing read-only predicates
+to cover*; for the third, run the workflow twice in the same tree and see
+whether the second run's gate still needs work done — and confirm the check
+notices. Composing read-only predicates
 makes *running* a check harmless; making one fail is a separate act, which
 is what these conditions are for:
 

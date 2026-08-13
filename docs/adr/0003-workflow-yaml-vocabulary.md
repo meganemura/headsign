@@ -13,6 +13,16 @@
   define an error rather than something `validate` walks past. Both are
   applied to the schema block and the `validate` list below; the vocabulary
   itself is unchanged.)
+- Revised: 2026-08-13 (`clear:` deletes files and has never deleted a
+  directory — `rmSync`'s `EISDIR` was swallowed so a phase could name one
+  every entry and have nothing happen, silently. The field's reach is
+  unchanged, and deliberately: deleting a tree is destructive with no undo,
+  and this field runs on every entry to the phase, so the capability stays
+  out. What changes is that an entry found to be a directory is now named on
+  entry, next to the files that were cleared, and `validate` warns about a
+  trailing-slash entry — the one form of the mistake that can be seen without
+  reading a filesystem. See `.headsign/notes/what-headsign-protects.md` #4,
+  which is what a swallowed `EISDIR` was standing against.)
 
 ## Context
 
@@ -142,6 +152,18 @@ swap the check's `run:` for something stronger, and just drop `clear` if
 the artifact is no longer needed. `.headsign/tmp/` is itself emptied and
 auto-gitignored at `start`, so it's the natural place for this kind of
 transient, run-scoped artifact.
+
+Those two resets — `clear:` on entry, `tmp/` at `start` — are also the whole
+of what separates one run from the next, and a workflow can compose a path
+that straddles them. A value derived from a cleared file is back to its
+starting point in every run, while whatever the workflow writes outside
+`tmp/` outlives the run that wrote it, because that is what makes it an
+artifact. A gate reading artifacts under a path built from such a value reads
+the previous run's work and passes on it. Nothing here can detect that:
+headsign never sees the value, which is computed in the workflow's own shell.
+What it can do is state where the boundary is, which is this paragraph, and
+name the shape where gates are written — see the `design-workflow` skill's
+third dangerous green check.
 
 ## Consequences
 

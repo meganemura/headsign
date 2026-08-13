@@ -403,8 +403,18 @@ skill produces). A review/soft-gate phase should list its verdict file (e.g.
 `.headsign/tmp/verdict`) under that phase's `clear:` so a verdict left over
 from a previous pass can't be mistaken for the current one — headsign
 deletes it on entry, and Claude writes a fresh one after the read-only
-reviewer subagent reports its verdict. And when the judgment itself must
-live outside the working agent's hands, make the check the judge — e.g.
+reviewer subagent reports its verdict. **`clear:` removes files, not
+directories.** An entry that turns out to be a directory is left where it
+is and named on entry by a `not cleared:` line that says so, so a phase
+that expected a tree to be emptied finds that out the first time it is
+entered rather than several runs later. `headsign validate` says the same
+thing earlier, as a warning, for an entry written with a trailing slash —
+the one form of the mistake `validate` can spot without reading a
+filesystem. A workflow that does want a directory gone can remove it as
+part of the phase's work, where the intent can be written down, rather than
+in a field that would delete it silently every time the phase is entered.
+And when the judgment itself must live outside the working agent's hands,
+make the check the judge — e.g.
 `claude -p '… Reply exactly APPROVED or REJECTED.' | grep -qx APPROVED`
 keeps the transition deterministic while the pen changes hands; trade-offs
 in [ADR-0007](adr/0007-verdict-authorship.md).
