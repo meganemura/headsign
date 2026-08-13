@@ -805,7 +805,34 @@ validates clean and misbehaves later.
    unchanged verdict is a reason to suspect the route that feeds it, not only
    the work in front of you.
 
-## Work that arrives from outside the run
+## When the claim lives in prose
+
+Structural checks — a table's shape, a verdict's word, a citation's form — go
+green about what they read. If the thing that matters is a sentence, none of
+them is looking at it. A phase can rewrite an invariant, drop half of it by
+accident in the same edit, and pass a gate of three checks, because all three
+were about structure and the loss was in prose. The gate was not wrong. It
+answered the question it was asked.
+
+**A green gate is not a substitute for reading what you changed**, and the
+place that rule fails is exactly where it is most tempting: you changed prose
+mechanically, the gate came back green, and green is faster to read than a
+diff. Worth saying plainly because the alternative — expecting a shell check to
+notice a missing sentence — is not available. Nothing here can report "the run
+changed four files and the checks read two": headsign never learns what a
+command read. `run:` is an arbitrary string, and every tool surveyed that
+reports an unexamined set gets it from somewhere else — a declaration the
+author wrote, an execution trace from a profiler, or a human ticking "viewed".
+None of them asks the check.
+
+**What is available is to pin the prose as a fixture and gate the comparison.**
+This is the shape snapshot testing already uses, and `terraform plan` and
+`cargo insta review` use it too: fix the expected text, compare against it, and
+let a difference either fail the gate or land as an artifact a person has to
+accept. It costs one file and no new tool behaviour. And it turns the accident
+above into a red gate, because the check is no longer about the document's
+shape — it is about this exact sentence still being there. Reach for it wherever
+a claim you depend on is carried by wording rather than by structure.
 
 A gate reads the tree, so a workflow tends to get written as though everything
 it needs is derivable inside the run. Two phases in, that assumption is
