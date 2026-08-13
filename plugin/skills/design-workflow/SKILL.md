@@ -785,6 +785,40 @@ validates clean and misbehaves later.
    unchanged verdict is a reason to suspect the route that feeds it, not only
    the work in front of you.
 
+## Work that arrives from outside the run
+
+A gate reads the tree, so a workflow tends to get written as though everything
+it needs is derivable inside the run. Two phases in, that assumption is
+invisible. It breaks when an answer arrives from a person — and it will arrive
+mid-run, not tidily between runs, because the person answers when they answer.
+
+**Give an arriving answer a destination of its own.** The failure looks like
+this: a phase says "do not decide questions the source leaves open — an open
+question belongs to the owner", which is a good rule and splits two routes
+cleanly. Then the owner answers one, mid-run, and neither route can take it.
+Filing it as still-open records a question that has an answer; recording it
+under the phase that derives from the source describes the owner's decision as
+the source's. Both routes now demand a sentence that is false. The workflow was
+written for two origins — decided by the source, awaiting the owner — and the
+third, *decided by the owner, and here is the record*, had nowhere to go.
+
+**So when a phase's instruction forbids a shape, walk the legitimate cases and
+check each one has somewhere to land.** A prohibition with no exit does not
+stop the case arising; it makes whoever meets it choose between stopping and
+writing something untrue, and the untrue version is the one that gets written
+under time pressure. This is the same shape as a gate with no recorded way
+around it — see the last part of *How much gate is enough* — with the same
+remedy: a route that records what happened beats a rule that forbids it.
+
+**`ready:` is the mechanism for the waiting half.** A phase that needs an
+answer from outside can probe for its arrival — `ready:` answers `PENDING`
+until the file is there, spending no attempt and running no gate — and then
+gate on the artifact once it exists. That splits waiting from consuming, which
+is the split the failure above is missing. Keep the two in separate phases: one
+whose job is that the answer has landed, one whose job is what the answer
+changes. Then "who decided this" is a fact the artifact carries into the
+record, rather than something the phase's instructions have to imply.
+
 ## How much gate is enough
 
 The questions this section answers are quantitative — how many phases, how many
