@@ -208,6 +208,30 @@ is exactly where a guard belongs. A gate whose anchor is unguarded is not in
 the middle at all: it is fakeable with one extra step, and that is how you
 should report it.
 
+**How long an anchor lasts, since the whole classification rests on it being
+this run's.** `.headsign/tmp/` is run-scoped: `start` deletes it whole and
+recreates it empty, and a phase's `clear:` folds its own listed files away on
+every entry. Nothing else resets either one. So an anchor written under
+`tmp/` by the entry phase is good for that run and is *necessarily* new in the
+next one — which is also the cheapest way to get a per-run identifier when a
+path needs one, without the workflow having to invent uniqueness. The trap is
+the opposite direction: an anchor taken **per phase entry** goes stale as a
+run-scoped claim, because a second entry finds the first entry's anchor still
+sitting there and measures against it. Decide which of the two you want, and
+say which in the handover — "anchored" does not say when.
+
+**Ordering is not the only way to place a guard, and it is the fragile way.**
+The guard-goes-first rule above rests on the order of lines in the gate, which
+nothing checks: put the guard second and every run still passes for as long as
+the anchor happens to be good, then the anchored checks quietly start measuring
+against an empty or bogus base — the classification drops from anchored to
+fakeable with no failure anywhere to notice it. If a gate has more than one
+check leaning on the same anchor, prefer closing the order inside one place:
+have each anchored check call the guard's test at its own start (a small
+script that validates the base and then measures), so there is no arrangement
+of the gate's lines that can skip it. The gate then holds one check per claim
+rather than a sequence that has to stay in the right order.
+
 **Provenance is a different axis, and mixing the two is a real mistake.**
 A check you composed yourself out of `git diff` is every bit as strong as one
 lifted from `package.json`; a check that greps a file the agent wrote a
@@ -312,7 +336,20 @@ different things — so they get three different treatments.
   alive, and raising the number and running `headsign next` continues from
   the same phase with attempts intact. A one-line reason in a comment is
   enough. Base it on the phases: roughly the number of gate evaluations one
-  honest pass takes, with room for the usual retries.
+  honest pass takes, with room for the usual retries. **It bounds one run, not
+  one tree.** `start` sets the count to zero, so a second run over the same
+  directory gets the whole allowance again, and `max_attempts` starts over with
+  it. That is not a hole to be plugged — it is what the number means — but it
+  decides a design question you should answer on purpose rather than discover:
+  work that arrives in instalments (an answer comes back, one more pass is
+  needed) can either be a fresh `start` each time or one run whose route goes
+  back a phase. **Restarting gives each instalment its own budget and its own
+  round numbering, and folds `tmp/` away between them; the loop keeps one
+  budget, one log, and one set of round numbers across all of them.** If
+  anything downstream counts rounds or builds a path out of a round number,
+  the loop is the form that keeps those meaning what they say — and if you
+  restart instead, nothing carries over except what the workflow itself wrote
+  outside `tmp/`.
 - **`max_attempts` — propose it, but do not settle it silently.** Running
   out ends the run for good, and redoing the work means starting again from
   the entry phase. Give the number, the reason, **and the consequence**
@@ -679,6 +716,21 @@ validates clean and misbehaves later.
    destinations. A router phase whose own gate fails is an ordinary failing
    phase, and no `when:` will ever see it — failure routing is `on_fail`'s
    job alone.
+5. **A `when:` must test that the destination can be *started*, not that
+   work appears to exist.** These come apart, and the gap is expensive. A
+   predicate that greps for units marked ready sends the run onward while
+   every ready unit is blocked on something unfinished; the destination's gate
+   then asks for a unit to have been picked, nothing can be picked, and the
+   phase burns its `max_attempts` on empty laps — and exhausting them ends the
+   run, so a mistake in one routing predicate is paid for by the whole walk.
+   Write the predicate as the destination's own entry condition: not "is there
+   something marked ready" but "is there something this phase could actually
+   take". **And note what it will look like when you get it wrong**: the record
+   will show a gate failing, over and over, in a phase where nothing is wrong
+   with the work. Nothing in the run says "the routing sent you here by
+   mistake", because nothing can tell — so a phase that keeps failing with an
+   unchanged verdict is a reason to suspect the route that feeds it, not only
+   the work in front of you.
 
 ## What goes in the comments
 
