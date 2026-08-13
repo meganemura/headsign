@@ -140,7 +140,14 @@ plugin or `npm install` the package. Do not guess at other paths.
    resumed, and a later `headsign start` rewrites `.headsign/state.json` whole.
    What it does not end is `.headsign/log`: the reason you type outlives the
    run, and so does everything logged before it. So ending a run deliberately
-   costs the run, not its history. To *pause* rather than end — stepping away
+   costs the run, not its history. **The rest of what it costs is nothing**, and
+   this is worth knowing before you have to decide in a hurry: `state.json` is
+   gitignored, so ending a run leaves every tracked file exactly as it was, and
+   the artifacts the run already wrote are untouched — committed ones by
+   definition. What you lose is the position: the phase, the attempt counts, the
+   walk back to here. So the only real question is how expensive this
+   workflow's earlier gates are to pass again, which you can read off the
+   workflow file you are holding. To *pause* rather than end — stepping away
    to resume later — write one line explaining why to
    `.headsign/tmp/stop-note` and stop again: the stop-boundary hook passes
    immediately, and `headsign next`
@@ -155,7 +162,18 @@ plugin or `npm install` the package. Do not guess at other paths.
    was walking it, which headsign allows but reports once; the user either
    puts the file back or tells you to run `headsign next` again, which accepts
    the change and counts it (the count is named at `COMPLETE`). If *you* made
-   that edit, say so plainly when you report it. Report either one and wait for
+   that edit, say so plainly when you report it. **Some edits are not reported,
+   and silence there means "not a pinned key", never "not noticed"** — so do
+   not read it as permission you were granted, or as a report that failed.
+   What is pinned is the rules of every phase this run can still reach, plus
+   `limits`: `gate`, `ready`, `clear`, `on_pass`, `on_fail`, `max_attempts`. A
+   phase's `description` is not — rewriting the instructions you were handed is
+   invisible to this by design, and so are comments, formatting, and any phase
+   the run can no longer reach. **Also unreported: the contents of anything a
+   check runs.** `run: "sh checks/thing.sh"` pins that string, not the script,
+   so editing that script mid-run changes what the gate decides with nothing
+   said. If you need such a change on the record, abort and start again rather
+   than editing under the run. Report either one and wait for
    direction like any other escalation — but because the run is still open, the
    hook will push you back to `headsign next`, so write the pause note above
    before you stop.
