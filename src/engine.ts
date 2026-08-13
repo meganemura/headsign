@@ -429,36 +429,52 @@ function ensureHeadsignGitignored(cwd: string): void {
   if (content !== original) fs.writeFileSync(gitignorePath, content);
 }
 
-// Splits the relative paths named in `clear:` by what happened to each. `cleared` is the ones
-// that existed, were a non-empty file, and are now gone — worth announcing to the agent so a
-// silently-vanished artifact from a previous pass doesn't go unnoticed for a whole extra cycle.
-// `notCleared` is the ones that turned out to be a directory: `clear:` only ever removes files
-// (rmSync's EISDIR on a directory is still swallowed below, same as before), so a directory
-// named here was never going anywhere, and this function says so instead of leaving the silence
-// a swallowed exception would otherwise leave. Directory, not merely "not a file", because the
-// line the caller prints names one: anything else stat can find is removable, and is removed as
-// quietly as a file always was. An empty file and a path that never existed appear in neither
-// list — nothing worth announcing happened to them.
+// Sorts the relative paths named in `clear:` into the two the caller has a line for. `cleared`
+// is the ones that held a non-empty file — worth announcing to the agent so a silently-vanished
+// artifact from a previous pass doesn't go unnoticed for a whole extra cycle. `notCleared` is
+// the ones `rmSync` will refuse, which is directories and only directories: `clear:` removes
+// files, and a directory named here was never going anywhere, so this function says so rather
+// than leaving the silence a swallowed EISDIR leaves. An empty file and a path that never
+// existed are in neither list — nothing worth announcing happened to them.
+//
+// The two questions are asked of two different views on purpose, because they are about
+// different things. "Was there a non-empty artifact here" is about what the path RESOLVES to,
+// so it follows a symlink (`statSync`) — a link to a real artifact is an artifact, and its
+// removal is worth the same line as the file's would be. "Will rmSync refuse this" is about the
+// path ITSELF, so it must not follow (`lstatSync`), because that is the view rmSync uses to
+// decide: a symlink pointing at a directory is unlinked like any other link, and classifying it
+// off the resolved target printed a line saying a directory had been left alone while the link
+// was already gone. Two false claims in one line, in the field this reporting exists to stop
+// being silent about (`what-headsign-protects` #3, #4).
+//
+// What neither list claims is that the removal succeeded. A file `rmSync` cannot remove for
+// some other reason — a permission, a read-only filesystem — is still reported as cleared, as
+// it was before any of this reporting existed. Confirming the removal is a different check from
+// classifying what was found, and this function does the second.
 function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): { cleared: string[]; notCleared: string[] } {
   const cleared: string[] = [];
   const notCleared: string[] = [];
   for (const rel of phase.clear ?? []) {
     const full = path.join(cwd, rel);
-    let removedNonEmptyFile = false;
-    let wasADirectory = false;
+    let heldNonEmptyFile = false;
+    let rmWillRefuse = false;
     try {
-      const st = fs.statSync(full);
-      removedNonEmptyFile = st.isFile() && st.size > 0;
-      wasADirectory = st.isDirectory();
+      const resolved = fs.statSync(full);
+      heldNonEmptyFile = resolved.isFile() && resolved.size > 0;
     } catch {
-      // ENOENT: nothing there to clear, nothing to announce.
+      // ENOENT (or a dangling symlink): nothing resolving here to announce.
+    }
+    try {
+      rmWillRefuse = fs.lstatSync(full).isDirectory();
+    } catch {
+      // ENOENT: nothing there at all.
     }
     // Best-effort: force suppresses ENOENT. Any rmSync error past that (a directory's EISDIR
     // included) is still ignored here so a bad `clear` entry never wedges a transition — the
-    // statSync classification above, not this catch, is what tells the caller what happened.
+    // classification above, not this catch, is what tells the caller what happened.
     try { fs.rmSync(full, { force: true }); } catch { /* best effort */ }
-    if (removedNonEmptyFile) cleared.push(rel);
-    else if (wasADirectory) notCleared.push(rel);
+    if (heldNonEmptyFile) cleared.push(rel);
+    else if (rmWillRefuse) notCleared.push(rel);
   }
   return { cleared, notCleared };
 }

@@ -521,11 +521,16 @@ phases:
 
 // --- clear: what clearPhaseArtifacts (engine.ts) reports, on a real filesystem ---
 //
-// The split is statSync's, not rmSync's: a non-empty file is removed and reported in `cleared`;
-// anything statSync finds that is not a file — a directory, here — is left standing (rmSync's
-// EISDIR is still swallowed, same as before this change) and reported in `notCleared` instead
-// of the silence the old behaviour left. An empty file and a path that never existed keep the
+// A non-empty file is removed and reported in `cleared`; a directory is left standing (rmSync's
+// EISDIR is still swallowed, same as before this change) and reported in `notCleared` instead of
+// the silence the old behaviour left. An empty file and a path that never existed keep the
 // meaning they already had: neither list mentions them.
+//
+// The symlink test below is why the two questions are asked of two different views. `notCleared`
+// is a claim that rmSync refused, and rmSync decides on the link itself — a symlink pointing at
+// a directory is unlinked like any other link. Classified off the resolved target, that link
+// came back as an unremoved directory while it was in fact already gone, so the printed line
+// stated two false things at once. Only lstat can be the source for that question.
 
 test("start: a non-empty file clears, a directory does not (and stays on disk) — an empty file and a missing path say nothing", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
@@ -558,6 +563,45 @@ phases:
   assert.deepEqual(result.result.notCleared, ["scratch-dir"]);
   assert.equal(fs.existsSync(path.join(dir, "artifact.txt")), false, "the non-empty file is gone");
   assert.equal(fs.existsSync(path.join(dir, "scratch-dir")), true, "the directory is left standing — clear: never removes directories");
+});
+
+test("start: a symlink is judged as the link, not as what it points at", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  fs.mkdirSync(path.join(dir, "real-dir"));
+  fs.writeFileSync(path.join(dir, "real-file.txt"), "leftover\n");
+  fs.symlinkSync("real-dir", path.join(dir, "link-to-dir"));
+  fs.symlinkSync("real-file.txt", path.join(dir, "link-to-file"));
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(
+    workflowPath,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: [link-to-dir, link-to-file]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "STARTED");
+  if (result.result.kind !== "STARTED") return;
+  // Both links are unlinked. Saying "not cleared: a directory" about either one would be false
+  // twice over — it was removed, and it was not a directory.
+  assert.deepEqual(result.result.notCleared, []);
+  assert.equal(fs.existsSync(path.join(dir, "link-to-dir")), false, "the link is gone");
+  assert.equal(fs.existsSync(path.join(dir, "real-dir")), true, "what it pointed at is untouched");
+  // The link to a real artifact resolves to one, so its removal earns the same line the file's
+  // own removal would: this question does follow the link.
+  assert.deepEqual(result.result.cleared, ["link-to-file"]);
+  assert.equal(fs.existsSync(path.join(dir, "real-file.txt")), true, "the target file itself is untouched");
 });
 
 test("next (ADVANCE): the destination phase's directory clear entry comes back as notCleared, same as at start", () => {

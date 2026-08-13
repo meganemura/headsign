@@ -8298,20 +8298,23 @@ function clearPhaseArtifacts(cwd, phase) {
   const notCleared = [];
   for (const rel of phase.clear ?? []) {
     const full = path3.join(cwd, rel);
-    let removedNonEmptyFile = false;
-    let wasADirectory = false;
+    let heldNonEmptyFile = false;
+    let rmWillRefuse = false;
     try {
-      const st = fs4.statSync(full);
-      removedNonEmptyFile = st.isFile() && st.size > 0;
-      wasADirectory = st.isDirectory();
+      const resolved = fs4.statSync(full);
+      heldNonEmptyFile = resolved.isFile() && resolved.size > 0;
+    } catch {
+    }
+    try {
+      rmWillRefuse = fs4.lstatSync(full).isDirectory();
     } catch {
     }
     try {
       fs4.rmSync(full, { force: true });
     } catch {
     }
-    if (removedNonEmptyFile) cleared.push(rel);
-    else if (wasADirectory) notCleared.push(rel);
+    if (heldNonEmptyFile) cleared.push(rel);
+    else if (rmWillRefuse) notCleared.push(rel);
   }
   return { cleared, notCleared };
 }
