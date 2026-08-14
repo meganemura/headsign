@@ -628,6 +628,19 @@ shell, so nothing here can decide that — the streak is a fact about what has
 already happened, offered because a gate that cannot pass and a gate you have
 not fixed yet look identical until someone reads the check itself.
 
+**A passing check's output is discarded.** Only the failing branch keeps output,
+which is why the table above hangs it off `RETRY` alone: a check that exits 0
+has its stdout and stderr dropped, and nothing anywhere records what it said.
+This matters for one shape in particular — **a check that passes because it had
+nothing to examine.** "All thirty-five subjects were correct" and "there were no
+subjects" are the same exit code and, on the record, the same line. Writing the
+count to stdout does not help, because that is the output being dropped. If a
+check can pass vacuously, have it write what it examined somewhere a later
+check reads — a file under `.headsign/tmp/` for something this run acts on, or a
+tracked artifact when the number is part of what the run produced. Then the
+count is gated rather than narrated, and "examined nothing" becomes a thing a
+gate can fail on.
+
 Exit 3 is a configuration/usage error — which includes a check or a `ready:`
 probe that **could not be run at all** (the command never started, or headsign
 had to kill it before it finished). That is not a gate failure: headsign got no

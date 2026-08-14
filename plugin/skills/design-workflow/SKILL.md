@@ -494,6 +494,29 @@ do next depends on **where each command came from** — the axis that is about
   "local": a composed `gh repo view --json visibility` reads nothing on
   disk but demands network and authentication.
 
+**A check that writes costs the driver something specific, so decide it on
+purpose.** Read-only checks have a property worth naming: whoever is driving
+can run them by hand, in any order, as often as they like, and find out what
+the gate would say without calling `next` — which is the only judgment, and the
+only thing that spends an attempt. Drivers do this, and a phase where the whole
+gate can be rehearsed that way is a phase whose attempts get spent on real
+failures rather than on finding out.
+
+One check that writes takes that away for the entire gate. The rest can still
+be run by hand, but not all of them together, and the driver has to open the
+scripts to work out which one is unsafe. That is a real price and it is
+sometimes worth paying — the loop pattern above pays it deliberately, recording
+its comparison mark in the gate's last check because that is the one moment
+that means "a round which passed every judging check". If you take that trade:
+
+- **Keep the writing check last**, and say in a comment that its position is
+  load-bearing rather than incidental.
+- **Say that it writes, at the check**, so the driver reading the gate can tell
+  which checks are safe to rehearse without opening every script.
+- **Prefer the phase's own work** for anything that does not need to happen
+  exactly at the moment the gate passes. A side effect in the gate is only
+  earned by needing that instant.
+
 **Try the failing path too, not only the passing one. This is recommended,
 with conditions.** A check that has only been seen to pass has not been seen
 to work. Three shapes are dangerous, and they look identical from outside —
@@ -764,6 +787,23 @@ validates clean and misbehaves later.
    runs, deleting what it lists. Re-entering is right when starting fresh is
    the point — a stale review verdict has to go — and wrong when the agent
    should keep working on the same failure.
+
+   **`on_fail:` can also name a phase further back, and for a loop with a
+   progress gate that is often the right answer.** A loop where one phase
+   checks that something decreased has a phase upstream that produces the
+   material the decrease comes from. When the progress gate fails because the
+   remaining items need that upstream phase to do more work, `retry` is the
+   wrong partner: the agent is being told to try again on a phase that has
+   nothing left to work with, and the phase it needs is only reachable by
+   passing the gate that is blocking it. Sending the failure upstream instead
+   makes the loop's own repair path part of the graph.
+   Two things to hold while writing it. The route back re-enters that phase, so
+   its `clear:` runs — which is usually what you want, and is worth checking
+   rather than assuming. And the graph then has two ways of going backwards, a
+   conditional `on_pass` for ordinary laps and an `on_fail` for a blocked one;
+   that is allowed and `validate` accepts it, but the ceiling is what keeps it
+   finite, so a loop with both wants `limits.max_total_iterations` set on
+   purpose rather than left off.
 2. **`clear:` runs on entry to a phase, and only then.** So a review phase
    that lists its verdict under `clear:` but sets `on_fail: retry` clears the
    verdict exactly once, when it is first entered, and never again: the
@@ -810,6 +850,31 @@ validates clean and misbehaves later.
    mistake", because nothing can tell — so a phase that keeps failing with an
    unchanged verdict is a reason to suspect the route that feeds it, not only
    the work in front of you.
+
+## A check and the instruction that satisfies it move together
+
+**Adding a check without adding the instruction that produces what it asks for
+does not create a gap — it creates a device for manufacturing compliance.** The
+phase's description is all the agent is told; the gate is what it must satisfy.
+Move only the gate, and the agent arrives with instructions that do not mention
+the new requirement and a gate that fails until something satisfies it. What
+follows is not the work you wanted: it is whatever makes the check pass. The
+artifact then contains a section written to be found by a `grep`, and the run
+records a pass.
+
+So treat them as one edit. **Add a check and update the description in the same
+change; if there is no description to update, the check cannot be added yet** —
+that absence means nobody has decided whose job the new requirement is, and a
+gate is a poor place to discover that.
+
+**The reverse is worth checking before you build anything.** A mechanism that
+prevents a mismatch is only worth its cost if the mismatch can actually occur.
+It is easy to design an exclusion, a guard, or a reconciliation step for a
+collision that turns out to be impossible in this workflow — and the cost is not
+just the writing: every future reader has to work out what it protects. Ask
+first whether the drift you are preventing is real. If it is not, the mechanism
+has zero subjects, and that is worth knowing before it is in the file rather
+than after.
 
 ## When the claim lives in prose
 
