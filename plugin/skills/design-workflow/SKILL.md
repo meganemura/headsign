@@ -505,9 +505,10 @@ failures rather than on finding out.
 One check that writes takes that away for the entire gate. The rest can still
 be run by hand, but not all of them together, and the driver has to open the
 scripts to work out which one is unsafe. That is a real price and it is
-sometimes worth paying — the loop pattern above pays it deliberately, recording
-its comparison mark in the gate's last check because that is the one moment
-that means "a round which passed every judging check". If you take that trade:
+sometimes worth paying — the loop pattern in *A loop wants two checks*, below,
+pays it deliberately, recording its comparison mark in the gate's last check
+because that is the one moment that means "a round which passed every judging
+check". If you take that trade:
 
 - **Keep the writing check last**, and say in a comment that its position is
   load-bearing rather than incidental.

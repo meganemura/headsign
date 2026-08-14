@@ -300,7 +300,7 @@ test("retry: the not-run line lands between the gate-failed line and the repeats
     `some output\n` +
     "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; " +
     "if you did not, work out whether this gate can pass at all before spending the rest of your attempts. " +
-    "Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase.\n";
+    "Once attempts run out, this run ends, and a new one starts over from the entry phase.\n";
   assert.equal(actual, expected);
 });
 
@@ -350,7 +350,7 @@ test("retry: repeats 2 adds one line after the gate-failed line and replaces the
     `some output\n` +
     "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; " +
     "if you did not, work out whether this gate can pass at all before spending the rest of your attempts. " +
-    "Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase.\n";
+    "Once attempts run out, this run ends, and a new one starts over from the entry phase.\n";
   assert.equal(actual, expected);
 });
 
@@ -1098,4 +1098,27 @@ test("logLine: unheld reflects the resulting state's phase, attempts and iterati
 test("logLine: unheld names CLAUDE_PROJECT_DIR verbatim when that is the cause, distinct from stop_hook_active", () => {
   const line = render.logLine("ts", { kind: "UNHELD", cause: "CLAUDE_PROJECT_DIR" }, baseState({ phase: "decide", total_iterations: 3 }));
   assert.equal(line, `ts unheld decide a=0 i=3 by=CLAUDE_PROJECT_DIR\n`);
+});
+
+// A fail-routed ADVANCE is a gate failure too, so it names what the gate never reached — the
+// phase a failure routes away from is the one nobody returns to inspect.
+test("advance's fail-route line carries the not-run line, and the log line carries ran=", () => {
+  const failure = {
+    check: "count decreased", run: "sh check.sh", exitCode: 1, routedTo: "question",
+    checksTotal: 3, checksRun: 2, notRunChecks: ["deferrals tracked"],
+  };
+  const actual = render.advance("question", "Ask.", failure);
+  assert.equal(
+    actual,
+    `ADVANCE question\n--- gate failed: count decreased (sh check.sh, exit 1) → routed to question ---\n` +
+      `--- 2 of 3 checks ran; 1 not run: deferrals tracked ---\n--- phase: question ---\nAsk.\n`,
+  );
+});
+
+test("a fail-routed advance whose last check failed adds no not-run line, byte-identical to no counts", () => {
+  const withCounts = render.advance("q", "Ask.", {
+    check: "c", run: "r", exitCode: 1, routedTo: "q", checksTotal: 3, checksRun: 3, notRunChecks: [],
+  });
+  const without = render.advance("q", "Ask.", { check: "c", run: "r", exitCode: 1, routedTo: "q" });
+  assert.equal(withCounts, without);
 });

@@ -45,8 +45,13 @@ export function advance(
   notCleared?: string[],
   routedBy?: { when: string } | { default: true },
 ): string {
+  // A fail-routed ADVANCE is a gate failure like any other, so it carries the same
+  // never-reached-these-checks line a RETRY does — the destination differs, what the gate got
+  // through does not. Reported here as well as on RETRY because the phase a failure routes AWAY
+  // from is exactly the one nobody comes back to look at.
   const failedLine = failure
-    ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) → routed to ${failure.routedTo} ---\n`
+    ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) → routed to ${failure.routedTo} ---\n` +
+      notRunLine(failure.checksRun, failure.checksTotal, failure.notRunChecks)
     : "";
   const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} → ${phase} ---\n` : "";
   return `ADVANCE ${phase}\n${clearedBlock(cleared)}${notClearedBlock(notCleared)}${failedLine}${routedLine}--- phase: ${phase} ---\n${description}\n`;
@@ -95,11 +100,15 @@ export function retry(o: Failure & { phase: string; attempt: number; maxAttempts
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time — ${o.repeats} in a row ---\n` : "";
   // Said only where a budget exists to run out of: a phase with no `max_attempts` has nothing
   // to spend, so asserting a run-ending consequence there would be a claim this function cannot
-  // back up. `headsign start` over an ended run begins at the workflow's entry phase
-  // (engine.ts's `start`), which is the one fact this sentence states.
+  // back up. Starting over begins at the workflow's entry phase (engine.ts's `start`), which is
+  // the one fact this sentence states. Deliberately NOT phrased as `headsign start`: a bare
+  // `start` resolves `.headsign/workflow.yaml` (cli.ts's resolveWorkflowPath) and exits 3 in a
+  // repository whose workflows are all named, which is where this sentence would be read most.
+  // This function is not handed the run's workflow path, and the sentence does not need it — the
+  // fact is where a new run begins, not which command spells it.
   const exhaustionClause =
     repeating && o.maxAttempts !== undefined
-      ? " Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase."
+      ? " Once attempts run out, this run ends, and a new one starts over from the entry phase."
       : "";
   const closing = repeating
     ? `This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.${exhaustionClause}\n`
@@ -449,7 +458,8 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
         return `from=${prevPhase} ${why}`;
       }
       return event.failure
-        ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`
+        ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}` +
+          `${durSuffix(event.failure.elapsedSeconds)}${ranSuffix(event.failure.checksRun, event.failure.checksTotal)}`
         : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":

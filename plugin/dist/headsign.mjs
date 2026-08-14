@@ -7784,7 +7784,7 @@ ${description}
 }
 function advance(phase, description, failure, cleared, notCleared, routedBy) {
   const failedLine = failure ? `--- gate failed: ${failure.check} (${clause(failure.run, failure.exitCode, failure.timeoutSeconds, failure.elapsedSeconds)}) \u2192 routed to ${failure.routedTo} ---
-` : "";
+` + notRunLine(failure.checksRun, failure.checksTotal, failure.notRunChecks) : "";
   const routedLine = routedBy ? `--- routed: ${"when" in routedBy ? `when "${routedBy.when}"` : "default"} \u2192 ${phase} ---
 ` : "";
   return `ADVANCE ${phase}
@@ -7814,7 +7814,7 @@ function retry(o) {
   const repeating = o.repeats !== void 0 && o.repeats >= 2;
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time \u2014 ${o.repeats} in a row ---
 ` : "";
-  const exhaustionClause = repeating && o.maxAttempts !== void 0 ? " Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase." : "";
+  const exhaustionClause = repeating && o.maxAttempts !== void 0 ? " Once attempts run out, this run ends, and a new one starts over from the entry phase." : "";
   const closing = repeating ? `This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.${exhaustionClause}
 ` : "Fix the failure above, then run `headsign next` again.\n";
   return `RETRY ${n} ${o.phase}
@@ -7973,7 +7973,7 @@ function logDetail(event, prevPhase) {
         const why = "when" in event.routedBy ? `routed-when="${event.routedBy.when}"` : "routed-default";
         return `from=${prevPhase} ${why}`;
       }
-      return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}` : `from=${prevPhase}`;
+      return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}${ranSuffix(event.failure.checksRun, event.failure.checksTotal)}` : `from=${prevPhase}`;
     case "ESCALATE":
     case "ABORT":
     // Same `reason="…"` shape as the two endings: only the event word separates them, so a
@@ -8808,8 +8808,8 @@ function cmdVersion() {
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
 
 Usage:
-  headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml) \u2014 writes state.json, log; wipes and recreates tmp/
-  headsign next [--accept-graph-change]         run the current gate and answer with a verdict \u2014 writes state.json, log, lock
+  headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml) \u2014 writes state.json, log, .gitignore; wipes and recreates tmp/; deletes the entry phase's clear: paths
+  headsign next [--accept-graph-change]         run the current gate and answer with a verdict \u2014 writes state.json, log, lock; on advancing, deletes the next phase's clear: paths
   headsign abort [reason]                       end the run for good (records why) \u2014 writes state.json, log
   headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml \u2014 read-only

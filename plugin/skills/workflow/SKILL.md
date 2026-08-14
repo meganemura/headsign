@@ -159,10 +159,11 @@ plugin or `npm install` the package. Do not guess at other paths.
    picks the run back up later from the same phase. The hook consumes the
    note, so one note covers one turn end — if the wait runs over several
    exchanges, write it again before each turn that ends still waiting. `ESCALATE` means stop
-   working and ask the user for direction. **There are three kinds, and the
-   third one ends the run** — read which you got before deciding anything.
-   Two of them do not end it, and both leave it `running` so the user can
-   answer and have you continue from the same phase. One reads
+   working and ask the user for direction. **Some kinds end the run and some do
+   not, so read which one you got before deciding anything** — `headsign status`
+   answers it directly, since a run that ended reads `ESCALATED` rather than
+   `RUNNING`. Two kinds leave it `running`, so the user can answer and have you
+   continue from the same phase. One reads
    `max_total_iterations (<n>) reached`: the user can raise that limit. The
    other reads `the workflow's rules changed under this run` — the workflow file was edited while the run
    was walking it, which headsign allows but reports once; the user either
@@ -184,18 +185,21 @@ plugin or `npm install` the package. Do not guess at other paths.
    said. If you need such a change on the record, abort and start again rather
    than editing under the run.
 
-   **The third kind reads `max_attempts (<n>) exhausted`, and it ends the
-   run.** The phase spent its whole budget, the run's status becomes
-   `escalated`, and no `next` continues it — a later `headsign start` begins
-   again at the entry phase and re-walks everything. So it costs what `abort`
-   costs, arrived at by spending attempts instead of by deciding. **Which
-   means the remaining attempts on a gate you believe cannot pass are not a
+   **The kinds that DO end the run set the status to `escalated`, and no `next`
+   continues one.** Starting over re-walks from the entry phase, so they cost
+   what `abort` costs, arrived at by other means. There are two. One reads
+   `max_attempts (<n>) exhausted`: the phase spent its whole budget. The other
+   reads `gate failed (on_fail: escalate)`, which is a workflow that chose to
+   hand the first failure of that phase straight to a person — a deliberate
+   design, not a mishap, and one this repository's own workflows use.
+
+   **So the remaining attempts on a gate you believe cannot pass are not a
    reserve you are protecting by not spending them** — spending them ends the
    run, and not spending them leaves it open with nothing recorded about why.
    If you have concluded a gate cannot pass, that conclusion is the thing to
    report to the user, immediately; do not sit on the attempts waiting for
-   permission you were never going to get from them. Report either of the
-   first two and wait for
+   permission you were never going to get from them. Report a non-ending one and
+   wait for
    direction like any other escalation — but because the run is still open, the
    hook will push you back to `headsign next`, so write the pause note above
    before you stop.

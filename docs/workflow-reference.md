@@ -612,13 +612,17 @@ loaded with whatever still happens to fit
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
 
-**A failing gate says which of its checks it never reached.** Checks run in
-order and the gate stops at the first failure, so the ones behind it do not run
-at all — and a lap that fails is the lap where the gate examined the least. The
-block names that: `--- 2 of 3 checks ran; 1 not run: deferrals tracked ---`,
-with the same count in `.headsign/log`'s retry line as `ran=2/3`, so it can be
-answered after the run has ended. Neither appears when the failing check was the
-last one. This matters most in a loop that stops on a failing lap: a check
+**A gate failure that answers `RETRY`, or routes onward through `on_fail`, says
+which of its checks it never reached.** Checks run in order and the gate stops at
+the first failure, so the ones behind it do not run at all — and a lap that
+fails is the lap where the gate examined the least. The block names that:
+`--- 2 of 3 checks ran; 1 not run: deferrals tracked ---`, with the same count in
+`.headsign/log`'s retry and routed-fail lines as `ran=2/3`, so it can be answered
+after the run has ended. Neither appears when the failing check was the last one.
+**A failure that exhausts `max_attempts` is the exception**: it ends the run with
+an `ESCALATE` whose line carries only its reason, so a phase with
+`max_attempts: 1` never reports this at all — for that phase, the workflow file
+is where the count of checks lives. This matters most in a loop that stops on a failing lap: a check
 behind the failure may not have run in the entire walk, and "it passed" and "it
 never ran" are otherwise the same silence.
 

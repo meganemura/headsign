@@ -347,15 +347,21 @@ function cmdVersion(): never {
 // subcommands are omitted here and why `help`/`version` differ from the six run-facing
 // commands is ADR-0002's, "Six commands, one (driver's) question" section.
 //
-// Each line also names its own effect on .headsign/ — read-only, or which of state.json / log /
-// tmp/ / lock it writes — so a caller under a "don't run headsign here" constraint can tell from
-// this text alone which commands are safe, rather than starting a run in a spare worktree to
-// find out empirically (the situation that motivated adding this).
+// Each line also names what running it touches, so a caller under a "don't run headsign here"
+// constraint can tell from this text alone which commands are safe, rather than starting a run in
+// a spare worktree to find out empirically (the situation that motivated adding this). That has to
+// include the writes that leave `.headsign/` to be honest about the question being asked: `start`
+// creates or amends `.headsign/.gitignore` (engine.ts's ensureHeadsignGitignored, a TRACKED file
+// in a repository that has committed it), and both `start` and `next` delete whatever the phase
+// they are entering lists under `clear:` — paths chosen by the workflow, which may be anywhere in
+// the tree and may be tracked. "Which of state.json / log / lock / tmp it writes" was the first
+// version of this list and was too narrow: a reader deciding whether a command can disturb a
+// repository cares most about exactly the deletions it left out.
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
-  headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml) — writes state.json, log; wipes and recreates tmp/
-  headsign next [--accept-graph-change]         run the current gate and answer with a verdict — writes state.json, log, lock
+  headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml) — writes state.json, log, .gitignore; wipes and recreates tmp/; deletes the entry phase's clear: paths
+  headsign next [--accept-graph-change]         run the current gate and answer with a verdict — writes state.json, log, lock; on advancing, deletes the next phase's clear: paths
   headsign abort [reason]                       end the run for good (records why) — writes state.json, log
   headsign status                               read-only view of the current run (never judges)
   headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml — read-only

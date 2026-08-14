@@ -2260,6 +2260,12 @@ test("--help names each command's effect on .headsign/: read-only commands say s
   assert.match(lineFor("headsign version"), /read-only/);
   assert.match(lineFor("headsign help"), /read-only/);
 
+  // The two writes that leave `.headsign/` — the ones a reader deciding "can this disturb my
+  // repository" cares about most, and the ones the first version of this list omitted.
+  assert.match(lineFor("headsign start "), /\.gitignore/, "start amends a tracked .gitignore");
+  assert.match(lineFor("headsign start "), /clear:/, "start deletes the entry phase's clear: paths");
+  assert.match(lineFor("headsign next "), /clear:/, "advancing deletes the next phase's clear: paths");
+
   // The hidden subcommands stay hidden — this test's own line-scan must not accidentally
   // require them to appear.
   assert.doesNotMatch(result.stdout, /stop-hook/);
