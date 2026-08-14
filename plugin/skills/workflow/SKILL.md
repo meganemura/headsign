@@ -159,11 +159,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    picks the run back up later from the same phase. The hook consumes the
    note, so one note covers one turn end — if the wait runs over several
    exchanges, write it again before each turn that ends still waiting. `ESCALATE` means stop
-   working and ask the user for direction. Two kinds of `ESCALATE` do not end
-   the run, and both leave it `running` so the user can answer and have you
-   continue from the same phase. One reads `max_total_iterations (<n>)
-   reached`: the user can raise that limit. The other reads `the workflow's
-   rules changed under this run` — the workflow file was edited while the run
+   working and ask the user for direction. **There are three kinds, and the
+   third one ends the run** — read which you got before deciding anything.
+   Two of them do not end it, and both leave it `running` so the user can
+   answer and have you continue from the same phase. One reads
+   `max_total_iterations (<n>) reached`: the user can raise that limit. The
+   other reads `the workflow's rules changed under this run` — the workflow file was edited while the run
    was walking it, which headsign allows but reports once; the user either
    puts the file back or tells you to run `headsign next` again, which accepts
    the change and counts it (the count is named at `COMPLETE`). If *you* made
@@ -178,7 +179,20 @@ plugin or `npm install` the package. Do not guess at other paths.
    check runs.** `run: "sh checks/thing.sh"` pins that string, not the script,
    so editing that script mid-run changes what the gate decides with nothing
    said. If you need such a change on the record, abort and start again rather
-   than editing under the run. Report either one and wait for
+   than editing under the run.
+
+   **The third kind reads `max_attempts (<n>) exhausted`, and it ends the
+   run.** The phase spent its whole budget, the run's status becomes
+   `escalated`, and no `next` continues it — a later `headsign start` begins
+   again at the entry phase and re-walks everything. So it costs what `abort`
+   costs, arrived at by spending attempts instead of by deciding. **Which
+   means the remaining attempts on a gate you believe cannot pass are not a
+   reserve you are protecting by not spending them** — spending them ends the
+   run, and not spending them leaves it open with nothing recorded about why.
+   If you have concluded a gate cannot pass, that conclusion is the thing to
+   report to the user, immediately; do not sit on the attempts waiting for
+   permission you were never going to get from them. Report either of the
+   first two and wait for
    direction like any other escalation — but because the run is still open, the
    hook will push you back to `headsign next`, so write the pause note above
    before you stop.
