@@ -2237,6 +2237,34 @@ test("--help keeps both hook subcommands hidden: they are wiring for Claude Code
   assert.doesNotMatch(result.stdout, /stop-hook/);
 });
 
+// A caller under a "don't run headsign here" constraint needs to be able to tell, from --help
+// alone, which commands touch .headsign/ and which don't — the situation that motivated this:
+// discovering `validate` was read-only meant starting a run in a spare worktree to check.
+test("--help names each command's effect on .headsign/: read-only commands say so, writing commands name what they write", () => {
+  const result = run(["--help"], { cwd: tmpdir() });
+  const lines = result.stdout.split("\n");
+  const lineFor = (needle: string): string => {
+    const found = lines.find((l) => l.includes(needle));
+    assert.ok(found, `no help line contains '${needle}'`);
+    return found as string;
+  };
+
+  assert.match(lineFor("headsign start "), /writes state\.json, log/);
+  assert.match(lineFor("headsign start "), /tmp\//, "start also says it wipes and recreates tmp/");
+  assert.match(lineFor("headsign next "), /--accept-graph-change/, "the flag itself is named in the usage line");
+  assert.match(lineFor("headsign next "), /writes state\.json, log, lock/);
+  assert.match(lineFor("headsign abort "), /writes state\.json, log/);
+  assert.match(lineFor("headsign status"), /read-only/);
+  assert.match(lineFor("headsign validate "), /read-only/);
+  assert.match(lineFor("headsign claim"), /writes tmp\//);
+  assert.match(lineFor("headsign version"), /read-only/);
+  assert.match(lineFor("headsign help"), /read-only/);
+
+  // The hidden subcommands stay hidden — this test's own line-scan must not accidentally
+  // require them to appear.
+  assert.doesNotMatch(result.stdout, /stop-hook/);
+});
+
 test("src/cli.ts no longer describes the command surface as \"five commands\" now that claim makes six", () => {
   const src = fs.readFileSync(CLI, "utf8");
   assert.doesNotMatch(src, /five commands/);
@@ -2492,6 +2520,57 @@ test("status: a malformed last_stop is read as absent rather than crashing, what
   }
 });
 
+// --- status: the last stop's note ---
+//
+// The motivating case: a run left `running` for days behind an unpassable gate, with only a
+// pause note to say whether that was intended. `.headsign/log`'s `paused` line carries the
+// note, but `status` does not read the log — this is the same fact, read from state.json.
+
+test("status: a paused stop's note appears on its own line under `last stop:`, so a later reader can tell an intended pause from a stuck run", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  writeStopNote(dir, "handing off to review, resume after CI");
+  const paused = run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir }), env: NO_OBSERVER_ENV });
+  assert.equal(paused.status, 0);
+
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^last stop: paused by a note — at \S+$/m);
+  assert.match(result.stdout, /^note: handing off to review, resume after CI$/m);
+});
+
+test("status: a paused stop's note is truncated to 120 chars plus an ellipsis, the same rule the log line's is", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  writeStopNote(dir, "x".repeat(200));
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir }), env: NO_OBSERVER_ENV });
+
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.match(result.stdout, new RegExp(`^note: ${"x".repeat(120)}…$`, "m"));
+});
+
+// The transitional half of the field's tolerance, same criterion as `last_stop` itself: a
+// record written before `note` existed simply lacks it, and must print exactly what it printed
+// before the field existed — no blank or undefined-looking line.
+test("status: a paused disposition with no note (a record predating the field) prints byte-identical output to before the note line existed", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const st = readState(dir) as Record<string, unknown>;
+  st.last_stop = { disposition: "paused", at: "2026-08-14T00:00:00+09:00" };
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(st));
+
+  const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^last stop: paused by a note — at 2026-08-14T00:00:00\+09:00$/m);
+  assert.doesNotMatch(result.stdout, /\nnote:/);
+});
+
 // --- status: last moved (ADR-0027 §7) ---
 
 test("status: a run with no last_drive prints byte-identical output to before this line existed, and never a 'last moved:' line", () => {
@@ -2591,7 +2670,7 @@ test("status: an observing environment's own turn ends leave no last stop to rep
 // ceiling-raising ADR-0017 recommends.
 const TWO_PHASE_WORKFLOW_LOOSENED = TWO_PHASE_WORKFLOW.replace(`run: "test -f marker.txt"`, `run: "true"`);
 
-test("next: a change to the current phase's rules mid-run escalates without ending the run, and `status` keeps asking until it is accepted", () => {
+test("next: a change to the current phase's rules mid-run escalates without ending the run, repeats on a bare `next`, and only --accept-graph-change accepts it", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
   run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
@@ -2600,15 +2679,25 @@ test("next: a change to the current phase's rules mid-run escalates without endi
   const escalated = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(escalated.status, 2);
   assert.match(escalated.stdout, /^ESCALATE build: the workflow's rules changed under this run \(phase 'build'\) — the run is still open and nothing was counted: /);
-  assert.match(escalated.stdout, /run `headsign next` again to accept the change and continue/);
+  assert.match(escalated.stdout, /run `headsign next --accept-graph-change` to accept the change and continue/);
   assert.equal(readState(dir).status, "running", "an ESCALATE that ends nothing");
+
+  // The bug this flag exists to fix: a second, then a third, bare `next` must escalate again —
+  // never accept the change just by being asked again.
+  const escalatedAgain = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(escalatedAgain.status, 2);
+  assert.match(escalatedAgain.stdout, /^ESCALATE build:/);
+  const escalatedYetAgain = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(escalatedYetAgain.status, 2);
+  assert.equal(readState(dir).accepted_graph_changes, 0, "three bare laps have accepted nothing");
+  assert.equal(readState(dir).total_iterations, 0, "and spent no iteration");
 
   const asking = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(asking.status, 0);
-  assert.match(asking.stdout, /^graph: changed since this run accepted it — restore the file, or `headsign next` to accept$/m);
+  assert.match(asking.stdout, /^graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept$/m);
   assert.doesNotMatch(asking.stdout, /accepted change/, "nothing is counted until it is accepted");
 
-  const accepting = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  const accepting = run(["next", "--accept-graph-change"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(accepting.status, 0);
   assert.match(accepting.stdout, /^ADVANCE verify\n/, "the accepted gate ran in the accepting lap");
 
@@ -2617,8 +2706,23 @@ test("next: a change to the current phase's rules mid-run escalates without endi
   assert.doesNotMatch(after.stdout, /changed since this run accepted it/);
   assert.deepEqual(
     readLog(dir).filter((l) => l.includes(" graph-changed ")).map((l) => l.split(" ").slice(-2).join(" ")),
-    ["state=reported phases=build", "state=accepted phases=build"],
+    ["state=reported phases=build", "state=reported phases=build", "state=reported phases=build", "state=accepted phases=build"],
   );
+});
+
+// The flag's own guard, exercised end to end: a habitually-attached flag must be visibly wrong
+// (exit 3), not a quiet no-op that teaches a caller it is always safe to include.
+test("next: --accept-graph-change with nothing reported refuses with exit 3, and leaves the run untouched", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  const before = readLog(dir);
+
+  const refused = run(["next", "--accept-graph-change"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(refused.status, 3);
+  assert.match(refused.stderr, /^ERROR: --accept-graph-change was given, but there is no reported graph change to accept right now\./);
+  assert.equal(readState(dir).status, "running", "a refused flag leaves the run exactly where it was");
+  assert.deepEqual(readLog(dir), before, "and writes no log line");
 });
 
 test("next: COMPLETE names how many changes the run accepted to its own rules, and says nothing when there were none", () => {
@@ -2627,7 +2731,7 @@ test("next: COMPLETE names how many changes the run accepted to its own rules, a
   run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
   writeWorkflow(dir, TWO_PHASE_WORKFLOW_LOOSENED);
   run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // ESCALATE: the change is reported
-  run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // accepted, then ADVANCE verify
+  run(["next", "--accept-graph-change"], { cwd: dir, env: NO_OBSERVER_ENV }); // accepted, then ADVANCE verify
 
   const done = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(done.status, 0);

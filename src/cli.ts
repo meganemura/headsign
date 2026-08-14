@@ -241,8 +241,16 @@ function cmdStart(args: string[]): never {
   return reportStart(engine.start(process.cwd(), resolveWorkflowPath(args), localIso(new Date()), process.env));
 }
 
-function cmdNext(): never {
-  return reportNext(engine.next(process.cwd(), localIso(new Date()), process.env));
+// `next`'s one flag, parsed the same way `resolveWorkflowPath` above parses `--workflow`:
+// located by name, boolean rather than taking a value. Whether the flag may do anything at all
+// — there being a reported change for it to accept — is engine.ts's decision to make (ADR-0018's
+// boundary, restated for this flag); this function only says whether it was typed.
+function resolveAcceptGraphChange(args: string[]): boolean {
+  return args.indexOf("--accept-graph-change") !== -1;
+}
+
+function cmdNext(args: string[]): never {
+  return reportNext(engine.next(process.cwd(), localIso(new Date()), process.env, resolveAcceptGraphChange(args)));
 }
 
 function cmdAbort(args: string[]): never {
@@ -338,17 +346,22 @@ function cmdVersion(): never {
 // Human convenience only, outside the agent-facing contract — why the two hidden hook
 // subcommands are omitted here and why `help`/`version` differ from the six run-facing
 // commands is ADR-0002's, "Six commands, one (driver's) question" section.
+//
+// Each line also names its own effect on .headsign/ — read-only, or which of state.json / log /
+// tmp/ / lock it writes — so a caller under a "don't run headsign here" constraint can tell from
+// this text alone which commands are safe, rather than starting a run in a spare worktree to
+// find out empirically (the situation that motivated adding this).
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
-  headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml)
-  headsign next                                 run the current gate and answer with a verdict
-  headsign abort [reason]                       end the run for good (records why)
+  headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml) — writes state.json, log; wipes and recreates tmp/
+  headsign next [--accept-graph-change]         run the current gate and answer with a verdict — writes state.json, log, lock
+  headsign abort [reason]                       end the run for good (records why) — writes state.json, log
   headsign status                               read-only view of the current run (never judges)
-  headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
-  headsign claim                                claim driver ownership for this delegated agent (see docs)
-  headsign version                              print the version of this copy (also --version)
-  headsign help                                 print this text (also -h, --help, no arguments)
+  headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml — read-only
+  headsign claim                                claim driver ownership for this delegated agent (see docs) — writes tmp/
+  headsign version                              print the version of this copy (also --version) — read-only
+  headsign help                                 print this text (also -h, --help, no arguments) — read-only
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -376,7 +389,7 @@ function main(): void {
   }
   switch (command) {
     case "start": return cmdStart(rest);
-    case "next": return cmdNext();
+    case "next": return cmdNext(rest);
     case "abort": return cmdAbort(rest);
     case "status": return cmdStatus();
     case "validate": return cmdValidate(rest);

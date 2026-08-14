@@ -1138,7 +1138,7 @@ test("last_stop: a nudge records `nudged` alongside the counter it increments, a
   assert.deepEqual(readLog(dir), [`${NOW} held build a=0 i=0 nudges=1`]);
 });
 
-test("last_stop: a consumed pause note records `paused`, in the same write as the paused line", () => {
+test("last_stop: a consumed pause note records `paused`, in the same write as the paused line, and carries the note's first line", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 3 }));
   writeNote(dir, "stepping away");
@@ -1147,8 +1147,21 @@ test("last_stop: a consumed pause note records `paused`, in the same write as th
   assert.deepEqual(decision, { block: false });
   const after = state.readState(dir);
   assert.equal(after?.stop_nudges, 0);
-  assert.deepEqual(after?.last_stop, { disposition: "paused", at: NOW });
+  assert.deepEqual(after?.last_stop, { disposition: "paused", at: NOW, note: "stepping away" });
   assert.equal(readLog(dir).length, 1);
+});
+
+// The value on the record and the value in the line must be the SAME truncation, computed once
+// (noteGateThenNudge's `recordedNote`) — this pins the record's own truncation/ellipsis rule
+// rather than trusting the log line's own test (above) to stand in for it.
+test("last_stop: the recorded note is truncated and ellipsis-marked the same way the log line's is", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ driver_agent: null, stop_nudges: 0 }));
+  writeNote(dir, "x".repeat(200));
+
+  stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  const after = state.readState(dir);
+  assert.equal(after?.last_stop?.note, `${"x".repeat(120)}…`);
 });
 
 // The one stop where the field and the log answer differently, and deliberately: the 5th nudge

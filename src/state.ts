@@ -115,7 +115,12 @@ export interface State {
   // entirely, which a reader must treat as "the only cause `unheld` had back then"
   // (`stop_hook_active`) rather than as damage — see render.ts's default for exactly that
   // reading, which doubles as the fallback for a well-formed record that simply omits it.
-  last_stop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause } | null;
+  //
+  // `note` carries the pause note's first line, already truncated the same way the `paused`
+  // `.headsign/log` line's is (stophook.ts computes that value once and this field reuses it,
+  // never a second truncation) — present only when `disposition` is `"paused"`. Optional for
+  // the same reason `LastFailure.elapsed_seconds` is optional; see there.
+  last_stop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause; note?: string } | null;
 
   // The session that most recently DROVE this run — ran `start`, or a `next` that reached the
   // run — never who is driving it now, which is `driver_agent`'s question, answered by a

@@ -101,13 +101,22 @@ type StopDisposition = NonNullable<State["last_stop"]>["disposition"];
 
 // The record half of "what happened at the last stop". Always applied to the record read INSIDE
 // the lock, and returned for the same write that appends the line, so the field and the log can
-// never disagree about one event. `cause` is passed only by the two `unheld` writers below —
-// every other disposition has nothing upstream to name (state.ts's `last_stop` doc) — and its
-// absence must produce an object with no `cause` key at all, not one holding `undefined`: a
-// caller that compares the written record against a literal without the key (every existing
-// last_stop assertion outside `unheld`) would otherwise see two different shapes.
-function withLastStop(fresh: State, disposition: StopDisposition, nowIso: string, cause?: UnheldCause): State {
-  return { ...fresh, last_stop: cause !== undefined ? { disposition, at: nowIso, cause } : { disposition, at: nowIso } };
+// never disagree about one event. `cause` is passed only by the two `unheld` writers below, and
+// `note` only by the pause writer — every other disposition has nothing upstream to name
+// (state.ts's `last_stop` doc) — and each one's absence must produce an object with no key for
+// it at all, not one holding `undefined`: a caller that compares the written record against a
+// literal without the key (every existing last_stop assertion outside `unheld`/`paused`) would
+// otherwise see two different shapes.
+function withLastStop(fresh: State, disposition: StopDisposition, nowIso: string, cause?: UnheldCause, note?: string): State {
+  return {
+    ...fresh,
+    last_stop: {
+      disposition,
+      at: nowIso,
+      ...(cause !== undefined ? { cause } : {}),
+      ...(note !== undefined ? { note } : {}),
+    },
+  };
 }
 
 // The whole body of both hooks' `unheld` writers — the flagged branches and the
@@ -230,7 +239,9 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
       // leaves the pause note unconsumed, so the next turn still pauses".
       const paused = withRunLock(runDir, (fresh) => {
         fs.rmSync(notePath, { force: true });
-        const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso);
+        // Same value the log line just below carries — one truncation, read twice, never
+        // recomputed (state.ts's `last_stop.note` doc).
+        const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso, undefined, recordedNote);
         return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: recordedNote }) };
       });
       // Either the pause was recorded, or somebody is judging right now — both mean the turn

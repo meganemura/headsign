@@ -835,11 +835,20 @@ function graphLogLines(dir: string): string[] {
 }
 
 // `next` and then the answer, with the two non-answers (a refusal, an invalid workflow) turned
-// into a test failure that names what came back instead.
-function lap(dir: string): engine.Outcome {
-  const result = engine.next(dir, LAP_TIME, NO_ENV);
+// into a test failure that names what came back instead. `acceptGraphChange` defaults to false
+// so every call site that predates the flag keeps asking for an ordinary lap.
+function lap(dir: string, acceptGraphChange = false): engine.Outcome {
+  const result = engine.next(dir, LAP_TIME, NO_ENV, acceptGraphChange);
   if (result.kind !== "ANSWERED") assert.fail(`expected an answered lap, got ${result.kind}: ${JSON.stringify(result)}`);
   return result.outcome;
+}
+
+// A lap that is expected to be REFUSED (cli.ts's exit 3 lane) — `--accept-graph-change` used
+// where there is nothing outstanding for it to accept.
+function lapRefused(dir: string, acceptGraphChange: boolean): string {
+  const result = engine.next(dir, LAP_TIME, NO_ENV, acceptGraphChange);
+  if (result.kind !== "REFUSED") assert.fail(`expected a refused lap, got ${result.kind}: ${JSON.stringify(result)}`);
+  return result.message;
 }
 
 // `implement`'s gate is a file check so a lap can be made to fail (RETRY, stays put) or pass
@@ -897,7 +906,7 @@ test("graph pin: rewriting the current phase's gate escalates without ending the
     assert.equal(
       outcome.reason,
       `implement: the workflow's rules changed under this run (phase 'implement') — the run is still open and nothing was counted: ` +
-        `restore '${path.join(dir, ".headsign", "workflow.yaml")}' to what this run has been running, or run \`headsign next\` again to accept the change and continue. ` +
+        `restore '${path.join(dir, ".headsign", "workflow.yaml")}' to what this run has been running, or run \`headsign next --accept-graph-change\` to accept the change and continue. ` +
         "An accepted change is counted and reported at COMPLETE.",
     );
     // One line, like the ceiling's reason: it is the tail of ESCALATE's token line.
@@ -915,15 +924,28 @@ test("graph pin: rewriting the current phase's gate escalates without ending the
   assert.deepEqual(graphLogLines(dir), [`${LAP_TIME} graph-changed implement a=0 i=0 state=reported phases=implement`]);
 });
 
-test("graph pin: asking again accepts the change, counts it once, and runs the NEW gate in that same lap", () => {
+// A bare `next` must never be how a reported change is accepted — that was the bug this flag
+// exists to fix (a driver issuing several `next`s in a row used to consume the ESCALATE nobody
+// had read). Repeated bare laps keep escalating, spend nothing, and only
+// `--accept-graph-change` — with a matching report already outstanding — accepts.
+test("graph pin: a bare `next` escalates every time a change is outstanding, never accepting it; only --accept-graph-change does", () => {
   const dir = startedRun(pinnedWorkflow());
   const pinBefore = runState(dir).graph_fingerprint as Record<string, string>;
   writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
-  assert.equal(lap(dir).kind, "ESCALATE");
+
+  // Three bare laps in a row: three ESCALATEs, no matter how many times it is asked.
+  for (let i = 0; i < 3; i++) {
+    assert.equal(lap(dir).kind, "ESCALATE", `bare lap ${i + 1} must still escalate`);
+  }
+  const stillPending = runState(dir);
+  assert.equal(stillPending.total_iterations, 0, "no bare lap spends an iteration");
+  assert.deepEqual(stillPending.attempts, {}, "no bare lap spends an attempt");
+  assert.equal(stillPending.accepted_graph_changes, 0, "no bare lap counts an acceptance");
+  assert.match(stillPending.graph_change_reported as string, /^[0-9a-f]{64}$/);
 
   // The accepted gate is `true`, so a lap that actually ran it advances — which is how this
-  // test can tell acceptance from a second report.
-  assert.equal(lap(dir).kind, "ADVANCE");
+  // test can tell acceptance from a fourth report.
+  assert.equal(lap(dir, true).kind, "ADVANCE");
 
   const after = runState(dir);
   assert.equal(after.accepted_graph_changes, 1);
@@ -932,8 +954,38 @@ test("graph pin: asking again accepts the change, counts it once, and runs the N
   assert.notEqual((after.graph_fingerprint as Record<string, string>).implement, pinBefore.implement, "the pin moved onto the accepted rules");
   assert.deepEqual(graphLogLines(dir).map((l) => l.split(" ").slice(-2).join(" ")), [
     "state=reported phases=implement",
+    "state=reported phases=implement",
+    "state=reported phases=implement",
     "state=accepted phases=implement",
   ]);
+});
+
+// The flag's own guard: it must refuse rather than silently behave like a bare lap when there
+// is nothing for it to accept — the whole point of splitting acceptance out of repetition.
+test("graph pin: --accept-graph-change with no reported change refuses (exit 3 lane), and never writes anything", () => {
+  const dir = startedRun(pinnedWorkflow());
+  const before = fs.readFileSync(path.join(dir, ".headsign", "state.json"));
+
+  const message = lapRefused(dir, true);
+  assert.match(message, /--accept-graph-change/);
+  assert.match(message, /no reported graph change to accept/);
+  assert.deepEqual(fs.readFileSync(path.join(dir, ".headsign", "state.json")), before, "a refused flag leaves the record untouched");
+  assert.deepEqual(graphLogLines(dir), []);
+});
+
+// A run that never wrote a graph_fingerprint at all (a legacy record) has nothing pinned, so
+// the flag is refused the same way — there is no report the flag could be confirming.
+test("graph pin: --accept-graph-change on a run whose pin has nothing pending also refuses, once the outstanding report is gone", () => {
+  const dir = startedRun(pinnedWorkflow());
+  writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ESCALATE");
+
+  // Restoring clears the report for free (see the test just below) — nothing is left for the
+  // flag to confirm.
+  writeWorkflowFile(dir, pinnedWorkflow());
+  assert.equal(lap(dir).kind, "RETRY");
+
+  assert.match(lapRefused(dir, true), /no reported graph change to accept/);
 });
 
 // The reason restoring must cost nothing: it is the most correct response to the report, and a
@@ -1051,7 +1103,7 @@ test("graph pin: an accepted change is carried all the way to COMPLETE, and a ru
   const dir = startedRun(pinnedWorkflow());
   writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
   assert.equal(lap(dir).kind, "ESCALATE");
-  assert.equal(lap(dir).kind, "ADVANCE");
+  assert.equal(lap(dir, true).kind, "ADVANCE");
   assert.deepEqual(lap(dir), { kind: "COMPLETE", acceptedGraphChanges: 1 });
   // A reprint of a finished run says the same thing: asking twice must not lose the fact.
   assert.deepEqual(lap(dir), { kind: "COMPLETE", acceptedGraphChanges: 1 });
@@ -1059,6 +1111,17 @@ test("graph pin: an accepted change is carried all the way to COMPLETE, and a ru
   const untouched = startedRun(pinnedWorkflow({ implementGate: "true" }));
   assert.equal(lap(untouched).kind, "ADVANCE");
   assert.deepEqual(lap(untouched), { kind: "COMPLETE" }, "no key at all, so the output is byte-identical to what it always was");
+});
+
+// The flag must not quietly do what a bare reprint does, even once the run has ended: a
+// finished run has nothing outstanding either, so `--accept-graph-change` refuses there too
+// rather than silently reprinting the terminal outcome as if the flag had gone unnoticed.
+test("graph pin: --accept-graph-change on an already-finished run refuses instead of silently reprinting it", () => {
+  const dir = startedRun(pinnedWorkflow({ implementGate: "true" }));
+  assert.equal(lap(dir).kind, "ADVANCE");
+  assert.equal(lap(dir).kind, "COMPLETE");
+
+  assert.match(lapRefused(dir, true), /no reported graph change to accept/);
 });
 
 // --- ADR-0027: last_drive, the session that most recently drove this run ---

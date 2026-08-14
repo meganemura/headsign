@@ -201,7 +201,9 @@ export function statusRunning(o: {
   // disposition but `unheld`, and on an `unheld` record only when it predates the field or the
   // reader dropped it — either way `lastStopWording` below reads that absence as
   // `stop_hook_active`, `unheld`'s one cause before this change existed.
-  lastStop?: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause };
+  // `note` rides along only on `paused`, and only when the recorded value is non-empty — the
+  // same one-field-can-be-dropped-without-losing-the-line treatment `cause` gets on `unheld`.
+  lastStop?: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause; note?: string };
   // The other half of the pair `last stop:` above starts (ADR-0027 §7): when the run was last
   // ATTRIBUTED a stop (`lastStop.at`) versus when it was last MOVED (this). A plain timestamp,
   // never an identifier — engine.ts's status reader strips the session id before it ever
@@ -242,13 +244,22 @@ export function statusRunning(o: {
   const accepted = o.acceptedGraphChanges ?? 0;
   const acceptedLine =
     accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run\n` : "";
-  const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n" : "";
+  // Names the flag, not "run `headsign next` to accept": a bare `next` no longer accepts a
+  // reported change (it escalates again, idempotently), so the old wording would be exactly the
+  // lie the ESCALATE reason's own wording was corrected out of — see graphChangedReason.
+  const reportedLine = o.graphChangeReported
+    ? "graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept\n"
+    : "";
   // Directly after `driver:`, which is the other line about who and what happened at a turn
   // boundary, and ahead of the `graph:` lines, which are about the rules rather than the run's
   // stops. The timestamp is printed VERBATIM: this module reads no clock, cannot know the
   // reader's timezone, and the stored value already carries its own offset — reformatting or
   // truncating it to a wall clock would be inventing a fact the writer did not record.
   const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} — at ${o.lastStop.at}\n` : "";
+  // One line, directly under `last stop:`, and only for `paused` with a note to show: the
+  // consumed note's first line is what a later reader most needs to tell an intended pause from
+  // a stuck run left mid-work (the motivating case this line exists for).
+  const noteLine = o.lastStop?.disposition === "paused" && o.lastStop.note ? `note: ${o.lastStop.note}\n` : "";
   // Directly after `last stop:` and before the graph lines (ADR-0027 §7), not directly under
   // `driver:` — that slot would print like an explanation of the claim handshake, which this
   // line has nothing to do with. The two timestamps belong together instead: one says when a
@@ -260,7 +271,7 @@ export function statusRunning(o: {
   // conditional lines above the phase block, which comes after everything else in turn.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
   const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for

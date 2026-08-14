@@ -7874,8 +7874,10 @@ ${o.lastFailure.outputTail}
   const accepted = o.acceptedGraphChanges ?? 0;
   const acceptedLine = accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run
 ` : "";
-  const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next` to accept\n" : "";
+  const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next --accept-graph-change` to accept\n" : "";
   const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} \u2014 at ${o.lastStop.at}
+` : "";
+  const noteLine = o.lastStop?.disposition === "paused" && o.lastStop.note ? `note: ${o.lastStop.note}
 ` : "";
   const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} \u2014 turn ends from any other session pass without a nudge
 ` : "";
@@ -7886,7 +7888,7 @@ ${o.description}
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${lastStopLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
+${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -8022,8 +8024,16 @@ function resolveAgentId(raw) {
 function resolveSessionId(raw) {
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
-function withLastStop(fresh, disposition, nowIso, cause) {
-  return { ...fresh, last_stop: cause !== void 0 ? { disposition, at: nowIso, cause } : { disposition, at: nowIso } };
+function withLastStop(fresh, disposition, nowIso, cause, note) {
+  return {
+    ...fresh,
+    last_stop: {
+      disposition,
+      at: nowIso,
+      ...cause !== void 0 ? { cause } : {},
+      ...note !== void 0 ? { note } : {}
+    }
+  };
 }
 function recordUnheld(runDir, nowIso, cause) {
   withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso, cause), log: stamped(nowIso, { kind: "UNHELD", cause }) }));
@@ -8080,7 +8090,7 @@ function noteGateThenNudge(runDir, startDir, state, nowIso) {
       const recordedNote = firstLine === trimmedNote ? firstLine : `${firstLine}\u2026`;
       const paused = withRunLock(runDir, (fresh) => {
         fs3.rmSync(notePath, { force: true });
-        const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso);
+        const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso, void 0, recordedNote);
         return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: recordedNote }) };
       });
       return { block: false };
@@ -8197,14 +8207,16 @@ var UNHELD_CAUSES = ["stop_hook_active", "CLAUDE_PROJECT_DIR"];
 function recordedLastStop(state) {
   const recorded = state.last_stop;
   if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
-  const { disposition, at, cause } = recorded;
+  const { disposition, at, cause, note } = recorded;
   if (typeof at !== "string" || at.length === 0) return null;
   if (!STOP_DISPOSITIONS.includes(disposition)) return null;
   const known = disposition === "unheld" && UNHELD_CAUSES.includes(cause);
+  const noteKnown = disposition === "paused" && typeof note === "string" && note.length > 0;
   return {
     disposition,
     at,
-    ...known ? { cause } : {}
+    ...known ? { cause } : {},
+    ...noteKnown ? { note } : {}
   };
 }
 function recordedLastMoved(state) {
@@ -8406,10 +8418,14 @@ function start2(cwd, workflowPath, nowIso, env) {
   const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
   return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
 }
-function next(cwd, nowIso, env) {
+function terminalAnswer(current, acceptGraphChange) {
+  if (acceptGraphChange) return { kind: "REFUSED", message: NOTHING_TO_ACCEPT_MESSAGE };
+  return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+}
+function next(cwd, nowIso, env, acceptGraphChange = false) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
-  if (current.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+  if (current.status !== "running") return terminalAnswer(current, acceptGraphChange);
   const loaded = load(current.workflow_path);
   if (!loaded.workflow) return { kind: "WORKFLOW_INVALID", workflowPath: current.workflow_path, errors: loaded.errors };
   const wf = loaded.workflow;
@@ -8420,12 +8436,12 @@ function next(cwd, nowIso, env) {
   try {
     const fresh = readState(cwd);
     if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
-    if (fresh.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(fresh), workflowName: fresh.workflow };
+    if (fresh.status !== "running") return terminalAnswer(fresh, acceptGraphChange);
     const drive = driveStamp(env, nowIso);
     const diskDrive = fresh.last_drive ?? null;
     const stamped2 = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
     if (stamped2 !== fresh) writeState(cwd, stamped2);
-    return evaluateNext(cwd, wf, stamped2, nowIso);
+    return evaluateNext(cwd, wf, stamped2, nowIso, acceptGraphChange);
   } finally {
     releaseLock(cwd);
   }
@@ -8433,12 +8449,13 @@ function next(cwd, nowIso, env) {
 function unrunnableMessage(state, what, reason) {
   return `phase '${state.phase}': could not run ${what} \u2014 ${reason}. headsign has no verdict to act on, so the run has not moved and no attempt was spent. Fix that command in '${state.workflow_path}', or the environment it needs, and run \`headsign next\` again.`;
 }
+var NOTHING_TO_ACCEPT_MESSAGE = "--accept-graph-change was given, but there is no reported graph change to accept right now. Run `headsign next` (without the flag) to see this lap's actual answer.";
 function graphChangedReason(state, changed) {
   const noun = changed.length === 1 ? "phase" : "phases";
   const named = changed.map((key) => `'${key}'`).join(", ");
-  return `${state.phase}: the workflow's rules changed under this run (${noun} ${named}) \u2014 the run is still open and nothing was counted: restore '${state.workflow_path}' to what this run has been running, or run \`headsign next\` again to accept the change and continue. An accepted change is counted and reported at COMPLETE.`;
+  return `${state.phase}: the workflow's rules changed under this run (${noun} ${named}) \u2014 the run is still open and nothing was counted: restore '${state.workflow_path}' to what this run has been running, or run \`headsign next --accept-graph-change\` to accept the change and continue. An accepted change is counted and reported at COMPLETE.`;
 }
-function reconcileGraphPin(cwd, wf, current, nowIso) {
+function reconcileGraphPin(cwd, wf, current, nowIso, acceptGraphChange) {
   const computed = graphFingerprint(wf, current.phase);
   const saved = recordedFingerprint(current);
   const marker = recordedGraphMarker(current);
@@ -8450,7 +8467,14 @@ function reconcileGraphPin(cwd, wf, current, nowIso) {
     graph_change_reported: null,
     accepted_graph_changes: count
   });
+  const accept = () => {
+    const accepting = adopt(accepted + 1);
+    writeState(cwd, accepting);
+    appendLog(cwd, logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "accepted", keys: changed }, accepting));
+    return { kind: "CONTINUE", state: accepting };
+  };
   if (changed.length === 0) {
+    if (acceptGraphChange) return { kind: "REFUSE", message: NOTHING_TO_ACCEPT_MESSAGE };
     if (marker === null) return { kind: "CONTINUE", state: adopt(accepted) };
     const restored = adopt(accepted);
     writeState(cwd, restored);
@@ -8458,25 +8482,26 @@ function reconcileGraphPin(cwd, wf, current, nowIso) {
   }
   const digest = fingerprintDigest(computed);
   const limitsOnly = changed.every((key) => key === LIMITS_KEY);
-  if (limitsOnly || marker === digest) {
-    const accepting = adopt(accepted + 1);
-    writeState(cwd, accepting);
-    appendLog(cwd, logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "accepted", keys: changed }, accepting));
-    return { kind: "CONTINUE", state: accepting };
+  if (limitsOnly) {
+    if (acceptGraphChange) return { kind: "REFUSE", message: NOTHING_TO_ACCEPT_MESSAGE };
+    return accept();
   }
+  if (marker === digest && acceptGraphChange) return accept();
+  if (acceptGraphChange) return { kind: "REFUSE", message: NOTHING_TO_ACCEPT_MESSAGE };
   const reporting = { ...current, graph_change_reported: digest };
   writeState(cwd, reporting);
   appendLog(cwd, logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "reported", keys: changed }, reporting));
   return { kind: "REPORT", outcome: { kind: "ESCALATE", reason: graphChangedReason(current, changed) } };
 }
-function evaluateNext(cwd, wf, incoming, nowIso) {
+function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange) {
   if (!wf.phases[incoming.phase]) {
     return {
       kind: "REFUSED",
       message: `workflow '${incoming.workflow_path}' no longer defines phase '${incoming.phase}', which this run is currently on. Restore that phase in the workflow file, or run \`headsign abort <reason>\` to end this run.`
     };
   }
-  const pin = reconcileGraphPin(cwd, wf, incoming, nowIso);
+  const pin = reconcileGraphPin(cwd, wf, incoming, nowIso, acceptGraphChange);
+  if (pin.kind === "REFUSE") return { kind: "REFUSED", message: pin.message };
   if (pin.kind === "REPORT") return { kind: "ANSWERED", outcome: pin.outcome, workflowName: wf.name, wf };
   const current = pin.state;
   const limitOutcome = checkIterationLimit(wf, current);
@@ -8737,8 +8762,11 @@ function reportStatus(result) {
 function cmdStart(args) {
   return reportStart(start2(process.cwd(), resolveWorkflowPath(args), localIso(/* @__PURE__ */ new Date()), process.env));
 }
-function cmdNext() {
-  return reportNext(next(process.cwd(), localIso(/* @__PURE__ */ new Date()), process.env));
+function resolveAcceptGraphChange(args) {
+  return args.indexOf("--accept-graph-change") !== -1;
+}
+function cmdNext(args) {
+  return reportNext(next(process.cwd(), localIso(/* @__PURE__ */ new Date()), process.env, resolveAcceptGraphChange(args)));
 }
 function cmdAbort(args) {
   return reportAbort(abort2(process.cwd(), args.join(" "), localIso(/* @__PURE__ */ new Date())));
@@ -8780,14 +8808,14 @@ function cmdVersion() {
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
 
 Usage:
-  headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml)
-  headsign next                                 run the current gate and answer with a verdict
-  headsign abort [reason]                       end the run for good (records why)
+  headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml) \u2014 writes state.json, log; wipes and recreates tmp/
+  headsign next [--accept-graph-change]         run the current gate and answer with a verdict \u2014 writes state.json, log, lock
+  headsign abort [reason]                       end the run for good (records why) \u2014 writes state.json, log
   headsign status                               read-only view of the current run (never judges)
-  headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml
-  headsign claim                                claim driver ownership for this delegated agent (see docs)
-  headsign version                              print the version of this copy (also --version)
-  headsign help                                 print this text (also -h, --help, no arguments)
+  headsign validate [name] [--workflow <path>]  defaults to the current run's workflow, then .headsign/workflow.yaml \u2014 read-only
+  headsign claim                                claim driver ownership for this delegated agent (see docs) \u2014 writes tmp/
+  headsign version                              print the version of this copy (also --version) \u2014 read-only
+  headsign help                                 print this text (also -h, --help, no arguments) \u2014 read-only
 
 \`next\` answers on line 1: ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT.
 Exit codes: 0 advance or complete, 1 retry or pending, 2 escalate or abort,
@@ -8812,7 +8840,7 @@ function main() {
     case "start":
       return cmdStart(rest);
     case "next":
-      return cmdNext();
+      return cmdNext(rest);
     case "abort":
       return cmdAbort(rest);
     case "status":

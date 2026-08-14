@@ -619,7 +619,7 @@ test("statusRunning: a reported-but-unaccepted change names both ways out", () =
   assert.equal(
     actual,
     "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
-      "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n",
+      "graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept\n",
   );
 });
 
@@ -632,7 +632,7 @@ test("statusRunning: history first, then the outstanding question", () => {
     actual,
     "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
       "graph: 2 accepted changes to the workflow's rules during this run\n" +
-      "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n",
+      "graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept\n",
   );
 });
 
@@ -670,6 +670,42 @@ test("statusRunning: each disposition prints its own last-stop line, verbatim", 
   );
 });
 
+// The one line that answers what a bare `last stop: paused by a note` cannot: what the note
+// actually said. Only for `paused`, only when the recorded value is present — the motivating
+// case is a run left `running` for days, where this is the difference between an intended pause
+// and a stuck one.
+test("statusRunning: a paused disposition with a note prints it on its own line directly under `last stop:`", () => {
+  const base = { phase: "decide", attempt: 0, attemptUnknown: false, workflowName: "design-grilling", lastFailure: null, driver: "not delegated yet — no agent has claimed this run" } as const;
+  const at = "2026-07-30T23:06:51+09:00";
+  const actual = render.statusRunning({ ...base, lastStop: { disposition: "paused", at, note: "handing off to review, resume after CI" } });
+  assert.equal(
+    actual,
+    `RUNNING decide (attempt 0)\nworkflow: design-grilling\ndriver: not delegated yet — no agent has claimed this run\n` +
+      `last stop: paused by a note — at ${at}\n` +
+      `note: handing off to review, resume after CI\n`,
+  );
+});
+
+// A record predating this field (or a `paused` record a tolerant reader dropped the note from)
+// must print byte-identical to before the note line existed — the same guarantee `cause`'s
+// absence gets on `unheld`.
+test("statusRunning: a paused disposition with no note prints the same one line as before the note existed", () => {
+  const base = { phase: "decide", attempt: 0, attemptUnknown: false, workflowName: "design-grilling", lastFailure: null, driver: "not delegated yet — no agent has claimed this run" } as const;
+  const at = "2026-07-30T23:06:51+09:00";
+  const actual = render.statusRunning({ ...base, lastStop: { disposition: "paused", at } });
+  assert.equal(actual, `RUNNING decide (attempt 0)\nworkflow: design-grilling\ndriver: not delegated yet — no agent has claimed this run\nlast stop: paused by a note — at ${at}\n`);
+  assert.doesNotMatch(actual, /\nnote:/);
+});
+
+// A note on any other disposition must never print: only `paused` has one to show, and a
+// forged or hand-edited record must not choose otherwise.
+test("statusRunning: a note is never printed on a disposition other than paused, even if one is present", () => {
+  const base = { phase: "decide", attempt: 0, attemptUnknown: false, workflowName: "design-grilling", lastFailure: null, driver: "not delegated yet — no agent has claimed this run" } as const;
+  const at = "2026-07-30T23:06:51+09:00";
+  const actual = render.statusRunning({ ...base, lastStop: { disposition: "nudged", at, note: "should never print" } });
+  assert.doesNotMatch(actual, /note:/);
+});
+
 // The stored value carries its own offset, and this module reads no clock and cannot know the
 // reader's timezone: reformatting it — or truncating it to a bare wall clock, which is what the
 // original report asked for — would be inventing a fact the writer did not record.
@@ -692,7 +728,7 @@ test("statusRunning: the last-stop line lands after the driver line and before t
     "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
       "last stop: held, and pointed back to headsign next — at T\n" +
       "graph: 1 accepted change to the workflow's rules during this run\n" +
-      "graph: changed since this run accepted it — restore the file, or `headsign next` to accept\n",
+      "graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept\n",
   );
 });
 

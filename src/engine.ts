@@ -145,7 +145,7 @@ const UNHELD_CAUSES: readonly UnheldCause[] = ["stop_hook_active", "CLAUDE_PROJE
 function recordedLastStop(state: State): NonNullable<State["last_stop"]> | null {
   const recorded: unknown = state.last_stop;
   if (typeof recorded !== "object" || recorded === null || Array.isArray(recorded)) return null;
-  const { disposition, at, cause } = recorded as { disposition?: unknown; at?: unknown; cause?: unknown };
+  const { disposition, at, cause, note } = recorded as { disposition?: unknown; at?: unknown; cause?: unknown; note?: unknown };
   if (typeof at !== "string" || at.length === 0) return null;
   // An unknown disposition is dropped rather than passed through: render.ts turns the word into
   // a phrase through a fixed map, so a word it has no phrase for would print nothing useful and
@@ -158,10 +158,14 @@ function recordedLastStop(state: State): NonNullable<State["last_stop"]> | null 
   // line is what a record written by an older headsign needs; failing would blank a line that
   // used to print (ADR-0026).
   const known = disposition === "unheld" && UNHELD_CAUSES.includes(cause as UnheldCause);
+  // Same drop-the-field-not-the-line treatment as `cause`, gated on `paused` the same way
+  // `cause` is gated on `unheld` — state.ts's `last_stop.note` doc.
+  const noteKnown = disposition === "paused" && typeof note === "string" && note.length > 0;
   return {
     disposition: disposition as NonNullable<State["last_stop"]>["disposition"],
     at,
     ...(known ? { cause: cause as UnheldCause } : {}),
+    ...(noteKnown ? { note: note as string } : {}),
   };
 }
 
@@ -435,7 +439,7 @@ export type StatusResult =
       // has a sentence for — an `unheld` whose cause is missing or unrecognized still reports
       // its disposition, and render.ts supplies the cause that word carried before the field
       // existed (ADR-0026).
-      lastStop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause } | null;
+      lastStop: { disposition: "nudged" | "unheld" | "paused" | "stalled"; at: string; cause?: UnheldCause; note?: string } | null;
       // When this run was last MOVED — `start`ed, or reached by a `next` (ADR-0027 §7) — never
       // who moved it: `recordedLastMoved` returns only the timestamp, so the session id cannot
       // travel any further than this module even by accident. null when no drive has been
@@ -601,14 +605,30 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
   return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
 }
 
+// The answer a terminal (non-"running") record gets, with one exception: `--accept-graph-change`
+// on a run that has already ended has nothing to accept either, so it refuses the same way it
+// would mid-run rather than silently reprinting the terminal outcome as if the flag had been
+// ignored — the flag must never quietly do what a bare `next` does. Shared by both of `next`'s
+// terminal checks below (the pre-lock read and the re-read under it) so the two cannot answer
+// this one question differently.
+function terminalAnswer(current: State, acceptGraphChange: boolean): NextResult {
+  if (acceptGraphChange) return { kind: "REFUSED", message: NOTHING_TO_ACCEPT_MESSAGE };
+  return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+}
+
 // One lap of `headsign next`: read the record, check the run is still going, load the
 // workflow, take the lock, re-read, check again, evaluate, release, answer. The order is the
 // point — it is the part of ADR-0002's transition table that a table cannot draw — and so is
 // the fact that every question that could refuse does so before anything is written.
-export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextResult {
+//
+// `acceptGraphChange` carries cli.ts's `--accept-graph-change` intent: cli.ts only parses the
+// flag, this module decides whether it may do anything (ADR-0018's boundary, restated for this
+// flag). Defaulted to `false` so every existing caller — every test in the suite that predates
+// the flag included — keeps asking for an ordinary lap without having to say so.
+export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, acceptGraphChange = false): NextResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
-  if (current.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+  if (current.status !== "running") return terminalAnswer(current, acceptGraphChange);
 
   const loaded = workflowMod.load(current.workflow_path);
   if (!loaded.workflow) return { kind: "WORKFLOW_INVALID", workflowPath: current.workflow_path, errors: loaded.errors };
@@ -637,7 +657,7 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextR
     // adoption gate. The stamp just below is last_drive, answering a different question
     // (ADR-0027 §4).
 
-    if (fresh.status !== "running") return { kind: "ANSWERED", outcome: terminalOutcome(fresh), workflowName: fresh.workflow };
+    if (fresh.status !== "running") return terminalAnswer(fresh, acceptGraphChange);
 
     // Stamp who ran this lap (ADR-0027 §5): the two commands a driver runs, `start` and every
     // `next` that reaches this point, record who ran them — including PENDING and the global
@@ -648,12 +668,13 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextR
     // Written HERE, once, immediately after the last check that can refuse without reaching the
     // run — and threaded into evaluateNext as `current` rather than left for that function's
     // own writeState calls to preserve — because that is what stamps every path below
-    // (PENDING, the ceiling, a graph-change report, gate-unrunnable and route-error REFUSEDs,
-    // ADVANCE/RETRY/COMPLETE/ESCALATE) without an exception list: every one of those either
-    // writes no state of its own, or spreads `...current` into whatever it does write, so the
-    // stamp rides along either way. A REFUSED reached before this line (no run, the lock held,
-    // an invalid workflow) never had the run's own record in hand to begin with, which is why
-    // none of them stamp anything (ADR-0027 §3's list of what does not reach the run).
+    // (PENDING, the ceiling, a graph-change report, a graph-change REFUSE from
+    // `--accept-graph-change` finding nothing to accept, gate-unrunnable and route-error
+    // REFUSEDs, ADVANCE/RETRY/COMPLETE/ESCALATE) without an exception list: every one of those
+    // either writes no state of its own, or spreads `...current` into whatever it does write, so
+    // the stamp rides along either way. A REFUSED reached before this line (no run, the lock
+    // held, an invalid workflow) never had the run's own record in hand to begin with, which is
+    // why none of them stamp anything (ADR-0027 §3's list of what does not reach the run).
     //
     // The write condition mirrors ADR-0027 §5's "record what there is to record OR clear a
     // stale record" rule directly: a resolvable session always writes, an unresolvable one
@@ -667,7 +688,7 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv): NextR
     const stamped: State = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
     if (stamped !== fresh) state.writeState(cwd, stamped);
 
-    return evaluateNext(cwd, wf, stamped, nowIso);
+    return evaluateNext(cwd, wf, stamped, nowIso, acceptGraphChange);
   } finally {
     state.releaseLock(cwd);
   }
@@ -696,53 +717,81 @@ function unrunnableMessage(state: State, what: string, reason: string): string {
 }
 
 // What the graph pin decides for this lap: either the lap goes on (with the state it must go
-// on WITH — see reconcileGraphPin) or the change is handed to a person and the lap is over.
-// The reported arm is narrowed to ESCALATE by the same idiom CeilingOutcome uses, but spelled
-// out rather than reusing that alias: this report is not the ceiling, and a type named for the
-// ceiling appearing here would say it was.
-type PinResult = { kind: "CONTINUE"; state: State } | { kind: "REPORT"; outcome: Extract<Outcome, { kind: "ESCALATE" }> };
+// on WITH — see reconcileGraphPin) or the change is handed to a person and the lap is over, or
+// the caller's own `--accept-graph-change` was itself the mistake (nothing outstanding for it
+// to accept). REFUSE is spelled out as its own arm, not folded into REPORT, because it is a
+// different kind of answer: REPORT is a real ESCALATE the run just produced, REFUSE is cli.ts's
+// exit 3 usage-error lane (evaluateNext turns it into a REFUSED, never into an outcome a
+// workflow author could route on). The reported arm is narrowed to ESCALATE by the same idiom
+// CeilingOutcome uses, but spelled out rather than reusing that alias: this report is not the
+// ceiling, and a type named for the ceiling appearing here would say it was.
+type PinResult =
+  | { kind: "CONTINUE"; state: State }
+  | { kind: "REPORT"; outcome: Extract<Outcome, { kind: "ESCALATE" }> }
+  | { kind: "REFUSE"; message: string };
+
+// The refusal `--accept-graph-change` earns when there is nothing outstanding for it to accept
+// — the flag's whole job is to refuse to be a habit: a caller that passes it on every lap must
+// see this exit 3 the first time nothing is pending, not a quiet, ordinary-looking answer that
+// teaches them the flag is free to always include.
+const NOTHING_TO_ACCEPT_MESSAGE =
+  "--accept-graph-change was given, but there is no reported graph change to accept right now. " +
+  "Run `headsign next` (without the flag) to see this lap's actual answer.";
 
 // Same skeleton as the ceiling's reason, because it is the same kind of answer: an ESCALATE
-// that ends nothing. So it has to name both ways forward — put the file back, or ask again —
-// and say what asking again will cost, since accepting is counted and reported at the end.
-// One line, no embedded newline, for the reason ADR-0017's own ceiling-reason parenthetical
-// gives: the tail of ESCALATE's token line and one `.headsign/log` record.
+// that ends nothing. So it has to name both ways forward — put the file back, or accept — and
+// say what accepting will cost, since it is counted and reported at the end. Names the FLAG,
+// not "run `headsign next` again": a bare `next` no longer accepts a reported change (it
+// escalates again, idempotently — see reconcileGraphPin), so the old wording would have become
+// a false claim about what asking again does. One line, no embedded newline, for the reason
+// ADR-0017's own ceiling-reason parenthetical gives: the tail of ESCALATE's token line and one
+// `.headsign/log` record.
 function graphChangedReason(state: State, changed: string[]): string {
   const noun = changed.length === 1 ? "phase" : "phases";
   const named = changed.map((key) => `'${key}'`).join(", ");
   return (
     `${state.phase}: the workflow's rules changed under this run (${noun} ${named}) — the run is still open and nothing was counted: ` +
-    `restore '${state.workflow_path}' to what this run has been running, or run \`headsign next\` again to accept the change and continue. ` +
+    `restore '${state.workflow_path}' to what this run has been running, or run \`headsign next --accept-graph-change\` to accept the change and continue. ` +
     "An accepted change is counted and reported at COMPLETE."
   );
 }
 
 // Compare the rules this run pinned against the rules now on disk, and decide the lap's fate.
-// Four answers, and the reasoning behind each is the whole of this feature:
+// Five answers now (`--accept-graph-change` split what used to be case 4 into two), and the
+// reasoning behind each is the whole of this feature:
 //
 //   1. Nothing pinned (a run older than these fields) or nothing this run depends on moved:
 //      carry on. The pin follows the reachable set silently — see changedFingerprintKeys for
 //      why a key on one side only is not a difference. If a report was outstanding and the
 //      difference is now gone, somebody put the file back: clear the marker and say nothing.
 //      Restoring must be free and silent, or the most correct response to the report is the
-//      one that costs the most.
-//   2. Only `$limits` moved: accept it on the spot, count it, and CARRY ON — no report. The
-//      ceiling's own ESCALATE was already the human beat (ADR-0017): a person read the wall,
-//      decided the run deserved more room, and raised it. Asking them to confirm the decision
-//      they just made would make the documented way to resume cost two laps and teach everyone
-//      that the report is noise.
-//   3. A phase moved and this exact difference has not been reported yet: report it. Write the
-//      MARKER ONLY — not the fingerprint, not the counters, not the phase. Leaving the
-//      fingerprint on the rules the run has been running is what makes (1) reachable: update
-//      it here and a restored file becomes a second difference, escalating again and counting
-//      the correction as a change.
-//   4. A phase moved and this exact difference is the one already reported: accept it, count
-//      it, clear the marker, carry on. The person has now been shown it and asked again.
+//      one that costs the most. `acceptGraphChange` here has nothing to accept either way, so
+//      it refuses (case 5 below) rather than silently doing what a bare lap would have done.
+//   2. Only `$limits` moved: accept it on the spot, count it, and CARRY ON — no report, and no
+//      role for the flag (§7 below). The ceiling's own ESCALATE was already the human beat
+//      (ADR-0017): a person read the wall, decided the run deserved more room, and raised it.
+//      Asking them to confirm the decision they just made would make the documented way to
+//      resume cost two laps and teach everyone that the report is noise.
+//   3. A phase moved and `acceptGraphChange` is true, with the recorded marker matching the
+//      digest just computed (the acceptance condition, unchanged by this flag's existence):
+//      accept it, count it, clear the marker, carry on. Never reachable from a bare `next` —
+//      that is the entire point of the flag existing.
+//   4. A phase moved and this exact difference has not been reported yet, OR it has and the
+//      caller did not pass `--accept-graph-change`: report it (again, if this is a repeat of an
+//      already-outstanding question — see the comment at the write below for why repeating is
+//      deliberate). Write the MARKER — not the fingerprint, not the counters, not the phase.
+//      Leaving the fingerprint on the rules the run has been running is what makes (1)
+//      reachable: update it here and a restored file becomes a second difference, escalating
+//      again and counting the correction as a change.
+//   5. `acceptGraphChange` is true but nothing above matched (limits-only, or a phase change
+//      whose marker does not match the digest just computed, or nothing changed at all):
+//      refuse. The flag can never quietly fall back to a bare lap's behaviour — that is what
+//      made the bug this flag exists to fix possible in the first place.
 //
 // The state this returns is the state the rest of the lap must use. step() builds its answer
 // from the state it is handed, so handing it the pre-acceptance object would write the
 // acceptance straight back out of existence.
-function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: string): PinResult {
+function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: string, acceptGraphChange: boolean): PinResult {
   const computed = workflowMod.graphFingerprint(wf, current.phase);
   const saved = recordedFingerprint(current);
   const marker = recordedGraphMarker(current);
@@ -756,8 +805,15 @@ function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: st
     graph_change_reported: null,
     accepted_graph_changes: count,
   });
+  const accept = (): PinResult => {
+    const accepting = adopt(accepted + 1);
+    state.writeState(cwd, accepting);
+    state.appendLog(cwd, render.logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "accepted", keys: changed }, accepting));
+    return { kind: "CONTINUE", state: accepting };
+  };
 
   if (changed.length === 0) {
+    if (acceptGraphChange) return { kind: "REFUSE", message: NOTHING_TO_ACCEPT_MESSAGE };
     if (marker === null) return { kind: "CONTINUE", state: adopt(accepted) };
     const restored = adopt(accepted);
     state.writeState(cwd, restored);
@@ -766,13 +822,23 @@ function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: st
 
   const digest = workflowMod.fingerprintDigest(computed);
   const limitsOnly = changed.every((key) => key === workflowMod.LIMITS_KEY);
-  if (limitsOnly || marker === digest) {
-    const accepting = adopt(accepted + 1);
-    state.writeState(cwd, accepting);
-    state.appendLog(cwd, render.logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "accepted", keys: changed }, accepting));
-    return { kind: "CONTINUE", state: accepting };
+  // A limits-only change is never "reported", so the flag has nothing of its own to confirm
+  // here — ADR-0023's unchanged auto-accept only runs on a bare lap.
+  if (limitsOnly) {
+    if (acceptGraphChange) return { kind: "REFUSE", message: NOTHING_TO_ACCEPT_MESSAGE };
+    return accept();
   }
+  // The one case that may accept: the flag is present AND the current digest matches what was
+  // already reported. Repetition of the flag alone (without a matching marker) is exactly the
+  // habit this feature exists to refuse.
+  if (marker === digest && acceptGraphChange) return accept();
+  if (acceptGraphChange) return { kind: "REFUSE", message: NOTHING_TO_ACCEPT_MESSAGE };
 
+  // Bare `next`: report — again, if the marker already named this exact digest — and escalate.
+  // Idempotent in the digest it reports, never in silence: each ask is a real question really
+  // asked, the same reason the ceiling repeats its line at the wall on every lap that finds it
+  // still standing there, and it is what keeps this branch from ever being mistaken for
+  // acceptance by repetition.
   const reporting: State = { ...current, graph_change_reported: digest };
   state.writeState(cwd, reporting);
   state.appendLog(cwd, render.logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "reported", keys: changed }, reporting));
@@ -783,7 +849,7 @@ function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: st
 // step/writeState), run while next() holds the lock. Private, and reachable only from behind
 // that guard sequence: nothing here re-checks that the run is still going, because the only
 // caller has just done it against a fresh read.
-function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string): NextResult {
+function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string, acceptGraphChange: boolean): NextResult {
   if (!wf.phases[incoming.phase]) {
     return {
       kind: "REFUSED",
@@ -796,7 +862,8 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   // The graph pin's position is the whole of it — ADR-0023 §4's own words: "Check the graph
   // before using the graph," after the phase-missing guard and before everything that reads a
   // rule.
-  const pin = reconcileGraphPin(cwd, wf, incoming, nowIso);
+  const pin = reconcileGraphPin(cwd, wf, incoming, nowIso, acceptGraphChange);
+  if (pin.kind === "REFUSE") return { kind: "REFUSED", message: pin.message };
   if (pin.kind === "REPORT") return { kind: "ANSWERED", outcome: pin.outcome, workflowName: wf.name, wf };
   const current = pin.state;
 
