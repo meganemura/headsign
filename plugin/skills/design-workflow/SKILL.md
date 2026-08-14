@@ -632,6 +632,25 @@ bookkeeping**: the claim is about the repository, while anything under
 `.headsign/tmp/` is folded away by the next `start` — which is also why the
 first check has to tolerate a missing mark rather than failing on it.
 
+**That mark is the general mechanism for anything one round needs to tell the
+next**, not just a decreasing count. A file under `.headsign/tmp/` that no
+phase's `clear:` names is untouched by every phase entry and wiped only by the
+next `start`, so its lifetime is exactly one run — which is the lifetime a
+per-round tally wants. Write it in the last check for the reason above, and a
+later round can gate on it, compare against it, or hand it to whoever is doing
+the work. Reach for it whenever a quantity only means something next to the
+previous round's version of itself: how many items a round settled, how many it
+deferred, how many it had to ask about.
+
+**What it cannot do is reach the instructions.** A phase's `description` is
+handed to the agent exactly as written in the file — nothing substitutes a value
+into it — so a round's number cannot appear in the text the next round is given.
+The way across is the same one everything else uses: have the description *tell*
+the agent to read the file. "Read `.headsign/tmp/settled-count` before you
+start; if it is above zero, last round's questions were answerable from the
+sources they already cite" is instruction the agent can act on, and the number
+stays where a gate can also check it.
+
 **When a check fails, sort the failure into one of four kinds. Only one of
 them is yours to fix.**
 
