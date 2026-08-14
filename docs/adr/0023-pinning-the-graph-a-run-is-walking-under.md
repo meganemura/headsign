@@ -82,6 +82,28 @@ same shell a person does, so no act headsign can demand is one only a human can
 perform. A ceremony that pretends otherwise would be claiming what it cannot
 prove (protects #3).
 
+> **Retracted 2026-08-14, and the premise is the part that survives.** A report
+> issued four `next` calls in one shell command. The first escalated with "human
+> judgment needed"; the second was read as acceptance; the third and fourth
+> advanced two phases. Nobody saw the first output, and the change was counted as
+> accepted.
+>
+> What this section got right is that no act headsign can demand proves a human
+> performed it — that stands, and a flag does not prove it either. What does not
+> follow is the conclusion. Acceptance is now
+> `headsign next --accept-graph-change`, and the property it buys is not
+> authentication but **distinguishability**: a caller repeating one command can no
+> longer perform the other by accident. The old shape made retrying and accepting
+> the same input, so a batch, a loop, or a retry-on-failure wrapper accepted
+> silently — and this section's own §4 asymmetry is the tell it missed, since
+> putting the file back was already explicit and free while accepting was "do the
+> same thing again."
+>
+> The flag refuses with exit 3 when no reported change is outstanding, so it
+> cannot be carried habitually on every `next`; a bare `next` re-reports for as
+> many laps as it is asked, counting and spending nothing. §7's limits-only path
+> is untouched — it never reports, so there is nothing there to accept.
+
 **7. A change to `limits` alone is never reported.** It is accepted on the
 spot, counted, and the lap carries on — so the ceiling and the raise that
 answers it stay one stop, as ADR-0017 designed. The reason is not convenience:

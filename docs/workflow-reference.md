@@ -984,10 +984,20 @@ phases that moved. You then have two ways forward:
 
 - **put the file back**, and the next `next` matches the fingerprint again, says
   nothing, and costs nothing. Restoring is free;
-- **run `headsign next` again**, which accepts the change and carries on. An
-  accepted change is counted, and `COMPLETE` says how many a run accepted —
-  because `.headsign/log` is gitignored and never reaches a pull request, while
-  the final answer is read by whoever is being reported to.
+- **run `headsign next --accept-graph-change`**, which accepts the change and
+  carries on. An accepted change is counted, and `COMPLETE` says how many a run
+  accepted — because `.headsign/log` is gitignored and never reaches a pull
+  request, while the final answer is read by whoever is being reported to.
+
+**A bare `next` never accepts, however many times it is asked.** It reports the
+same change again, counts nothing, and spends neither an attempt nor an
+iteration. That is deliberate: acceptance and retrying used to be the same
+command, so anything that issued `next` more than once without reading the
+output in between — a batch, a loop, a wrapper that retries on non-zero — could
+accept a rules change with nobody having seen the report. The flag is not a
+claim that a human ran it, which headsign cannot know; it is what makes the two
+acts different inputs. Carrying it habitually does not work either: with no
+reported change outstanding, it exits 3 rather than behaving like a plain `next`.
 
 Two things are deliberately quiet. A change to a phase this run can no longer
 reach is not reported at all — the run doesn't depend on it. And a change to

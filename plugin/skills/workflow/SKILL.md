@@ -166,9 +166,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    `max_total_iterations (<n>) reached`: the user can raise that limit. The
    other reads `the workflow's rules changed under this run` — the workflow file was edited while the run
    was walking it, which headsign allows but reports once; the user either
-   puts the file back or tells you to run `headsign next` again, which accepts
-   the change and counts it (the count is named at `COMPLETE`). If *you* made
-   that edit, say so plainly when you report it. **Some edits are not reported,
+   puts the file back or tells you to run `headsign next --accept-graph-change`,
+   which accepts the change and counts it (the count is named at `COMPLETE`).
+   **A bare `next` never accepts it, however many times you run it** — it
+   reports the same change again and spends nothing, so do not try to get past
+   this by asking twice. If *you* made that edit, say so plainly when you report
+   it. **Some edits are not reported,
    and silence there means "not a pinned key", never "not noticed"** — so do
    not read it as permission you were granted, or as a report that failed.
    What is pinned is the rules of every phase this run can still reach, plus
