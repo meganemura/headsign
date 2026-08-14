@@ -76,7 +76,10 @@ test("fail defaults to retry", () => {
     phase: "a",
     attempt: 1,
     maxAttempts: undefined,
-    failure: { check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined },
+    failure: {
+      check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined,
+      checksTotal: undefined, checksRun: undefined, notRunChecks: undefined,
+    },
     repeats: 1,
   });
 });
@@ -90,7 +93,10 @@ test("fail routes to a named phase (ADVANCE with failure note); attempts of the 
     kind: "ADVANCE",
     phase: "implement",
     description: "implement",
-    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined, routedTo: "implement" },
+    failure: {
+      check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined,
+      checksTotal: undefined, checksRun: undefined, notRunChecks: undefined, routedTo: "implement",
+    },
   });
 });
 
@@ -250,7 +256,10 @@ test("a failing gate never consults the route list: on_fail decides, and routedB
     kind: "ADVANCE",
     phase: "d",
     description: "d",
-    failure: { check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined, routedTo: "d" },
+    failure: {
+      check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined,
+      checksTotal: undefined, checksRun: undefined, notRunChecks: undefined, routedTo: "d",
+    },
   });
 });
 

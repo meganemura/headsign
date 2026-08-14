@@ -53,6 +53,22 @@ export interface CheckFailure {
   // has to clear first: render.Failure is fed a `CheckFailure` directly by cli.ts, so it cannot
   // drop its `?` while this field keeps one.
   elapsedSeconds?: number;
+  // How many checks this gate declares, and how many of them ran before this one failed and
+  // the loop stopped (runGate still stops at the first failure — that doesn't change here,
+  // only what gets reported about it). `checksRun` always counts the failing check itself, so
+  // `checksTotal - checksRun` is how many never got a turn this lap. Optional for the same
+  // reason `elapsedSeconds` above is: existing `GateVerdict` fixtures (tests/engine.test.ts's
+  // `FAIL()`) predate the field and set neither.
+  checksTotal?: number;
+  checksRun?: number;
+  // Names of the checks after the failing one, in gate order — same name-or-run fallback as
+  // `check` above. Whoever prints these decides whether an empty list (the failing check was
+  // the last one) is worth a line; this module only supplies the fact.
+  notRunChecks?: string[];
+}
+
+function checkName(c: Check): string {
+  return c.name ?? c.run;
 }
 
 // Three outcomes, not two, and the third is not a kind of failure: `fail` is an answered gate,
@@ -78,9 +94,10 @@ function elapsedSecondsSince(startedAt: bigint): number {
 }
 
 export function runGate(checks: Check[], cwd: string): GateResult {
-  for (const c of checks) {
+  for (let i = 0; i < checks.length; i++) {
+    const c = checks[i];
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
-    const check = c.name ?? c.run;
+    const check = checkName(c);
     const startedAt = process.hrtime.bigint();
     const result = spawnSync("/bin/sh", ["-c", c.run], {
       cwd,
@@ -93,12 +110,17 @@ export function runGate(checks: Check[], cwd: string): GateResult {
     const elapsedSeconds = elapsedSecondsSince(startedAt);
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error as NodeJS.ErrnoException | undefined;
+    // Computed unconditionally, ahead of both fail arms below (timeout and ordinary nonzero
+    // exit) that share it: the checks after index i are exactly the ones this lap never got to.
+    const checksTotal = checks.length;
+    const checksRun = i + 1;
+    const notRunChecks = checks.slice(i + 1).map(checkName);
     if (spawnError?.code === "ETIMEDOUT") {
       // A timeout is a verdict, deliberately NOT an unrunnable check — ADR-0021 §4.
       // `elapsedSeconds` lands close to `timeoutSeconds` here, which is itself the
       // confirmation that the check really did run to the limit rather than being cut short
       // some other way.
-      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds };
+      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     if (spawnError) {
       // The runner itself couldn't execute/complete the check (e.g. ENOBUFS despite
@@ -109,7 +131,9 @@ export function runGate(checks: Check[], cwd: string): GateResult {
       // report.
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
-    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds };
+    if (result.status !== 0) {
+      return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds, checksTotal, checksRun, notRunChecks };
+    }
   }
   return { kind: "pass" };
 }

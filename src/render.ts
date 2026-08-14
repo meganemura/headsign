@@ -24,7 +24,14 @@ export function start(phase: string, description: string, cleared?: string[], no
 // `elapsedSeconds` on it. `unrunnable`/`pass` are not a second reason — neither ever reaches
 // this type at all (see `durSuffix` below: every live `fail` sets it). `clause()` below omits
 // the clause rather than print `undefined`.
-type Failure = { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number };
+// `checksTotal`/`checksRun`/`notRunChecks` (gate.ts's CheckFailure fields, carried through
+// engine.ts unmodified) are optional for the same reason `elapsedSeconds` above is: a fixture
+// built before these fields existed has none of them. `notRunLine` below reads their absence,
+// or an empty `notRunChecks`, as "nothing to add" rather than printing an empty line.
+type Failure = {
+  check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number;
+  checksTotal?: number; checksRun?: number; notRunChecks?: string[];
+};
 
 // `routedBy` is present only for a k-way `on_pass` (ADR-0011) and adds exactly one line, in
 // the same slot the gate-failed line uses (the two never co-occur: one is the pass path, the
@@ -80,12 +87,37 @@ export function pending(phase: string, description: string, ready: string): stri
 // would need running an arbitrary shell to know, and is not this function's business.
 export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string; repeats?: number }): string {
   const n = o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  // Right after the gate-failed line, ahead of the repeats line: this one is about the gate's
+  // own shape (how many of its checks this lap reached), the repeats line is about history
+  // across laps — see notRunLine's own comment for why that ordering is deliberate.
+  const notRun = notRunLine(o.checksRun, o.checksTotal, o.notRunChecks);
   const repeating = o.repeats !== undefined && o.repeats >= 2;
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time — ${o.repeats} in a row ---\n` : "";
+  // Said only where a budget exists to run out of: a phase with no `max_attempts` has nothing
+  // to spend, so asserting a run-ending consequence there would be a claim this function cannot
+  // back up. `headsign start` over an ended run begins at the workflow's entry phase
+  // (engine.ts's `start`), which is the one fact this sentence states.
+  const exhaustionClause =
+    repeating && o.maxAttempts !== undefined
+      ? " Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase."
+      : "";
   const closing = repeating
-    ? "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.\n"
+    ? `This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.${exhaustionClause}\n`
     : "Fix the failure above, then run `headsign next` again.\n";
-  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${repeatLine}${o.outputTail}\n${closing}`;
+  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${notRun}${repeatLine}${o.outputTail}\n${closing}`;
+}
+
+// One line naming what this lap's gate never got to, right after the gate-failed line: `runGate`
+// still stops at the first failure (unchanged — see gate.ts), so the checks after it never ran;
+// this line is where the output says so. Suppressed when there is nothing to name — the
+// failing check was the last one, or the trio is absent (an old fixture built before this field
+// existed) — "N of N ran, 0 not run" states nothing a reader didn't already know from the RETRY
+// line itself.
+// Same `checksRun >= checksTotal` suppression test as ranSuffix below, so a fixture can never
+// make the RETRY output and the log line disagree about whether anything was left unrun.
+function notRunLine(checksRun?: number, checksTotal?: number, notRunChecks?: string[]): string {
+  if (checksRun === undefined || checksTotal === undefined || notRunChecks === undefined || checksRun >= checksTotal) return "";
+  return `--- ${checksRun} of ${checksTotal} checks ran; ${notRunChecks.length} not run: ${notRunChecks.join(", ")} ---\n`;
 }
 
 // ADR-0016 §5 allows a run to rewrite its own workflow while running; ADR-0023 §8 is why the
@@ -384,12 +416,20 @@ function durSuffix(elapsedSeconds?: number): string {
   return elapsedSeconds === undefined ? "" : ` dur=${elapsedSeconds}s`;
 }
 
+// Trailing, after `dur=`, for the same "existing scripts keep working" reason: appended, never
+// inserted. Empty under the same condition notRunLine above suppresses its own line on — the
+// two must agree, or a hand-built fixture could make the log say one thing and the RETRY output
+// say another about the same lap.
+function ranSuffix(checksRun?: number, checksTotal?: number): string {
+  return checksRun === undefined || checksTotal === undefined || checksRun >= checksTotal ? "" : ` ran=${checksRun}/${checksTotal}`;
+}
+
 function logDetail(event: LogEvent, prevPhase?: string): string {
   switch (event.kind) {
     case "START":
       return `workflow=${event.workflow}`;
     case "RETRY":
-      return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`;
+      return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}${ranSuffix(event.failure.checksRun, event.failure.checksTotal)}`;
     case "ADVANCE":
       // Which branch of a k-way `on_pass` was taken, and why the log is the record of it
       // that outlives the run: ADR-0011's Consequences.

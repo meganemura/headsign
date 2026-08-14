@@ -198,6 +198,112 @@ test("retry: elapsedSeconds is ignored on the timeout arm — 'timed out after N
   assert.equal(actual, expected);
 });
 
+// --- checksTotal/checksRun/notRunChecks: naming what this lap's gate never got to ---
+
+test("retry: a failure partway through a multi-check gate adds a line naming the checks that didn't run", () => {
+  const actual = render.retry({
+    check: "lint",
+    run: "eslint",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+    checksTotal: 3,
+    checksRun: 2,
+    notRunChecks: ["unit tests"],
+  });
+  const expected =
+    `RETRY 1/3 build\n` +
+    `--- gate failed: lint (eslint, exit 1) ---\n` +
+    `--- 2 of 3 checks ran; 1 not run: unit tests ---\n` +
+    `some output\n` +
+    "Fix the failure above, then run `headsign next` again.\n";
+  assert.equal(actual, expected);
+});
+
+test("retry: a failure on the last check of a gate adds no not-run line — nothing was left unrun", () => {
+  const actual = render.retry({
+    check: "lint",
+    run: "eslint",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+    checksTotal: 3,
+    checksRun: 3,
+    notRunChecks: [],
+  });
+  const expected = `RETRY 1/3 build\n--- gate failed: lint (eslint, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
+  assert.equal(actual, expected);
+});
+
+test("retry: two or more not-run checks are comma-separated, in gate order", () => {
+  const actual = render.retry({
+    check: "lint",
+    run: "eslint",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 4,
+    outputTail: "some output",
+    checksTotal: 4,
+    checksRun: 1,
+    notRunChecks: ["unit tests", "eslint --fix-dry-run"],
+  });
+  const expected =
+    `RETRY 1/4 build\n` +
+    `--- gate failed: lint (eslint, exit 1) ---\n` +
+    `--- 1 of 4 checks ran; 2 not run: unit tests, eslint --fix-dry-run ---\n` +
+    `some output\n` +
+    "Fix the failure above, then run `headsign next` again.\n";
+  assert.equal(actual, expected);
+});
+
+test("retry: omitting checksTotal/checksRun/notRunChecks entirely adds no not-run line — an old fixture's shape", () => {
+  const actual = render.retry({
+    check: "lint",
+    run: "eslint",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+  });
+  const expected = `RETRY 1/3 build\n--- gate failed: lint (eslint, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
+  assert.equal(actual, expected);
+});
+
+// The not-run line and the repeats line can both apply to the same RETRY: the ordering
+// requirement is gate-failed -> not-run -> repeats, because the not-run line is about the
+// gate's own shape and the repeats line is about history across laps.
+test("retry: the not-run line lands between the gate-failed line and the repeats line when both apply", () => {
+  const actual = render.retry({
+    check: "lint",
+    run: "eslint",
+    exitCode: 1,
+    phase: "build",
+    attempt: 2,
+    maxAttempts: 3,
+    outputTail: "some output",
+    checksTotal: 3,
+    checksRun: 2,
+    notRunChecks: ["unit tests"],
+    repeats: 2,
+  });
+  const expected =
+    `RETRY 2/3 build\n` +
+    `--- gate failed: lint (eslint, exit 1) ---\n` +
+    `--- 2 of 3 checks ran; 1 not run: unit tests ---\n` +
+    `--- same check, same exit code, same output as last time — 2 in a row ---\n` +
+    `some output\n` +
+    "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; " +
+    "if you did not, work out whether this gate can pass at all before spending the rest of your attempts. " +
+    "Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase.\n";
+  assert.equal(actual, expected);
+});
+
 // --- repeats: the same-failure-in-a-row line (2026-08-13) ---
 
 test("retry: repeats explicitly 1 prints byte-identical to omitting it entirely — a first failure changes nothing", () => {
@@ -224,6 +330,8 @@ test("retry: repeats explicitly 1 prints byte-identical to omitting it entirely 
   assert.equal(withOne, `RETRY 1/3 build\n--- gate failed: tests (npm test, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`);
 });
 
+// maxAttempts is set here (3), so the exhaustion clause (below) now applies — this test pins
+// the repeats-2 shape with it present, same as a real phase with a budget would show.
 test("retry: repeats 2 adds one line after the gate-failed line and replaces the closing sentence", () => {
   const actual = render.retry({
     check: "tests",
@@ -241,8 +349,46 @@ test("retry: repeats 2 adds one line after the gate-failed line and replaces the
     `--- same check, same exit code, same output as last time — 2 in a row ---\n` +
     `some output\n` +
     "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; " +
+    "if you did not, work out whether this gate can pass at all before spending the rest of your attempts. " +
+    "Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase.\n";
+  assert.equal(actual, expected);
+});
+
+// --- the exhaustion clause: what happens once attempts run out (2026-08-14) ---
+
+test("retry: repeats 2 with no maxAttempts adds no exhaustion clause — there is no budget to run out", () => {
+  const actual = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    phase: "build",
+    attempt: 2,
+    maxAttempts: undefined,
+    outputTail: "some output",
+    repeats: 2,
+  });
+  const expected =
+    `RETRY 2 build\n` +
+    `--- gate failed: tests (npm test, exit 1) ---\n` +
+    `--- same check, same exit code, same output as last time — 2 in a row ---\n` +
+    `some output\n` +
+    "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; " +
     "if you did not, work out whether this gate can pass at all before spending the rest of your attempts.\n";
   assert.equal(actual, expected);
+});
+
+test("retry: repeats 1 with maxAttempts set still adds no exhaustion clause — only the repeats-2 branch says it", () => {
+  const actual = render.retry({
+    check: "tests",
+    run: "npm test",
+    exitCode: 1,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    outputTail: "some output",
+    repeats: 1,
+  });
+  assert.equal(actual, `RETRY 1/3 build\n--- gate failed: tests (npm test, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`);
 });
 
 test("retry: repeats 2 never asserts the gate cannot pass", () => {
@@ -734,6 +880,44 @@ test("logLine: retry with elapsedSeconds appends dur= after exit=, the existing 
   };
   const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
   assert.equal(line, `ts retry build a=1 i=1 check="tests" exit=1 dur=12.3s\n`);
+});
+
+test("logLine: retry with checks left unrun appends ran= after dur=, short like the rest of the fields", () => {
+  const outcome = {
+    kind: "RETRY" as const,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    failure: { check: "lint", run: "eslint", exitCode: 1, outputTail: "x", elapsedSeconds: 1.2, checksTotal: 3, checksRun: 2, notRunChecks: ["unit tests"] },
+    repeats: 1,
+  };
+  const line = render.logLine("ts", outcome, baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 }));
+  assert.equal(line, `ts retry build a=1 i=1 check="lint" exit=1 dur=1.2s ran=2/3\n`);
+});
+
+// The failing check was the last of the gate's own checks: nothing was left unrun, so ran=
+// is left off entirely — byte-identical to a log line with no checksTotal/checksRun at all.
+test("logLine: retry with nothing left unrun (last check failed) omits ran= — byte-identical to the line with no checksTotal/checksRun", () => {
+  const withCounts = {
+    kind: "RETRY" as const,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    failure: { check: "lint", run: "eslint", exitCode: 1, outputTail: "x", checksTotal: 3, checksRun: 3, notRunChecks: [] },
+    repeats: 1,
+  };
+  const withoutCounts = {
+    kind: "RETRY" as const,
+    phase: "build",
+    attempt: 1,
+    maxAttempts: 3,
+    failure: { check: "lint", run: "eslint", exitCode: 1, outputTail: "x" },
+    repeats: 1,
+  };
+  const state = baseState({ phase: "build", attempts: { build: 1 }, total_iterations: 1 });
+  const line = render.logLine("ts", withCounts, state);
+  assert.equal(line, render.logLine("ts", withoutCounts, state));
+  assert.equal(line, `ts retry build a=1 i=1 check="lint" exit=1\n`);
 });
 
 test("logLine: pass advance", () => {

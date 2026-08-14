@@ -7696,6 +7696,9 @@ import path3 from "node:path";
 
 // src/gate.ts
 import { spawnSync } from "node:child_process";
+function checkName(c) {
+  return c.name ?? c.run;
+}
 var DEFAULT_TIMEOUT_SECONDS = 120;
 var OUTPUT_TAIL_LIMIT = 4e3;
 function elapsedSecondsSince(startedAt) {
@@ -7703,9 +7706,10 @@ function elapsedSecondsSince(startedAt) {
   return Math.round(ms / 100) / 10;
 }
 function runGate(checks, cwd) {
-  for (const c of checks) {
+  for (let i = 0; i < checks.length; i++) {
+    const c = checks[i];
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
-    const check = c.name ?? c.run;
+    const check = checkName(c);
     const startedAt = process.hrtime.bigint();
     const result = spawnSync("/bin/sh", ["-c", c.run], {
       cwd,
@@ -7718,13 +7722,18 @@ function runGate(checks, cwd) {
     const elapsedSeconds = elapsedSecondsSince(startedAt);
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
     const spawnError = result.error;
+    const checksTotal = checks.length;
+    const checksRun = i + 1;
+    const notRunChecks = checks.slice(i + 1).map(checkName);
     if (spawnError?.code === "ETIMEDOUT") {
-      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds };
+      return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     if (spawnError) {
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
-    if (result.status !== 0) return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds };
+    if (result.status !== 0) {
+      return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds, checksTotal, checksRun, notRunChecks };
+    }
   }
   return { kind: "pass" };
 }
@@ -7801,14 +7810,22 @@ This is not a failure. Do the work above so the gate can run, then run \`headsig
 }
 function retry(o) {
   const n = o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  const notRun = notRunLine(o.checksRun, o.checksTotal, o.notRunChecks);
   const repeating = o.repeats !== void 0 && o.repeats >= 2;
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time \u2014 ${o.repeats} in a row ---
 ` : "";
-  const closing = repeating ? "This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.\n" : "Fix the failure above, then run `headsign next` again.\n";
+  const exhaustionClause = repeating && o.maxAttempts !== void 0 ? " Once attempts run out, this run ends; running `headsign start` again begins a new run from the entry phase." : "";
+  const closing = repeating ? `This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.${exhaustionClause}
+` : "Fix the failure above, then run `headsign next` again.\n";
   return `RETRY ${n} ${o.phase}
 --- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---
-${repeatLine}${o.outputTail}
+${notRun}${repeatLine}${o.outputTail}
 ${closing}`;
+}
+function notRunLine(checksRun, checksTotal, notRunChecks) {
+  if (checksRun === void 0 || checksTotal === void 0 || notRunChecks === void 0 || checksRun >= checksTotal) return "";
+  return `--- ${checksRun} of ${checksTotal} checks ran; ${notRunChecks.length} not run: ${notRunChecks.join(", ")} ---
+`;
 }
 function complete(name, acceptedGraphChanges2) {
   const accepted = acceptedGraphChanges2 ?? 0;
@@ -7940,12 +7957,15 @@ function eventName(event) {
 function durSuffix(elapsedSeconds) {
   return elapsedSeconds === void 0 ? "" : ` dur=${elapsedSeconds}s`;
 }
+function ranSuffix(checksRun, checksTotal) {
+  return checksRun === void 0 || checksTotal === void 0 || checksRun >= checksTotal ? "" : ` ran=${checksRun}/${checksTotal}`;
+}
 function logDetail(event, prevPhase) {
   switch (event.kind) {
     case "START":
       return `workflow=${event.workflow}`;
     case "RETRY":
-      return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}`;
+      return `check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}${ranSuffix(event.failure.checksRun, event.failure.checksTotal)}`;
     case "ADVANCE":
       if (event.routedBy) {
         const why = "when" in event.routedBy ? `routed-when="${event.routedBy.when}"` : "routed-default";
@@ -8248,8 +8268,8 @@ function step(workflow, state, gateResult, route) {
     return { state: next2, outcome: { kind: "ADVANCE", phase: to, description: describePhase(workflow, to), ...routedBy && { routedBy } } };
   }
   next2.attempts[phaseName] = (next2.attempts[phaseName] ?? 0) + 1;
-  const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds } = gateResult;
-  const failure = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
+  const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks } = gateResult;
+  const failure = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
   const repeats = sameFailureStreak(state.last_failure, phaseName, failure);
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== void 0 && next2.attempts[phaseName] >= maxAttempts) {

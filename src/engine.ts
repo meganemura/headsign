@@ -303,8 +303,8 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   next.attempts[phaseName] = (next.attempts[phaseName] ?? 0) + 1;
   // Destructure rather than reuse gateResult as-is: it also carries `kind: "fail"`,
   // which must not leak into the outcome's public FailureInfo shape.
-  const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds } = gateResult;
-  const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds };
+  const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks } = gateResult;
+  const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
   // Computed once, ahead of both branches below that can use it (exhaustion and retry): it
   // reads `state.last_failure`, which the exhaustion branch is about to null out, so it has to
   // run before that happens either way.

@@ -120,6 +120,38 @@ test("a check that cannot be launched is unrunnable, naming the check and the er
   }
 });
 
+// --- checksTotal/checksRun/notRunChecks: what a stopped-early lap never got to ---
+
+test("a failure partway through a gate reports how many checks ran and names the ones that didn't", () => {
+  const result = gate.runGate([{ run: "true" }, { name: "lint", run: "exit 1" }, { name: "unit tests", run: "true" }], tmpdir());
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
+    assert.equal(result.checksTotal, 3);
+    assert.equal(result.checksRun, 2);
+    assert.deepEqual(result.notRunChecks, ["unit tests"]);
+  }
+});
+
+test("a failure on the last check leaves nothing not run", () => {
+  const result = gate.runGate([{ run: "true" }, { run: "true" }, { name: "lint", run: "exit 1" }], tmpdir());
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
+    assert.equal(result.checksTotal, 3);
+    assert.equal(result.checksRun, 3);
+    assert.deepEqual(result.notRunChecks, []);
+  }
+});
+
+test("more than one not-run check is named in gate order, run: standing in for a check with no name:", () => {
+  const result = gate.runGate([{ name: "first", run: "exit 1" }, { name: "second", run: "true" }, { run: "echo third" }], tmpdir());
+  assert.equal(result.kind, "fail");
+  if (result.kind === "fail") {
+    assert.equal(result.checksTotal, 3);
+    assert.equal(result.checksRun, 1);
+    assert.deepEqual(result.notRunChecks, ["second", "echo third"]);
+  }
+});
+
 test("an unrunnable check stops the gate where it is: later checks do not run", () => {
   const dir = tmpdir();
   const brokenCwd = path.join(dir, "does-not-exist");
