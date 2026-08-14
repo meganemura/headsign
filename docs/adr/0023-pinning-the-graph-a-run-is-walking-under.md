@@ -95,9 +95,9 @@ prove (protects #3).
 > authentication but **distinguishability**: a caller repeating one command can no
 > longer perform the other by accident. The old shape made retrying and accepting
 > the same input, so a batch, a loop, or a retry-on-failure wrapper accepted
-> silently — and this section's own §4 asymmetry is the tell it missed, since
-> putting the file back was already explicit and free while accepting was "do the
-> same thing again."
+> silently — and §5's asymmetry is the tell this section missed, since restoring
+> the file was already free and silent while accepting was "do the same thing
+> again."
 >
 > The flag refuses with exit 3 when no reported change is outstanding, so it
 > cannot be carried habitually on every `next`; a bare `next` re-reports for as
