@@ -1,6 +1,6 @@
 {
   "name": "headsign",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A tiny phase gate for coding agents: your shell checks decide pass/fail (never the LLM), your workflow routes the agent (advance / retry / escalate / done). Claude Code drives, headsign holds the state.",
   "author": {
     "name": "meganemura",

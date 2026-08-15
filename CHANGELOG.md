@@ -9,6 +9,109 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-15
+
+Field reports drove almost all of this one, and they cluster: most of what
+changed is headsign saying something it already knew and had been keeping to
+itself. A gate that failed named the check that failed and nothing else. A run
+that could not be resumed looked exactly like one nobody had touched. A driver
+deciding whether to spend an attempt had no way to learn what spending the last
+one would do.
+
+### Changed
+
+- **Accepting a mid-run change to the workflow's rules is now its own command.**
+  It used to be "run `headsign next` again" — the same input as an ordinary
+  retry. That made acceptance something a caller could perform without meaning
+  to: anything issuing `next` more than once without reading the output in
+  between (a batch, a loop, a wrapper that retries on non-zero) accepted a rules
+  change with nobody having seen the report. Acceptance is now
+  `headsign next --accept-graph-change`; a bare `next` re-reports the change for
+  as many laps as you ask, counting nothing and spending neither an attempt nor
+  an iteration. The flag refuses with exit 3 when no reported change is
+  outstanding, so it cannot be carried habitually. **If you have a script that
+  relied on the second `next` accepting, it now needs the flag.** The reasoning
+  this replaces — that a separate command would claim what it cannot prove — is
+  retracted in
+  [ADR-0023](docs/adr/0023-pinning-the-graph-a-run-is-walking-under.md), with the
+  half of it that still stands: the flag proves nothing about who ran it, and
+  never claimed to. What it buys is that repeating one command can no longer
+  perform the other by accident.
+
+### Added
+
+- **`headsign status` now prints the current phase's instructions**, in the same
+  `--- phase: <name> ---` block `start` and `next` print. Those instructions used
+  to exist only in the output of a judgment, so re-reading them cost either an
+  attempt or nothing at all. This matters most where the work is delegated: an
+  agent that never runs headsign cannot see the gate's requirements at all, and
+  this block is what gets handed over — verbatim rather than from memory.
+
+- **A run paused with a note now says so on `status`.** The note is still
+  consumed at the stop it was written for, but its first line stays on the
+  record, under `last stop:`. A run parked deliberately on a gate that needs a
+  person used to be indistinguishable, to anyone else reading the directory,
+  from a run somebody walked away from.
+
+- **A failing gate names the checks it never reached.** Checks run in order and
+  the gate stops at the first failure, so a lap that fails is the lap where the
+  gate examined the least — and a loop that ends on a failing lap can leave a
+  check that never ran once in the whole walk. `--- 2 of 3 checks ran; 1 not run:
+  <name> ---` appears on a `RETRY` and on a fail-routed `ADVANCE`, with `ran=2/3`
+  in `.headsign/log` so it can still be answered after the run has ended. Not
+  shown when the failing check was the last one, and an exhausting failure
+  reports only its reason.
+
+- **A repeated failure says it is one.** From the second identical failure
+  onward — same check, same command, same exit code, same output — the block
+  names how many in a row, and the closing advice changes: "fix the failure
+  above" assumes a fixable failure, and the second identical one is where that
+  assumption is worth questioning. Where the phase declares `max_attempts`, it
+  also says what running out costs. None of it claims a gate cannot pass; that
+  would take running arbitrary shell to know.
+
+- **`clear:` reports an entry it could not clear.** It removes files and has
+  never removed a directory, but the attempt failed silently, so a phase could
+  name one on every entry and have nothing happen. Now the entry is named on
+  entry, and `headsign validate` warns about a trailing-slash entry — the one
+  form of the mistake visible without reading a filesystem. The field's reach is
+  unchanged: deleting a tree is destructive with no undo, and this field runs
+  every time a phase is entered.
+
+- **`headsign help` says what each command touches** — read-only, or which of
+  `state.json`, `log`, `lock`, `tmp/` it writes, plus the two writes that leave
+  `.headsign/`: `start` amends a tracked `.gitignore`, and both `start` and
+  `next` delete whatever the phase they enter lists under `clear:`. Deciding
+  whether a command can disturb a repository used to mean running one somewhere
+  else to find out.
+
+### Documentation
+
+- **The reference manual gained a section on what a run keeps and what outlives
+  it** (both languages): what `start` folds away, what `clear:` folds away on
+  each entry, that everything outside `.headsign/tmp/` outlives the run, that
+  budgets are per run rather than per tree, and what `abort` actually costs. It
+  also states where the graph pin stops — a check's `run:` string is pinned, and
+  whatever that string executes is not.
+
+- **The workflow-authoring skill gained a good deal**, most of it from questions
+  people answered by guessing: how long an anchor lasts and how to place a guard
+  without depending on the order of lines; that a loop needs a measure *and* a
+  separate stopping condition, with the standard form it comes from; what makes
+  another check worth adding, when a phase count is too high, and whether an
+  always-green check is worth keeping; that a check which writes costs the driver
+  the ability to rehearse the gate by hand; that a check and the instruction
+  satisfying it have to move together; and where to put a value one round needs
+  to hand to the next.
+
+### Fixed
+
+- **The reference manual said neither stop-boundary hook compares session
+  identifiers.** It has compared one since 0.5.0's `last_drive` work: a stop
+  whose session does not match the one on record passes silently. The section
+  describing the hooks now agrees with the section describing the behaviour in
+  full, six hundred lines away.
+
 ## [0.5.0] - 2026-08-01
 
 ### Added
