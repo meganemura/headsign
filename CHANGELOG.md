@@ -9,6 +9,33 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Installing the plugin on a machine with no reachable `node` no longer
+  prints a hook error at every turn end.** The plugin registers its two
+  stop-boundary hooks in every session, including sessions in repositories that
+  never heard of headsign, and `node` is the one thing the bundle needs and
+  cannot bring. When Claude Code is installed natively, or when node comes from
+  a version manager whose shim only an interactive shell sets up, the hook
+  process failed to spawn and Claude Code showed a `Stop hook error` notice —
+  in a repository with no `.headsign/` at all, that notice was the only thing
+  headsign ever did. Both registrations now check for the interpreter first and
+  exit 0 in silence when there is none. Nothing changes on a machine that has
+  node: stdin still reaches the CLI, and the nudge's exit 2 and stderr still
+  reach Claude Code. The trade is that a missing interpreter takes the backstop
+  out without saying so, which is the direction the hook already fails in —
+  [ADR-0005](docs/adr/0005-distribution-and-toolchain.md) records it, and
+  `tests/acceptance.test.ts` runs the registration strings themselves.
+- **The by-hand backstop recipe in the reference no longer reaches for the
+  network.** It passed `npx headsign stop-hook`, which tries to fetch the
+  package when it is absent — the same "not installed" case, at every stop. It
+  now resolves the project-local install, then one on `PATH`, then `node`, and
+  exits 0 in silence the moment one of those is missing. It checks the
+  interpreter separately because finding the CLI does not establish that it can
+  run: `node_modules/.bin/headsign` is a symlink to a `#!/usr/bin/env node`
+  script, so on the machine this change is about it is present, executable, and
+  exits 127 anyway.
+
 ## [0.6.0] - 2026-08-15
 
 Field reports drove almost all of this one, and they cluster: most of what

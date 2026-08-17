@@ -5,8 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/headsign.mjs", "stop-hook"],
+            "command": "command -v node >/dev/null 2>&1 && exec node \"${CLAUDE_PLUGIN_ROOT}/dist/headsign.mjs\" stop-hook || exit 0",
             "timeout": 30
           }
         ]
@@ -17,8 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/headsign.mjs", "subagent-stop-hook"],
+            "command": "command -v node >/dev/null 2>&1 && exec node \"${CLAUDE_PLUGIN_ROOT}/dist/headsign.mjs\" subagent-stop-hook || exit 0",
             "timeout": 30
           }
         ]

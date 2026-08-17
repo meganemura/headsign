@@ -140,10 +140,10 @@ Claude Code なら `.claude/skills/` にプロジェクトスキルとして置�
 ```json
 { "hooks": {
   "Stop": [ { "hooks": [
-    { "type": "command", "command": "npx", "args": ["headsign", "stop-hook"] }
+    { "type": "command", "command": "HS=\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/headsign\"; [ -x \"$HS\" ] || HS=$(command -v headsign) || exit 0; command -v node >/dev/null 2>&1 || exit 0; exec \"$HS\" stop-hook" }
   ] } ],
   "SubagentStop": [ { "hooks": [
-    { "type": "command", "command": "npx", "args": ["headsign", "subagent-stop-hook"] }
+    { "type": "command", "command": "HS=\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/headsign\"; [ -x \"$HS\" ] || HS=$(command -v headsign) || exit 0; command -v node >/dev/null 2>&1 || exit 0; exec \"$HS\" subagent-stop-hook" }
   ] } ]
 } }
 ```
@@ -151,6 +151,15 @@ Claude Code なら `.claude/skills/` にプロジェクトスキルとして置�
 `Stop` はセッション自身を、`SubagentStop` はそのセッションが run の駆動を委譲したエージェントを受け持ちます([複数セッション](#複数セッション)を参照)。
 run を委譲することがないなら、前者だけを登録すれば十分です。
 `headsign claim` が使われていない限り、後者は何もしません。
+
+どちらの行も、まずプロジェクト内のインストールを探し、次に `PATH` 上のものを探し、最後に `node` を探します。
+**どれか一つでも無ければ、何も出力せず exit 0 します**。
+そのため、headsign を入れていないチェックアウトでも、アンインストールした後でも、同じ `settings.json` をそのまま置いておけます。
+インタプリタを別に確かめるのは、CLI が見つかることと実行できることが別だからです。
+`node_modules/.bin/headsign` は `#!/usr/bin/env node` のスクリプトへの symlink なので、node をバージョンマネージャの shim で入れていて対話シェルでしかその shim が張られないマシンでは、ファイルは在って実行可能で、それでも exit 127 になります。
+プラグイン自身の hook も同じ理由で同じガードを持ちます([ADR-0005](adr/0005-distribution-and-toolchain.md) を参照)。
+どちらも同じ代償を受け入れています——CLI が無いとき backstop は黙って外れ、run はエージェント自身の `headsign next` の呼び出しに頼ることになります。
+hook の exit 2 を Claude Code まで返すのは `exec` なので、これは省かないでください。
 
 ## ワークフローを書く
 

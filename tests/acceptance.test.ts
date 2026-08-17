@@ -441,3 +441,203 @@ test("version and --version print the bare version and a newline, byte-identical
   assert.equal(word.stderr, "");
   assert.equal(flag.stderr, "");
 });
+
+// --- the hook registration: the guard that makes an uninstalled interpreter silent ---
+//
+// These tests run the command strings out of plugin/hooks/hooks.json — the artifact Claude Code
+// actually executes — rather than a copy written here, so the two cannot drift apart. What they
+// pin, and why each property is load-bearing, is ADR-0005's hook-registration bullet.
+
+const HOOKS: { hooks: Record<string, Array<{ hooks: Array<{ type: string; command: string; args?: string[] }> }>> } = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, "..", "plugin", "hooks", "hooks.json"), "utf8"),
+);
+
+function hookCommand(event: string): string {
+  const entry = HOOKS.hooks[event][0].hooks[0];
+  // Shell form is the whole mechanism: `args` would make this exec form, where no condition can
+  // be expressed and the guard could not exist.
+  assert.equal(entry.args, undefined, `${event} must stay in shell form for the guard to run`);
+  assert.equal(entry.type, "command");
+  return entry.command;
+}
+
+const PLUGIN_ROOT = path.join(import.meta.dirname, "..", "plugin");
+
+// Runs a registration string the way Claude Code's shell form does — `sh -c`, with the plugin
+// root arriving through the environment.
+function runHookCommand(command: string, opts: { cwd: string; pluginRoot?: string; pathEnv?: string; projectDir?: string }): { stdout: string; stderr: string; status: number | null } {
+  const env = runEnv();
+  delete env["HEADSIGN_OBSERVER"];
+  env["CLAUDE_PLUGIN_ROOT"] = opts.pluginRoot ?? PLUGIN_ROOT;
+  if (opts.projectDir !== undefined) env["CLAUDE_PROJECT_DIR"] = opts.projectDir;
+  if (opts.pathEnv !== undefined) env["PATH"] = opts.pathEnv;
+  // `/bin/sh` by absolute path, the same shell src/gate.ts spawns: the no-node leg below hands
+  // this an empty PATH, and a bare "sh" would fail to spawn there for a reason that has nothing
+  // to do with the guard.
+  const result = spawnSync("/bin/sh", ["-c", command], { cwd: opts.cwd, encoding: "utf8", input: "{}", env });
+  return { stdout: result.stdout, stderr: result.stderr, status: result.status };
+}
+
+test("hook registration: with no node on PATH, both hooks exit 0 and say nothing at all", () => {
+  // An empty directory as the whole PATH: `command -v node` can find nothing, which is the
+  // machine this guard exists for — Claude Code installed natively, or node behind a version
+  // manager shim that only an interactive shell sets up.
+  const emptyPath = tmpdir();
+  for (const event of ["Stop", "SubagentStop"]) {
+    const result = runHookCommand(hookCommand(event), { cwd: tmpdir(), pathEnv: emptyPath });
+    assert.equal(result.status, 0, `${event} must not fail to spawn`);
+    // Silence, not just exit 0: anything on stdout becomes context the agent reads at every turn
+    // end, and anything on stderr is what the notice this guard removes would have shown.
+    assert.equal(result.stdout, "", `${event} must print nothing on stdout`);
+    assert.equal(result.stderr, "", `${event} must print nothing on stderr`);
+  }
+});
+
+test("hook registration: with node present, a directory that has never used headsign still exits 0 silently", () => {
+  const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
+  for (const event of ["Stop", "SubagentStop"]) {
+    const result = runHookCommand(hookCommand(event), { cwd: tmpdir(), pathEnv: nodeOnPath });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("hook registration: a running run still blocks through the guard — exit 2 and the nudge reach Claude Code", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: guarded
+entry: plan
+phases:
+  plan:
+    description: "Write the spec."
+    gate:
+      checks:
+        - run: "test -s docs/spec.md"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir });
+  const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
+  const result = runHookCommand(hookCommand("Stop"), { cwd: dir, pathEnv: nodeOnPath });
+  // `exec` is what makes this 2 rather than 0. Written as `… && node … || exit 0`, the CLI's
+  // blocking exit would fall into the `||` and come back as a pass — the backstop disarmed on
+  // every machine that does have node, which is the inversion ADR-0005 names.
+  assert.equal(result.status, 2, "the CLI's blocking exit must survive the guard");
+  assert.match(result.stderr, /headsign next/, "the nudge itself must reach Claude Code");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8")).stop_nudges, 1, "stdin must have reached the CLI: the payload is what it counts against");
+});
+
+test("hook registration: a plugin root containing a space still resolves the bundle", () => {
+  // Plugin cache paths are not chosen by this project, and `${CLAUDE_PLUGIN_ROOT}` must stay
+  // quoted for one containing a space to work at all.
+  const spaced = path.join(tmpdir(), "plug in");
+  fs.cpSync(PLUGIN_ROOT, spaced, { recursive: true });
+  const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
+  const result = runHookCommand(hookCommand("Stop"), { cwd: tmpdir(), pluginRoot: spaced, pathEnv: nodeOnPath });
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "", "a quoting failure would surface here as a `No such file` from sh");
+});
+
+// The boundary of what the guard is allowed to swallow. It narrows on ONE thing — the
+// interpreter's absence — and a plugin root that does not resolve must stay what ADR-0026 §7
+// calls it: total and immediate. A guard written to catch every failure (`… || exit 0` around
+// the whole thing, or `2>/dev/null`) would silence a broken install too, and a broken install
+// that says nothing is the failure mode ADR-0026 §7 argues headsign must never have.
+test("hook registration: a plugin root that does not resolve still fails loudly", () => {
+  const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
+  const result = runHookCommand(hookCommand("Stop"), { cwd: tmpdir(), pluginRoot: "/nonexistent", pathEnv: nodeOnPath });
+  assert.notEqual(result.status, 0, "a bundle that isn't there must not read as a pass");
+  assert.match(result.stderr, /headsign\.mjs/, "the notice must name the path that failed to resolve");
+});
+
+test("hook registration: each event runs its own subcommand", () => {
+  assert.match(hookCommand("Stop"), /(?<!subagent-)stop-hook/);
+  assert.match(hookCommand("SubagentStop"), /subagent-stop-hook/);
+});
+
+// --- the by-hand recipe: the same guard, one clause longer ---
+//
+// docs/workflow-reference.md offers a `settings.json` for readers who use the CLI without the
+// plugin. It is a command string a reader pastes and never tests, so this suite tests it out of
+// the document, on the machine the guard exists for.
+
+function recipeCommands(docFile: string): { Stop: string; SubagentStop: string } {
+  const doc = fs.readFileSync(path.join(import.meta.dirname, "..", "docs", docFile), "utf8");
+  const block = [...doc.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]).find((b) => b.includes('"SubagentStop"'));
+  assert.ok(block, `${docFile} must still carry a fenced json block registering both hooks`);
+  const parsed = JSON.parse(block) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+  return { Stop: parsed.hooks["Stop"][0].hooks[0].command, SubagentStop: parsed.hooks["SubagentStop"][0].hooks[0].command };
+}
+
+// A project-local install, built the way npm builds it: a symlink in node_modules/.bin pointing
+// at the bundle, whose banner is `#!/usr/bin/env node`. That shebang is the whole reason the
+// recipe needs an interpreter check of its own, so the test must not shortcut it with a copy.
+function withLocalInstall(dir: string): void {
+  const binDir = path.join(dir, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.symlinkSync(BUNDLE, path.join(binDir, "headsign"));
+}
+
+test("by-hand recipe: the English and Japanese references register the identical command", () => {
+  // Two documents, one string. Nothing but this assertion keeps a fix applied to one of them
+  // from leaving the other broken.
+  assert.deepEqual(recipeCommands("workflow-reference.ja.md"), recipeCommands("workflow-reference.md"));
+});
+
+test("by-hand recipe: no install at all exits 0 and says nothing", () => {
+  const emptyPath = tmpdir();
+  const recipe = recipeCommands("workflow-reference.md");
+  for (const event of ["Stop", "SubagentStop"] as const) {
+    const dir = tmpdir();
+    const result = runHookCommand(recipe[event], { cwd: dir, projectDir: dir, pathEnv: emptyPath });
+    assert.equal(result.status, 0);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("by-hand recipe: a local install whose interpreter is missing exits 0 and says nothing", () => {
+  // Finding the CLI is not the same as being able to run it. `[ -x ]` passes on the symlink and
+  // `exec` then dies at the shebang with `env: node: No such file or directory` and exit 127 —
+  // the notice this whole change removes, back on the by-hand path.
+  const emptyPath = tmpdir();
+  const recipe = recipeCommands("workflow-reference.md");
+  for (const event of ["Stop", "SubagentStop"] as const) {
+    const dir = tmpdir();
+    withLocalInstall(dir);
+    const result = runHookCommand(recipe[event], { cwd: dir, projectDir: dir, pathEnv: emptyPath });
+    assert.equal(result.status, 0, `${event} must not surface the shebang's 127`);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("by-hand recipe: with node present, the local install runs and its blocking exit survives", () => {
+  const dir = initRepo();
+  withLocalInstall(dir);
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: by-hand
+entry: plan
+phases:
+  plan:
+    description: "Write the spec."
+    gate:
+      checks:
+        - run: "test -s docs/spec.md"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir });
+  const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
+  const result = runHookCommand(recipeCommands("workflow-reference.md").Stop, { cwd: dir, projectDir: dir, pathEnv: nodeOnPath });
+  // Without this leg the two above could both pass on a recipe that never runs anything at all.
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /headsign next/);
+});

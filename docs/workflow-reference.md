@@ -184,10 +184,10 @@ find its bundled CLI, so install the package as above and it falls back to
 ```json
 { "hooks": {
   "Stop": [ { "hooks": [
-    { "type": "command", "command": "npx", "args": ["headsign", "stop-hook"] }
+    { "type": "command", "command": "HS=\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/headsign\"; [ -x \"$HS\" ] || HS=$(command -v headsign) || exit 0; command -v node >/dev/null 2>&1 || exit 0; exec \"$HS\" stop-hook" }
   ] } ],
   "SubagentStop": [ { "hooks": [
-    { "type": "command", "command": "npx", "args": ["headsign", "subagent-stop-hook"] }
+    { "type": "command", "command": "HS=\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/headsign\"; [ -x \"$HS\" ] || HS=$(command -v headsign) || exit 0; command -v node >/dev/null 2>&1 || exit 0; exec \"$HS\" subagent-stop-hook" }
   ] } ]
 } }
 ```
@@ -196,6 +196,21 @@ find its bundled CLI, so install the package as above and it falls back to
 session delegated the run to (see [Multiple sessions](#multiple-sessions)).
 Register just the first if you never delegate a run: with no `headsign
 claim` in play, the second never acts.
+
+Each line looks for the project-local install first, then for one on
+`PATH`, then for `node` — and **exits 0 without output the moment one of
+those is missing** — so the same `settings.json` is safe in a checkout
+where headsign was never installed, and safe again after you uninstall it.
+The interpreter is checked separately because finding the CLI is not the
+same as being able to run it: `node_modules/.bin/headsign` is a symlink to
+a `#!/usr/bin/env node` script, so on a machine where node comes from a
+version manager whose shim only an interactive shell sets up, it is present,
+executable, and still exits 127. The plugin's own hooks carry the same
+guard, for the same reason (see
+[ADR-0005](adr/0005-distribution-and-toolchain.md)); the trade both accept
+is that a missing CLI takes the backstop out silently, and the run then
+relies on the agent's own `headsign next` calls. `exec` is what carries the
+hook's exit 2 back out to Claude Code, so keep it.
 
 ## Writing a workflow
 
