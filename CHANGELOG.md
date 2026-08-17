@@ -9,6 +9,18 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-17
+
+One cause, in both of the two places headsign asks to be registered as a hook,
+and it is one the previous six releases could not have reported: the symptom
+only appears on a machine this project has never run on. A plugin brings its
+own hooks, and headsign's two ran the bundle through `node` without checking
+that a `node` was there to run. Where there was not, the only thing the plugin
+did was print an error — at every turn end, in every repository, including the
+ones with no workflow at all. The registration this project documents for
+people who use the CLI without the plugin had the same hole, plus one of its
+own.
+
 ### Fixed
 
 - **Installing the plugin on a machine with no reachable `node` no longer
