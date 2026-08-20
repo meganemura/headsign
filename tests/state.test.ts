@@ -156,6 +156,49 @@ test("releaseLock on an absent lock file is a silent no-op", () => {
   assert.doesNotThrow(() => state.releaseLock(dir));
 });
 
+// Both lock helpers swallow a failed unlink. Neither swallow had a test, and they guard
+// different callers: acquireLock's decides whether a run can start at all, releaseLock's runs
+// inside a `finally` where a throw would replace whatever error the caller was already
+// carrying. A lock path that is a directory is the cheapest way to make an unlink fail for a
+// reason that has nothing to do with a race, and it is not far-fetched — a stray `mkdir`, an
+// interrupted archive extraction, or a sync tool that recreates paths as folders all produce it.
+
+test("acquireLock reports a lock path it cannot remove as held, rather than throwing", () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  // A directory: unreadable as a pid file (so no holder is identified) and un-unlinkable (so
+  // the steal cannot clear it either).
+  fs.mkdirSync(state.lockPath(dir));
+
+  let result: ReturnType<typeof state.acquireLock> | undefined;
+  assert.doesNotThrow(() => {
+    result = state.acquireLock(dir);
+  });
+  assert.equal(result?.ok, false, "a lock it cannot clear must never read as acquired");
+  assert.ok(fs.existsSync(state.lockPath(dir)), "and the path is left exactly as found");
+});
+
+test("releaseLock does not throw when the lock cannot be removed, so it never replaces the caller's own error", () => {
+  const dir = tmpdir();
+  const headsignDir = path.join(dir, ".headsign");
+  fs.mkdirSync(headsignDir, { recursive: true });
+  // The lock must stay READABLE and name this process, or release skips the unlink and proves
+  // nothing: what is under test is the owner deciding to remove its own lock and failing. A
+  // read-only parent is what denies the unlink while leaving the read alone.
+  fs.writeFileSync(state.lockPath(dir), String(process.pid));
+  // Root ignores the directory bit, so under a root-run suite the unlink succeeds and this
+  // test proves nothing (it still passes — releaseLock does not throw either way). That is why
+  // the assertion below is the one that would notice, and why nobody should run CI as root.
+  fs.chmodSync(headsignDir, 0o555);
+  try {
+    assert.doesNotThrow(() => state.releaseLock(dir));
+    assert.ok(fs.existsSync(state.lockPath(dir)), "the lock is still there — swallowed, not silently succeeded");
+  } finally {
+    // Restored unconditionally: a directory left at 0555 defeats the runner's own cleanup.
+    fs.chmodSync(headsignDir, 0o755);
+  }
+});
+
 // --- .headsign/log I/O ---
 
 test("appendLog appends without truncating, creating the file and .headsign/ if needed", () => {

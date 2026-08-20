@@ -3522,3 +3522,104 @@ test("stop-hook: a stale lock (dead pid) is no obstacle — the hook steals it a
   assert.equal(readState(dir).stop_nudges, 1);
   assert.ok(!fs.existsSync(path.join(dir, ".headsign", "lock")), "and the lock is released again");
 });
+
+// --- the two catches that turn an unusable environment into a clean exit ---
+//
+// Both are fail-open promises the CLI makes and nothing exercised: ADR-0006's step 7 for the
+// first, and the CLI's own "an error is a line, not a stack trace" for the second. Each is
+// written against a real unusable environment rather than a stub, because what is being pinned
+// is the behaviour under a filesystem/fd the process did not expect, not a branch's shape.
+
+// Reading fd 0 does not merely return "" when stdin is unusable — it throws EBADF, which is a
+// different path through readStdin than "nothing was piped".
+function runWithUnreadableStdin(args: string[], cwd: string): { stdout: string; stderr: string; status: number | null } {
+  // Write-only, so the child's fd 0 exists and cannot be read from.
+  const writeOnly = fs.openSync(path.join(os.tmpdir(), "headsign-write-only-stdin"), "w");
+  try {
+    const result = spawnSync(process.execPath, [CLI, ...args], {
+      cwd,
+      stdio: [writeOnly, "pipe", "pipe"],
+      encoding: "utf8",
+      env: envWithout("CLAUDE_CODE_SESSION_ID", "HEADSIGN_OBSERVER"),
+    });
+    return { stdout: result.stdout, stderr: result.stderr, status: result.status };
+  } finally {
+    fs.closeSync(writeOnly);
+  }
+}
+
+test("stop-hook: stdin that cannot be read at all fails open, on the very run that blocks when it can", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+
+  // Same run, same command, same everything but fd 0 — this is the contrast that makes the
+  // fail-open real rather than incidental: a hook that cannot read its input must never be the
+  // reason a turn cannot end.
+  const readable = run(["stop-hook"], { cwd: dir, input: "{}" });
+  assert.equal(readable.status, 2, "with readable stdin this run blocks");
+
+  const unreadable = runWithUnreadableStdin(["stop-hook"], dir);
+  assert.equal(unreadable.status, 0, "with unreadable stdin the same run must pass");
+  assert.equal(unreadable.stderr, "", "and say nothing — a nudge nobody can act on is noise");
+});
+
+test("subagent-stop-hook: unreadable stdin fails open too", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  const result = runWithUnreadableStdin(["subagent-stop-hook"], dir);
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+});
+
+test("an error nothing anticipated exits 3 with one line, not a stack trace", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  // A directory where state.json belongs: every read of it raises EISDIR, which no command
+  // handles, so it arrives at the top-level catch — the one place that decides what an
+  // unanticipated failure looks like to whoever ran the command.
+  fs.mkdirSync(path.join(dir, ".headsign", "state.json"), { recursive: true });
+
+  const result = run(["status"], { cwd: dir });
+  assert.equal(result.status, 3, "3 is the CLI's refusal code — not 0, and not the gate's 1 or 2");
+  assert.match(result.stderr, /^ERROR: /, "the message names itself as an error");
+  assert.match(result.stderr, /EISDIR/, "and carries what actually went wrong");
+  assert.equal(result.stderr.split("\n").filter((l) => l.trim().startsWith("at ")).length, 0, "no stack frames — this is for a person reading a terminal");
+  assert.equal(result.stdout, "", "nothing on stdout: a caller parsing a verdict must not see one");
+});
+
+// --- `version` against src, with the build's substitution supplied at load time ---
+//
+// Why the preload exists at all, and what it stands in for: tests/fixtures/define-version.mjs.
+
+function runWithVersionDefine(version: string, args: string[]): { stdout: string; stderr: string; status: number | null } {
+  const preload = path.join(import.meta.dirname, "fixtures", "define-version.mjs");
+  const result = spawnSync(process.execPath, ["--import", preload, CLI, ...args], {
+    cwd: tmpdir(),
+    encoding: "utf8",
+    input: "",
+    env: { ...envWithout("CLAUDE_CODE_SESSION_ID"), HEADSIGN_TEST_VERSION: version },
+  });
+  return { stdout: result.stdout, stderr: result.stderr, status: result.status };
+}
+
+test("version: a substituted version prints bare, with a newline and nothing else", () => {
+  for (const args of [["version"], ["--version"]]) {
+    const result = runWithVersionDefine("9.9.9", args);
+    assert.equal(result.status, 0);
+    // Bare, not "headsign 9.9.9": the command name already said which tool, and this is the
+    // form that composes into `v=$(headsign version)`.
+    assert.equal(result.stdout, "9.9.9\n", `${args[0]} must print the bare value`);
+    assert.equal(result.stderr, "");
+  }
+});
+
+test("version: an empty substitution refuses rather than printing a blank line", () => {
+  // The same refusal tests/acceptance.test.ts pins on a deliberately mis-built bundle, reached
+  // here against src — so the rule survives a change to either one alone.
+  const result = runWithVersionDefine("", ["version"]);
+  assert.equal(result.status, 3);
+  assert.equal(result.stdout, "", "a blank line is the bug this refusal exists to prevent");
+  assert.match(result.stderr, /carries no version/);
+});

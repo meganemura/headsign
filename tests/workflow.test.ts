@@ -72,6 +72,34 @@ test("unknown route target is rejected", () => {
   assert.ok(errors(doc).some((e) => e.includes("on_fail")));
 });
 
+test("a phase whose body is not a mapping is rejected", () => {
+  const doc = validWorkflow();
+  // The route-entry sibling of this branch has been pinned since the k-way routes landed; the
+  // phase-level one had not, so a workflow writing `plan: "write the spec"` — the shape someone
+  // reaches for when they think `phases:` maps a name to its instructions — reported nothing
+  // here and failed later, somewhere else.
+  (doc.phases as Record<string, unknown>).plan = "write the spec";
+  assert.ok(errors(doc).some((e) => e.includes("phase 'plan' must be a mapping")));
+});
+
+test("a gate check with a non-positive timeout is rejected", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.gate = { checks: [{ run: "true", timeout: 0 }] };
+  assert.ok(errors(doc).some((e) => e.includes("phase 'plan': gate.checks[0].timeout must be a positive number")));
+});
+
+test("a gate check with a non-numeric timeout is rejected", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.gate = { checks: [{ run: "true", timeout: "30s" }] };
+  assert.ok(errors(doc).some((e) => e.includes("phase 'plan': gate.checks[0].timeout must be a positive number")));
+});
+
+test("a positive gate-check timeout is accepted", () => {
+  const doc = validWorkflow();
+  phases(doc).plan.gate = { checks: [{ run: "true", timeout: 30 }] };
+  assert.deepEqual(errors(doc), []);
+});
+
 test("empty checks is rejected", () => {
   const doc = validWorkflow();
   (phases(doc).plan.gate as Record<string, unknown>).checks = [];
