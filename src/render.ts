@@ -497,15 +497,19 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
       // No detail — ADR-0004's "Unlike the other two, `claimed`'s detail field is empty" is
       // why; ADR-0010 is why the identifier itself is an agent id rather than a session id.
       return "";
+    // PENDING rides on COMPLETE's arm rather than carrying a `throw` of its own. logLine calls
+    // eventName before it calls this function, and eventName's own PENDING case already throws,
+    // so no statement written here could ever run. What the compiler needs from this arm is
+    // exhaustiveness against the full engine.Outcome type, and sharing one supplies that without
+    // a second copy of an invariant enforced a screen above — a copy that no test could reach,
+    // and that would read to the next person as a live guard.
+    case "PENDING":
     case "COMPLETE":
       // No detail form is specified for `complete` in the spec's enumeration (start /
       // retry / fail-route advance / pass advance / escalate+abort) despite it being
       // named as one of the logged events — `<phase>`/`a=`/`i=` already name which phase
-      // just completed, so nothing is appended here. Flagged to the coordinator as a
-      // spec gap rather than guessed at.
+      // just completed, so nothing is appended here. Recorded as a spec gap rather than
+      // guessed at.
       return "";
-    case "PENDING":
-      // Unreachable — see eventName's PENDING case.
-      throw new Error("logLine: PENDING is never logged");
   }
 }

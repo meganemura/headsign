@@ -7992,10 +7992,15 @@ function logDetail(event, prevPhase) {
       return `by=${event.cause}`;
     case "CLAIMED":
       return "";
+    // PENDING rides on COMPLETE's arm rather than carrying a `throw` of its own. logLine calls
+    // eventName before it calls this function, and eventName's own PENDING case already throws,
+    // so no statement written here could ever run. What the compiler needs from this arm is
+    // exhaustiveness against the full engine.Outcome type, and sharing one supplies that without
+    // a second copy of an invariant enforced a screen above — a copy that no test could reach,
+    // and that would read to the next person as a live guard.
+    case "PENDING":
     case "COMPLETE":
       return "";
-    case "PENDING":
-      throw new Error("logLine: PENDING is never logged");
   }
 }
 
