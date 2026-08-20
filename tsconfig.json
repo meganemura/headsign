@@ -1,6 +1,12 @@
 {
   "compilerOptions": {
     "strict": true,
+    // Two checks `strict` does not include, both measured at zero errors before being turned on
+    // (2026-08-20). They are here to stay that way: a function that returns a value on some
+    // paths and falls off the end on others, and a `case` that runs into the next one, are
+    // mistakes this codebase has no use for and no existing instance of.
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "target": "es2023",
     "module": "nodenext",
     "moduleResolution": "nodenext",
