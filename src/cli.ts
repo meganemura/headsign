@@ -107,8 +107,14 @@ function printOutcome(
     case "ABORT":
       return exitAfter(render.abort(outcome.reason), 2);
     case "PENDING":
-      // ctx.wf is guaranteed here: PENDING is only ever constructed inside engine.ts's lap,
-      // which returns the workflow it loaded alongside it, and reportNext threads it in below.
+      // Two lookups on this line go unchecked, and the same fact covers both. PENDING is only
+      // ever constructed inside engine.ts's lap, on a path that has ALREADY read
+      // `wf.phases[current.phase]` and dereferenced it (the `ready` probe) — so the phase
+      // exists, and the workflow that holds it is returned alongside the outcome and threaded
+      // in below by reportNext. `ctx!` and the `[outcome.phase]` index are therefore the same
+      // guarantee twice, not two.
+      // Worth naming because the compiler checks neither: `strict` does not imply
+      // noUncheckedIndexedAccess, so the index reads as a `Phase` here whatever the key is.
       return exitAfter(render.pending(outcome.phase, ctx!.wf.phases[outcome.phase].description, outcome.ready), 1);
   }
 }
