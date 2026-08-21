@@ -9,6 +9,18 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The reference now says how to actually perform an update.** It spent a
+  paragraph on updating being a separate event from declaring a version, and
+  stopped short of the command — leaving the reader who followed the reasoning
+  with no way to act on it. Worse, the obvious guess fails: `claude plugin
+  update headsign` answers `Plugin "headsign" not found`, because `update`
+  resolves the `plugin@marketplace` pair that `claude plugin list` prints, so
+  the working form is `claude plugin update headsign@headsign`. The section also
+  now says that the fetched copy does nothing until Claude Code restarts, and
+  that `headsign version` keeps reporting the old copy until it does.
+
 ## [0.6.1] - 2026-08-17
 
 One cause, in both of the two places headsign asks to be registered as a hook,

@@ -108,6 +108,24 @@ have auto-update off by default and that users run the update themselves. So
 moving the `ref` in the committed file begins the update; it does not conclude
 it.
 
+Concluding it is one command, and it wants the qualified name:
+
+```
+claude plugin update headsign@headsign
+```
+
+The bare `claude plugin update headsign` answers `Plugin "headsign" not found`.
+`update` resolves what `claude plugin list` prints, and what it prints is the
+`plugin@marketplace` pair — the same form
+[Enabling the plugin for a whole repository](#enabling-the-plugin-for-a-whole-repository)
+explains for `enabledPlugins`. Inside a session, `/plugin` reaches the same operation through
+a menu.
+
+Either way the fetched copy sits unused until Claude Code restarts, which makes
+applying an update a third event after declaring one and having one. Until that
+restart, `headsign version` still reports the copy that is actually running,
+which is the older one.
+
 **The version a project pins is not the version a run uses.** An installed
 plugin copy is version-scoped — one directory per version, the path is in
 [maintenance.md](maintenance.md#live-patching-an-installed-plugin-local-testing)

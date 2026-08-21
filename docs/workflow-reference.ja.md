@@ -82,6 +82,21 @@ pin と自動更新は同じ問いに逆向きに答えるものなので、ど�
 配布する側から見たそれは [maintenance.md](maintenance.md) の distribution map にあり、サードパーティのマーケットプレイスは既定で auto-update が無効で、更新は利用者自身が実行する、と記録されています。
 つまり、コミットしたファイルの `ref` を動かすことは更新の開始であって、完了ではありません。
 
+完了させるのは 1 コマンドですが、名前を修飾する必要があります:
+
+```
+claude plugin update headsign@headsign
+```
+
+修飾しない `claude plugin update headsign` は `Plugin "headsign" not found` と答えます。
+`update` が解決するのは `claude plugin list` が表示するもので、そこに出るのは `plugin@marketplace` の対だからです。
+これは[リポジトリ全体でプラグインを有効にする](#リポジトリ全体でプラグインを有効にする)が `enabledPlugins` について説明しているのと同じ形です。
+セッションの中からなら、`/plugin` が同じ操作にメニュー経由で届きます。
+
+どちらの経路でも、取ってきた複製は Claude Code を再起動するまで使われません。
+つまり更新を適用することは、宣言することと手元に持つことに続く三つ目の出来事です。
+その再起動までは、`headsign version` が答えるのは実際に動いている複製、つまり古いほうです。
+
 **プロジェクトが固定したバージョンは、run が使うバージョンとは限りません。** インストール済みのプラグインの複製はバージョンごとに分かれた場所に置かれます。
 1 バージョンに 1 ディレクトリで、そのパスは [maintenance.md](maintenance.md#live-patching-an-installed-plugin-local-testing) にあります。
 そのため、プロジェクトが新しいリリースへ移ったからといって、古いまま入っている複製のふるまいは、その複製が更新されるまで変わりません。
