@@ -99,7 +99,7 @@ function printOutcome(
       return exitAfter(render.complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
       return exitAfter(
-        render.retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, repeats: outcome.repeats, ...outcome.failure }),
+        render.retry({ phase: outcome.phase, attempt: outcome.attempt, ...(outcome.maxAttempts !== undefined && { maxAttempts: outcome.maxAttempts }), repeats: outcome.repeats, ...outcome.failure }),
         1,
       );
     case "ESCALATE":
@@ -166,7 +166,9 @@ function reportNext(result: engine.NextResult): never {
       return printOutcome(
         result.outcome,
         result.workflowName,
-        result.wf ? { wf: result.wf, cleared: result.cleared, notCleared: result.notCleared } : undefined,
+        result.wf
+          ? { wf: result.wf, ...(result.cleared !== undefined && { cleared: result.cleared }), ...(result.notCleared !== undefined && { notCleared: result.notCleared }) }
+          : undefined,
       );
   }
 }
@@ -208,24 +210,26 @@ function reportStatus(result: engine.StatusResult): never {
         render.statusRunning({
           phase: result.phase,
           attempt: result.attempt,
-          maxAttempts: result.maxAttempts,
+          ...(result.maxAttempts !== undefined && { maxAttempts: result.maxAttempts }),
           attemptUnknown: result.attemptUnknown,
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet — no agent has claimed this run",
-          // All three conditional, and all absent rather than falsy when there is nothing to
-          // say: `undefined` is what makes a run on which none of them has happened print
-          // exactly what `status` printed before any of these lines existed. The last stop is
+          // All three conditional, and all genuinely ABSENT rather than present-and-empty
+          // when there is nothing to say — which is what makes a run on which none of them has
+          // happened print exactly what `status` printed before any of these lines existed.
+          // They used to pass `undefined` for that; the key is now simply not spread, which
+          // says the same thing to a reader and to exactOptionalPropertyTypes alike. The last stop is
           // the answer to the question the `driver:` line cannot reach — whether the previous
           // turn end was held; the last moved time is a different question again — when the run
           // itself was last acted on (ADR-0027 §7) — and the observer line is the only one of
           // these facts that is about the caller rather than the run.
-          lastStop: result.lastStop ?? undefined,
-          lastMoved: result.lastMoved ?? undefined,
-          observer: result.observer ? true : undefined,
+          ...(result.lastStop !== null && { lastStop: result.lastStop }),
+          ...(result.lastMoved !== null && { lastMoved: result.lastMoved }),
+          ...(result.observer && { observer: true }),
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
-          description: result.description,
+          ...(result.description !== undefined && { description: result.description }),
         }),
         0,
       );

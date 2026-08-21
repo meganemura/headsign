@@ -308,7 +308,20 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   // Destructure rather than reuse gateResult as-is: it also carries `kind: "fail"`,
   // which must not leak into the outcome's public FailureInfo shape.
   const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks } = gateResult;
-  const failure: FailureInfo = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
+  // Each optional rides in only when it has a value, so an absent one leaves NO KEY behind
+  // rather than a key holding `undefined` — the distinction stophook.ts's withLastStop
+  // maintains by hand and exactOptionalPropertyTypes now enforces here.
+  // `!== undefined`, and NOT the shorter `x && { x }` the ADVANCE branch above uses: these are
+  // numbers, and `checksRun: 0` — a gate whose very first check never ran — is a real value a
+  // falsy test would drop on the floor.
+  const failure: FailureInfo = {
+    check, run, exitCode, outputTail,
+    ...(timeoutSeconds !== undefined && { timeoutSeconds }),
+    ...(elapsedSeconds !== undefined && { elapsedSeconds }),
+    ...(checksTotal !== undefined && { checksTotal }),
+    ...(checksRun !== undefined && { checksRun }),
+    ...(notRunChecks !== undefined && { notRunChecks }),
+  };
   // Computed once, ahead of both branches below that can use it (exhaustion and retry): it
   // reads `state.last_failure`, which the exhaustion branch is about to null out, so it has to
   // run before that happens either way.
@@ -341,12 +354,17 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   const onFail = phase.on_fail ?? "retry";
   if (onFail === "retry") {
     // Recorded purely for `status` to read back — ADR-0004: "status is its only reader."
+    // Absent stays absent through the rename into snake_case too: this record is what
+    // `status` reads back out of state.json, and a key holding `undefined` would survive the
+    // round trip differently than one that was never written.
     next.last_failure = {
       phase: phaseName, check: failure.check, run: failure.run,
-      exit_code: failure.exitCode, output_tail: failure.outputTail, timeout_seconds: failure.timeoutSeconds,
-      elapsed_seconds: failure.elapsedSeconds, repeats,
+      exit_code: failure.exitCode, output_tail: failure.outputTail,
+      ...(failure.timeoutSeconds !== undefined && { timeout_seconds: failure.timeoutSeconds }),
+      ...(failure.elapsedSeconds !== undefined && { elapsed_seconds: failure.elapsedSeconds }),
+      repeats,
     };
-    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], maxAttempts, failure, repeats } };
+    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], ...(maxAttempts !== undefined && { maxAttempts }), failure, repeats } };
   }
 
   next.last_failure = null;
@@ -929,7 +947,9 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
   state.writeState(cwd, nextState);
   state.appendLog(cwd, render.logLine(nowIso, outcome, nextState, current.phase));
-  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared, notCleared };
+  // Both are undefined unless the outcome was an ADVANCE, and a non-advancing answer must
+  // carry no key for either rather than two keys holding nothing.
+  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, ...(cleared !== undefined && { cleared }), ...(notCleared !== undefined && { notCleared }) };
 }
 
 export function abort(cwd: string, reason: string, nowIso: string): AbortResult {
@@ -1007,8 +1027,12 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   const lastFailure =
     recorded !== null && recorded.phase === current.phase
       ? {
-          check: recorded.check, run: recorded.run, exitCode: recorded.exit_code,
-          timeoutSeconds: recorded.timeout_seconds, elapsedSeconds: recorded.elapsed_seconds, outputTail: recorded.output_tail,
+          check: recorded.check, run: recorded.run, exitCode: recorded.exit_code, outputTail: recorded.output_tail,
+          // A `state.json` written before either field existed simply lacks it (state.ts's
+          // LastFailure doc), so reading one back must produce a record that lacks it too —
+          // not one that carries the key with nothing in it.
+          ...(recorded.timeout_seconds !== undefined && { timeoutSeconds: recorded.timeout_seconds }),
+          ...(recorded.elapsed_seconds !== undefined && { elapsedSeconds: recorded.elapsed_seconds }),
         }
       : null;
 
@@ -1026,7 +1050,7 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     kind: "RUNNING",
     phase: current.phase,
     attempt,
-    maxAttempts: phase?.max_attempts,
+    ...(phase?.max_attempts !== undefined && { maxAttempts: phase.max_attempts }),
     attemptUnknown: phase === undefined,
     workflowName: current.workflow,
     lastFailure,
@@ -1036,6 +1060,9 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     observer: stophook.isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
-    description: phase?.description,
+    // Absent when the workflow is unreadable or no longer defines this phase — the same
+    // condition `attemptUnknown` reports above, and the reason `status` can print a run it
+    // cannot fully describe.
+    ...(phase?.description !== undefined && { description: phase.description }),
   };
 }

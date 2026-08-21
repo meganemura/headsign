@@ -139,7 +139,6 @@ test("retry: no maxAttempts shows a bare attempt number", () => {
     exitCode: 1,
     phase: "build",
     attempt: 2,
-    maxAttempts: undefined,
     outputTail: "some output",
   });
   const expected = `RETRY 2 build\n--- gate failed: tests (npm test, exit 1) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
@@ -154,7 +153,6 @@ test("retry: timeout exit code renders the timed-out clause", () => {
     timeoutSeconds: 5,
     phase: "build",
     attempt: 2,
-    maxAttempts: undefined,
     outputTail: "some output",
   });
   const expected = `RETRY 2 build\n--- gate failed: tests (npm test, timed out after 5s) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
@@ -191,7 +189,6 @@ test("retry: elapsedSeconds is ignored on the timeout arm — 'timed out after N
     elapsedSeconds: 5.0,
     phase: "build",
     attempt: 2,
-    maxAttempts: undefined,
     outputTail: "some output",
   });
   const expected = `RETRY 2 build\n--- gate failed: tests (npm test, timed out after 5s) ---\nsome output\nFix the failure above, then run \`headsign next\` again.\n`;
@@ -363,7 +360,6 @@ test("retry: repeats 2 with no maxAttempts adds no exhaustion clause — there i
     exitCode: 1,
     phase: "build",
     attempt: 2,
-    maxAttempts: undefined,
     outputTail: "some output",
     repeats: 2,
   });
@@ -518,7 +514,7 @@ test("statusRunning: max_attempts defined -> n/max, no last-failure block", () =
 
 test("statusRunning: max_attempts undefined (unlimited) -> bare attempt number", () => {
   const actual = render.statusRunning({
-    phase: "build", attempt: 2, maxAttempts: undefined, attemptUnknown: false,
+    phase: "build", attempt: 2, attemptUnknown: false,
     workflowName: "demo", lastFailure: null, driver: "not delegated yet — no agent has claimed this run",
   });
   const expected = `RUNNING build (attempt 2)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`;
@@ -736,7 +732,11 @@ test("statusRunning: a run on which no stop has been processed prints byte-ident
   const base = { phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false, workflowName: "demo", lastFailure: null, driver: "a delegated agent" } as const;
   const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n`;
   assert.equal(render.statusRunning(base), expected);
-  assert.equal(render.statusRunning({ ...base, lastStop: undefined, observer: undefined }), expected);
+  // Cast through `unknown` because exactOptionalPropertyTypes now forbids writing this: a caller cannot pass
+  // `undefined` for an optional field, only omit it. The assertion stays anyway — it pins the
+  // RUNTIME half, which the flag does not reach, so relaxing the flag later cannot quietly
+  // change what these two fields do when something hands them nothing.
+  assert.equal(render.statusRunning({ ...base, lastStop: undefined, observer: undefined } as unknown as Parameters<typeof render.statusRunning>[0]), expected);
   assert.equal(render.statusRunning({ ...base, observer: false }), expected, "an opted-in caller says nothing about the switch");
 });
 

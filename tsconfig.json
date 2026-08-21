@@ -7,6 +7,11 @@
     // mistakes this codebase has no use for and no existing instance of.
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
+    // An optional field must be ABSENT, not present holding `undefined`. This codebase already
+    // depended on that distinction and maintained it by hand — stophook.ts's withLastStop
+    // explains why at length: a test comparing a written record against a literal without the
+    // key sees two different shapes otherwise. Enforced here rather than remembered.
+    "exactOptionalPropertyTypes": true,
     "target": "es2023",
     "module": "nodenext",
     "moduleResolution": "nodenext",

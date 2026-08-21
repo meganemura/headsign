@@ -8286,7 +8286,17 @@ function step(workflow, state, gateResult, route) {
   }
   next2.attempts[phaseName] = (next2.attempts[phaseName] ?? 0) + 1;
   const { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks } = gateResult;
-  const failure = { check, run, exitCode, outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
+  const failure = {
+    check,
+    run,
+    exitCode,
+    outputTail,
+    ...timeoutSeconds !== void 0 && { timeoutSeconds },
+    ...elapsedSeconds !== void 0 && { elapsedSeconds },
+    ...checksTotal !== void 0 && { checksTotal },
+    ...checksRun !== void 0 && { checksRun },
+    ...notRunChecks !== void 0 && { notRunChecks }
+  };
   const repeats = sameFailureStreak(state.last_failure, phaseName, failure);
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== void 0 && next2.attempts[phaseName] >= maxAttempts) {
@@ -8304,11 +8314,11 @@ function step(workflow, state, gateResult, route) {
       run: failure.run,
       exit_code: failure.exitCode,
       output_tail: failure.outputTail,
-      timeout_seconds: failure.timeoutSeconds,
-      elapsed_seconds: failure.elapsedSeconds,
+      ...failure.timeoutSeconds !== void 0 && { timeout_seconds: failure.timeoutSeconds },
+      ...failure.elapsedSeconds !== void 0 && { elapsed_seconds: failure.elapsedSeconds },
       repeats
     };
-    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], maxAttempts, failure, repeats } };
+    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], ...maxAttempts !== void 0 && { maxAttempts }, failure, repeats } };
   }
   next2.last_failure = null;
   if (onFail === "$end") {
@@ -8546,7 +8556,7 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange) {
   if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
   writeState(cwd, nextState);
   appendLog(cwd, logLine(nowIso, outcome, nextState, current.phase));
-  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, cleared, notCleared };
+  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, ...cleared !== void 0 && { cleared }, ...notCleared !== void 0 && { notCleared } };
 }
 function abort2(cwd, reason, nowIso) {
   const current = readState(cwd);
@@ -8589,16 +8599,19 @@ function status(cwd, env) {
     check: recorded.check,
     run: recorded.run,
     exitCode: recorded.exit_code,
-    timeoutSeconds: recorded.timeout_seconds,
-    elapsedSeconds: recorded.elapsed_seconds,
-    outputTail: recorded.output_tail
+    outputTail: recorded.output_tail,
+    // A `state.json` written before either field existed simply lacks it (state.ts's
+    // LastFailure doc), so reading one back must produce a record that lacks it too —
+    // not one that carries the key with nothing in it.
+    ...recorded.timeout_seconds !== void 0 && { timeoutSeconds: recorded.timeout_seconds },
+    ...recorded.elapsed_seconds !== void 0 && { elapsedSeconds: recorded.elapsed_seconds }
   } : null;
   const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
   return {
     kind: "RUNNING",
     phase: current.phase,
     attempt,
-    maxAttempts: phase?.max_attempts,
+    ...phase?.max_attempts !== void 0 && { maxAttempts: phase.max_attempts },
     attemptUnknown: phase === void 0,
     workflowName: current.workflow,
     lastFailure,
@@ -8608,7 +8621,10 @@ function status(cwd, env) {
     observer: isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
-    description: phase?.description
+    // Absent when the workflow is unreadable or no longer defines this phase — the same
+    // condition `attemptUnknown` reports above, and the reason `status` can print a run it
+    // cannot fully describe.
+    ...phase?.description !== void 0 && { description: phase.description }
   };
 }
 
@@ -8667,7 +8683,7 @@ function printOutcome(outcome, workflowName, ctx) {
       return exitAfter(complete(workflowName, outcome.acceptedGraphChanges), 0);
     case "RETRY":
       return exitAfter(
-        retry({ phase: outcome.phase, attempt: outcome.attempt, maxAttempts: outcome.maxAttempts, repeats: outcome.repeats, ...outcome.failure }),
+        retry({ phase: outcome.phase, attempt: outcome.attempt, ...outcome.maxAttempts !== void 0 && { maxAttempts: outcome.maxAttempts }, repeats: outcome.repeats, ...outcome.failure }),
         1
       );
     case "ESCALATE":
@@ -8710,7 +8726,7 @@ function reportNext(result) {
       return printOutcome(
         result.outcome,
         result.workflowName,
-        result.wf ? { wf: result.wf, cleared: result.cleared, notCleared: result.notCleared } : void 0
+        result.wf ? { wf: result.wf, ...result.cleared !== void 0 && { cleared: result.cleared }, ...result.notCleared !== void 0 && { notCleared: result.notCleared } } : void 0
       );
   }
 }
@@ -8741,24 +8757,26 @@ function reportStatus(result) {
         statusRunning({
           phase: result.phase,
           attempt: result.attempt,
-          maxAttempts: result.maxAttempts,
+          ...result.maxAttempts !== void 0 && { maxAttempts: result.maxAttempts },
           attemptUnknown: result.attemptUnknown,
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
           driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run",
-          // All three conditional, and all absent rather than falsy when there is nothing to
-          // say: `undefined` is what makes a run on which none of them has happened print
-          // exactly what `status` printed before any of these lines existed. The last stop is
+          // All three conditional, and all genuinely ABSENT rather than present-and-empty
+          // when there is nothing to say — which is what makes a run on which none of them has
+          // happened print exactly what `status` printed before any of these lines existed.
+          // They used to pass `undefined` for that; the key is now simply not spread, which
+          // says the same thing to a reader and to exactOptionalPropertyTypes alike. The last stop is
           // the answer to the question the `driver:` line cannot reach — whether the previous
           // turn end was held; the last moved time is a different question again — when the run
           // itself was last acted on (ADR-0027 §7) — and the observer line is the only one of
           // these facts that is about the caller rather than the run.
-          lastStop: result.lastStop ?? void 0,
-          lastMoved: result.lastMoved ?? void 0,
-          observer: result.observer ? true : void 0,
+          ...result.lastStop !== null && { lastStop: result.lastStop },
+          ...result.lastMoved !== null && { lastMoved: result.lastMoved },
+          ...result.observer && { observer: true },
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
-          description: result.description
+          ...result.description !== void 0 && { description: result.description }
         }),
         0
       );

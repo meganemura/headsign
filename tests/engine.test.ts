@@ -69,16 +69,14 @@ test("fail defaults to retry", () => {
   assert.equal(state.status, "running");
   assert.equal(state.attempts.a, 1);
   assert.deepEqual(state.last_failure, {
-    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", timeout_seconds: undefined, elapsed_seconds: undefined, repeats: 1,
+    phase: "a", check: "unit", run: "npm test", exit_code: 1, output_tail: "out", repeats: 1,
   });
   assert.deepEqual(outcome, {
     kind: "RETRY",
     phase: "a",
     attempt: 1,
-    maxAttempts: undefined,
     failure: {
-      check: "unit", run: "npm test", exitCode: 1, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined,
-      checksTotal: undefined, checksRun: undefined, notRunChecks: undefined,
+      check: "unit", run: "npm test", exitCode: 1, outputTail: "out",
     },
     repeats: 1,
   });
@@ -94,8 +92,7 @@ test("fail routes to a named phase (ADVANCE with failure note); attempts of the 
     phase: "implement",
     description: "implement",
     failure: {
-      check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined,
-      checksTotal: undefined, checksRun: undefined, notRunChecks: undefined, routedTo: "implement",
+      check: "lint", run: "eslint", exitCode: 2, outputTail: "out", routedTo: "implement",
     },
   });
 });
@@ -257,8 +254,7 @@ test("a failing gate never consults the route list: on_fail decides, and routedB
     phase: "d",
     description: "d",
     failure: {
-      check: "lint", run: "eslint", exitCode: 2, outputTail: "out", timeoutSeconds: undefined, elapsedSeconds: undefined,
-      checksTotal: undefined, checksRun: undefined, notRunChecks: undefined, routedTo: "d",
+      check: "lint", run: "eslint", exitCode: 2, outputTail: "out", routedTo: "d",
     },
   });
 });

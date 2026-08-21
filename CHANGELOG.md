@@ -11,6 +11,15 @@ changes), and a patch bump means fixes only.
 
 ### Fixed
 
+- **An optional field that has no value is now absent from the record, not
+  present holding nothing.** `state.json` never carried the difference —
+  `JSON.stringify` drops an `undefined` value — so nothing a run writes to disk
+  changes. What changes is the shape in memory, which `status` reads back and
+  which tests compare against: a `last_failure` for a check that did not time
+  out no longer carries a `timeout_seconds` key at all. Three tests were
+  asserting the old shape, and so were asserting a record that has never
+  existed on disk.
+
 - **The reference now says how to actually perform an update.** It spent a
   paragraph on updating being a separate event from declaring a version, and
   stopped short of the command — leaving the reader who followed the reasoning

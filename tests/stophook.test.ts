@@ -974,7 +974,7 @@ test("SubagentStop: a flagged stop that cannot be matched to the recorded driver
     state.writeState(dir, runningState({ driver_agent: driver }));
     const before = fs.readFileSync(state.statePath(dir));
 
-    const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, agentId, stopHookActive: true }), NOW, NO_ENV);
+    const decision = stophook.evaluateSubagent(dir, subagentStdin({ dir, ...(agentId !== undefined && { agentId }), stopHookActive: true }), NOW, NO_ENV);
     assert.deepEqual(decision, { block: false }, label);
     assert.deepEqual(fs.readFileSync(state.statePath(dir)), before, `${label}: nothing headsign can attribute, so nothing is written`);
     assert.deepEqual(readLog(dir), [], label);
@@ -1086,7 +1086,7 @@ test("fallback (SubagentStop): only a positive driver match is attributed, the s
     const projectDir = tmpdir();
     state.writeState(projectDir, runningState({ workflow: "demo", phase: "build", driver_agent: driver }));
 
-    const decision = stophook.evaluateSubagent(startDir, subagentStdin({ dir: startDir, agentId }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
+    const decision = stophook.evaluateSubagent(startDir, subagentStdin({ dir: startDir, ...(agentId !== undefined && { agentId }) }), NOW, { CLAUDE_PROJECT_DIR: projectDir });
     assert.deepEqual(decision, { block: false }, label);
     const after = state.readState(projectDir);
     if (shouldWrite) {
