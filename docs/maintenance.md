@@ -232,9 +232,21 @@ trust, it is reversibility: an agent may do anything that changes only this
 machine and can be undone here, and everything reserved either leaves the
 machine or is protected against being undone once it has.
 
-1. **[agent]** Bump `version` in **both** `package.json` and
-   `plugin/.claude-plugin/plugin.json` (CI enforces equality; without the
-   plugin bump, marketplace users never receive the release).
+1. **[agent]** Bump `version` in `package.json` and in **every** plugin
+   manifest — `plugin/.claude-plugin/plugin.json` and
+   `plugin/.codex-plugin/plugin.json` today, and whatever else
+   `find plugin -maxdepth 2 -name plugin.json` lists, which is the list to
+   take rather than this sentence. CI enforces equality across all of them,
+   and a manifest left behind is the failure this step exists to prevent:
+   without its bump, that host's marketplace users never receive the release,
+   because a plugin update is decided by comparing that string. The command
+   reports success and the version does not move.
+
+   **This step named one manifest until v0.8.1, and a release walked into
+   exactly that.** The second manifest arrived with the second host in v0.7.0,
+   the sentence was not revisited, and v0.8.0 shipped with the Codex manifest
+   still reading `0.7.0`. Count the manifests on disk each time; the number is
+   a fact about the tree, not about this page.
 2. **[agent]** `npm run build`, and commit the rebuilt
    `plugin/dist/headsign.mjs` with the bump. **This step is not optional and
    the release commit is where it belongs**: the build substitutes the version
