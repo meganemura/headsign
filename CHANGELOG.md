@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 During 0.x, a minor bump means feature additions (which may include breaking
 changes), and a patch bump means fixes only.
 
-## [Unreleased]
+## [0.8.0] - 2026-08-23
+
+Two changes, and one sentence under both of them: **the graph sequences checks,
+and the agent sequences work.**
+
+`headsign status` now answers for the workflow file in front of you, not only
+for what the record was last told about it. That closes the one question a
+read-only reader of a run could not ask, and the reader that asked for it is a
+viewer that draws runs.
+
+`example.headsign/fan-out.yaml` stops requiring a worktree and a child run per
+piece of work. Deciding how to divide work, and by what machinery, belongs to
+the agent that can see it.
 
 ### Added
 
