@@ -385,11 +385,27 @@ it.
 ## Repository settings (live outside the tree; recorded here to be reproducible)
 
 - **Visibility**: private until first release; public from v0.1.0.
-- **Description / topics**: set via `gh repo edit` — description is the
-  one-liner from the README; topics include `claude-code`,
-  `claude-code-plugin`, `coding-agent`, `ai-agents`, `agentic-coding`,
-  `phase-gate`, `workflow`, `state-machine`, `cli`, `developer-tools`,
-  `typescript`, plus `agent-skills` once `gh skill publish` has run.
+- **Description / topics**: set via `gh repo edit`. The description carries the
+  README's one-liner and names the hosts, because it is the line a search result
+  shows and "which agents does this work with" is the first question it has to
+  answer. Read the live values with
+  `gh repo view --json description,repositoryTopics` rather than trusting this
+  page — the list below is what was set on 2026-08-22, not a promise about now.
+
+  Topics, 17 of a possible 20: `claude-code`, `claude-code-plugin`, `codex`,
+  `codex-cli`, `codex-plugin`, `coding-agent`, `ai-agents`, `agentic-coding`,
+  `agent-skills`, `phase-gate`, `workflow`, `state-machine`, `graph-engineering`,
+  `loop-engineering`, `cli`, `developer-tools`, `typescript`.
+
+  The per-host pairs are deliberate: a bare host name reaches people browsing
+  the ecosystem, and the `-plugin` form reaches the ones looking for something
+  to install. `agent-skills` is what `gh skill` discovery keys on, so it earns
+  its slot for a reason the others do not.
+
+  **A release that adds a host is not finished until this line moves.** v0.7.0
+  shipped Codex support with the description still reading "Claude Code
+  drives" — the manifests had been corrected and the one public sentence about
+  the project had not.
 - **Tag protection ruleset**: targets `v*`; denies deletion and updates
   (re-pointing). Create under Settings > Rules > Rulesets, or via `gh api`.
 - **Actions hardening.** What the workflow file can safely assume is decided
