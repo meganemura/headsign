@@ -37,12 +37,10 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
-  "dependencies": {
-    "yaml": "^2.9.0"
-  },
   "devDependencies": {
-    "typescript": "^7.0.2",
+    "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
-    "@types/node": "^26.1.1"
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.0"
   }
 }

@@ -11,6 +11,13 @@ changes), and a patch bump means fixes only.
 
 ### Fixed
 
+- **Installing headsign no longer installs a package it never uses.** `yaml`
+  was declared as a runtime dependency while the build inlines it into
+  `plugin/dist/headsign.mjs`, whose only remaining imports are Node built-ins.
+  Every consumer downloaded a copy that nothing loaded. It moves to
+  `devDependencies`, where it is still what parses your workflow file — from
+  inside the bundle. A clean install of the tarball now adds one package.
+
 - **A rejected `on_pass` now names `$end`.** `on_pass: complete` — the word a
   writer reaches for when they mean "this is the last phase" — answered `does
   not name a defined phase` and left the reader to find the sentinel somewhere
