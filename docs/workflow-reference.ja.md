@@ -809,6 +809,23 @@ run を `running` のまま残す `ESCALATE` で、試行も反復も消費せ�
 - **ファイルを元に戻す。**次の `next` は再び fingerprint と一致し、何も言わず、何も要求しません。戻すことは無料です。
 - **`headsign next --accept-graph-change` を実行する。**これが受け入れで、run はそのまま進みます。受け入れた変更は計上され、`COMPLETE` がその回数を言います。`.headsign/log` は gitignore されていて PR には届きませんが、最後の答えは報告を受ける人が読むからです。
 
+**`headsign status` は、記録だけでなく目の前のファイルについても答えます。**
+差分が `state.json` に届くのは周回がそれを報告したときだけなので、編集してから次の `headsign next` までのあいだ、記録はその編集について何も持っていません。
+`status` はディスク上の規則を読んだその場でハッシュし、pin と突き合わせることでその窓を塞ぎます。
+ファイルが記録の知らないことを言っている二つの場合に、`graph:` の行が出ます。
+
+```
+graph: the file no longer matches the rules this run pinned — `headsign next` will report it before it runs the gate
+graph: the file matches the rules this run pinned again — `headsign next` will clear the line above and cost nothing
+```
+
+前者は、どの周回もまだ見ていない編集です。
+後者は、報告が立っているあいだにファイルを元に戻した状態で、上に書いた「戻すことは無料」が `next` を叩く前に見える唯一の場所です。
+ファイルと記録が一致しているときはどちらの行も出ず、出力は以前と 1 バイトも変わりません。
+そのため、読む側は行だけで判定できます。ファイルが pin と食い違っているのは、`graph: the file no longer matches …` が出ているとき、または `graph: changed since this run accepted it …` が出ていてその下に `graph: the file matches … again` が無いときです。
+これを `--- phase: ---` ブロックと合わせて読んでください。ワークフローが読めないときそのブロックは出ません。読めるファイルが無いことは比較対象が無いことなので、`status` は推測せず何も言いません。
+この比較はゲートを走らせず、プロセスを起こさず、何も書かず、ロックも取りません。`status` は見るための道具のままです([ADR-0029](adr/0029-status-answers-for-the-file.md))。
+
 **素の `next` は、何回叩いても受け入れません。**同じ変更をもう一度報告し、何も計上せず、試行も反復も消費しません。
 これは意図的です。受け入れと再試行は以前**同じコマンド**だったので、途中で出力を読まずに `next` を 2 回以上発行するもの——バッチ、ループ、非ゼロで再試行するラッパー——は、**誰も報告を見ないまま規則の変更を受け入れられました。**
 このフラグは「人が実行した」ことの主張ではありません(headsign にそれは分かりません)。**2 つの行為を別の入力にするためのもの**です。
