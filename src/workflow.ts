@@ -185,7 +185,7 @@ function validatePhase(name: string, p: Record<string, unknown>, names: Set<stri
   if (Array.isArray(p.on_pass)) validateRoutes(name, p.on_pass, names, errors);
   else if (typeof p.on_pass !== "string" || !p.on_pass) errors.push(`phase '${name}': on_pass is required`);
   else if (p.on_pass === "retry") errors.push(`phase '${name}': on_pass cannot be 'retry'`);
-  else if (p.on_pass !== "$end" && !names.has(p.on_pass)) errors.push(`phase '${name}': on_pass '${p.on_pass}' does not name a defined phase`);
+  else if (p.on_pass !== "$end" && !names.has(p.on_pass)) errors.push(`phase '${name}': on_pass '${p.on_pass}' does not name a defined phase or '$end'`);
 
   if (p.on_fail !== undefined && (typeof p.on_fail !== "string" || (!ON_FAIL_TOKENS.has(p.on_fail) && !names.has(p.on_fail)))) {
     errors.push(`phase '${name}': on_fail '${String(p.on_fail)}' is not a valid route`);
@@ -216,7 +216,7 @@ function validateRoutes(name: string, routes: unknown[], names: Set<string>, err
     rejectUnknownKeys("route", raw, `phase '${name}': on_pass[${i}]: `, errors);
     if (typeof raw.to !== "string" || !raw.to) errors.push(`phase '${name}': on_pass[${i}].to is required`);
     else if (raw.to === "retry") errors.push(`phase '${name}': on_pass[${i}].to cannot be 'retry'`);
-    else if (raw.to !== "$end" && !names.has(raw.to)) errors.push(`phase '${name}': on_pass[${i}].to '${raw.to}' does not name a defined phase`);
+    else if (raw.to !== "$end" && !names.has(raw.to)) errors.push(`phase '${name}': on_pass[${i}].to '${raw.to}' does not name a defined phase or '$end'`);
 
     if (raw.when !== undefined && (typeof raw.when !== "string" || !raw.when)) {
       errors.push(`phase '${name}': on_pass[${i}].when must be a non-empty shell string`);

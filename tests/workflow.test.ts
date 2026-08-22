@@ -267,7 +267,7 @@ test("a route with a non-string 'to' is rejected", () => {
 test("a route whose 'to' names no phase is rejected", () => {
   const doc = routedWorkflow();
   routes(doc)[0].to = "nope";
-  assert.ok(errors(doc).some((e) => e.includes("on_pass[0].to 'nope' does not name a defined phase")));
+  assert.ok(errors(doc).some((e) => e.includes("on_pass[0].to 'nope' does not name a defined phase or '$end'")));
 });
 
 test("a route to '$end' is accepted", () => {

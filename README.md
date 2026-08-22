@@ -120,9 +120,10 @@ In Claude Code, as a plugin:
 /plugin install headsign@headsign
 ```
 
-The plugin ships three things: the bundled CLI (no npm install, no build), a
-`workflow` skill teaching the loop discipline, and the stop-boundary hooks that
-keep an agent from silently quitting mid-run.
+The plugin ships four things: the bundled CLI (no npm install, no build), a
+`workflow` skill teaching the loop discipline, a `design-workflow` skill that
+writes the YAML with you, and the stop-boundary hooks that keep an agent from
+silently quitting mid-run.
 
 A repository can enable it for everyone who opens it, so that nobody on the team
 installs it individually. That is a committed `.claude/settings.json`:

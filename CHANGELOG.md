@@ -11,6 +11,20 @@ changes), and a patch bump means fixes only.
 
 ### Fixed
 
+- **A rejected `on_pass` now names `$end`.** `on_pass: complete` — the word a
+  writer reaches for when they mean "this is the last phase" — answered `does
+  not name a defined phase` and left the reader to find the sentinel somewhere
+  else. It now says `does not name a defined phase or '$end'`. The same
+  correction applies to a route's `to:`, and deliberately not to `entry:`,
+  which cannot be `$end` at all.
+
+- **The README said the plugin ships three things and shipped four.** The
+  `design-workflow` skill — the one that writes the YAML with you, which is
+  exactly the friction the sentence above is about — went unmentioned.
+
+- **`docs/architecture.md`'s list of design records was missing five of them**
+  (0019, 0020, 0025, 0026, 0027), while the prose above it already cited 0027.
+
 - **An optional field that has no value is now absent from the record, not
   present holding nothing.** `state.json` never carried the difference —
   `JSON.stringify` drops an `undefined` value — so nothing a run writes to disk

@@ -3279,7 +3279,7 @@ phases:
   const result = run(["validate"], { cwd: dir });
   assert.equal(result.status, 3);
   assert.match(result.stderr, /^INVALID: /);
-  assert.match(result.stderr, /on_pass 'nowhere' does not name a defined phase/);
+  assert.match(result.stderr, /on_pass 'nowhere' does not name a defined phase or '\$end'/);
 });
 
 // --- every refusal of the five commands that moved into engine.ts (ADR-0018) ---

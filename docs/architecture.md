@@ -160,7 +160,12 @@ outside it:
 - [ADR-0016](adr/0016-explainability-as-the-fitness-function.md) — explainability replaces the line budget; the rule for a run that rewrites its own workflow
 - [ADR-0017](adr/0017-three-budgets-and-the-recoverable-ceiling.md) — three budgets; the global ceiling escalates without ending the run
 - [ADR-0018](adr/0018-cli-engine-seam.md) — the seam between `cli.ts` and `engine.ts`: the order of a lap is a routing rule, so the five run operations move
+- [ADR-0019](adr/0019-readme-as-one-page-and-the-three-document-layers.md) — documentation splits into three layers by the moment it is read; the README carries boundaries rather than syntax *(middle layer corrected by 0020)*
+- [ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md) — writing the workflow is a second skill; the reference page is the person's and the skill ships the agent's
 - [ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md) — an unrunnable check or `ready:` probe refuses the lap instead of failing it; a timeout stays a verdict
 - [ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md) — `validate` warns on a pass-edge cycle with no ceiling: `max_attempts` clears on a pass, so it cannot bound one
 - [ADR-0023](adr/0023-pinning-the-graph-a-run-is-walking-under.md) — a run pins the rules it walks under; a change is reported once and counted when accepted
 - [ADR-0024](adr/0024-the-log-survives-a-restart.md) — `start` stops truncating `.headsign/log`; the `start` line is the seam between runs
+- [ADR-0025](adr/0025-a-stop-that-passed-and-a-stop-that-never-ran.md) — telling a stop that passed from a hook that never ran: the `unheld` event and `last_stop`, written in one locked write *(amends 0002, 0004, 0006, 0008)*
+- [ADR-0026](adr/0026-a-second-place-to-look.md) — a bounded second walk from `CLAUDE_PROJECT_DIR` once the first finds nothing; it records without ever holding the turn *(amends 0006, 0025)*
+- [ADR-0027](adr/0027-recording-who-drove-a-run.md) — `last_drive: { session, at }`, so an unclaimed run stops nudging its bystanders *(supersedes part of 0013, amends 0006)*
