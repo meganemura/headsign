@@ -21,12 +21,19 @@ decide whether the work may leave it. This skill works out what those phases
 and those commands should be **for this repository**, settles the shape with
 the person who asked, and writes the file.
 
-When this skill runs inside its Claude Code plugin, the CLI is bundled with
-it and no install is needed. `headsign <cmd>` below means:
+When this skill runs inside the headsign plugin in Claude Code or Codex, the
+CLI is bundled with it and no install is needed. In Claude Code,
+`headsign <cmd>` below means:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 ```
+
+In Codex, use the absolute SKILL.md path that Codex supplies for this skill.
+Go up from `skills/design-workflow/SKILL.md` to the plugin root, then invoke
+`dist/headsign.mjs` with Node. Do not assume a session environment variable
+for the skill directory; the Codex contracts checked for this release did not
+confirm one.
 
 (A PATH-installed `headsign` works too, and so does `npx headsign` once the
 package is installed. Check which you have before reaching for either —
@@ -36,7 +43,7 @@ npm chooses rather than the one this plugin ships, and that copy will read and
 write the same `.headsign/state.json` the bundled one has been driving.)
 
 If the bundled path above does not exist, this file is a copy running
-outside its plugin (e.g. placed in `.claude/skills/`) — the bundle only
+outside its plugin (for example, in `.claude/skills/` or `.agents/skills/`) — the bundle only
 ships with the plugin. Use a PATH-installed `headsign`, or `npx headsign`
 on the terms above; otherwise stop and tell the user to either install the
 plugin or `npm install` the package. Do not guess at other paths.

@@ -16,12 +16,19 @@ headsign is a phase gate: you do the work, deterministic shell checks decide
 the phase transitions. You never judge for yourself whether a phase is done —
 the gate does.
 
-When this skill runs inside its Claude Code plugin, the CLI is bundled with
-it and no install is needed. `headsign <cmd>` below means:
+When this skill runs inside the headsign plugin in Claude Code or Codex, the
+CLI is bundled with it and no install is needed. In Claude Code,
+`headsign <cmd>` below means:
 
 ```
 node "${CLAUDE_SKILL_DIR}/../../dist/headsign.mjs" <cmd>
 ```
+
+In Codex, use the absolute SKILL.md path that Codex supplies for this skill.
+Go up from `skills/workflow/SKILL.md` to the plugin root, then invoke
+`dist/headsign.mjs` with Node. Do not assume a session environment variable
+for the skill directory; the Codex contracts checked for this release did not
+confirm one.
 
 (A PATH-installed `headsign` works too, and so does `npx headsign` once the
 package is installed. Check which you have before reaching for either —
@@ -31,7 +38,7 @@ npm chooses rather than the one this plugin ships, and that copy will read and
 write the same `.headsign/state.json` the bundled one has been driving.)
 
 If the bundled path above does not exist, this file is a copy running
-outside its plugin (e.g. placed in `.claude/skills/`) — the bundle only
+outside its plugin (for example, in `.claude/skills/` or `.agents/skills/`) — the bundle only
 ships with the plugin. Use a PATH-installed `headsign`, or `npx headsign`
 on the terms above; otherwise stop and tell the user to either install the
 plugin or `npm install` the package. Do not guess at other paths.
@@ -42,7 +49,7 @@ plugin or `npm install` the package. Do not guess at other paths.
    not run `headsign start`, and hasn't been explicitly asked (by the user,
    or by the session that did) to continue an existing run — do not run
    `headsign next` or `headsign abort`. A repository can have more than one
-   Claude Code session open on it at once (a lead plus teammates, or a
+   coding-agent session open on it at once (a lead plus teammates, or a
    subagent working alongside the session that spawned it), and only the
    one driving the run should touch it: obeying a nudge you weren't meant to
    answer can burn a retry or advance a phase nobody asked you to touch.
@@ -94,7 +101,7 @@ plugin or `npm install` the package. Do not guess at other paths.
    seated you — if you did not run `headsign claim`, you have taken a seat
    another agent was asking for, so say so and let it claim again. The test
    only works in this direction and only for delegated agents: ending
-   quietly proves nothing (not having claimed, Claude Code's
+   quietly proves nothing (not having claimed, the host's
    already-continuing flag, an exhausted nudge cap, a pause note,
    `HEADSIGN_OBSERVER`, a directory the walk-up resolved only via
    `CLAUDE_PROJECT_DIR`, or a run this session simply never touched while
@@ -103,7 +110,7 @@ plugin or `npm install` the package. Do not guess at other paths.
    moved, whether or not it is driving — once someone has moved it, only
    that session is. A nudge
    arrives roughly **once per exchange**, not once per turn end. When the
-   hook holds a turn, Claude Code flags the continuation, so the ending of
+   hook holds a turn, the host flags the continuation, so the ending of
    *that* turn passes quietly — recorded as an `unheld` line in
    `.headsign/log` and on `headsign status`'s `last stop:` line. The
    window is one turn wide and closes when the turn ends.

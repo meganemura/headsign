@@ -4,7 +4,7 @@
 > for agent loops: each iteration, the agent asks where it's bound; headsign
 > runs the gates and answers — proceed, retry, or terminus.
 
-headsign is a **phase gate** for coding agents. Claude Code drives the work;
+headsign is a **phase gate** for coding agents. Claude Code or Codex drives the work;
 headsign holds the workflow state and decides transitions. The judgment is
 always deterministic (shell exit codes) — the LLM never participates in the
 verdict, it only reads it.
@@ -13,7 +13,7 @@ verdict, it only reads it.
 
 ```
 ┌──────────────┐  headsign next   ┌──────────────────────────┐
-│ Claude Code  │ ───────────────▶ │ headsign CLI             │
+│ coding agent │ ───────────────▶ │ headsign CLI             │
 │ (drives,     │                  │ 1. read  .headsign/state │
 │  does the    │ ◀─────────────── │ 2. run   gate checks     │
 │  work)       │  ADVANCE/RETRY/  │ 3. write .headsign/state │
@@ -22,15 +22,16 @@ verdict, it only reads it.
 ```
 
 There is no long-running process. Every invocation starts, reads state,
-judges, writes state, exits. Claude's single discipline is: **do the work,
+judges, writes state, exits. The agent's single discipline is: **do the work,
 run `headsign next` and obey the first-line token.**
 
 ## Components
 
 ```
-plugin/                          # what gets distributed (Claude Code plugin)
+plugin/                          # what gets distributed (Claude Code and Codex plugin)
   .claude-plugin/plugin.json
-  skills/workflow/SKILL.md       # the discipline taught to Claude
+  .codex-plugin/plugin.json
+  skills/workflow/SKILL.md       # the discipline taught to the agent
   hooks/hooks.json               # the two stop-boundary hooks (the backstop)
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
@@ -120,7 +121,7 @@ chooses the exit code.
 Thin Harness, Fat Skills. The CLI is a state machine; everything smart lives
 outside it:
 
-- **SKILL.md** teaches Claude the loop discipline (seven numbered rules; if
+- **SKILL.md** teaches the agent the loop discipline (seven numbered rules; if
   it needs an eighth, prefer sharpening one of the seven).
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
@@ -169,3 +170,4 @@ outside it:
 - [ADR-0025](adr/0025-a-stop-that-passed-and-a-stop-that-never-ran.md) — telling a stop that passed from a hook that never ran: the `unheld` event and `last_stop`, written in one locked write *(amends 0002, 0004, 0006, 0008)*
 - [ADR-0026](adr/0026-a-second-place-to-look.md) — a bounded second walk from `CLAUDE_PROJECT_DIR` once the first finds nothing; it records without ever holding the turn *(amends 0006, 0025)*
 - [ADR-0027](adr/0027-recording-who-drove-a-run.md) — `last_drive: { session, at }`, so an unclaimed run stops nudging its bystanders *(supersedes part of 0013, amends 0006)*
+- [ADR-0028](adr/0028-codex-as-a-second-principal.md) — Codex as a second principal; shared plugin, skill, and hook packaging with a documented session-attribution boundary

@@ -444,9 +444,18 @@ test("version and --version print the bare version and a newline, byte-identical
 
 // --- the hook registration: the guard that makes an uninstalled interpreter silent ---
 //
-// These tests run the command strings out of plugin/hooks/hooks.json — the artifact Claude Code
-// actually executes — rather than a copy written here, so the two cannot drift apart. What they
-// pin, and why each property is load-bearing, is ADR-0005's hook-registration bullet.
+// These tests run the command strings out of plugin/hooks/hooks.json — the artifact both hosts
+// execute — rather than a copy written here, so the two cannot drift apart. What they pin, and
+// why each property is load-bearing, is ADR-0005's hook-registration bullet.
+//
+// THE VARIABLE IS SPELLED `CLAUDE_PLUGIN_ROOT` AND THAT IS CORRECT UNDER CODEX TOO. It reads
+// like a leftover from a Claude-only past, so it gets said here rather than left to be
+// rediscovered: `hooks.json` is JSON and cannot hold the note itself, and this is the code that
+// reads that file. Codex defines the name, and it is what Codex's own first-party plugin
+// registers its hooks with (measured 2026-08-22 — see ADR-0028, which records how). Codex also
+// defines a bare `PLUGIN_ROOT`; headsign does not reach for it, because a name that generic can
+// be exported by anything, and preferring it would let an unrelated program decide which
+// directory this hook runs a bundle out of.
 
 const HOOKS: { hooks: Record<string, Array<{ hooks: Array<{ type: string; command: string; args?: string[] }> }>> } = JSON.parse(
   fs.readFileSync(path.join(import.meta.dirname, "..", "plugin", "hooks", "hooks.json"), "utf8"),

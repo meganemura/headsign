@@ -4,6 +4,7 @@
   "description": "A tiny phase gate for coding agents. Ask it what's next; it runs deterministic checks and tells the loop where to go.",
   "license": "MIT",
   "keywords": [
+    "codex",
     "claude-code",
     "coding-agent",
     "phase-gate",

@@ -1,6 +1,6 @@
 {
   "name": "headsign",
-  "description": "Headsign — a tiny phase gate for coding agents. Claude Code drives, headsign holds the state.",
+  "description": "Headsign — a tiny phase gate for coding agents. The agent drives, headsign holds the state.",
   "owner": { "name": "meganemura" },
   "plugins": [
     {

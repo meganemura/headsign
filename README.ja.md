@@ -114,6 +114,21 @@ headsign は、その一文を exit code に置き換えます。
 
 ## インストール
 
+Codex CLI では、プラグインとしてインストールします:
+
+```
+codex plugin marketplace add meganemura/headsign
+codex plugin add headsign@headsign
+```
+
+Codex は、プラグインの hook に個別の信頼確認を求めます。
+インストール後に `/hooks` を開き、二つのコマンドを確認して信頼すると、バックストップが動きます。
+
+そのコマンドの中に、間違いに見えて間違いではないものが一つあります。
+プラグイン自身の置き場が `CLAUDE_PLUGIN_ROOT` で渡ってくることです。
+この名前は Codex が定義していて、Codex 自身の公式プラグインもこの名前で hook を登録しています。
+実測の内容と、素の `PLUGIN_ROOT` を使わない理由は [ADR-0028](docs/adr/0028-codex-as-a-second-principal.md) にあります。
+
 Claude Code では、プラグインとして:
 
 ```
@@ -121,8 +136,15 @@ Claude Code では、プラグインとして:
 /plugin install headsign@headsign
 ```
 
-プラグインには四つが同梱されます。
+どちらのホストでも、同じ四つが同梱されます。
 バンドル済み CLI(npm install もビルドも不要)、ループの規律を教える `workflow` スキル、YAML を一緒に書く `design-workflow` スキル、そして run の途中でエージェントが黙って抜けるのを押し返す停止境界の hook です。
+
+Codex の hook 契約には、`cwd`、`session_id`、`Stop`、`SubagentStop` が明記されています。
+そのため、バックストップは両方のホストで動きます。
+Codex の通常の CLI コマンドで使える公開セッション環境変数は、公式資料で確認できませんでした。
+そのため、Codex で `start` または `next` を実行しても、headsign は `last_drive.session` を記録できません。
+既存の記録が無い未 claim の Codex run では、一致する各セッションがバックストップを受けることがあります。
+読み取り専用の明示的な解除には、従来どおり `HEADSIGN_OBSERVER=1` を使います。
 
 リポジトリの側で、そこを開く全員に対して有効にすることもできます。
 そうすれば、チームの誰も個別にインストールせずに済みます。
@@ -155,7 +177,7 @@ npx headsign --help
 プラグインが省いてくれるのはインストールとビルドであって、ランタイムではありません。
 そのため `headsign` を呼ぶ場所には、どこであれ Node 20 以上が必要です。
 CI のジョブでも、ツールチェーンが本来 Node と無縁な Ruby / Go / Python のリポジトリのハーネスでも、これは変わりません。
-Claude Code 以外のエージェントに規律を教える方法、プラグインなしで hook のバックストップを入れる方法、そして上のリポジトリ単位の宣言のうち動く部分(リリースタグへの固定、個人単位での解除、更新が何を意味するか)は、[docs/workflow-reference.ja.md](docs/workflow-reference.ja.md) にあります。
+別のエージェントに規律を教える方法、プラグインなしで hook のバックストップを入れる方法、そして上のリポジトリ単位の宣言のうち動く部分(リリースタグへの固定、個人単位での解除、更新が何を意味するか)は、[docs/workflow-reference.ja.md](docs/workflow-reference.ja.md) にあります。
 
 ## ループはどんな形か
 

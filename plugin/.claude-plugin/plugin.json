@@ -1,7 +1,7 @@
 {
   "name": "headsign",
   "version": "0.6.1",
-  "description": "A tiny phase gate for coding agents: your shell checks decide pass/fail (never the LLM), your workflow routes the agent (advance / retry / escalate / done). Claude Code drives, headsign holds the state.",
+  "description": "A tiny phase gate for coding agents: your shell checks decide pass/fail (never the LLM), your workflow routes the agent (advance / retry / escalate / done). The agent drives, headsign holds the state.",
   "author": {
     "name": "meganemura",
     "url": "https://github.com/meganemura"

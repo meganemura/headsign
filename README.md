@@ -113,6 +113,21 @@ verdict, say). That boundary is named, not hidden — see
 
 ## Install
 
+In Codex CLI, as a plugin:
+
+```
+codex plugin marketplace add meganemura/headsign
+codex plugin add headsign@headsign
+```
+
+Codex requires a separate trust review for plugin hooks. Open `/hooks` after
+installation, review the two commands, and trust them before expecting the
+backstop to run. One thing in them looks wrong and is not: the plugin's own
+directory arrives in `CLAUDE_PLUGIN_ROOT`. Codex defines that name, and Codex's
+own first-party plugin registers its hooks with it —
+[ADR-0028](docs/adr/0028-codex-as-a-second-principal.md) records the
+measurement and why the bare `PLUGIN_ROOT` is left alone.
+
 In Claude Code, as a plugin:
 
 ```
@@ -120,10 +135,17 @@ In Claude Code, as a plugin:
 /plugin install headsign@headsign
 ```
 
-The plugin ships four things: the bundled CLI (no npm install, no build), a
+Both hosts receive the same four things: the bundled CLI (no npm install, no build), a
 `workflow` skill teaching the loop discipline, a `design-workflow` skill that
 writes the YAML with you, and the stop-boundary hooks that keep an agent from
 silently quitting mid-run.
+
+Codex documents `cwd`, `session_id`, `Stop`, and `SubagentStop` in its hook
+contract, so the backstop runs on both hosts. This research did not confirm a
+stable public session variable for ordinary Codex CLI commands. Thus, headsign cannot
+stamp `last_drive.session` during Codex `start` or `next` calls. On an unclaimed
+Codex run with no existing stamp, every matching session can receive the
+backstop. `HEADSIGN_OBSERVER=1` remains the explicit read-only opt-out.
 
 A repository can enable it for everyone who opens it, so that nobody on the team
 installs it individually. That is a committed `.claude/settings.json`:
@@ -156,7 +178,7 @@ The CLI is the tool; the plugin is packaging. Either way it is a Node program:
 the plugin spares you the install and the build, not the runtime, so Node ≥ 20
 has to be present wherever `headsign` is invoked — including a CI job, or a
 harness in a Ruby, Go, or Python repository whose toolchain is otherwise none
-of Node's business. Teaching a non-Claude-Code agent the discipline, installing
+of Node's business. Teaching another agent the discipline, installing
 the hook backstop without the plugin, and the parts of that repository-wide
 declaration that move — pinning it to a release tag, opting out of it, and what
 updating means — are in
