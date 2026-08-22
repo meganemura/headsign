@@ -471,6 +471,13 @@ export type StatusResult =
       // else here: reconciling can WRITE, and looking must stay free (protects #12).
       acceptedGraphChanges: number;
       graphChangeReported: boolean;
+      // The third reading, and the only one this module COMPUTES: the file on disk against the
+      // pin, right now. Absent whenever the record already accounts for what the file says —
+      // and whenever there is nothing to compare, which is a run with no pin (predating
+      // ADR-0023) or an unreadable workflow, the same condition `attemptUnknown` reports.
+      // Computing it costs nothing new: the workflow is already loaded here for `description`
+      // and `maxAttempts`, so this stays a comparison in memory — no shell, no lock, no write.
+      graphUnreported?: "changed" | "restored";
       // The current phase's instruction, the same field `start`/`next` print — undefined
       // exactly when `attemptUnknown` is true, since both come from the same lookup (`phase`
       // below): the workflow could not be read, or no longer defines this phase. render.ts
@@ -1035,6 +1042,32 @@ export function claim(cwd: string): ClaimResult {
 // thing outside the hook path to need one, so it followed the existing shape instead of
 // inventing one; `start` and `next` follow the same shape now, for the `last_drive` stamp
 // (ADR-0027).
+// What the workflow file says that the run record does not. Everything else `status` reports is
+// read off `state.json`; this one comparison is why the command can answer "is the file in front
+// of me the graph this run is walking under?" at all — a question a reader who must not run
+// `next` (an observer, a viewer) has no other way to ask, since a difference reaches the record
+// only when a lap reports it.
+//
+// Only the two disagreements are worth a line. A file that agrees with the record — matching
+// with nothing reported, or differing with the difference already reported — adds nothing the
+// lines above have not said. Returning null for both keeps the ordinary run byte-identical
+// (ADR-0023 §8's rule for the lines it added, applied to this one).
+//
+// No pin at all (a run started before ADR-0023) and no readable workflow both mean there is
+// nothing to compare, not that the file matches — so both answer null and say nothing, the same
+// silence `description` and `maxAttempts` fall back to on the unreadable half of that pair.
+function unreportedGraphState(state: State, wf: Workflow | null): "changed" | "restored" | null {
+  const pinned = recordedFingerprint(state);
+  if (pinned === null || wf === null) return null;
+  // From `state.phase`, not the entry: the pin follows the reachable set as the run moves
+  // (ADR-0023 §3), so the comparison has to be taken from where the run stands, exactly as
+  // `next`'s own reconcile takes it.
+  const differs = workflowMod.changedFingerprintKeys(pinned, workflowMod.graphFingerprint(wf, state.phase)).length > 0;
+  const reported = recordedGraphMarker(state) !== null;
+  if (differs) return reported ? null : "changed";
+  return reported ? "restored" : null;
+}
+
 export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
@@ -1079,6 +1112,10 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   // been claimed at all, never by whom (ADR-0013).
   const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
 
+  // Taken from the `wf` already loaded above for `description` and `maxAttempts` — nothing is
+  // read twice, and `status` stays a read.
+  const unreportedGraph = unreportedGraphState(current, wf);
+
   return {
     kind: "RUNNING",
     phase: current.phase,
@@ -1093,6 +1130,10 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     observer: stophook.isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
+    // Spread rather than set, like every other conditional field here: absent means "nothing to
+    // say", never "nothing to compare with" — see unreportedGraphState for why those are the
+    // same silence.
+    ...(unreportedGraph !== null && { graphUnreported: unreportedGraph }),
     // Absent when the workflow is unreadable or no longer defines this phase — the same
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.

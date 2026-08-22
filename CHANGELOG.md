@@ -9,6 +9,19 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **`headsign status` says whether the file on disk is the graph the run
+  pinned.** A difference reached `state.json` only when a lap reported it, so
+  between an edit and the next `headsign next` the record held nothing about it
+  and `status` printed the same output either way. It now compares the rules on
+  disk with the pin as it reads them, and prints one `graph:` line for a file
+  edited with no lap yet run, and one for a file put back while a report still
+  stands — the one place the free, silent restore shows before you run anything.
+  Both lines are conditional, so a run whose file agrees with its record prints
+  what it always printed. The comparison runs no gate, writes nothing and takes
+  no lock ([ADR-0029](docs/adr/0029-status-answers-for-the-file.md)).
+
 ### Fixed
 
 - **Updating on Codex is two commands, and the docs said one.** They carried

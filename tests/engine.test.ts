@@ -691,6 +691,88 @@ phases:
   }
 });
 
+// --- status: the graph as it stands NOW, not as the record last saw it ---
+//
+// A difference reaches `state.json` only when a lap reports it, so between an edit and the next
+// `headsign next` the record says nothing about it at all. That window is what these tests are
+// about: a reader who must not run `next` — an observer, a viewer drawing the run — still gets a
+// true answer about the file in front of them, and gets it without reading `state.json` itself.
+
+const PINNED_WORKFLOW = `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build the thing."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`;
+
+// The same graph with one rule moved. `description` would not do: ADR-0023 §2 leaves it out of
+// the pin on purpose, so rewriting it is invisible here by design.
+const PINNED_WORKFLOW_EDITED = PINNED_WORKFLOW.replace(`- run: "true"`, `- run: "test -f built"`);
+
+test("status(): a workflow edited since start reports the difference before any lap has seen it", () => {
+  const dir = startedRun(PINNED_WORKFLOW);
+  fs.writeFileSync(path.join(dir, ".headsign", "workflow.yaml"), PINNED_WORKFLOW_EDITED);
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.graphUnreported, "changed");
+    assert.equal(status.graphChangeReported, false, "no lap has run, so the record cannot know — that is the gap this closes");
+  }
+});
+
+test("status(): a difference already reported is left to the standing line, not said twice", () => {
+  const dir = startedRun(PINNED_WORKFLOW);
+  fs.writeFileSync(path.join(dir, ".headsign", "workflow.yaml"), PINNED_WORKFLOW_EDITED);
+  engine.next(dir, LAP_TIME, NO_ENV);
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.graphChangeReported, true);
+    assert.equal(status.graphUnreported, undefined, "the record already accounts for the file");
+  }
+});
+
+test("status(): a restored file says so while the report still stands, before a lap clears it", () => {
+  const dir = startedRun(PINNED_WORKFLOW);
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(workflowPath, PINNED_WORKFLOW_EDITED);
+  engine.next(dir, LAP_TIME, NO_ENV);
+  fs.writeFileSync(workflowPath, PINNED_WORKFLOW);
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.graphChangeReported, true, "the marker survives until a lap clears it");
+    assert.equal(status.graphUnreported, "restored", "restoring is free and silent to `next` — this is the one place it shows");
+  }
+});
+
+test("status(): a file that still matches the pin adds nothing", () => {
+  const status = engine.status(startedRun(PINNED_WORKFLOW), NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") assert.equal(status.graphUnreported, undefined);
+});
+
+test("status(): an unreadable workflow leaves nothing to compare, and says nothing rather than 'changed'", () => {
+  const dir = startedRun(PINNED_WORKFLOW);
+  fs.rmSync(path.join(dir, ".headsign", "workflow.yaml"));
+
+  const status = engine.status(dir, NO_ENV);
+  assert.equal(status.kind, "RUNNING");
+  if (status.kind === "RUNNING") {
+    assert.equal(status.attemptUnknown, true);
+    assert.equal(status.graphUnreported, undefined, "absent means nothing to say; a missing file is nothing to compare, not a change");
+  }
+});
+
 // --- clear: what clearPhaseArtifacts (engine.ts) reports, on a real filesystem ---
 //
 // A non-empty file is removed and reported in `cleared`; a directory is left standing (rmSync's

@@ -118,6 +118,9 @@ gitignored and never reaches a pull request, so `COMPLETE` gains a line naming
 how many changes the run accepted — and only when that count is above zero, so a
 run that changed nothing prints what it always printed, to the byte. `status`
 gains the same line, plus one for a difference reported and not yet accepted.
+(Amended by [ADR-0029](0029-status-answers-for-the-file.md): both of those
+lines report the record, and `status` gains a third that reports the file on
+disk, compared against the pin as it reads it.)
 
 **9. No opt-in flag in the workflow file.** The obvious alternative — a key
 declaring whether this workflow may be modified mid-run, pinned at `start` — was

@@ -7881,6 +7881,7 @@ ${o.lastFailure.outputTail}
   const acceptedLine = accepted > 0 ? `graph: ${accepted} accepted ${accepted === 1 ? "change" : "changes"} to the workflow's rules during this run
 ` : "";
   const reportedLine = o.graphChangeReported ? "graph: changed since this run accepted it \u2014 restore the file, or `headsign next --accept-graph-change` to accept\n" : "";
+  const unreportedLine = o.graphUnreported === "changed" ? "graph: the file no longer matches the rules this run pinned \u2014 `headsign next` will report it before it runs the gate\n" : o.graphUnreported === "restored" ? "graph: the file matches the rules this run pinned again \u2014 `headsign next` will clear the line above and cost nothing\n" : "";
   const lastStopLine = o.lastStop ? `last stop: ${lastStopWording(o.lastStop)} \u2014 at ${o.lastStop.at}
 ` : "";
   const noteLine = o.lastStop?.disposition === "paused" && o.lastStop.note ? `note: ${o.lastStop.note}
@@ -7894,7 +7895,7 @@ ${o.description}
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
+${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -8604,6 +8605,14 @@ function claim2(cwd) {
   fs4.writeFileSync(path3.join(tmpDir, "claim"), "");
   return { kind: "CLAIMED" };
 }
+function unreportedGraphState(state, wf) {
+  const pinned = recordedFingerprint(state);
+  if (pinned === null || wf === null) return null;
+  const differs = changedFingerprintKeys(pinned, graphFingerprint(wf, state.phase)).length > 0;
+  const reported = recordedGraphMarker(state) !== null;
+  if (differs) return reported ? null : "changed";
+  return reported ? "restored" : null;
+}
 function status(cwd, env) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
@@ -8626,6 +8635,7 @@ function status(cwd, env) {
     ...recorded.elapsed_seconds !== void 0 && { elapsedSeconds: recorded.elapsed_seconds }
   } : null;
   const driverAgent = typeof current.driver_agent === "string" && current.driver_agent.length > 0 ? current.driver_agent : null;
+  const unreportedGraph = unreportedGraphState(current, wf);
   return {
     kind: "RUNNING",
     phase: current.phase,
@@ -8640,6 +8650,10 @@ function status(cwd, env) {
     observer: isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
+    // Spread rather than set, like every other conditional field here: absent means "nothing to
+    // say", never "nothing to compare with" — see unreportedGraphState for why those are the
+    // same silence.
+    ...unreportedGraph !== null && { graphUnreported: unreportedGraph },
     // Absent when the workflow is unreadable or no longer defines this phase — the same
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
@@ -8795,6 +8809,10 @@ function reportStatus(result) {
           ...result.observer && { observer: true },
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
+          // Conditional for the same reason the three above are: engine.ts sets it only when the
+          // file says something the record does not, so a run whose file agrees prints exactly
+          // what it printed before this line existed.
+          ...result.graphUnreported !== void 0 && { graphUnreported: result.graphUnreported },
           ...result.description !== void 0 && { description: result.description }
         }),
         0

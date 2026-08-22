@@ -229,6 +229,10 @@ function reportStatus(result: engine.StatusResult): never {
           ...(result.observer && { observer: true }),
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,
+          // Conditional for the same reason the three above are: engine.ts sets it only when the
+          // file says something the record does not, so a run whose file agrees prints exactly
+          // what it printed before this line existed.
+          ...(result.graphUnreported !== undefined && { graphUnreported: result.graphUnreported }),
           ...(result.description !== undefined && { description: result.description }),
         }),
         0,

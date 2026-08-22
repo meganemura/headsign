@@ -239,6 +239,14 @@ export function statusRunning(o: {
   // `graphChangeReported` is a standing question (one was shown and has not been accepted).
   acceptedGraphChanges?: number;
   graphChangeReported?: boolean;
+  // The third graph reading, and the only one computed rather than read off the record: what
+  // the file on disk says that `state.json` has not been told yet. Set by engine.ts only when
+  // the two disagree — `changed` for a file that has moved away from the pin with no report
+  // standing, `restored` for one that has come back to it while a report still stands — so the
+  // two agreeing cases print nothing and stay byte-identical to what they always were. Both
+  // readings answer the same question for a reader who cannot run `next`: does the file in
+  // front of me hold the rules this run is walking under?
+  graphUnreported?: "changed" | "restored";
   // The current phase's instruction, in the same block `next`/`start` print it in — so a
   // driver reading `status` after compaction, or copying the block to a delegate, gets the
   // identical shape `next` would have given. Absent (not just empty) whenever engine.ts
@@ -266,6 +274,16 @@ export function statusRunning(o: {
   const reportedLine = o.graphChangeReported
     ? "graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept\n"
     : "";
+  // Directly under the two lines that report the RECORD, because this one reports the FILE and
+  // is only ever printed when it says something they do not. `restored` sits under the standing
+  // question it answers ("the file is back") and must follow it to read that way; `changed`
+  // never appears beside that question at all, so the same slot serves both.
+  const unreportedLine =
+    o.graphUnreported === "changed"
+      ? "graph: the file no longer matches the rules this run pinned — `headsign next` will report it before it runs the gate\n"
+      : o.graphUnreported === "restored"
+        ? "graph: the file matches the rules this run pinned again — `headsign next` will clear the line above and cost nothing\n"
+        : "";
   // Directly after `driver:`, which is the other line about who and what happened at a turn
   // boundary, and ahead of the `graph:` lines, which are about the rules rather than the run's
   // stops. The timestamp is printed VERBATIM: this module reads no clock, cannot know the
@@ -287,7 +305,7 @@ export function statusRunning(o: {
   // conditional lines above the phase block, which comes after everything else in turn.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
   const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${observerLine}${phaseBlock}`;
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for

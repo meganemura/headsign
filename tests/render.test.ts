@@ -632,6 +632,40 @@ test("statusRunning: history first, then the outstanding question", () => {
   );
 });
 
+// The third graph line, the one about the FILE rather than the record. It has to sit under the
+// standing question rather than above it: `restored` is an answer to that line, and an answer
+// printed first reads as a contradiction.
+
+test("statusRunning: a file that has moved off the pin with nothing reported names what the next lap will do", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", graphUnreported: "changed",
+  });
+  assert.equal(
+    actual,
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "graph: the file no longer matches the rules this run pinned — `headsign next` will report it before it runs the gate\n",
+  );
+});
+
+test("statusRunning: a restored file is answered directly under the standing question", () => {
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", graphChangeReported: true, graphUnreported: "restored",
+  });
+  assert.equal(
+    actual,
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      "graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept\n" +
+      "graph: the file matches the rules this run pinned again — `headsign next` will clear the line above and cost nothing\n",
+  );
+});
+
+test("statusRunning: no third graph line when the file and the record agree", () => {
+  const base = { phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo", driver: "a delegated agent" } as const;
+  assert.equal(render.statusRunning(base), `RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n`);
+});
+
 // --- status: what happened at the last stop, and whether the caller has opted out ---
 //
 // The two lines that answer the question `driver:` cannot reach: was the previous turn end held,

@@ -1041,6 +1041,30 @@ phases that moved. You then have two ways forward:
   accepted — because `.headsign/log` is gitignored and never reaches a pull
   request, while the final answer is read by whoever is being reported to.
 
+**`headsign status` answers for the file, not only for the record.** A
+difference reaches `state.json` only when a lap reports it, so between an edit
+and the next `headsign next` the record holds nothing about that edit. `status`
+closes that window by hashing the rules on disk as it reads them and comparing
+them with the pin. It prints a `graph:` line in the two cases where the file
+says something the record does not:
+
+```
+graph: the file no longer matches the rules this run pinned — `headsign next` will report it before it runs the gate
+graph: the file matches the rules this run pinned again — `headsign next` will clear the line above and cost nothing
+```
+
+The first is an edit no lap has seen yet. The second is a file put back while a
+report still stands — the one place the free, silent restore above shows before
+you run anything. When the file and the record agree, neither line appears and
+the output is byte-identical to what it always was. So the file differs from the
+pin exactly when one of two lines is showing: `graph: the file no longer
+matches …`, or `graph: changed since this run accepted it …` with no `graph: the
+file matches … again` under it. Read that together with the `--- phase: ---`
+block, which is absent when the workflow cannot be read: no readable file means
+nothing to compare, and `status` says nothing rather than guessing. The
+comparison runs no gate, starts no process, writes nothing and takes no lock, so
+`status` stays a look ([ADR-0029](adr/0029-status-answers-for-the-file.md)).
+
 **A bare `next` never accepts, however many times it is asked.** It reports the
 same change again, counts nothing, and spends neither an attempt nor an
 iteration. That is deliberate: acceptance and retrying used to be the same
