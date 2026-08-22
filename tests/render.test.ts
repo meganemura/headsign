@@ -56,13 +56,13 @@ test("advance with cleared artifacts and no failure", () => {
 // clearPhaseArtifacts never removes one) ---
 
 test("start with a not-cleared directory lists a --- not cleared: --- line after the cleared lines", () => {
-  const actual = render.start("plan", "Plan the work.", ["a.txt"], ["scratch/"]);
+  const actual = render.start("plan", "Plan the work.", ["a.txt"], [{ path: "scratch/", reason: "directory" as const }]);
   const expected = `START plan\n--- cleared: a.txt ---\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n--- phase: plan ---\nPlan the work.\n`;
   assert.equal(actual, expected);
 });
 
 test("start with only a not-cleared directory (no cleared files) still lists the line", () => {
-  const actual = render.start("plan", "Plan the work.", [], ["scratch/"]);
+  const actual = render.start("plan", "Plan the work.", [], [{ path: "scratch/", reason: "directory" as const }]);
   const expected = `START plan\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n--- phase: plan ---\nPlan the work.\n`;
   assert.equal(actual, expected);
 });
@@ -78,7 +78,7 @@ test("advance with a not-cleared directory: the line lands after the cleared lin
     "Build it.",
     { check: "lint", run: "npm run lint", exitCode: 1, routedTo: "build" },
     ["artifact.txt"],
-    ["scratch/"],
+    [{ path: "scratch/", reason: "directory" as const }],
   );
   const expected =
     `ADVANCE build\n--- cleared: artifact.txt ---\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n` +
@@ -111,7 +111,7 @@ test("the routed line sits where the gate-failed line sits: after the cleared bl
 });
 
 test("not cleared and routed together: not-cleared sits before the routed line too", () => {
-  const actual = render.advance("docs", "Write it.", undefined, ["artifact.txt"], ["scratch/"], { default: true });
+  const actual = render.advance("docs", "Write it.", undefined, ["artifact.txt"], [{ path: "scratch/", reason: "directory" as const }], { default: true });
   const expected =
     `ADVANCE docs\n--- cleared: artifact.txt ---\n--- not cleared: scratch/ (a directory — \`clear:\` removes files only) ---\n` +
     `--- routed: default → docs ---\n--- phase: docs ---\nWrite it.\n`;

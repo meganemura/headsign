@@ -408,7 +408,7 @@ export interface StartResult {
   // refused because a run is already in progress. Null when there were none — and also when
   // the workflow did not load at all, which is the one case `start` never warned about.
   warnings: LoadWarnings | null;
-  result: Rejection | { kind: "STARTED"; phase: string; description: string; cleared: string[]; notCleared: string[] };
+  result: Rejection | { kind: "STARTED"; phase: string; description: string; cleared: string[]; notCleared: NotCleared[] };
 }
 
 export type NextResult =
@@ -419,7 +419,7 @@ export type NextResult =
   // loaded workflow's own name. `wf`, `cleared` and `notCleared` are render extras the Outcome
   // deliberately doesn't carry: the workflow resolves a PENDING phase's description, and
   // `cleared`/`notCleared` are only ever set alongside an ADVANCE.
-  | { kind: "ANSWERED"; outcome: Outcome; workflowName: string; wf?: Workflow; cleared?: string[]; notCleared?: string[] };
+  | { kind: "ANSWERED"; outcome: Outcome; workflowName: string; wf?: Workflow; cleared?: string[]; notCleared?: NotCleared[] };
 
 export type AbortResult = Refused | { kind: "ABORTED"; reason: string };
 
@@ -527,11 +527,44 @@ function ensureHeadsignGitignored(cwd: string): void {
 // some other reason — a permission, a read-only filesystem — is still reported as cleared, as
 // it was before any of this reporting existed. Confirming the removal is a different check from
 // classifying what was found, and this function does the second.
-function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): { cleared: string[]; notCleared: string[] } {
+// Why an entry can come back unremoved, and the clause `render.ts` prints for each. One list
+// with the reason as data, rather than one list per reason: the printed line has to state what
+// actually happened, and a flat list of paths can only carry one reason for all of them.
+export type NotClearedReason = "directory" | "outside";
+export interface NotCleared { path: string; reason: NotClearedReason }
+
+// Does `rel` land inside this run's directory once the filesystem has its say?
+//
+// The PARENT is resolved, never the entry itself. Resolving the whole path would undo a
+// deliberate rule: a symlink named directly in `clear:` is removed as a link, and what it points
+// at is left alone (see "a symlink is judged as the link" in tests/engine.test.ts). The escape
+// this closes is one segment earlier — `output/leftover.txt` where `output` is a link out of the
+// tree deletes the far end, and `workflow.ts`'s check cannot see it, because that check reads the
+// string and this one reads the disk.
+//
+// Both sides go through realpath: on macOS a run under `/tmp` is really under `/private/tmp`, and
+// comparing a resolved parent against an unresolved cwd would call every entry an escape.
+function resolvesInsideRun(cwd: string, rel: string): boolean {
+  try {
+    const parent = fs.realpathSync(path.dirname(path.join(cwd, rel)));
+    const root = fs.realpathSync(cwd);
+    return parent === root || parent.startsWith(root + path.sep);
+  } catch {
+    // The parent does not exist, so neither does the entry: nothing to remove and nothing to
+    // refuse. Falls through to the ordinary path, which says nothing about a missing entry.
+    return true;
+  }
+}
+
+function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): { cleared: string[]; notCleared: NotCleared[] } {
   const cleared: string[] = [];
-  const notCleared: string[] = [];
+  const notCleared: NotCleared[] = [];
   for (const rel of phase.clear ?? []) {
     const full = path.join(cwd, rel);
+    if (!resolvesInsideRun(cwd, rel)) {
+      notCleared.push({ path: rel, reason: "outside" });
+      continue;
+    }
     let heldNonEmptyFile = false;
     let rmWillRefuse = false;
     try {
@@ -550,7 +583,7 @@ function clearPhaseArtifacts(cwd: string, phase: workflowMod.Phase): { cleared: 
     // classification above, not this catch, is what tells the caller what happened.
     try { fs.rmSync(full, { force: true }); } catch { /* best effort */ }
     if (heldNonEmptyFile) cleared.push(rel);
-    else if (rmWillRefuse) notCleared.push(rel);
+    else if (rmWillRefuse) notCleared.push({ path: rel, reason: "directory" });
   }
   return { cleared, notCleared };
 }
@@ -943,7 +976,7 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
 
   const { state: nextState, outcome } = step(wf, current, gateResult, route);
   let cleared: string[] | undefined;
-  let notCleared: string[] | undefined;
+  let notCleared: NotCleared[] | undefined;
   if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
   state.writeState(cwd, nextState);
   state.appendLog(cwd, render.logLine(nowIso, outcome, nextState, current.phase));

@@ -732,9 +732,85 @@ phases:
   assert.equal(result.result.kind, "STARTED");
   if (result.result.kind !== "STARTED") return;
   assert.deepEqual(result.result.cleared, ["artifact.txt"]);
-  assert.deepEqual(result.result.notCleared, ["scratch-dir"]);
+  assert.deepEqual(result.result.notCleared, [{ path: "scratch-dir", reason: "directory" }]);
   assert.equal(fs.existsSync(path.join(dir, "artifact.txt")), false, "the non-empty file is gone");
   assert.equal(fs.existsSync(path.join(dir, "scratch-dir")), true, "the directory is left standing — clear: never removes directories");
+});
+
+// The escape the test above does NOT cover, because it is one segment earlier: the entry is an
+// ordinary relative path with no `..` and no leading `/`, so workflow.ts's check passes it — that
+// check reads the string, and a link is a fact about the disk. `path.join` then produces a path
+// whose directory portion leaves the tree, and the removal lands on the far end.
+//
+// Reproduced against v0.6.1 before this was closed: the file outside was deleted, and the run
+// announced `--- cleared: output/victim.txt ---` about it.
+test("start: an entry whose parent leaves the run's directory is refused, and what it points at survives", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-outside-"));
+  fs.writeFileSync(path.join(outside, "victim.txt"), "not headsign's to remove\n");
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  // An intermediate segment pointing out of the tree. A repository can hold one for entirely
+  // ordinary reasons — a linked build directory, a package linked across a monorepo — so this is
+  // as much a way to lose a file by accident as it is a way to be handed one.
+  fs.symlinkSync(outside, path.join(dir, "output"));
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(
+    workflowPath,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: ["output/victim.txt"]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "STARTED");
+  if (result.result.kind !== "STARTED") return;
+  assert.equal(fs.existsSync(path.join(outside, "victim.txt")), true, "the file outside the run must survive");
+  assert.deepEqual(result.result.cleared, [], "and must never be announced as removed");
+  assert.deepEqual(result.result.notCleared, [{ path: "output/victim.txt", reason: "outside" }]);
+});
+
+// The run's own directory reached THROUGH a link is not an escape. On macOS `os.tmpdir()` is
+// `/var/folders/...` behind `/private/var`, so a check comparing a resolved parent against an
+// unresolved cwd would refuse every entry here — which is why both sides go through realpath.
+test("start: an ordinary entry still clears when the run's own directory sits behind a link", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  fs.mkdirSync(path.join(dir, "build"));
+  fs.writeFileSync(path.join(dir, "build", "artifact.txt"), "leftover\n");
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(
+    workflowPath,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: ["build/artifact.txt"]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "STARTED");
+  if (result.result.kind !== "STARTED") return;
+  assert.deepEqual(result.result.cleared, ["build/artifact.txt"]);
+  assert.deepEqual(result.result.notCleared, []);
+  assert.equal(fs.existsSync(path.join(dir, "build", "artifact.txt")), false);
 });
 
 test("start: a symlink is judged as the link, not as what it points at", () => {
@@ -803,7 +879,7 @@ phases:
   if (result.kind !== "ANSWERED") return;
   assert.equal(result.outcome.kind, "ADVANCE");
   assert.deepEqual(result.cleared, []);
-  assert.deepEqual(result.notCleared, ["scratch-dir"]);
+  assert.deepEqual(result.notCleared, [{ path: "scratch-dir", reason: "directory" }]);
   assert.equal(fs.existsSync(path.join(dir, "scratch-dir")), true, "the directory survives — clear: never removes directories");
 });
 

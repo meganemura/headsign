@@ -7796,8 +7796,14 @@ function clearedBlock(cleared) {
   return (cleared ?? []).map((p) => `--- cleared: ${p} ---
 `).join("");
 }
+var NOT_CLEARED_CLAUSE = {
+  directory: "a directory \u2014 `clear:` removes files only",
+  // Named as a fact about where the path landed, not as an accusation: a build directory
+  // symlinked out of the tree reaches this the same way a crafted one does.
+  outside: "resolves outside this run's directory"
+};
 function notClearedBlock(notCleared) {
-  return (notCleared ?? []).map((p) => `--- not cleared: ${p} (a directory \u2014 \`clear:\` removes files only) ---
+  return (notCleared ?? []).map((n) => `--- not cleared: ${n.path} (${NOT_CLEARED_CLAUSE[n.reason]}) ---
 `).join("");
 }
 function pending(phase, description, ready) {
@@ -8354,11 +8360,24 @@ function ensureHeadsignGitignored(cwd) {
   }
   if (content !== original) fs4.writeFileSync(gitignorePath, content);
 }
+function resolvesInsideRun(cwd, rel) {
+  try {
+    const parent = fs4.realpathSync(path3.dirname(path3.join(cwd, rel)));
+    const root = fs4.realpathSync(cwd);
+    return parent === root || parent.startsWith(root + path3.sep);
+  } catch {
+    return true;
+  }
+}
 function clearPhaseArtifacts(cwd, phase) {
   const cleared = [];
   const notCleared = [];
   for (const rel of phase.clear ?? []) {
     const full = path3.join(cwd, rel);
+    if (!resolvesInsideRun(cwd, rel)) {
+      notCleared.push({ path: rel, reason: "outside" });
+      continue;
+    }
     let heldNonEmptyFile = false;
     let rmWillRefuse = false;
     try {
@@ -8375,7 +8394,7 @@ function clearPhaseArtifacts(cwd, phase) {
     } catch {
     }
     if (heldNonEmptyFile) cleared.push(rel);
-    else if (rmWillRefuse) notCleared.push(rel);
+    else if (rmWillRefuse) notCleared.push({ path: rel, reason: "directory" });
   }
   return { cleared, notCleared };
 }

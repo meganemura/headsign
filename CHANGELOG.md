@@ -11,6 +11,25 @@ changes), and a patch bump means fixes only.
 
 ### Fixed
 
+### Fixed (security)
+
+- **`clear:` no longer removes a file outside the run's directory.** The
+  schema rejects `..` and a leading `/`, which reads as a promise that the field
+  cannot reach out of the tree — but that check examines the string, and a
+  symbolic link is a fact about the disk. An entry like `output/leftover.txt`,
+  where `output` is a link pointing elsewhere, deleted the file at the far end
+  and announced `--- cleared: output/leftover.txt ---` about it. Reproduced
+  against 0.6.1. Such an entry is now refused and reported as
+  `--- not cleared: <path> (resolves outside this run's directory) ---`.
+
+  **This is as easy to trigger by accident as on purpose:** a repository that
+  links its build directory, or links a package across a monorepo, reaches it
+  with no ill intent at all.
+
+  A link named *directly* in `clear:` is unchanged, and deliberately so — it is
+  removed as a link, and what it points at is left alone. Only the path leading
+  to an entry is resolved, never the entry itself.
+
 - **Installing headsign no longer installs a package it never uses.** `yaml`
   was declared as a runtime dependency while the build inlines it into
   `plugin/dist/headsign.mjs`, whose only remaining imports are Node built-ins.

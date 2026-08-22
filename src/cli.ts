@@ -90,7 +90,7 @@ function loadWorkflowOrExit(workflowPath: string, showWarnings = false): workflo
 function printOutcome(
   outcome: engine.Outcome,
   workflowName: string,
-  ctx?: { wf: workflowMod.Workflow; cleared?: string[]; notCleared?: string[] },
+  ctx?: { wf: workflowMod.Workflow; cleared?: string[]; notCleared?: engine.NotCleared[] },
 ): never {
   switch (outcome.kind) {
     case "ADVANCE":

@@ -11,10 +11,10 @@
 // "must not know about … state", which a seam sweep caught as a contradiction with the line
 // above it.
 
-import type { Outcome } from "./engine.ts";
+import type { Outcome, NotCleared, NotClearedReason } from "./engine.ts";
 import type { State, UnheldCause } from "./state.ts";
 
-export function start(phase: string, description: string, cleared?: string[], notCleared?: string[]): string {
+export function start(phase: string, description: string, cleared?: string[], notCleared?: NotCleared[]): string {
   return `START ${phase}\n${clearedBlock(cleared)}${notClearedBlock(notCleared)}--- phase: ${phase} ---\n${description}\n`;
 }
 
@@ -42,7 +42,7 @@ export function advance(
   description: string,
   failure?: Failure & { routedTo: string },
   cleared?: string[],
-  notCleared?: string[],
+  notCleared?: NotCleared[],
   routedBy?: { when: string } | { default: true },
 ): string {
   // A fail-routed ADVANCE is a gate failure like any other, so it carries the same
@@ -68,8 +68,15 @@ function clearedBlock(cleared?: string[]): string {
 // is written into the line itself rather than left for the reader to look up, same as every
 // other line this module prints. Sits right after clearedBlock's lines, in the same slot: what
 // `clear:` did, and then what it could not, before anything else start/advance has to say.
-function notClearedBlock(notCleared?: string[]): string {
-  return (notCleared ?? []).map((p) => `--- not cleared: ${p} (a directory — \`clear:\` removes files only) ---\n`).join("");
+const NOT_CLEARED_CLAUSE: Record<NotClearedReason, string> = {
+  directory: "a directory — `clear:` removes files only",
+  // Named as a fact about where the path landed, not as an accusation: a build directory
+  // symlinked out of the tree reaches this the same way a crafted one does.
+  outside: "resolves outside this run's directory",
+};
+
+function notClearedBlock(notCleared?: NotCleared[]): string {
+  return (notCleared ?? []).map((n) => `--- not cleared: ${n.path} (${NOT_CLEARED_CLAUSE[n.reason]}) ---\n`).join("");
 }
 
 // PENDING vs RETRY, and why the `ready:` probe is uncounted: ADR-0002's Consequences
