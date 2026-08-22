@@ -9,7 +9,42 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
-### Fixed
+## [0.7.0] - 2026-08-22
+
+headsign has run on one host since it existed, and the decision that said so was
+written down. It now runs on two. Nothing in the CLI changed to make that true —
+gate judgment, state, locking and logging never read a host — so what moved was
+the packaging and the prose, plus one honest account of what does not port.
+
+The release is a minor rather than a patch for a second reason: `clear:` used to
+remove a file outside the run's directory, and stopping it changes what a
+workflow does.
+
+### Added
+
+- **Codex is a second host.** headsign installs as a Codex plugin, ships the
+  same two skills, and registers the same stop-boundary backstop through Codex's
+  hook engine — the same `hooks.json`, executed by both. Install with
+  `codex plugin marketplace add meganemura/headsign` and
+  `codex plugin add headsign@headsign`; Codex asks you to review and trust the
+  hook commands separately, under `/hooks`.
+
+  **One thing in those commands looks wrong and is not:** the plugin's directory
+  arrives in `CLAUDE_PLUGIN_ROOT`. Codex defines that name and its own
+  first-party plugin uses it, so the registration is unchanged from the version
+  that ran on Claude Code alone.
+
+  What does not port: Codex's ordinary commands expose no session variable this
+  research could confirm, so a Codex run records no `last_drive.session`. The
+  consequence is narrow and named in
+  [ADR-0028](docs/adr/0028-codex-as-a-second-principal.md) — on an unclaimed
+  Codex run with no stamp, more than one session can receive the backstop.
+
+- **Every plugin manifest's version is checked, not the first one written.** A
+  manifest left behind does not break an install; it makes the update a silent
+  no-op, because a plugin update is decided by comparing that string. The check
+  discovers the manifests rather than naming them, and refuses when it finds
+  none.
 
 ### Fixed (security)
 
@@ -29,6 +64,8 @@ changes), and a patch bump means fixes only.
   A link named *directly* in `clear:` is unchanged, and deliberately so — it is
   removed as a link, and what it points at is left alone. Only the path leading
   to an entry is resolved, never the entry itself.
+
+### Fixed
 
 - **Installing headsign no longer installs a package it never uses.** `yaml`
   was declared as a runtime dependency while the build inlines it into

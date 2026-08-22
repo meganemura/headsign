@@ -1,6 +1,6 @@
 {
   "name": "headsign",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "A tiny phase gate for coding agents. Ask it what's next; it runs deterministic checks and tells the loop where to go.",
   "license": "MIT",
   "keywords": [
