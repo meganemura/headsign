@@ -51,6 +51,24 @@ jobs:
       - name: dist matches src
         run: git diff --exit-code plugin/dist
 
-      - name: plugin version matches package version
+      # Every manifest that carries a version, not just the first one written. A host whose
+      # manifest lags is not a broken install — it is a silent no-op update, because a plugin
+      # update is decided by comparing that string.
+      - name: every plugin manifest matches the package version
         run: |
-          node -e "const p=require('./package.json').version,q=require('./plugin/.claude-plugin/plugin.json').version;if(p!==q){console.error(\`version mismatch: package.json=\${p} plugin.json=\${q}\`);process.exit(1)}"
+          node -e "
+          const fs=require('fs');
+          const want=JSON.parse(fs.readFileSync('./package.json','utf8')).version;
+          const manifests=fs.readdirSync('./plugin',{withFileTypes:true})
+            .filter(e=>e.isDirectory()&&e.name.endsWith('-plugin'))
+            .map(e=>'./plugin/'+e.name+'/plugin.json')
+            .filter(fs.existsSync);
+          if(manifests.length===0){console.error('no plugin manifest found under plugin/');process.exit(1)}
+          let bad=0;
+          for(const m of manifests){
+            const got=JSON.parse(fs.readFileSync(m,'utf8')).version;
+            console.log(got===want?'ok   '+m+' '+got:'MISMATCH '+m+' '+got+' != '+want);
+            if(got!==want)bad++;
+          }
+          if(bad)process.exit(1);
+          "
