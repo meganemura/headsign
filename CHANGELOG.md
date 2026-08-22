@@ -9,6 +9,20 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Updating on Codex is two commands, and the docs said one.** They carried
+  the Claude Code form and stopped there. Under Codex, `codex plugin add`
+  installs from a marketplace snapshot Codex keeps on disk, so running it alone
+  re-installs whatever that snapshot already held — the command reports success
+  and the version does not move. `codex plugin marketplace upgrade` refreshes
+  the snapshot first. Running only the second half is the failure to expect,
+  because it looks exactly like success.
+- **"until Claude Code restarts" now says "until the host restarts."** Written
+  when there was one host, in a sentence that already began "either way".
+  `headsign version` answers per host, so two hosts on one machine disagree
+  until both have restarted.
+
 ## [0.7.0] - 2026-08-22
 
 headsign has run on one host since it existed, and the decision that said so was

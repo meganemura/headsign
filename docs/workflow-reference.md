@@ -108,11 +108,25 @@ have auto-update off by default and that users run the update themselves. So
 moving the `ref` in the committed file begins the update; it does not conclude
 it.
 
-Concluding it is one command, and it wants the qualified name:
+Concluding it takes one command under Claude Code, and it wants the qualified
+name:
 
 ```
 claude plugin update headsign@headsign
 ```
+
+Under Codex it takes two, and the first one is the one nobody guesses:
+
+```
+codex plugin marketplace upgrade
+codex plugin add headsign@headsign
+```
+
+`codex plugin add` installs from a marketplace snapshot that Codex keeps on
+disk. Running it alone re-installs whatever that snapshot holds, so a release
+published after the snapshot was taken is invisible to it — the command
+succeeds and changes nothing. `marketplace upgrade` is what refreshes the
+snapshot; `add` then has the new version to find.
 
 The bare `claude plugin update headsign` answers `Plugin "headsign" not found`.
 `update` resolves what `claude plugin list` prints, and what it prints is the
@@ -121,10 +135,11 @@ The bare `claude plugin update headsign` answers `Plugin "headsign" not found`.
 explains for `enabledPlugins`. Inside a session, `/plugin` reaches the same operation through
 a menu.
 
-Either way the fetched copy sits unused until Claude Code restarts, which makes
+Either way the fetched copy sits unused until the host restarts, which makes
 applying an update a third event after declaring one and having one. Until that
 restart, `headsign version` still reports the copy that is actually running,
-which is the older one.
+which is the older one — and it answers per host, so two hosts on one machine
+can disagree until both have restarted.
 
 **The version a project pins is not the version a run uses.** An installed
 plugin copy is version-scoped — one directory per version, the path is in

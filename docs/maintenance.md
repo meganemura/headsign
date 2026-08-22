@@ -330,12 +330,31 @@ machine or is protected against being undone once it has.
    live.
 
    Consider `--provenance` once publishing moves into CI instead of a laptop.
-10. **[agent]** Receive the release on this machine:
-    `claude plugin update headsign@headsign`. The bare name answers `Plugin
-    "headsign" not found` — `update` resolves the `plugin@marketplace` pair
-    that `claude plugin list` prints. Changes only this machine and is undone
-    by installing the previous version, which is why it sits on the agent's
-    side of the line.
+10. **[agent]** Receive the release on this machine, on **every host that has
+    it installed**. Each changes only this machine and is undone by installing
+    the previous version, which is why both sit on the agent's side of the line.
+
+    Claude Code, one command:
+
+    ```sh
+    claude plugin update headsign@headsign
+    ```
+
+    The bare name answers `Plugin "headsign" not found` — `update` resolves the
+    `plugin@marketplace` pair that `claude plugin list` prints.
+
+    Codex, two:
+
+    ```sh
+    codex plugin marketplace upgrade
+    codex plugin add headsign@headsign
+    ```
+
+    `codex plugin add` installs from a marketplace snapshot Codex keeps on disk,
+    so on its own it re-installs whatever that snapshot already held: the
+    command reports success and the version does not move. `marketplace upgrade`
+    is what refreshes the snapshot. Running only the second half is the failure
+    to expect here, because it looks exactly like success.
 
     **This step exists because the map above applies to the maintainer too.**
     "Users run the update themselves" does not exempt the person who cut the
@@ -348,12 +367,14 @@ machine or is protected against being undone once it has.
     v0.6.1 hook fix included, whose whole subject is what the stop hook does on
     a machine that does not have it.
 
-    `claude plugin list` confirms the fetched version; `headsign version`
-    confirms the running one, and the two disagree until Claude Code restarts.
+    `claude plugin list` and `codex plugin list` confirm the fetched version on
+    each host; `headsign version` confirms the running one, and the two disagree
+    until the host restarts.
 
-11. **[you]** Restart Claude Code. Not a command to paste, which is why the
-    list below still has two: it is the only part of step 10 an agent cannot
-    perform, and until it happens the copy fetched above sits unused.
+11. **[you]** Restart each host you updated. Not a command to paste, which is
+    why the list below still has two: it is the only part of step 10 an agent
+    cannot perform, and until it happens the copy fetched above sits unused —
+    `headsign version` keeps answering with the old one.
 
 `gh skill` needs no per-release step of its own. It cannot attach to an
 existing tag (`gh skill publish` insists on creating the tag itself), and what
@@ -371,8 +392,8 @@ npm login && npm publish     # both prompt; login first so auth fails fast
 ```
 
 That is the whole list — two commands, plus one thing that is not a command:
-restarting Claude Code, so the release you just cut is the one this machine
-runs (step 11). The GitHub Release is *not* yours: it can be deleted, which by
+restarting each host you updated, so the release you just cut is the one this
+machine runs (step 11). The GitHub Release is *not* yours: it can be deleted, which by
 this page's own rule puts it on the agent's side. It was listed here once, and
 the release it was listed for is the one that never got a page — a step an
 agent could do but a person is marked for is a step with nobody actually
