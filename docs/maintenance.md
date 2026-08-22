@@ -156,13 +156,71 @@ for a change that "isn't taking".**
 
 On every PR and push to `main`, ubuntu + Node 24:
 
-1. `npm ci` — lockfile-pinned toolchain; byte-reproducible bundles depend on it
+1. `npm ci --ignore-scripts` — lockfile-pinned toolchain; byte-reproducible
+   bundles depend on it
 2. `npm run typecheck`
 3. `npm test`
 4. `npm run build` then `git diff --exit-code plugin/dist` — the committed
    bundle everyone's hook executes must be exactly what src builds to
 5. `package.json` version == `plugin/.claude-plugin/plugin.json` version —
    guards the silent-no-op update trap above
+
+### How the workflow is written, and why
+
+Five things in that file are deliberate. Each is cheap to keep and expensive to
+notice the absence of.
+
+- **Actions are pinned by commit, with the version in a trailing comment.** A
+  tag is a pointer; the same line resolves to different code once an account is
+  taken. Raising one means resolving the new tag with
+  `gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha` and checking
+  the written line against it afterwards — a forty-character value is wrong in a
+  way that reads as right. The cost this accepts is that nothing raises them for
+  you, and a pinned action also stops announcing that it went stale: this
+  repository sat on `@v5` while the published tags reached v7.
+- **`permissions: contents: read`, declared in the file** even though the
+  repository default is already `read`. What an injected workflow can do is
+  decided by the token, and whoever copies a step out of this file takes the
+  line without the repository setting behind it.
+- **`--ignore-scripts` written on the `npm ci` line**, for the same reason: the
+  line travels, `.npmrc` does not.
+- **`concurrency` with `cancel-in-progress`**, because an overtaken run has
+  nothing left to report, and **`timeout-minutes`**, because the default is six
+  hours and this suite races real processes against a lock.
+- **Node 24 is chosen by the lockfile, not by "current LTS".**
+  `package-lock.json` is lockfileVersion 3, which npm 11 writes and npm 10
+  refuses to read. Node 22 ships npm 10. Picking the LTS by habit fails at
+  `npm ci` with an error naming some unrelated package.
+
+The repository-level settings this leans on — Actions restricted to trusted
+publishers, SHA pinning required, default workflow token `read`, and no secrets
+at all — are recorded under Repository settings below. **The order matters: no
+secrets and a read-only token are what make an injected workflow come up empty.
+Pinning and an allowlist narrow which actions can run; neither stops a `run:`
+line.**
+
+### `.npmrc`, and the hole it opens
+
+The repository carries an `.npmrc` so that a clone and CI both get it rather
+than only whoever set up their home directory:
+
+- `ignore-scripts=true` — a dependency's install hook is where a compromised
+  package does its work.
+- `min-release-age=7` — install nothing published in the last week. A
+  compromised release is usually found and pulled within days.
+
+**`ignore-scripts` also stops npm's own lifecycle hooks, `prepublishOnly`
+included.** Nothing announces that it was skipped, so a step that lives only in
+a lifecycle hook silently stops running. `prepublishOnly` is the one hook that
+cannot move into a script body — `npm publish` is its only caller — so the
+release procedure below carries it instead: step 5 runs typecheck and the tests,
+and step 2 runs the build. Those are not a convenience. They are the whole of
+what `prepublishOnly` used to guarantee.
+
+Measured on 2026-08-22: `ignore-scripts=true` does not break this toolchain.
+`npm ci --ignore-scripts` from this lockfile leaves esbuild and tsc both
+runnable, because esbuild ships its platform binary as an optional package
+rather than through an install hook.
 
 ## Releasing vX.Y.Z
 
@@ -212,6 +270,25 @@ machine or is protected against being undone once it has.
    here goes stale silently while a wrong list does not. And
    `gh skill publish --dry-run`, which validates the skill layout and nothing
    else.
+
+   Then the one check that cannot be done from inside this repository: pack the
+   tarball, install it into an empty project, and run it.
+
+   ```sh
+   npm pack --pack-destination /tmp/packtest
+   mkdir -p /tmp/packtest/p && cd /tmp/packtest/p && npm init -y
+   npm install /tmp/packtest/headsign-<version>.tgz
+   ls node_modules                          # `headsign`, and nothing else
+   ./node_modules/.bin/headsign --version   # the version just packed
+   ```
+
+   The repository always has the toolchain that built the bundle, so nothing run
+   here can tell you whether the published artifact stands on its own. Two
+   answers only come from the clean install: whether the bundle resolves without
+   the build tools, and whether `node_modules` holds exactly one package. The
+   second is what keeps a runtime dependency from reappearing — every dependency
+   is inlined at build time, so anything listed under `dependencies` would be
+   downloaded by every consumer and used by none.
 6. **[agent]** `git tag vX.Y.Z` — creating the tag locally, which is
    reversible here. It happens *before* the handover, not after, so that the
    one command you run pushes the commit and the tag together.
@@ -241,12 +318,16 @@ machine or is protected against being undone once it has.
    Both halves prompt — for credentials and a 2FA OTP — which is the mechanical
    reason this one cannot be delegated.
 
+   **`prepublishOnly` does not run.** The repository's `.npmrc` sets
+   `ignore-scripts=true`, which stops npm's own lifecycle hooks along with every
+   dependency's. `package.json` still declares one, and it is still correct
+   about what a release needs; it simply is not what runs it. Steps 2 and 5
+   above are. Do not treat publish as a second chance to catch a bad build.
+
    **`npm login` first, and not only when you know you are logged out.** npm
-   sessions expire, and `npm publish` checks the registry *after* it has run
-   `prepublishOnly`, which forces a full typecheck+test+build. So an expired
-   session does not fail fast: it fails at the end, having spent the whole
-   pipeline, and the retry spends it again. Logging in first turns a late
-   failure into an immediate one, and costs nothing when the session was live.
+   sessions expire, and the registry check happens late. Logging in first turns
+   a late failure into an immediate one, and costs nothing when the session was
+   live.
 
    Consider `--provenance` once publishing moves into CI instead of a laptop.
 10. **[agent]** Receive the release on this machine:
@@ -311,6 +392,31 @@ it.
   `typescript`, plus `agent-skills` once `gh skill publish` has run.
 - **Tag protection ruleset**: targets `v*`; denies deletion and updates
   (re-pointing). Create under Settings > Rules > Rulesets, or via `gh api`.
+- **Actions hardening.** What the workflow file can safely assume is decided
+  here, so this is the half to set first. Measured 2026-08-22 with
+  `gh api repos/<owner>/<repo>/actions/permissions`,
+  `.../actions/permissions/workflow`, and `.../actions/secrets`:
+
+  | Setting | Wanted | State on 2026-08-22 |
+  |---|---|---|
+  | Default workflow permissions | `read` | `read` |
+  | Actions secrets, Dependabot secrets, environment secrets | none | none |
+  | `sha_pinning_required` | on — the workflow's pins become enforced rather than merely intended | off |
+  | Actions enabled | on, restricted to this owner plus actions created by GitHub | **off — no workflow has run since 2026-08-01** |
+
+  The first two rows carry the weight. With no secrets and a read-only token,
+  a workflow injected into `.github/` finds nothing to steal and cannot push.
+  Required SHA pinning and an allowlist narrow which actions may run; neither
+  constrains a `run:` line, which is where an attacker writes shell anyway.
+
+  Verified releases and the Marketplace "verified creator" badge are not the
+  same thing, and the badge is not a trust decision — leave it out of the
+  allowlist.
+
+  On a public repository, `pull_request` runs from forks get no secrets by
+  default. `pull_request_target` removes that protection; this repository does
+  not use it, and a workflow that starts to should say in a comment that it is
+  doing so.
 - No branch protections beyond CI at the moment (single-maintainer); add a
   required-check rule on `main` when a second maintainer joins.
 

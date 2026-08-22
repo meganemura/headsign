@@ -5,18 +5,42 @@ on:
   push:
     branches: [main]
 
+# Declared here even though the repository default is `read`, because a recipe
+# copied out of this file travels to a repository whose default may not be.
+permissions:
+  contents: read
+
+# An overtaken run has nothing left to report.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # The suite spawns a shell per gate check and races processes against a lock;
+    # a wedged one would otherwise burn the default six hours.
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      # Actions are pinned by commit, with the version in a comment. A tag is a
+      # pointer: the same line resolves to different code once an account is
+      # taken. Re-check a SHA against `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`
+      # when raising it — nothing updates these automatically, which is the cost
+      # this pinning accepts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
+          # Not "the current LTS" but the npm that wrote package-lock.json:
+          # lockfileVersion 3 is npm 11, and npm 10 refuses to read it.
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      # `--ignore-scripts` on the line, not only in .npmrc, because whoever copies
+      # this step takes the line and leaves the file behind.
+      - run: npm ci --ignore-scripts
 
       - run: npm run typecheck
 
