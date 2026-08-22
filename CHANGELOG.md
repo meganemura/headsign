@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 During 0.x, a minor bump means feature additions (which may include breaking
 changes), and a patch bump means fixes only.
 
+## [0.8.1] - 2026-08-23
+
+A release-procedure fix, and the release it repairs.
+
+### Fixed
+
+- **The Codex plugin manifest now carries the release version.** v0.8.0 bumped
+  `package.json` and `plugin/.claude-plugin/plugin.json` and left
+  `plugin/.codex-plugin/plugin.json` at `0.7.0`, so Codex plugin users could not
+  receive that release at all: a plugin update is decided by comparing that
+  string, and `codex plugin add` found nothing new, reported success, and moved
+  no version. Claude Code plugin users and npm consumers were unaffected — both
+  of their version strings were correct — and v0.8.0's CLI is the same code this
+  release ships.
+
+  The cause was the release procedure rather than the check that caught it.
+  `docs/maintenance.md` step 1 said to bump "**both** `package.json` and
+  `plugin/.claude-plugin/plugin.json`", which stopped being the whole list in
+  v0.7.0 when the second host arrived with a manifest of its own. That step now
+  takes its list from the tree.
+
 ## [0.8.0] - 2026-08-23
 
 Two changes, and one sentence under both of them: **the graph sequences checks,

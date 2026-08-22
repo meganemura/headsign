@@ -1,6 +1,6 @@
 {
   "name": "headsign",
-  "version": "0.7.0",
+  "version": "0.8.1",
   "description": "A tiny phase gate for coding agents: deterministic checks route each agent-driven workflow while headsign holds the state.",
   "author": {
     "name": "meganemura",
