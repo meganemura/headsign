@@ -21,7 +21,7 @@ headsign start tdd-feature  # .headsign/tdd-feature.yaml
 | [release.yaml](release.yaml) | release engineer | prepare (versions/changelog/clean tree) → verify (CI mirror) → approve (human GO file) → ship (tag at HEAD) |
 | [router.yaml](router.yaml) | request intake that dispatches one of three kinds of work | classify (agent writes one word) → fix-bug / write-docs / implement → review (rejection re-enters classify) |
 | [sweep.yaml](sweep.yaml) | one mechanical change applied across many files (codemod, migration) | survey (build the work queue) → apply one item → verify → record (round again while the queue has work) → report |
-| [fan-out.yaml](fan-out.yaml) | work cut into independent items, each run in its own worktree, then joined back | split (the agent starts a child run per item) → gather (`ready:` all children finished, gate all COMPLETE) → integrate (merge, then no worktree left behind) |
+| [fan-out.yaml](fan-out.yaml) | work divided into independent pieces, by whatever machinery the agent judges best | split (the agent records its division; pieces it gave their own runs are listed) → gather (`ready:` all children finished, gate all COMPLETE; skipped when the list is empty) → integrate (combined result green, then no worktree left behind) |
 
 Things these examples demonstrate beyond the Quick start:
 
@@ -39,12 +39,17 @@ Things these examples demonstrate beyond the Quick start:
   branch sends the run back to `apply` while the queue still has items and
   leaves for `report` when it doesn't, so the loop ends because the work
   ran out, not because a limit was hit
-- fanning out and joining back without an orchestrator (fan-out): the agent
-  starts a child run per worktree because a `description` told it to, and
-  headsign — still one phase at a time, still waiting for nothing — adds
-  only the join, where `ready:` asks whether the children have finished and
-  the gate asks whether they passed, and all_of / any_of / quorum are three
-  shell one-liners rather than three settings
+- gating the result of a fan-out without prescribing the fan-out (fan-out):
+  the agent divides the work and picks the machinery per piece — subagents
+  inside this run, or a child run per worktree — and the gate verifies the
+  choice it recorded rather than requiring one. headsign, still one phase at
+  a time and still waiting for nothing, adds only the join, where `ready:`
+  asks whether the children have finished and the gate asks whether they
+  passed, and all_of / any_of / quorum are three shell one-liners rather than
+  three settings
+- the graph sequences checks while the agent sequences work (fan-out's
+  header): a phase order fixes when a fact must be proven, and fixes nothing
+  about who does the work or how many of them there are
 
 These files are the ones headsign ships for you to copy. The workflows this
 repository actually runs on itself live separately, in `.headsign/` at the
@@ -144,13 +149,15 @@ flowchart TD
   report -- "pass" --> done["$end"]
 ```
 
-**fan-out.yaml** — the join: a child that didn't finish is a person's call.
-The child runs are not on this chart, because they are not on this run.
+**fan-out.yaml** — the join, taken only when the agent gave some piece a run
+of its own. A child that didn't finish is a person's call. The child runs are
+not on this chart, because they are not on this run.
 
 ```mermaid
 flowchart TD
-  split["split"] -- "pass" --> gather["gather"]
-  gather -- "pass" --> integrate["integrate"]
+  split["split"] -- "when: some item got its own run" --> gather["gather"]
+  split -- "default (no child runs)" --> integrate["integrate"]
+  gather -- "pass" --> integrate
   gather -- "fail" --> escalate["escalate"]
   integrate -- "pass" --> done["$end"]
 ```

@@ -22,6 +22,23 @@ changes), and a patch bump means fixes only.
   what it always printed. The comparison runs no gate, writes nothing and takes
   no lock ([ADR-0029](docs/adr/0029-status-answers-for-the-file.md)).
 
+### Changed
+
+- **`example.headsign/fan-out.yaml` stops prescribing how the agent fans out.**
+  The README says headsign has no opinion about how the agent gets a phase
+  done — "if it wants to hand a step to three subagents, or run two things at
+  once, that is its call to make, not this tool's to grant" — and this example
+  granted it anyway: its `split` gate required a git worktree and a child
+  `headsign start` for every item, so an agent that judged three subagents in
+  one tree to be the better division failed a gate for being right.
+
+  The division and the machinery are now the agent's, per piece. It records
+  what it chose in `.headsign/tmp/plan.md`, and lists in `.headsign/tmp/items`
+  only the pieces it gave runs of their own — possibly none. The gate verifies
+  that recorded choice instead of requiring one, and a route out of `split`
+  skips the join when nothing was given its own run. The line the file now
+  draws: the graph sequences checks, and the agent sequences work.
+
 ### Fixed
 
 - **Updating on Codex is two commands, and the docs said one.** They carried
