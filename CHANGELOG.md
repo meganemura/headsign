@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 During 0.x, a minor bump means feature additions (which may include breaking
 changes), and a patch bump means fixes only.
 
-## [Unreleased]
+## [0.9.0] - 2026-08-23
+
+Everything here came from one place: a viewer being built against headsign,
+asking what it may depend on and finding the answers only in internals.
+
+`headsign status` now says when the run entered the phase it is on, so
+time-in-phase can be shown without reading `.headsign/log`. And what is a
+contract is written down rather than left to subtraction: `next`'s token, its
+exit code, and `status`'s first line — nothing else.
+
+The authoring skill and this repository's own workflows also stopped telling
+the agent how to arrange its labour, finishing what v0.8.0 started with
+`fan-out.yaml`.
+
 
 ### Changed
 
