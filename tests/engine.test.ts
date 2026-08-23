@@ -889,6 +889,41 @@ phases:
   assert.equal(fs.existsSync(path.join(dir, "scratch-dir")), true, "the directory is left standing — clear: never removes directories");
 });
 
+// One segment further out than `missing.txt` above, and a different code path: there the parent
+// is the run directory and resolves fine, while here the parent itself does not exist. The
+// containment check resolves the parent to decide whether the entry is inside the run, so it has
+// to answer for a parent that cannot be resolved at all — and the answer is "nothing to refuse",
+// because a path whose directory is missing names nothing that could be removed. A workflow that
+// lists a file under a directory a later phase will create hits this on entry.
+test("start: an entry whose parent directory does not exist is neither cleared nor refused", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"));
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(
+    workflowPath,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    clear: [not-made-yet/leftover.txt]
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`,
+  );
+
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "STARTED");
+  if (result.result.kind !== "STARTED") return;
+  assert.deepEqual(result.result.cleared, [], "nothing was there to remove");
+  assert.deepEqual(result.result.notCleared, [], "and a missing parent is not a refusal — it is silence, like any other missing entry");
+  assert.equal(fs.existsSync(path.join(dir, "not-made-yet")), false, "and the directory is not created on the way past");
+});
+
 // The escape the test above does NOT cover, because it is one segment earlier: the entry is an
 // ordinary relative path with no `..` and no leading `/`, so workflow.ts's check passes it — that
 // check reads the string, and a link is a fact about the disk. `path.join` then produces a path
