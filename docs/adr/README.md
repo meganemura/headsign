@@ -7,7 +7,7 @@ record the reasoning each choice rests on.
 | ADR | Decision |
 |---|---|
 | [0001](0001-thin-harness.md) | Thin harness — Claude drives, the CLI only holds state and judges; the non-goals that keep it small *(its 500-code-line budget retired by 0016)* |
-| [0002](0002-single-question-and-output-contract.md) | One question (`headsign next`), the first-line token contract, and the phase transition table |
+| [0002](0002-single-question-and-output-contract.md) | One question (`headsign next`), the first-line token contract, and the phase transition table *(its output contract clarified by [0030](0030-the-token-line-is-the-contract-and-nothing-else-is.md))* |
 | [0003](0003-workflow-yaml-vocabulary.md) | The `workflow.yaml` vocabulary (what's borrowed from CI, what's refused), plus `clear:` and why `description` is advisory *(its `env:`, `on_exhausted:`, and `on_fail: abort` removed by 0014)* |
 | [0004](0004-state-attempts-and-cache.md) | `state.json` shape, per-phase attempts, cwd-only resolution, and the concurrency lock *(its tree-hash cache retracted by 0012)* |
 | [0005](0005-distribution-and-toolchain.md) | TypeScript + esbuild single-file bundle, and the minimal-dependency policy |
@@ -35,6 +35,7 @@ record the reasoning each choice rests on.
 | [0027](0027-recording-who-drove-a-run.md) | Recording who drove a run — `last_drive: { session, at }`, stamped on every `start` and `next` including PENDING and the ceiling, compared by `Stop` above the already-continuing flag and only below an unreached claim, so an unclaimed run's bystanders stop being nudged without a second path to a driver existing *(supersedes part of 0013, amends 0006)* |
 | [0028](0028-codex-as-a-second-principal.md) | Codex as a second principal — confirmed Stop/SubagentStop backstop compatibility, one shared plugin tree with two manifests, shared skills, and the session-attribution boundary created by the unconfirmed ordinary-command environment contract *(amends 0001, 0006, 0026, 0027)* |
 | [0029](0029-status-answers-for-the-file.md) | `status` answers for the file, not only for the record — one computed `graph:` line for a workflow edited with no lap yet run, and one for a file restored while a report still stands, so a read-only reader can tell whether the file on disk holds the rules the run pinned *(amends 0023 §8)* |
+| [0030](0030-the-token-line-is-the-contract-and-nothing-else-is.md) | The token line is the contract, and nothing else is — `next`'s token and exit code plus `status`'s first line are guaranteed; every other line, its wording, its order and whether it appears at all may change in any release, so a tool that reads the output pins a version and fails loudly rather than guessing *(amends 0002)* |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

@@ -11,6 +11,17 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **What is a contract and what is not is now written down.** `next`'s
+  first-line token with its exit code, and `status`'s first line with the
+  exit-code rule beside it, are guaranteed. Everything else any command prints
+  — every other `status` line, the failure and phase blocks, the wording, the
+  order, and whether a conditional line appears at all — may change in any
+  release, patch releases included. ADR-0002 already said the token line was
+  the contract; what it left to inference was that the rest is not, and a
+  silence reads as a guarantee to anything parsing the output. A tool that
+  reads this output should pin the version it tested against, match strings
+  exactly, and fail loudly rather than guess
+  ([ADR-0030](docs/adr/0030-the-token-line-is-the-contract-and-nothing-else-is.md)).
 - **The `design-workflow` skill now says to describe a phase by what must be
   true, not by who does the work.** A description that reads "spawn a subagent
   to clean this up" lands as a constraint rather than an instruction: it fixes

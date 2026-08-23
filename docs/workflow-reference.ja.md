@@ -937,6 +937,12 @@ observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are 
 `next` のトークンと同じく大文字表記ですが、これは*報告*であって判定ではありません。
 `status` が `ADVANCE` や `RETRY`、`PENDING` を表示することは決してありません。
 判定を一切行わないためです。
+
+**その 1 行目が契約であり、残りの出力は契約ではありません。**
+保証があってバージョンで管理されるのは 2 つだけです。`next` の 1 行目のトークンとその終了コード、そして `status` の 1 行目とその終了コードの規則です。
+それ以外にどのコマンドが出すものも——`workflow:` / `driver:` / `last stop:` / `last moved:` / `observer:` / `graph:` の各行、`--- last failure: ---` と `--- phase: ---` のブロック、その中の文面、行の並ぶ順序、条件付きの行が出るかどうか——どのリリースでも変わりえます。パッチリリースも含みます。負っているのは変更履歴に書くことだけです。
+**この出力を読む道具を書くなら、試したバージョンを固定し、包括的なパターンではなく文字列で厳密に一致させ、一致しなくなったらその場で落としてください。**見慣れない出力を推測で読む読み手は、自信のある間違った答えを出します。それは答えが無いことより悪い結果です([ADR-0030](adr/0030-the-token-line-is-the-contract-and-nothing-else-is.md))。
+
 `driver:` 行(`RUNNING` のときだけ表示されます)の読みは 2 通りです。
 `not delegated yet — no agent has claimed this run` と、`headsign claim` による引き継ぎ(後述)が成立したあとの `a delegated agent` です。
 

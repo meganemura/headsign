@@ -1223,7 +1223,21 @@ observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are 
 The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
 capitalized like `next`'s tokens, but it's a *report*, not a verdict:
 `status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
-judges anything. The `driver:` line (shown only while `RUNNING`) has two
+judges anything.
+
+**That first line is the contract, and the rest of the output is not.** Two
+things are guaranteed and versioned: `next`'s first-line token with its exit
+code, and `status`'s first line with the exit-code rule beside it. Everything
+else any command prints — the `workflow:`, `driver:`, `last stop:`, `last
+moved:`, `observer:` and `graph:` lines, the `--- last failure: ---` and
+`--- phase: ---` blocks, the wording inside them, the order they appear in, and
+whether a conditional line appears at all — may change in any release, patch
+releases included, with nothing owed beyond a changelog entry. **If you are
+writing a tool that reads this output, pin the version you tested against,
+match strings exactly rather than by catch-all pattern, and fail loudly when a
+match stops matching**: a reader that guesses at unfamiliar output gives a
+confident wrong answer, which is worse than none
+([ADR-0030](adr/0030-the-token-line-is-the-contract-and-nothing-else-is.md)). The `driver:` line (shown only while `RUNNING`) has two
 readings: `not delegated yet — no agent has claimed this run`, and `a
 delegated agent` once a `headsign claim` handoff (below) has been sealed.
 

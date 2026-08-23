@@ -154,7 +154,11 @@ more useful meaning later.
 
 Line 1 is a machine-readable token; everything after is instruction text for
 Claude. Output is English (public OSS tool; the token line is the contract,
-so prose language is cosmetic).
+so prose language is cosmetic). (Amended by
+[ADR-0030](0030-the-token-line-is-the-contract-and-nothing-else-is.md): what
+this section leaves to inference — that everything outside the token line may
+change without notice — is now said outright, because a silence was reading as
+a guarantee to tools that parse the output.)
 
 ```
 START <phase>       exit 0   (from `headsign start`)
