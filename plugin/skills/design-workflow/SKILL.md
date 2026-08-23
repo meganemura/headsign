@@ -735,8 +735,8 @@ entry: plan               # the phase a run starts on
 
 phases:
   plan:
-    # Handed to the agent verbatim when it enters the phase. This is where
-    # you say what to do — including "use skill X" or "spawn a reviewer".
+    # Handed to the agent verbatim when it enters the phase. Say what has to
+    # be TRUE when the gate runs; leave who does the work to the agent (6).
     description: Write the spec to docs/spec.md, with an "## Acceptance" section.
     gate:
       checks:                       # run with /bin/sh -c, in order;
@@ -759,8 +759,9 @@ phases:
 
   review:
     description: >
-      Have a read-only reviewer subagent report APPROVED or REJECTED, then
-      write that verdict yourself to .headsign/tmp/verdict.
+      Have a read-only reviewer — one that did not write the change — report
+      APPROVED or REJECTED, then write that verdict yourself to
+      .headsign/tmp/verdict.
     clear: [.headsign/tmp/verdict]  # deleted on entry to this phase
     ready: "test -f .headsign/tmp/verdict"   # judge only once this passes
     gate:
@@ -803,8 +804,8 @@ string back out of the YAML and run the thing you actually wrote.
 ### Ways of writing it that look right and are wrong
 
 `validate` catches misspelled keys and undefined destinations — those you
-will hear about on the first run of it. **These four it cannot catch**, and
-they are what a workflow author actually walks into. A file with any of them
+will hear about on the first run of it. **These it cannot catch**, and they
+are what a workflow author actually walks into. A file with any of them
 validates clean and misbehaves later.
 
 1. **`on_fail: retry` and `on_fail: <this same phase>` are not the same
@@ -877,6 +878,23 @@ validates clean and misbehaves later.
    mistake", because nothing can tell — so a phase that keeps failing with an
    unchanged verdict is a reason to suspect the route that feeds it, not only
    the work in front of you.
+6. **A description that assigns the work fixes the wrong thing.** "Spawn a
+   subagent to clean this up" reads as an instruction and lands as a
+   constraint: one worker per phase, in the order the file happens to list
+   them, decided by an author who cannot see the change. Write what has to be
+   TRUE when the gate runs — "the code does what it did before and reads
+   better" — and leave the arrangement to the agent, which may use one
+   worker, six, or one whose answer decides the rest. **The graph sequences
+   checks; the agent sequences work.** A phase order fixes when a fact has to
+   be proven, and nothing about who proves it or how many of them there are.
+
+   **One thing is authority rather than arrangement, and it stays fixed: who
+   holds the pen.** A review gate whose verdict the working agent authored
+   proves nothing about the work, so a phase that gates on a verdict says what
+   the verdict's author may see, what it may write, and that the working agent
+   does not author it. Write that into the description whatever else you leave
+   open — it is the difference between a soft gate and a decoration
+   (`docs/adr/0007-verdict-authorship.md` in the headsign repository).
 
 ## A check and the instruction that satisfies it move together
 

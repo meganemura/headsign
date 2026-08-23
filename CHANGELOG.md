@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 During 0.x, a minor bump means feature additions (which may include breaking
 changes), and a patch bump means fixes only.
 
+## [Unreleased]
+
+### Changed
+
+- **The `design-workflow` skill now says to describe a phase by what must be
+  true, not by who does the work.** A description that reads "spawn a subagent
+  to clean this up" lands as a constraint rather than an instruction: it fixes
+  one worker per phase, in the order the file happens to list them, decided by
+  an author who cannot see the change. The skill's list of mistakes `validate`
+  cannot catch gains that one, along with the exception that is authority
+  rather than arrangement — who may author a verdict, and what that author may
+  see, stays fixed (ADR-0007). Its worked example drops the word `subagent`
+  from its review phase for the same reason.
+
 ## [0.8.1] - 2026-08-23
 
 A release-procedure fix, and the release it repairs.
