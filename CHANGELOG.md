@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 During 0.x, a minor bump means feature additions (which may include breaking
 changes), and a patch bump means fixes only.
 
+## [Unreleased]
+
+### Changed
+
+- **CI runs the coverage thresholds.** `npm run coverage` has enforced 100% of
+  lines and functions in `src/` for as long as it has existed, and nothing ran
+  it: it went red and stayed red for a release cycle with one `catch` block
+  uncovered, and only a hand-run found it. It now stands where `npm test` stood
+  in the workflow — the same files and the same runner, two thresholds added —
+  rather than joining it, because a suite that races real processes against a
+  lock is a flake surface, and running it twice for one set of assertions
+  doubles that for nothing. The gap it was hiding is closed in the same change,
+  with a test for a `clear:` entry whose parent directory does not exist.
+
 ## [0.9.0] - 2026-08-23
 
 Everything here came from one place: a viewer being built against headsign,

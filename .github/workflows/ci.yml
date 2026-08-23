@@ -44,7 +44,16 @@ jobs:
 
       - run: npm run typecheck
 
-      - run: npm test
+      # `npm run coverage` rather than `npm test`: it runs the same files with the
+      # same runner and adds two thresholds — 100% of lines and of functions in
+      # `src/`. Running both would race real processes against a lock twice for
+      # one set of assertions, and a suite run twice is a flake surface twice.
+      # A failing test still fails this step first and says so before any table.
+      #
+      # It is here because the thresholds went red and nobody noticed: the
+      # command existed, enforced 100%, and was run by hand or not at all, so it
+      # drifted for a release cycle with one `catch` block uncovered.
+      - run: npm run coverage
 
       - run: npm run build
 

@@ -23,6 +23,10 @@ without its rebuilt bundle.
 - `npm run typecheck && npm test && npm run build` — and commit
   `plugin/dist/headsign.mjs` together with the src change. CI fails
   otherwise (`dist matches src`).
+- `npm run coverage` before you push. CI runs it in place of `npm test`, so a
+  line nothing exercises turns red *after* the push — and a push to `main` is
+  the distribution moment for plugin users. `npm test` stays the fast loop
+  while you work; this is the one to run before it leaves the machine.
 - READMEs stay in parity: `README.md` and `README.ja.md` say the same
   things; the Japanese one is one-sentence-per-line, polite form
   (です・ます) for body prose, no interpuncts for enumerations.
@@ -159,16 +163,20 @@ On every PR and push to `main`, ubuntu + Node 24:
 1. `npm ci --ignore-scripts` — lockfile-pinned toolchain; byte-reproducible
    bundles depend on it
 2. `npm run typecheck`
-3. `npm test`
+3. `npm run coverage` — the suite, plus 100% of lines and of functions in
+   `src/`. It stands where `npm test` used to: same files, same runner, two
+   thresholds added, and one run rather than two of a suite that races real
+   processes against a lock
 4. `npm run build` then `git diff --exit-code plugin/dist` — the committed
    bundle everyone's hook executes must be exactly what src builds to
-5. `package.json` version == `plugin/.claude-plugin/plugin.json` version —
-   guards the silent-no-op update trap above
+5. `package.json` version == the version in **every** `plugin/*-plugin/plugin.json`
+   — guards the silent-no-op update trap above, and the count comes from the
+   tree rather than from a list written here
 
 ### How the workflow is written, and why
 
-Five things in that file are deliberate. Each is cheap to keep and expensive to
-notice the absence of.
+The things in that file that are deliberate. Each is cheap to keep and
+expensive to notice the absence of.
 
 - **Actions are pinned by commit, with the version in a trailing comment.** A
   tag is a pointer; the same line resolves to different code once an account is
@@ -187,6 +195,12 @@ notice the absence of.
 - **`concurrency` with `cancel-in-progress`**, because an overtaken run has
   nothing left to report, and **`timeout-minutes`**, because the default is six
   hours and this suite races real processes against a lock.
+- **The coverage thresholds run here, not only on a maintainer's laptop.** A
+  command that enforces 100% and is invoked by hand is a threshold nobody is
+  holding: this one went red and stayed red for a release cycle. It replaces
+  `npm test` rather than joining it — same files, same runner — because a suite
+  that races real processes against a lock is a flake surface, and running it
+  twice for one set of assertions doubles that for nothing.
 - **Node 24 is chosen by the lockfile, not by "current LTS".**
   `package-lock.json` is lockfileVersion 3, which npm 11 writes and npm 10
   refuses to read. Node 22 ships npm 10. Picking the LTS by habit fails at
@@ -272,9 +286,10 @@ machine or is protected against being undone once it has.
    and the changelog. Landing it is a separate step on purpose, and not the
    next one: the commit is local and amendable, and everything between here
    and the push — the pre-flight, the tag — is still undoable on this machine.
-5. **[agent]** Pre-flight. First `npm run typecheck && npm test`, because this is
-   the last point before anything leaves the machine and the tests are what tie
-   the reported version to the packaged one (step 2). Then two dry-runs, both
+5. **[agent]** Pre-flight. First `npm run typecheck && npm run coverage`, which
+   is what CI will run: this is the last point before anything leaves the
+   machine, and the tests are what tie the reported version to the packaged one
+   (step 2). Then two dry-runs, both
    free and both read-only:
    `npm pack --dry-run` — read the *list* rather than the count, and check it
    against the `files` whitelist (`plugin/`, the READMEs, the CHANGELOG); the
