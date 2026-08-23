@@ -219,9 +219,11 @@ phases:
 
   judge:
     description: >
-      Spawn a read-only judge subagent (Read/Grep/Glob) and give it exactly
-      two things: this lap's file AS IT NOW STANDS, and
-      .headsign/tmp/proposal. **Do not tell it what the deleted text said** —
+      The judging is done by a reader that can read and search this tree and
+      write nothing in it, and it gets exactly two things: this lap's file AS
+      IT NOW STANDS, and .headsign/tmp/proposal. How you arrange that reader is
+      yours; what it may see is not.
+      **Do not tell it what the deleted text said** —
       withholding that is the entire test. Withholding it from the agent is
       not enough on its own: forbid it, in its own instructions, from
       reading this file's git history — `git show`, `git diff`, `git log -p`
@@ -282,7 +284,7 @@ phases:
       homes, only a search across all of them says so. A pointer that lands
       near the rule rather than on it, and drift that was already there, go
       here too. None of these are failures, so no gate stops for them, and
-      without a named place they are lost with the subagent that found them.
+      without a named place they are lost with the reader that found them.
       Create the note if this is the first lap.
       **Cite by symbol, never by line number.** Every file in this queue is
       going to have its line numbers moved by a later lap — the note written

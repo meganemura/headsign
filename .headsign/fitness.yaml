@@ -277,10 +277,12 @@ phases:
   # working agent COULD overwrite the file afterwards, but it did not write
   # it, and that is a different thing from authoring it.
   #
-  # No `claude -p`: the judge is a subagent of this session, so it costs no
-  # extra process, no extra API surface, and no assumption about which CLI is
-  # installed. What matters is not the mechanism but that the judgment leaves
-  # this context and comes back as a file the judge wrote.
+  # The description names no mechanism, and that is deliberate: what matters is
+  # that the judgment leaves this context and comes back as a file the judge
+  # wrote, not how the judging was arranged. A subagent of this session is the
+  # cheap way — no extra process, no extra API surface, no assumption about
+  # which CLI is installed — and `claude -p` would work too. Naming one would
+  # fix an arrangement the driving agent is better placed to choose.
   #
   # THE JUDGE ALSO KEEPS THE COUNT, in `.headsign/tmp/verdicts`, appended and
   # never cleared until the sweep moves to the next item. Two files, both
@@ -306,10 +308,17 @@ phases:
   # first. Honest, not smart: the motive is gone, the possibility is not.
   judge:
     description: >
-      Delegate the verdict. Spawn ONE subagent whose only writable paths are
-      `.headsign/tmp/verdict` and `.headsign/tmp/verdicts`, and tell it to
-      write its own answer there — do not report the verdict back and copy it
-      down yourself.
+      The verdict is not yours to write. When this gate runs,
+      `.headsign/tmp/verdict` and `.headsign/tmp/verdicts` have been written by
+      the judge itself: a reader given the two questions below and nothing
+      else, whose only writable paths are those two files. Do not have a
+      verdict reported back and copy it down — transcription puts the pen
+      back in the writer's hand.
+
+      How the judging is arranged is yours, with one count to keep true:
+      exactly one verdict word reaches `.headsign/tmp/verdicts` per attempt
+      judged, because that count is the attempt number the give-up route
+      reads.
 
       Give the judge exactly these two questions, unchanged:
 

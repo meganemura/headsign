@@ -97,9 +97,10 @@ phases:
     description: >
       The ticket judged this run was rejected or deferred, so nothing will
       be built and **the reason IS the whole answer the reporter gets**.
-      Until now nothing has reviewed it. Spawn a read-only reviewer
-      subagent (Read/Grep/Glob) and point it at that ticket's Judgment and
-      Response in the feedback repository. Have it check three things
+      Until now nothing has reviewed it. The review comes from a reader that
+      can read and search but writes nothing, pointed at that ticket's
+      Judgment and Response in the feedback repository — how you arrange that
+      reader is yours. Have it check three things
       against THIS tree rather than on trust: every factual claim about
       headsign (a file, a symbol, an ADR, a default, a documented
       sentence) is verified where it lives; every unconditional statement
@@ -155,7 +156,8 @@ phases:
 
   review:
     description: >
-      Spawn a read-only reviewer subagent (Read/Grep/Glob) to check the
+      The review comes from a reader that can read and search but writes
+      nothing — arrange it as you see fit — checking the
       diff against docs/architecture.md's module boundaries,
       .headsign/notes/what-headsign-protects.md, README EN/JA parity — and
       the public-repo rule above: the diff and its commit messages must
