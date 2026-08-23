@@ -464,6 +464,10 @@ export type StatusResult =
       // recorded (a run predating this field, or one with a malformed record) — cli.ts prints
       // no line for either, the same treatment `lastStop` gets above.
       lastMoved: string | null;
+      // When the run last entered the phase it is on — the other timestamp `lastMoved` is not
+      // (a retry moves that and not this). null for a run predating the field, which cli.ts
+      // prints no line for, the same treatment `lastMoved` gets above.
+      phaseEnteredAt: string | null;
       // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with — ADR-0025
       // §6: the one quiet-ending cause a caller can answer about itself.
       observer: boolean;
@@ -643,6 +647,9 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
     // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
     // run started outside Claude Code, not damage.
     last_drive: driveStamp(env, nowIso),
+    // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
+    // so — the two belong to the same moment (ADR-0031).
+    phase_entered_at: nowIso,
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -984,7 +991,14 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   const { state: nextState, outcome } = step(wf, current, gateResult, route);
   let cleared: string[] | undefined;
   let notCleared: NotCleared[] | undefined;
-  if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
+  if (outcome.kind === "ADVANCE") {
+    ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
+    // Deliberately in the same branch as the clear, and not a line further out: ADVANCE is
+    // every way a run enters a phase — onward, routed, or back to one it has been in — and it
+    // is the only outcome that does. A RETRY leaves this alone because it never left the
+    // phase (ADR-0031).
+    nextState.phase_entered_at = nowIso;
+  }
   state.writeState(cwd, nextState);
   state.appendLog(cwd, render.logLine(nowIso, outcome, nextState, current.phase));
   // Both are undefined unless the outcome was an ADVANCE, and a non-advancing answer must
@@ -1127,6 +1141,7 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     delegated: driverAgent !== null,
     lastStop: recordedLastStop(current),
     lastMoved: recordedLastMoved(current),
+    phaseEnteredAt: typeof current.phase_entered_at === "string" && current.phase_entered_at.length > 0 ? current.phase_entered_at : null,
     observer: stophook.isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,

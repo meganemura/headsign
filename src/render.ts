@@ -228,6 +228,12 @@ export function statusRunning(o: {
   // a run whose `last_drive` doesn't exist says nothing, byte-identical to before this line
   // existed.
   lastMoved?: string;
+  // The third timestamp, and the one about where the run STANDS rather than who touched it:
+  // when it last entered the phase named on line 1. Optional and conditional like the two
+  // above — a run started before the field existed says nothing, byte-identical to before.
+  // Printed verbatim, for the reason `last stop:` gives: this module reads no clock, so the
+  // elapsed time is the reader's subtraction to do, never this module's to invent.
+  phaseEnteredAt?: string;
   // HEADSIGN_OBSERVER, read from the environment of the process `status` runs in (engine.ts
   // takes it as an argument; this module reads nothing). The one quiet-ending cause a caller can
   // answer ABOUT ITSELF — there is no identifier to resolve — which makes it worth a line even
@@ -301,11 +307,15 @@ export function statusRunning(o: {
   // explains the other. Printed verbatim, like `last stop:`'s own timestamp — this module
   // reads no clock and cannot know the reader's timezone.
   const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} — turn ends from any other session pass without a nudge\n` : "";
+  // Under `last moved:` because the two answer neighbouring questions — when anyone last moved
+  // the run, and when the run last arrived where it is — and reading them together is what
+  // tells a retry-heavy phase from a long-idle one.
+  const enteredLine = o.phaseEnteredAt ? `entered: ${o.phaseEnteredAt} — when this run last entered the phase above\n` : "";
   // The only line here that is about the CALLER rather than the run — last among the
   // conditional lines above the phase block, which comes after everything else in turn.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
   const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for

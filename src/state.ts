@@ -85,6 +85,20 @@ export interface State {
   // hand-edited state.json is always possible.
   driver_agent: string | null;
 
+  // When this run last ENTERED the phase it is standing on. Written in exactly one place —
+  // beside the call that runs the phase's `clear:` — because that call IS the entry boundary
+  // the schema already draws: `on_fail: retry` stays in the phase and clears nothing, while
+  // `on_fail: <this same phase>` leaves and re-enters, clearing as it goes (ADR-0031). So a
+  // retry does not move this, and a re-entry does.
+  //
+  // Distinct from `last_drive.at` below, which every `start` and `next` stamps whatever the
+  // answer was — a RETRY moves that one and not this one. Read together they say how long the
+  // run has been working on the phase it is on, and when anyone last touched it.
+  //
+  // null for a run that predates this field. Nothing headsign writes today produces one, and
+  // like every other tolerated absence here it means "nothing to report", never "just now".
+  phase_entered_at: string | null;
+
   // What headsign DID with the most recent turn end it both processed and could attribute to
   // this run — the current-value companion to the stop-boundary lines in `.headsign/log`; see
   // ADR-0025 §4 for why both exist.

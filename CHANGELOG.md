@@ -11,6 +11,18 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **`headsign status` says when the run entered the phase it is on.** A viewer
+  drawing a run had no way to show how long a phase has been going: the
+  transitions are in `.headsign/log`, which is gitignored internal state, and
+  neither timestamp `status` already printed answers it — `last moved:` is
+  stamped by every `start` and `next`, so a retry moves it while the run stands
+  where it stood. `state.json` gains `phase_entered_at`, written in one place,
+  beside the call that runs the phase's `clear:` — so `on_fail: retry` leaves it
+  alone and `on_fail: <this same phase>` moves it, which is the boundary the
+  schema already draws. headsign still computes no duration and still limits no
+  run by time; the timestamp is printed as recorded and the subtraction is the
+  reader's
+  ([ADR-0031](docs/adr/0031-when-the-run-entered-the-phase.md)).
 - **What is a contract and what is not is now written down.** `next`'s
   first-line token with its exit code, and `status`'s first line with the
   exit-code rule beside it, are guaranteed. Everything else any command prints

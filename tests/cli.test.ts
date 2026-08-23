@@ -2310,7 +2310,7 @@ phases:
   assert.equal(before.status, 0);
   assert.equal(
     before.stdout,
-    `RUNNING build (attempt 0/3)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n--- phase: build ---\nBuild.\n`,
+    `RUNNING build (attempt 0/3)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\nentered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n--- phase: build ---\nBuild.\n`,
   );
 
   run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // real RETRY -> attempts.build = 1
@@ -2339,7 +2339,7 @@ test("status: an unreadable workflow.yaml degrades the attempt display to n/? wi
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.equal(result.stdout, `RUNNING build (attempt 0/?)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
+  assert.equal(result.stdout, `RUNNING build (attempt 0/?)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\nentered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n`);
 });
 
 // Same pin, the other way a description fails to resolve: the workflow loads fine but no
@@ -2367,7 +2367,7 @@ phases:
 
   const result = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
-  assert.equal(result.stdout, `RUNNING build (attempt 0/?)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n`);
+  assert.equal(result.stdout, `RUNNING build (attempt 0/?)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\nentered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n`);
 });
 
 test("status: a matching last_failure renders a last-failure block with the failing check and output tail", () => {
@@ -2466,6 +2466,7 @@ test("status: a turn end that Claude Code had already resumed leaves both an unh
     result.stdout,
     `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n` +
       `last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n` +
+      `entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n` +
       `--- phase: build ---\nBuild the thing.\n`,
   );
 });
@@ -2590,7 +2591,7 @@ test("status: a run with no last_drive prints byte-identical output to before th
   assert.equal(result.status, 0);
   assert.equal(
     result.stdout,
-    `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n--- phase: build ---\nBuild the thing.\n`,
+    `RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\nentered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n--- phase: build ---\nBuild the thing.\n`,
   );
   assert.doesNotMatch(result.stdout, /last moved:/);
 });
@@ -2610,6 +2611,7 @@ test("status: a run with a last_drive stamp prints the exact 'last moved:' line,
     "RUNNING build (attempt 0)\nworkflow: demo\ndriver: not delegated yet — no agent has claimed this run\n" +
       `last stop: held, and pointed back to headsign next — at ${(readState(dir).last_stop as { at: string }).at}\n` +
       `last moved: ${at.at} — turn ends from any other session pass without a nudge\n` +
+      `entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n` +
       `--- phase: build ---\nBuild the thing.\n`,
   );
 });

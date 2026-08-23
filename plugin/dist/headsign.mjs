@@ -7888,6 +7888,8 @@ ${o.lastFailure.outputTail}
 ` : "";
   const lastMovedLine = o.lastMoved ? `last moved: ${o.lastMoved} \u2014 turn ends from any other session pass without a nudge
 ` : "";
+  const enteredLine = o.phaseEnteredAt ? `entered: ${o.phaseEnteredAt} \u2014 when this run last entered the phase above
+` : "";
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
   const phaseBlock = o.description !== void 0 ? `--- phase: ${o.phase} ---
 ${o.description}
@@ -7895,7 +7897,7 @@ ${o.description}
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${lastStopLine}${noteLine}${lastMovedLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
+${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -8437,6 +8439,9 @@ function start2(cwd, workflowPath, nowIso, env) {
     // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
     // run started outside Claude Code, not damage.
     last_drive: driveStamp(env, nowIso),
+    // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
+    // so — the two belong to the same moment (ADR-0031).
+    phase_entered_at: nowIso,
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -8573,7 +8578,10 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange) {
   const { state: nextState, outcome } = step(wf, current, gateResult, route);
   let cleared;
   let notCleared;
-  if (outcome.kind === "ADVANCE") ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
+  if (outcome.kind === "ADVANCE") {
+    ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
+    nextState.phase_entered_at = nowIso;
+  }
   writeState(cwd, nextState);
   appendLog(cwd, logLine(nowIso, outcome, nextState, current.phase));
   return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, ...cleared !== void 0 && { cleared }, ...notCleared !== void 0 && { notCleared } };
@@ -8647,6 +8655,7 @@ function status(cwd, env) {
     delegated: driverAgent !== null,
     lastStop: recordedLastStop(current),
     lastMoved: recordedLastMoved(current),
+    phaseEnteredAt: typeof current.phase_entered_at === "string" && current.phase_entered_at.length > 0 ? current.phase_entered_at : null,
     observer: isObserver(env),
     acceptedGraphChanges: acceptedGraphChanges(current),
     graphChangeReported: recordedGraphMarker(current) !== null,
@@ -8806,6 +8815,7 @@ function reportStatus(result) {
           // these facts that is about the caller rather than the run.
           ...result.lastStop !== null && { lastStop: result.lastStop },
           ...result.lastMoved !== null && { lastMoved: result.lastMoved },
+          ...result.phaseEnteredAt !== null && { phaseEnteredAt: result.phaseEnteredAt },
           ...result.observer && { observer: true },
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,

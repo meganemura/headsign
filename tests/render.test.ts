@@ -632,6 +632,29 @@ test("statusRunning: history first, then the outstanding question", () => {
   );
 });
 
+// The third timestamp. It sits under `last moved:` because the two are neighbours in what they
+// answer — when anyone last moved the run, and when the run last arrived where it is.
+
+test("statusRunning: the entered line prints the timestamp verbatim, under last moved", () => {
+  const at = "2026-08-23T07:49:15+09:00";
+  const moved = "2026-08-23T08:10:00+09:00";
+  const actual = render.statusRunning({
+    phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo",
+    driver: "a delegated agent", lastMoved: moved, phaseEnteredAt: at,
+  });
+  assert.equal(
+    actual,
+    "RUNNING build (attempt 1)\nworkflow: demo\ndriver: a delegated agent\n" +
+      `last moved: ${moved} — turn ends from any other session pass without a nudge\n` +
+      `entered: ${at} — when this run last entered the phase above\n`,
+  );
+});
+
+test("statusRunning: a run with no recorded entry time prints no entered line", () => {
+  const base = { phase: "build", attempt: 1, attemptUnknown: false, workflowName: "demo", driver: "a delegated agent" } as const;
+  assert.doesNotMatch(render.statusRunning(base), /entered:/);
+});
+
 // The third graph line, the one about the FILE rather than the record. It has to sit under the
 // standing question rather than above it: `restored` is an answer to that line, and an answer
 // printed first reads as a contradiction.
@@ -900,6 +923,7 @@ function baseState(overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    phase_entered_at: null,
     last_stop: null,
     last_drive: null,
     graph_fingerprint: {},

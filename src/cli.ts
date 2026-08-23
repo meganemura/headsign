@@ -226,6 +226,7 @@ function reportStatus(result: engine.StatusResult): never {
           // these facts that is about the caller rather than the run.
           ...(result.lastStop !== null && { lastStop: result.lastStop }),
           ...(result.lastMoved !== null && { lastMoved: result.lastMoved }),
+          ...(result.phaseEnteredAt !== null && { phaseEnteredAt: result.phaseEnteredAt }),
           ...(result.observer && { observer: true }),
           acceptedGraphChanges: result.acceptedGraphChanges,
           graphChangeReported: result.graphChangeReported,

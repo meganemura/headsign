@@ -28,6 +28,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    phase_entered_at: null,
     last_stop: null,
     last_drive: null,
     // The graph pin as a run that has just started carries it: empty rather than absent, since
@@ -689,6 +690,75 @@ phases:
     assert.equal(status.attemptUnknown, true);
     assert.equal(status.description, undefined);
   }
+});
+
+// --- phase_entered_at: stamped where `clear:` runs, and nowhere else ---
+//
+// The field answers "how long has this phase been going", so what it must NOT do is move on a
+// retry — a phase the run never left has not been entered again. The boundary is the one the
+// schema already draws: `on_fail: retry` stays and clears nothing; `on_fail: <this phase>`
+// leaves and re-enters, clearing as it goes.
+
+const ENTRY_WORKFLOW = `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "test -f pass-marker"
+    on_pass: ship
+    max_attempts: 5
+  ship:
+    description: "Ship."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`;
+
+function readStateFile(dir: string): State {
+  return JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8")) as State;
+}
+
+test("start(): stamps the entry phase's arrival time", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  assert.equal(readStateFile(dir).phase_entered_at, START_TIME);
+});
+
+test("a RETRY leaves phase_entered_at alone — the run never left the phase", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(result.kind, "ANSWERED");
+  if (result.kind === "ANSWERED") assert.equal(result.outcome.kind, "RETRY");
+  assert.equal(readStateFile(dir).phase_entered_at, START_TIME, "still the moment the run arrived");
+});
+
+test("an ADVANCE stamps the phase it moves into, at the lap's time", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  fs.writeFileSync(path.join(dir, "pass-marker"), "");
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(result.kind, "ANSWERED");
+  if (result.kind === "ANSWERED") assert.equal(result.outcome.kind, "ADVANCE");
+  assert.equal(readStateFile(dir).phase_entered_at, LAP_TIME);
+});
+
+test("status() reports the stamp, and reports none for a run that predates the field", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  const stamped = engine.status(dir, NO_ENV);
+  assert.equal(stamped.kind, "RUNNING");
+  if (stamped.kind === "RUNNING") assert.equal(stamped.phaseEnteredAt, START_TIME);
+
+  // A record written before the field existed simply lacks it — absent means "nothing to
+  // report", never "just now".
+  const raw = JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8")) as Record<string, unknown>;
+  delete raw.phase_entered_at;
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(raw));
+  const older = engine.status(dir, NO_ENV);
+  assert.equal(older.kind, "RUNNING");
+  if (older.kind === "RUNNING") assert.equal(older.phaseEnteredAt, null);
 });
 
 // --- status: the graph as it stands NOW, not as the record last saw it ---

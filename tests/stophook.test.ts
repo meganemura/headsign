@@ -24,6 +24,7 @@ function runningState(overrides: Partial<state.State> = {}): state.State {
     end_reason: null,
     stop_nudges: 0,
     driver_agent: null,
+    phase_entered_at: null,
     last_stop: null,
     last_drive: null,
     graph_fingerprint: {},

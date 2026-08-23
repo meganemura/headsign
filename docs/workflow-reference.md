@@ -1316,6 +1316,26 @@ to nudging whoever stops in its directory. That is the safe direction on
 purpose: headsign does not keep a stamp it can no longer vouch for, and an
 unstamped run nudges everyone rather than no one.
 
+`entered:` names when the run last *arrived* where it is standing, and is the
+third timestamp rather than a third reading of the first two:
+
+```
+entered: 2026-08-23T07:49:15+09:00 — when this run last entered the phase above
+```
+
+It moves exactly when the phase's `clear:` runs, which is the boundary the
+schema already draws — `on_fail: retry` stays in the phase and clears nothing,
+so the stamp holds while the agent works on the same failure; `on_fail: <this
+same phase>` leaves and re-enters, so it moves. That is what separates it from
+`last moved:` above, which every `start` and `next` stamps whatever the answer
+was. Read together: `entered:` says how long this phase has been going, and
+`last moved:` says when anyone last touched the run — a fresh `last moved:`
+under a stale `entered:` is a phase being retried, and two stale ones are a run
+nobody is driving. Subtract to get an elapsed time; headsign prints the
+timestamp exactly as it recorded it and computes no duration of its own
+([ADR-0031](adr/0031-when-the-run-entered-the-phase.md)). A run started before
+the field existed has no stamp and prints no line.
+
 `observer:` appears when `HEADSIGN_OBSERVER` is set in the environment
 `status` itself runs in — normally the session's, but not necessarily, since
 what is read is that one process's environment. It is the only quiet-ending
