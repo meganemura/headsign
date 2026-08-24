@@ -39,7 +39,7 @@ import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
 import type { Workflow, Route } from "./workflow.ts";
 import type { State, UnheldCause, LastFailure } from "./state.ts";
-import type { GateVerdict, CheckFailure, RouteResolution } from "./gate.ts";
+import type { GateVerdict, CheckFailure, RouteResolution, GateProgress } from "./gate.ts";
 
 type FailureInfo = CheckFailure;
 
@@ -690,7 +690,11 @@ function terminalAnswer(current: State, acceptGraphChange: boolean): NextResult 
 // flag, this module decides whether it may do anything (ADR-0018's boundary, restated for this
 // flag). Defaulted to `false` so every existing caller — every test in the suite that predates
 // the flag included — keeps asking for an ordinary lap without having to say so.
-export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, acceptGraphChange = false): NextResult {
+//
+// `onProgress`, when cli.ts gives one, is handed straight to `gate.runGate` and read nowhere in
+// between — ADR-0032 §5's "engine.ts passes that function through and reads nothing from it,"
+// which is what keeps this module's own rule (every answer leaves as data) true of this one too.
+export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, acceptGraphChange = false, onProgress?: (p: GateProgress) => void): NextResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
   if (current.status !== "running") return terminalAnswer(current, acceptGraphChange);
@@ -753,7 +757,7 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, accept
     const stamped: State = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
     if (stamped !== fresh) state.writeState(cwd, stamped);
 
-    return evaluateNext(cwd, wf, stamped, nowIso, acceptGraphChange);
+    return evaluateNext(cwd, wf, stamped, nowIso, acceptGraphChange, onProgress);
   } finally {
     state.releaseLock(cwd);
   }
@@ -914,7 +918,7 @@ function reconcileGraphPin(cwd: string, wf: Workflow, current: State, nowIso: st
 // step/writeState), run while next() holds the lock. Private, and reachable only from behind
 // that guard sequence: nothing here re-checks that the run is still going, because the only
 // caller has just done it against a fresh read.
-function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string, acceptGraphChange: boolean): NextResult {
+function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string, acceptGraphChange: boolean, onProgress?: (p: GateProgress) => void): NextResult {
   if (!wf.phases[incoming.phase]) {
     return {
       kind: "REFUSED",
@@ -957,7 +961,7 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
     }
   }
 
-  const gateResult = gate.runGate(phase.gate.checks, cwd);
+  const gateResult = gate.runGate(phase.gate.checks, cwd, onProgress);
   // A check that produced no exit code refuses exactly like an unresolvable route below —
   // ADR-0021 §2's own words: nothing written, so "run `headsign next` again" is honest advice,
   // not a resumption mid-transition.

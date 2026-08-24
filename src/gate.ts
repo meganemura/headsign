@@ -6,7 +6,9 @@
 //   - which branch of a k-way `on_pass` answered yes, by running its `when:` predicates
 //     (ADR-0011)?
 // All three are "run shell, read exit code" — the routing *rules* still live in engine.ts;
-// this module only reports which branch answered yes.
+// this module only reports which branch answered yes. `runGate`'s optional progress observer
+// (ADR-0032) is not a fourth question of its own: it reports live on the second question above,
+// as each check in the gate produces an answer, rather than asking anything new.
 // All three can also come back with NO exit code, and all three answer that in the same shape
 // — `unrunnable` for the first two, the `error` arm of RouteResolution for the third. A
 // command headsign could not run has not answered, and an unanswered question is not a "no":
@@ -83,6 +85,21 @@ export type GateResult =
 // `engine.step` takes this type rather than `GateResult` — ADR-0021 §3.
 export type GateVerdict = Exclude<GateResult, { kind: "unrunnable" }>;
 
+// What `runGate` tells an optional observer, live, as its own loop runs — ADR-0032. Two shapes,
+// not a running total on one: `gate` is the count a caller reads once, before anything has
+// happened, and `check` is one report per check that produced an exit code, whichever way it
+// went — `outcome` names which of three. A timeout is its own word rather than folded into
+// `failed`: this line is the only report a run-ending failure ever gets (ADR-0032 §3), so it
+// cannot afford to blur what `render.clause` keeps apart everywhere else it reports one. Never
+// for an unrunnable check: the command never answered, so the caller refuses the lap on it
+// instead of routing on a verdict, and that refusal already names the check and the command
+// (ADR-0021 §2) — a progress line would only repeat it. `runGate` calls the function it is
+// given; it never learns why, and nothing here answers to ADR-0002's stdout contract, because
+// this never reaches stdout.
+export type GateProgress =
+  | { kind: "gate"; total: number }
+  | { kind: "check"; index: number; total: number; name: string; elapsedSeconds: number; outcome: "passed" | "failed" | "timed out" };
+
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const OUTPUT_TAIL_LIMIT = 4000;
 
@@ -93,7 +110,12 @@ function elapsedSecondsSince(startedAt: bigint): number {
   return Math.round(ms / 100) / 10;
 }
 
-export function runGate(checks: Check[], cwd: string): GateResult {
+// `onProgress` is optional and, when given, called once up front with the gate's size and once
+// more after each check that produces an exit code — passed, failed, or timed out, `outcome`
+// names which (ADR-0032 §3) — but never for an unrunnable one: the refusal that ends the lap on
+// it already names the check and the command.
+export function runGate(checks: Check[], cwd: string, onProgress?: (p: GateProgress) => void): GateResult {
+  onProgress?.({ kind: "gate", total: checks.length });
   for (let i = 0; i < checks.length; i++) {
     const c = checks[i];
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
@@ -119,7 +141,12 @@ export function runGate(checks: Check[], cwd: string): GateResult {
       // A timeout is a verdict, deliberately NOT an unrunnable check — ADR-0021 §4.
       // `elapsedSeconds` lands close to `timeoutSeconds` here, which is itself the
       // confirmation that the check really did run to the limit rather than being cut short
-      // some other way.
+      // some other way. Routing still treats a timeout as an ordinary failure, the same
+      // ADR-0021 §4 reading: the check ran and answered, by running past a limit the workflow
+      // itself wrote. This line says so in its own word rather than `failed`, though — it is
+      // the only report a run-ending failure gets (ADR-0032 §3), and `failed (120.1s)` would
+      // read as an ordinary failure that happened to take two minutes.
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "timed out" });
       return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     if (spawnError) {
@@ -128,12 +155,17 @@ export function runGate(checks: Check[], cwd: string): GateResult {
       // route on. The caller stops the run on this (exit 3) instead of spending an attempt.
       // `reason` stays short — the errno, which names the situation to anyone who can fix it.
       // No `elapsedSeconds`: the command never answered, so there is no "time to an answer" to
-      // report.
+      // report. No `onProgress` call either, for the same reason: the check never produced an
+      // exit code, and the refusal the caller prints instead already names it (ADR-0032 §3).
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
     if (result.status !== 0) {
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "failed" });
       return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
+    // Reached only once none of the three return arms above fired: this check passed.
+    // `elapsedSeconds` is the same measurement a failing check reports on the same clock.
+    onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "passed" });
   }
   return { kind: "pass" };
 }

@@ -9,6 +9,45 @@ test("start", () => {
   assert.equal(actual, expected);
 });
 
+// --- gateProgress: the stderr-only lines a gate writes live (ADR-0032) ---
+
+test("gateProgress: the gate shape names how many checks it holds, singular for one", () => {
+  assert.equal(render.gateProgress({ kind: "gate", total: 1 }), `--- gate: 1 check ---\n`);
+});
+
+test("gateProgress: the gate shape is plural for more than one, zero included", () => {
+  assert.equal(render.gateProgress({ kind: "gate", total: 12 }), `--- gate: 12 checks ---\n`);
+  assert.equal(render.gateProgress({ kind: "gate", total: 0 }), `--- gate: 0 checks ---\n`);
+});
+
+test("gateProgress: a passed check names its 1-based index, the gate's total, its name, and its duration", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 1, total: 12, name: "typecheck", elapsedSeconds: 2.1, outcome: "passed" }),
+    `--- check 1/12 passed: typecheck (2.1s) ---\n`,
+  );
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 2, total: 12, name: "tests", elapsedSeconds: 48.3, outcome: "passed" }),
+    `--- check 2/12 passed: tests (48.3s) ---\n`,
+  );
+});
+
+// A failing check gets the same line shape with the other outcome word (ADR-0032 §3).
+test("gateProgress: a failed check prints the same shape with 'failed' in place of 'passed'", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 3, total: 12, name: "acceptance matrix", elapsedSeconds: 3.2, outcome: "failed" }),
+    `--- check 3/12 failed: acceptance matrix (3.2s) ---\n`,
+  );
+});
+
+// A timed-out check gets its own third word rather than reading as an ordinary failure that
+// happened to take two minutes (ADR-0032 §3, its "timeout says so" paragraph).
+test("gateProgress: a timed-out check prints the same shape with 'timed out' in place of 'passed'/'failed'", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 4, total: 12, name: "coverage", elapsedSeconds: 120.1, outcome: "timed out" }),
+    `--- check 4/12 timed out: coverage (120.1s) ---\n`,
+  );
+});
+
 test("advance without a failure has no gate-failed line", () => {
   const actual = render.advance("build", "Build it.");
   const expected = `ADVANCE build\n--- phase: build ---\nBuild it.\n`;

@@ -126,10 +126,12 @@ plugin or `npm install` the package. Do not guess at other paths.
    keeping a default: list `.headsign/` and start the one you were asked for.
 4. **When you have done work you think finishes the phase — or have just
    recovered from compaction and need to know where the run stands — run
-   `headsign next` and obey the first-line token.** That one habit is the
-   whole protocol. `next` is a judgment, not a peek: it runs the phase's
-   gate, and a failure spends one of that phase's attempts. When you only
-   want to look, run `headsign status` (rule 1) — it judges nothing and
+   `headsign next` and obey the token on stdout's first line** — merged
+   with stderr, a progress line from the running gate may arrive first, so
+   read stdout on its own. That one habit is the whole protocol. `next` is
+   a judgment, not a peek: it runs the phase's gate, and a failure spends
+   one of that phase's attempts. When you only want to look, run
+   `headsign status` (rule 1) — it judges nothing and
    costs nothing. And when you want to know how your last turn end was
    handled, `headsign status` is the **first** command to run on resuming,
    before `headsign next`: `next` resets the nudge counter, and the record
@@ -143,8 +145,8 @@ plugin or `npm install` the package. Do not guess at other paths.
    (or `--- routed: default → <phase> ---`) means the opposite: the previous
    phase *passed*, and its `on_pass` routes chose this phase; the quoted
    command is the condition that matched. Either way, the phase you were
-   sent to is the one printed on line 1 — read the line, don't infer the
-   move.
+   sent to is the one printed on stdout's first line — read the line,
+   don't infer the move.
 6. **Never end the run on your own judgment while the answer is anything
    other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
    stop mid-run — record why with `headsign abort <reason>` and report to

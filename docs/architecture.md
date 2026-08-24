@@ -44,9 +44,9 @@ consumer repository:
 
 ## Module map
 
-Size: `src/` measured **1,488 code lines** on 2026-08-08 (tests excluded, and
+Size: `src/` measured **1,688 code lines** on 2026-08-25 (tests excluded, and
 counting code only — the deliberately dense AI-friendly comments and blank
-lines don't count; raw `wc -l` is ~3360). That is a measurement, not a
+lines don't count; raw `wc -l` is ~3555). That is a measurement, not a
 target. ADR-0001's budget of roughly 500 code lines is retired by
 [ADR-0016](adr/0016-explainability-as-the-fitness-function.md): `src/` had
 already gone past twice the number by then without the guideline stopping a
@@ -70,7 +70,7 @@ thin harness need this?
 | `src/cli.ts` | argv parsing, command dispatch, printing, process exit code — one typed command becomes one `engine.ts` call, and the value it answers with becomes text and a status. Also the only place the **wall clock** (`localIso(new Date())`) and `process.env` are read — both passed down as arguments | routing rules — *including the order `next` asks its questions in* (ADR-0018) — the YAML schema, what any operation does to a run |
 | `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types, and the fingerprint of the *rules* a run is walking under (ADR-0023) — a fact about the schema and the reachability walk, both of which are this module's | state.json, gates, git |
 | `src/state.ts` | read/write `state.json` (atomic write); owns the state shape, the graph pin's three fields included | routing rules, YAML |
-| `src/gate.ts` | run one phase's checks (shell, timeout, output tail), timing how long a failing one ran with a monotonic clock — outside ADR-0004's guarantee (that guarantee is about the wall-clock datetime that lands on disk, not this interval), since this module already touches the outside world; resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
+| `src/gate.ts` | run one phase's checks (shell, timeout, output tail), timing every one that finishes — pass or fail — with a monotonic clock and reporting each live to an optional progress observer (ADR-0032) — outside ADR-0004's guarantee (that guarantee is about the wall-clock datetime that lands on disk, not this interval), since this module already touches the outside world; resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011) | what a route target means, state, git |
 | `src/engine.ts` | one operation on a run — `start`, one lap of `next`, `abort`, `claim`, `status` — carried out and reported as a value. The ONLY place routing rules live, *the order a lap asks its questions in included* (ADR-0018); inside it, `step()` is still the pure transition function (workflow, state, gate result, resolved route) → (new state, outcome), and a resolved route still arrives as data rather than being evaluated here | argv, how an answer is worded, what it exits with, the clock, the environment (`status` is handed one, the same way every operation is handed a timestamp) |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, the one env signal headsign reads (ADR-0013) | workflow.yaml, gates |
@@ -80,7 +80,10 @@ strings and `validate`'s output); the `ERROR:` messages (exit code 3, for usage/
 problems like bad argv, a workflow that fails to load, or an operation that refuses) are a
 separate, deliberately unceremonious channel, not part of that contract. `cli.ts` prints
 every one of them, whether it worded the message itself (bad argv) or an `engine.ts` refusal
-handed it the words.
+handed it the words. `render.gateProgress` is a third category: composed in `render.ts` like
+the rest, but written to stderr by `cli.ts` while a gate is still running, not after `next`
+has answered — no part of the outcome contract, which is about what a command answers with
+once it has answered (ADR-0032).
 
 ## Data flow of `headsign next`
 

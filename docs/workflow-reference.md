@@ -660,6 +660,35 @@ loaded with whatever still happens to fit
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
 
+**`next` writes progress to stderr while the gate runs.** One line, before the
+first check starts, names how many checks the gate holds. One more line
+follows each check that finishes, naming which way it went:
+
+```
+--- gate: 12 checks ---
+--- check 1/12 passed: typecheck (2.1s) ---
+--- check 2/12 passed: tests (48.3s) ---
+--- check 3/12 failed: acceptance matrix (3.2s) ---
+```
+
+The gate stops at the first failure, so at most one line says anything but
+`passed`, and it is the last one. The word is `passed`, `failed`, or `timed
+out` — a check killed at its `timeout:` says so, rather than reading as an
+ordinary failure that happened to take that long.
+
+A check that never produced an exit code gets no line: headsign refuses the
+lap on it instead of spending an attempt, and the refusal already names the
+check and the command it could not run. A check the gate never reached — an
+earlier one failed and the loop stopped there — gets none either. No flag
+turns these lines on: the reader who needs them is the one who did not expect
+a slow gate ([ADR-0032](adr/0032-the-gate-says-how-far-it-got.md)).
+
+**A `next` killed inside the gate has spent nothing.** `step()` adds the
+attempt only after the gate returns, so an interrupted lap has written no
+attempt and moved no phase. The lock stays safe too: `acquireLock` replaces a
+lock whose holder process is gone, so a killed `next` leaves nothing to clean
+up.
+
 **A gate failure that answers `RETRY`, or routes onward through `on_fail`, says
 which of its checks it never reached.** Checks run in order and the gate stops at
 the first failure, so the ones behind it do not run at all — and a lap that
@@ -668,11 +697,14 @@ fails is the lap where the gate examined the least. The block names that:
 `.headsign/log`'s retry and routed-fail lines as `ran=2/3`, so it can be answered
 after the run has ended. Neither appears when the failing check was the last one.
 **A failure that exhausts `max_attempts` is the exception**: it ends the run with
-an `ESCALATE` whose line carries only its reason, so a phase with
-`max_attempts: 1` never reports this at all — for that phase, the workflow file
-is where the count of checks lives. This matters most in a loop that stops on a failing lap: a check
-behind the failure may not have run in the entire walk, and "it passed" and "it
-never ran" are otherwise the same silence.
+an `ESCALATE` whose line still carries only its reason, so a phase with
+`max_attempts: 1` never gets this block on stdout. The count and the reached
+index still reach stderr while the gate runs, on that lap like any other. What
+the workflow file is still needed for is narrower: the *names* of the checks
+that never got a turn, since no progress line names one either. This matters
+most in a loop that stops on a failing lap: a check behind the failure may not
+have run in the entire walk, and "it passed" and "it never ran" are otherwise
+the same silence.
 
 **A `RETRY` says when it is the same failure again.** From the second identical
 failure onward — same check, same command, same exit code, same output as the

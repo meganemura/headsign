@@ -602,6 +602,60 @@ phases:
   if (status.kind === "RUNNING") assert.equal(status.lastFailure?.elapsedSeconds, saved, "restored verbatim, the same number status() reads off the record");
 });
 
+// --- onProgress: `next` hands cli.ts's sink straight to gate.runGate (ADR-0032) ---
+
+test("next: a sink passed to onProgress reaches gate.runGate — one gate call, one check call per pass", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "first"
+          run: "true"
+        - name: "second"
+          run: "true"
+    on_pass: "$end"
+`);
+  const calls: Array<{ kind: string; total: number; index?: number; name?: string; elapsedSeconds?: number }> = [];
+  const result = engine.next(dir, LAP_TIME, NO_ENV, false, (p) => calls.push(p));
+  assert.equal(result.kind, "ANSWERED");
+  if (result.kind === "ANSWERED") assert.equal(result.outcome.kind, "COMPLETE");
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0], { kind: "gate", total: 2 });
+  assert.equal(calls[1]?.kind, "check");
+  assert.equal(calls[1]?.index, 1);
+  assert.equal(calls[1]?.total, 2);
+  assert.equal(calls[1]?.name, "first");
+  assert.equal(typeof calls[1]?.elapsedSeconds, "number");
+  assert.equal(calls[2]?.kind, "check");
+  assert.equal(calls[2]?.index, 2);
+  assert.equal(calls[2]?.total, 2);
+  assert.equal(calls[2]?.name, "second");
+  assert.equal(typeof calls[2]?.elapsedSeconds, "number");
+});
+
+test("next: with no onProgress given, a lap behaves exactly as it always did", () => {
+  const dir = startedRun(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: "$end"
+`);
+  const result = engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(result.kind, "ANSWERED");
+  if (result.kind === "ANSWERED") assert.equal(result.outcome.kind, "COMPLETE");
+});
+
 // --- status: the current phase's description, read straight off the same lookup attemptUnknown uses ---
 
 test("status(): a resolvable phase reports its description, and status writes nothing to disk", () => {

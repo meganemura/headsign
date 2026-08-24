@@ -1,6 +1,11 @@
 // Responsibility: outcome -> text. The ONLY place the output contract (ADR-0002) is written.
 // Also the only place the .headsign/log line format is written (logLine); state.ts owns
 // that file's I/O, cli.ts owns the timestamp.
+// And a third kind of text, which is neither of those two: `gateProgress` (ADR-0032). It is
+// composed here like everything else, and cli.ts writes it to stderr WHILE a gate is running
+// — before the lap has an outcome to report at all — so it is no part of the output contract
+// above. A reader looking for "what this module composes" gets all three from this paragraph;
+// counting only the first two is how the third would drift out of anyone's view.
 // A log line is composed from the state AFTER the event it describes: the counters printed
 // come straight out of what it is handed, so passing the state from before a transition
 // produces a line that reads correctly and counts wrong, and nothing here would notice.
@@ -16,6 +21,29 @@ import type { State, UnheldCause } from "./state.ts";
 
 export function start(phase: string, description: string, cleared?: string[], notCleared?: NotCleared[]): string {
   return `START ${phase}\n${clearedBlock(cleared)}${notClearedBlock(notCleared)}--- phase: ${phase} ---\n${description}\n`;
+}
+
+// --- gate progress: printed to stderr while a gate runs, never to stdout (ADR-0032) ---
+//
+// A structural echo of gate.ts's `GateProgress`, not an import of it — the same precedent
+// `Failure` below follows: this file prints from a shape it declares itself, so a change to
+// gate.ts's own type breaks the call site here rather than silently reprinting whatever gate.ts
+// now sends.
+type GateProgress =
+  | { kind: "gate"; total: number }
+  | { kind: "check"; index: number; total: number; name: string; elapsedSeconds: number; outcome: "passed" | "failed" | "timed out" };
+
+// One line, called once per event cli.ts's sink receives: the gate's size before the first
+// check starts, then one more per check that finished, whichever of three ways it went —
+// `outcome` supplies the word, and a timeout gets one of its own rather than reading as an
+// ordinary failure (ADR-0032 §3): on the three paths where a failure ends the run, this line is
+// the only report the check gets at all. `elapsedSeconds` prints with no forced decimal (a whole
+// second reads `2s`), the same way `clause()` below prints a failing check's.
+export function gateProgress(p: GateProgress): string {
+  if (p.kind === "gate") {
+    return `--- gate: ${p.total} ${p.total === 1 ? "check" : "checks"} ---\n`;
+  }
+  return `--- check ${p.index}/${p.total} ${p.outcome}: ${p.name} (${p.elapsedSeconds}s) ---\n`;
 }
 
 // `elapsedSeconds` (gate.ts's CheckFailure field, carried through engine.ts unmodified) is

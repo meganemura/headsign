@@ -161,6 +161,96 @@ test("an unrunnable check stops the gate where it is: later checks do not run", 
   assert.equal(fs.existsSync(marker), false);
 });
 
+// --- onProgress: what runGate reports live, and to whom (ADR-0032) ---
+
+test("onProgress: reports the gate's size first, then one call per passing check, 1-based, outcome 'passed'", () => {
+  const calls: gate.GateProgress[] = [];
+  const result = gate.runGate([{ name: "first", run: "true" }, { run: "true" }], tmpdir(), (p) => calls.push(p));
+  assert.deepEqual(result, { kind: "pass" });
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0], { kind: "gate", total: 2 });
+  assert.equal(calls[1]?.kind, "check");
+  if (calls[1]?.kind === "check") {
+    assert.equal(calls[1].index, 1);
+    assert.equal(calls[1].total, 2);
+    assert.equal(calls[1].name, "first");
+    assert.equal(calls[1].outcome, "passed");
+    assert.equal(typeof calls[1].elapsedSeconds, "number");
+  }
+  assert.equal(calls[2]?.kind, "check");
+  if (calls[2]?.kind === "check") {
+    assert.equal(calls[2].index, 2);
+    assert.equal(calls[2].total, 2);
+    // No `name:` on this check, so the same run-string fallback checkName gives everywhere else.
+    assert.equal(calls[2].name, "true");
+    assert.equal(calls[2].outcome, "passed");
+  }
+});
+
+// A failing check gets a `check` call too, not only a passing one (ADR-0032 §3): stdout reports
+// a failing check in full only on some paths (a plain RETRY, a fail-routed ADVANCE) and not on
+// the three that end the run (max_attempts exhaustion, on_fail: escalate, on_fail: $end), all of
+// which null last_failure and print no check name at all — so the progress line cannot be
+// conditional on which of those a failure will take.
+test("onProgress: an ordinary failing check gets a `check` call with outcome 'failed', and nothing fires for the check the failure stopped the loop before", () => {
+  const calls: gate.GateProgress[] = [];
+  const result = gate.runGate([{ run: "true" }, { name: "lint", run: "exit 1" }, { run: "true" }], tmpdir(), (p) => calls.push(p));
+  assert.equal(result.kind, "fail");
+  // The gate-size call, one check call for the first (passing) check, and one for the second
+  // (failing) check — nothing for the third, which the failure stopped the loop before.
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0], { kind: "gate", total: 3 });
+  assert.equal(calls[1]?.kind, "check");
+  if (calls[1]?.kind === "check") assert.equal(calls[1].outcome, "passed");
+  assert.equal(calls[2]?.kind, "check");
+  if (calls[2]?.kind === "check") {
+    assert.equal(calls[2].index, 2);
+    assert.equal(calls[2].total, 3);
+    assert.equal(calls[2].name, "lint");
+    assert.equal(calls[2].outcome, "failed");
+    assert.equal(typeof calls[2].elapsedSeconds, "number");
+  }
+});
+
+// A timeout still routes as an ordinary failure — ADR-0021 §4's reading is untouched — but this
+// call's own word is `timed out`, not `failed`: ADR-0032 §3 gives it one of its own because this
+// line is the only report a run-ending failure gets on some paths, and blurring the two there
+// would read as an ordinary failure that happened to take two minutes.
+test("onProgress: a timed-out check gets a `check` call with outcome 'timed out', not 'failed'", () => {
+  const calls: gate.GateProgress[] = [];
+  const result = gate.runGate([{ run: "sleep 5", timeout: 0.2 }], tmpdir(), (p) => calls.push(p));
+  assert.equal(result.kind, "fail");
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], { kind: "gate", total: 1 });
+  assert.equal(calls[1]?.kind, "check");
+  if (calls[1]?.kind === "check") {
+    assert.equal(calls[1].index, 1);
+    assert.equal(calls[1].total, 1);
+    assert.equal(calls[1].outcome, "timed out");
+  }
+});
+
+// An unrunnable check produced no exit code, so it gets no `check` call — the refusal that ends
+// the lap on it already names the check and the command (ADR-0032 §3).
+test("onProgress: an unrunnable check gets no `check` call — only the gate-size call fires", () => {
+  const calls: gate.GateProgress[] = [];
+  const brokenCwd = path.join(tmpdir(), "does-not-exist");
+  const result = gate.runGate([{ run: "false" }], brokenCwd, (p) => calls.push(p));
+  assert.equal(result.kind, "unrunnable");
+  assert.deepEqual(calls, [{ kind: "gate", total: 1 }]);
+});
+
+test("onProgress: with no sink given, runGate behaves exactly as it always did", () => {
+  const withSink = gate.runGate([{ run: "true" }, { name: "lint", run: "exit 1" }], tmpdir(), () => {});
+  const withoutSink = gate.runGate([{ run: "true" }, { name: "lint", run: "exit 1" }], tmpdir());
+  assert.equal(withSink.kind, "fail");
+  assert.equal(withoutSink.kind, "fail");
+  if (withSink.kind === "fail" && withoutSink.kind === "fail") {
+    assert.equal(withSink.check, withoutSink.check);
+    assert.equal(withSink.exitCode, withoutSink.exitCode);
+  }
+});
+
 // --- isReady: the `ready:` readiness probe ---
 
 test("isReady: exit 0 means ready", () => {

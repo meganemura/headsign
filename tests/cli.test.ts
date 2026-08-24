@@ -118,6 +118,163 @@ test("acceptance: start -> next RETRY -> create file -> next ADVANCE -> next COM
   assert.match(completeResult.stdout, /^COMPLETE\n/);
 });
 
+// --- gate progress: one stderr line per finished check, whichever way it went, live (ADR-0032) ---
+
+test("next: a passing gate writes its progress to stderr, and stdout's first line is still the token", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "typecheck"
+          run: "true"
+        - name: "tests"
+          run: "true"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  // The token line is line 1 of stdout, unmoved by any of this — ADR-0030's contract.
+  assert.match(result.stdout, /^COMPLETE\n/);
+  assert.match(
+    result.stderr,
+    /^--- gate: 2 checks ---\n--- check 1\/2 passed: typecheck \(\d+(\.\d+)?s\) ---\n--- check 2\/2 passed: tests \(\d+(\.\d+)?s\) ---\n$/,
+  );
+});
+
+// A failing check gets a progress line of its own too (ADR-0032 §3): the RETRY token stays on
+// stdout's first line, unmoved, and the failed check's name reaches stderr on the same lap —
+// not only inside the RETRY body, which the exhaustion test below never prints at all.
+test("next: a failing gate writes a failed progress line to stderr, and the RETRY token is still stdout's first line", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "typecheck"
+          run: "true"
+        - name: "lint"
+          run: "exit 1"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /^RETRY 1 build\n/);
+  assert.match(
+    result.stderr,
+    /^--- gate: 2 checks ---\n--- check 1\/2 passed: typecheck \(\d+(\.\d+)?s\) ---\n--- check 2\/2 failed: lint \(\d+(\.\d+)?s\) ---\n$/,
+  );
+});
+
+// The motivating case (ADR-0032 §3): `max_attempts: 1` means ESCALATE prints only the
+// exhaustion reason on stdout, no check name anywhere in it — but the failed check still
+// reaches stderr, live, while the gate was running.
+test("next: a max_attempts: 1 exhaustion names the failing check on stderr even though stdout carries only the exhaustion reason", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "lint"
+          run: "exit 1"
+    on_pass: "$end"
+    max_attempts: 1
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /^ESCALATE build: max_attempts \(1\) exhausted/);
+  assert.doesNotMatch(result.stdout, /lint/, "stdout carries only the exhaustion reason, no check name");
+  assert.match(result.stderr, /^--- gate: 1 check ---\n--- check 1\/1 failed: lint \(\d+(\.\d+)?s\) ---\n$/);
+});
+
+// Every test above reads `result.stderr` after the process has already exited, so a buggy
+// implementation that buffered every progress line and flushed them all at once, on exit, would
+// pass every one of them just as well as a streaming one — a `close` event follows every `data`
+// event by definition, whichever implementation wrote the data, so watching for that order alone
+// proves nothing. What actually tells the two apart: a buffering implementation writes the answer
+// to stdout, THEN flushes stderr and exits, all in the same final step — so by the time its line
+// ever reaches this test, `stdout` already carries the token, whatever a kill sent at that moment
+// does or doesn't land in time to stop. The streaming case never gets that far: the line reaches
+// stderr in the instant before the slow check even starts, while `next` is still blocked inside
+// `spawnSync`, roughly two seconds from exiting on its own — so a `SIGKILL` sent right then lands
+// on a process still mid-sleep (`signal: "SIGKILL"`) with nothing yet on stdout. Asserting both
+// together is what makes the two cases distinguishable, confirmed by patching cli.ts's sink to
+// buffer-and-flush and watching this test fail on the stdout assertion, with `signal` sometimes
+// still `"SIGKILL"` (the kill can still win that race; the token on stdout is what it cannot avoid
+// having already written first).
+test("next: the gate's first progress line reaches stderr while the first check is still running, killed there to prove it", async () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "slow"
+          run: "sleep 2 && true"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const child = spawn(process.execPath, [CLI, "next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  let stdout = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+
+  await new Promise<void>((resolve, reject) => {
+    let stderr = "";
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+      if (/^--- gate: 1 check ---\n/.test(stderr)) resolve();
+    });
+    child.on("error", reject);
+    // If the line never streams, the process runs the ~2s check to completion and exits on its
+    // own before the line handler above ever resolves — fail fast instead of hanging on it.
+    child.on("close", () => reject(new Error("the process exited before the gate-size line ever reached stderr")));
+  });
+
+  child.kill("SIGKILL");
+  const { signal } = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => child.on("close", (code, signal) => resolve({ code, signal })));
+
+  assert.equal(signal, "SIGKILL", "the process must still be mid-check (killable) when the line arrives, not already on its way to a normal exit");
+  assert.equal(stdout, "", "a process killed mid-gate must never have reached its answer");
+});
+
 // `next` judges every time it is asked: two calls on an untouched tree are two verdicts,
 // two counted attempts, and two runs of the gate. Nothing is memoized between them, so
 // "ask twice, get judged twice" is the whole rule (a reader who only wants to look uses
@@ -1241,7 +1398,10 @@ phases:
 
   const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 3);
-  assert.match(result.stderr, /^ERROR: phase 'build': could not run the gate check 'unit tests' \(`yes`\) — ENOBUFS\./);
+  // The gate's size is reported before the first check starts, so it still lands even though
+  // the one check this gate holds never produced a verdict — and that check gets no `passed`
+  // line of its own, the same way a failing one wouldn't (ADR-0032 §3).
+  assert.match(result.stderr, /^--- gate: 1 check ---\nERROR: phase 'build': could not run the gate check 'unit tests' \(`yes`\) — ENOBUFS\./);
   assert.match(result.stderr, /the run has not moved and no attempt was spent/);
   assert.match(result.stderr, /Fix that command in '\.headsign\/workflow\.yaml'/);
   assert.equal(result.stdout, "", "no verdict was reached, so the agent-facing channel says nothing at all");
@@ -3258,7 +3418,11 @@ test("next stays quiet about warnings: the loop's hot path prints none", () => {
   const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
   assert.equal(result.status, 0);
   assert.match(result.stdout, /^COMPLETE\n/);
-  assert.equal(result.stderr, "");
+  // Not silent any more — `build`'s one-check gate writes its own progress lines (ADR-0032) —
+  // but a WARNING is still absent: this test's point is the warning, not the progress lines a
+  // dedicated test covers elsewhere.
+  assert.match(result.stderr, /^--- gate: 1 check ---\n--- check 1\/1 passed: true \(\d+(\.\d+)?s\) ---\n$/);
+  assert.doesNotMatch(result.stderr, /WARNING/);
 });
 
 test("a real error still fails validate, and is not softened into a warning", () => {

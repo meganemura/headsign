@@ -265,7 +265,15 @@ function resolveAcceptGraphChange(args: string[]): boolean {
 }
 
 function cmdNext(args: string[]): never {
-  return reportNext(engine.next(process.cwd(), localIso(new Date()), process.env, resolveAcceptGraphChange(args)));
+  return reportNext(
+    engine.next(process.cwd(), localIso(new Date()), process.env, resolveAcceptGraphChange(args), (p) => {
+      // Plain `process.stderr.write`, the call this file already uses for every message that
+      // is not the answer — measured 2026-08-25: three writes separated by `spawnSync sleep 1`,
+      // arrived one second apart, so a line written here really does reach a piped reader
+      // between two blocking gate checks rather than arriving batched once the lap ends.
+      process.stderr.write(render.gateProgress(p));
+    }),
+  );
 }
 
 function cmdAbort(args: string[]): never {

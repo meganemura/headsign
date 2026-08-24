@@ -7705,7 +7705,8 @@ function elapsedSecondsSince(startedAt) {
   const ms = Number(process.hrtime.bigint() - startedAt) / 1e6;
   return Math.round(ms / 100) / 10;
 }
-function runGate(checks, cwd) {
+function runGate(checks, cwd, onProgress) {
+  onProgress?.({ kind: "gate", total: checks.length });
   for (let i = 0; i < checks.length; i++) {
     const c = checks[i];
     const timeoutSeconds = c.timeout ?? DEFAULT_TIMEOUT_SECONDS;
@@ -7726,14 +7727,17 @@ function runGate(checks, cwd) {
     const checksRun = i + 1;
     const notRunChecks = checks.slice(i + 1).map(checkName);
     if (spawnError?.code === "ETIMEDOUT") {
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "timed out" });
       return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     if (spawnError) {
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
     if (result.status !== 0) {
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "failed" });
       return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
+    onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "passed" });
   }
   return { kind: "pass" };
 }
@@ -7780,6 +7784,14 @@ function start(phase, description, cleared, notCleared) {
   return `START ${phase}
 ${clearedBlock(cleared)}${notClearedBlock(notCleared)}--- phase: ${phase} ---
 ${description}
+`;
+}
+function gateProgress(p) {
+  if (p.kind === "gate") {
+    return `--- gate: ${p.total} ${p.total === 1 ? "check" : "checks"} ---
+`;
+  }
+  return `--- check ${p.index}/${p.total} ${p.outcome}: ${p.name} (${p.elapsedSeconds}s) ---
 `;
 }
 function advance(phase, description, failure, cleared, notCleared, routedBy) {
@@ -8462,7 +8474,7 @@ function terminalAnswer(current, acceptGraphChange) {
   if (acceptGraphChange) return { kind: "REFUSED", message: NOTHING_TO_ACCEPT_MESSAGE };
   return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
 }
-function next(cwd, nowIso, env, acceptGraphChange = false) {
+function next(cwd, nowIso, env, acceptGraphChange = false, onProgress) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
   if (current.status !== "running") return terminalAnswer(current, acceptGraphChange);
@@ -8481,7 +8493,7 @@ function next(cwd, nowIso, env, acceptGraphChange = false) {
     const diskDrive = fresh.last_drive ?? null;
     const stamped2 = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
     if (stamped2 !== fresh) writeState(cwd, stamped2);
-    return evaluateNext(cwd, wf, stamped2, nowIso, acceptGraphChange);
+    return evaluateNext(cwd, wf, stamped2, nowIso, acceptGraphChange, onProgress);
   } finally {
     releaseLock(cwd);
   }
@@ -8533,7 +8545,7 @@ function reconcileGraphPin(cwd, wf, current, nowIso, acceptGraphChange) {
   appendLog(cwd, logLine(nowIso, { kind: "GRAPH_CHANGED", disposition: "reported", keys: changed }, reporting));
   return { kind: "REPORT", outcome: { kind: "ESCALATE", reason: graphChangedReason(current, changed) } };
 }
-function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange) {
+function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange, onProgress) {
   if (!wf.phases[incoming.phase]) {
     return {
       kind: "REFUSED",
@@ -8559,7 +8571,7 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange) {
       return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
     }
   }
-  const gateResult = runGate(phase.gate.checks, cwd);
+  const gateResult = runGate(phase.gate.checks, cwd, onProgress);
   if (gateResult.kind === "unrunnable") {
     const what = `the gate check '${gateResult.check}' (\`${gateResult.run}\`)`;
     return { kind: "REFUSED", message: unrunnableMessage(current, what, gateResult.reason) };
@@ -8836,7 +8848,11 @@ function resolveAcceptGraphChange(args) {
   return args.indexOf("--accept-graph-change") !== -1;
 }
 function cmdNext(args) {
-  return reportNext(next(process.cwd(), localIso(/* @__PURE__ */ new Date()), process.env, resolveAcceptGraphChange(args)));
+  return reportNext(
+    next(process.cwd(), localIso(/* @__PURE__ */ new Date()), process.env, resolveAcceptGraphChange(args), (p) => {
+      process.stderr.write(gateProgress(p));
+    })
+  );
 }
 function cmdAbort(args) {
   return reportAbort(abort2(process.cwd(), args.join(" "), localIso(/* @__PURE__ */ new Date())));

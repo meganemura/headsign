@@ -9,6 +9,22 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **`next` now writes progress to stderr while a gate runs.** A gate printed
+  nothing until its last check finished, so a caller with a time limit on one
+  command that got cut off mid-gate learned nothing from it: not how many
+  checks the gate held, which one was slow, or whether the interrupted lap had
+  spent an attempt. `next` now writes one line before the first check starts,
+  naming the gate's size, then one more line per check that finishes, each
+  with its name, how long it took, and which of three ways it went — a
+  timeout gets its own word rather than reading as an ordinary failure that
+  happened to take two minutes. A check that never produced an exit code gets
+  no line — headsign refuses the lap on it and names the check in that
+  refusal already. Unconditional — no flag turns it on — and the token on
+  stdout is unchanged
+  ([ADR-0032](docs/adr/0032-the-gate-says-how-far-it-got.md)).
+
 ### Changed
 
 - **CI runs the coverage thresholds.** `npm run coverage` has enforced 100% of
