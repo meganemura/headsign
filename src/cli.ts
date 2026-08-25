@@ -245,8 +245,10 @@ function reportStatus(result: engine.StatusResult): never {
 //
 // The five that operate on a run are one line each on purpose: turn argv into the values
 // engine.ts takes (cwd, the resolved path or the joined reason, and the timestamp —
-// `localIso(new Date())` is captured here because this is the only file that reads the
-// wall clock, ADR-0004), then report what comes back. Nothing else belongs in them.
+// `localIso(new Date())` is captured here because this is the only place headsign reads the
+// wall clock for a datetime that lands on disk — ADR-0004's own scope, which leaves room for
+// state.ts's `Date.now()` in a temp filename and gate.ts's monotonic clock, neither of which
+// is a datetime anyone reads back), then report what comes back. Nothing else belongs in them.
 //
 // `start` and `next` also pass `process.env` now (ADR-0027), the same way `status` already
 // does below: engine.ts stamps `last_drive` with whichever session actually ran the command,

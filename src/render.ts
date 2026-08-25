@@ -454,7 +454,9 @@ export type LogEvent =
 
 // Pure formatting of one .headsign/log line (state.ts's appendLog owns the I/O).
 // `ts` always originates from cli.ts's local `localIso(new Date())` helper — the one place
-// headsign reads the wall clock (ADR-0004) — even though neither caller is cli.ts any more:
+// headsign reads the wall clock for a datetime that lands on disk (ADR-0004's own scope; a
+// temp filename's `Date.now()` and gate.ts's monotonic clock are neither) — even though
+// neither caller is cli.ts any more:
 // engine.ts and stophook.ts both receive `ts` as a `nowIso` argument and never call
 // `new Date()` themselves.
 // `state` is the resulting state of this transition — the same object passed to state.writeState —

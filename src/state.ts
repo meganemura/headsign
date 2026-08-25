@@ -205,6 +205,9 @@ export function writeState(cwd: string, state: State): void {
   fs.mkdirSync(dir, { recursive: true });
   const target = statePath(cwd);
   // Temp file + rename in the same dir — the atomic-write guarantee ADR-0004 states.
+  // The `Date.now()` here is a uniquifier, not a time anyone reads back, which is why it sits
+  // outside ADR-0004's rule that cli.ts alone reads the wall clock: that rule is about a
+  // datetime that lands on disk, and this one lands in a filename that is renamed away.
   const tmp = path.join(dir, `.state.json.${process.pid}.${Date.now()}.tmp`);
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
   fs.renameSync(tmp, target);
