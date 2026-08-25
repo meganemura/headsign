@@ -1233,11 +1233,13 @@ headsign は自分自身の環境から、次の変数を読みます。
 | 変数 | 設定する主体 | 意味 |
 |---|---|---|
 | `HEADSIGN_OBSERVER` | あなた自身が明示的に | 空でない任意の値(慣習として `=1`)を設定すると、run を誰が握っているかにかかわらず、そのセッションの停止と、そのセッションが委譲したエージェントの停止が、停止境界の hook を無条件に通過するようになります。自分がもっぱら観察しているだけだと分かっているセッション向けの手動 opt-out であり、誰が催促されるかについて headsign が提供する唯一の制御です。自分のプログラムが Claude Code を子プロセスとして起こす場合の答えも同じで、その子プロセスの環境に渡します。cwd を run の外へ移す代わりにこちらを使えば、子がそこでまだ必要とするファイルへのアクセスを失わずに済みます。 |
+| `CLAUDE_CODE_SESSION_ID` | Claude Code | ちょうど 1 箇所(`resolveDriveSession`)でだけ読みます。`start` または `next` を実際に走らせたセッションを `last_drive` に刻むためです。この刻印があるおかげで、まだ誰も claim していない run のそばに居るだけのセッションが催促されずに済みます([ADR-0027](adr/0027-recording-who-drove-a-run.md))。値は `state.json` まで届いてそこで止まります。`status` が報告するのは run が最後に動いた時刻であって、動かした主体ではありません。どのコマンドもこの値を出力しません。 |
 | `CLAUDE_PROJECT_DIR` | Claude Code | 停止境界の hook だけが読み、しかも今日は何も書かずに終わる分岐でだけ読みます。セッション自身のディレクトリからの探索が run を見つけられなかったとき、このプロジェクトのルートから、同じ境界付きのやり方でもう一度だけ探します。そこで見つかった run を、止まったセッションが最後に動かしていれば(あるいはまだ誰も動かしていなければ)`unheld` 行が1つ残り、detail は `by=CLAUDE_PROJECT_DIR` — この経路でターンが引き留められることはありません([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9)。詳細は[実行状態と、headsign がそれを探す場所](#実行状態とheadsign-がそれを探す場所)と [ADR-0026](adr/0026-a-second-place-to-look.md) を参照してください。headsign の他のどこからも読まれません。 |
 
-headsign が環境から読むセッション識別子・エージェント識別子はありません。
-上の二つの変数のどちらも、それを名指ししていませんし、環境にはそもそも名指しできるものが無いからです。
-かつてここに並んでいた二つの変数を廃止した経緯は [ADR-0013](adr/0013-claim-only-driver-identity.md) にあります。
+headsign が環境から読むセッション識別子は 1 つで、エージェント識別子はありません。
+セッションのほうは上の `CLAUDE_CODE_SESSION_ID` で、`last_drive` のために読み、出力はしません。
+エージェントの身元は環境から来ません。
+委譲されたエージェントは自分のターン終わりに自分で名乗り、hook は `SubagentStop` の payload からそれを知ります([ADR-0010](adr/0010-subagent-stop-identity.md)、[ADR-0013](adr/0013-claim-only-driver-identity.md)、[ADR-0027](adr/0027-recording-who-drove-a-run.md))。
 
 逆方向もあります。
 headsign は `HEADSIGN_WORKFLOW_FILE` という変数を、自分から設定します。

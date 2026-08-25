@@ -1599,12 +1599,17 @@ headsign reads these from its own environment:
 | Variable | Set by | Meaning |
 |---|---|---|
 | `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. It is equally the answer for a subprocess your own program starts Claude Code as: pass it in that subprocess's environment rather than moving its working directory outside the run, which can cost the subprocess access to files it still needs there. |
+| `CLAUDE_CODE_SESSION_ID` | Claude Code | Read in exactly one place (`resolveDriveSession`), to stamp `last_drive` with whichever session ran `start` or `next`. That stamp is what lets the stop-boundary hooks stop nudging a bystander of a run nobody has claimed ([ADR-0027](adr/0027-recording-who-drove-a-run.md)). The value reaches `state.json` and stops there: `status` reports when the run was last moved, never by whom, and no command prints it. |
 | `CLAUDE_PROJECT_DIR` | Claude Code | Read only by the stop-boundary hooks, and only on the branch that today writes nothing: a second, bounded walk from this project root, tried once the walk from the session's own directory finds no run. A run found there gets one `unheld` line, detail `by=CLAUDE_PROJECT_DIR`, when the stopping session is the one that last moved it or nobody has ([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9), and the turn is never held on this path — see [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it) and [ADR-0026](adr/0026-a-second-place-to-look.md). Not read anywhere else in headsign. |
 
-Headsign reads no session or agent identifier from the environment: neither
-variable above names one, and nothing there could — see
-[ADR-0013](adr/0013-claim-only-driver-identity.md), which retired the
-two variables that used to appear here.
+Headsign reads one session identifier and no agent identifier. The session one
+is `CLAUDE_CODE_SESSION_ID` above, read for `last_drive` and never printed. An
+agent's identity does not come from the environment at all: a delegated agent
+names itself at its own turn end, through the claim handshake, and the hook
+learns it from the `SubagentStop` payload
+([ADR-0010](adr/0010-subagent-stop-identity.md),
+[ADR-0013](adr/0013-claim-only-driver-identity.md),
+[ADR-0027](adr/0027-recording-who-drove-a-run.md)).
 
 The other direction: headsign also SETS a variable, `HEADSIGN_WORKFLOW_FILE`,
 in the environment of a gate's checks, a phase's `ready:` probe, and an
