@@ -122,8 +122,10 @@ phases:
     on_pass: "$end"
     on_fail: review_judgment
     # Same reading as review's below — rounds already spent, not the round
-    # starting. Fewer than review's 5 because there is no code here to
-    # ripple through: what a round can move is one ticket's text.
+    # starting. Fewer than review's because there is no code here to ripple
+    # through, and no second language: what a round can move is one ticket's
+    # text, in one place. Left at 4 when review went to 8, because nothing has
+    # been observed about this one.
     max_attempts: 4
 
   implement:
@@ -175,16 +177,29 @@ phases:
     # Counts REJECTED verdicts across the whole run, not per visit: `on_fail:
     # implement` leaves the phase and comes back, and re-entering does not
     # reset the counter. So this is "how many rounds of review this ticket
-    # gets", and `headsign status`'s `attempt n/5` is rounds already spent —
+    # gets", and `headsign status`'s `attempt n/8` is rounds already spent —
     # not, as it reads at a glance, which round is starting.
     #
     # Was 3, and 3 turned out to be a review-round budget rather than a
     # stuck-loop detector: a change that touches a documented invariant
     # spends rounds on the records around it, one per record the reviewer
     # can only see once the one before it is fixed. Three such rounds are
-    # progress, not a loop. 5 leaves room for that and still stops a review
-    # that is circling.
-    max_attempts: 5
+    # progress, not a loop.
+    #
+    # Then 5, and 5 ran out the same way on a change that stated one rule in
+    # six places — a design record, two reference pages in two languages, the
+    # changelog, the code comments, and a test name. Each round the reviewer
+    # could reach the next place only once the one before it was fixed, so the
+    # rounds were a count of the layers rather than a count of circles: the
+    # code was settled after round two and every later round moved prose. The
+    # budget fired with one wrong sentence left. 8 covers a rule that lives in
+    # that many places once.
+    #
+    # What this budget cannot tell is a review walking layers from a review
+    # walking in place. If it runs out again, read the rejections before
+    # raising it: rounds that each name a NEW place are progress, and rounds
+    # that keep naming the same place are the loop this is here to stop.
+    max_attempts: 8
 
   respond:
     description: >
