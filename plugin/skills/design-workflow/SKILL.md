@@ -736,7 +736,7 @@ entry: plan               # the phase a run starts on
 phases:
   plan:
     # Handed to the agent verbatim when it enters the phase. Say what has to
-    # be TRUE when the gate runs; leave who does the work to the agent (6).
+    # be TRUE when the gate runs; leave who does the work to the agent (7).
     description: Write the spec to docs/spec.md, with an "## Acceptance" section.
     gate:
       checks:                       # run with /bin/sh -c, in order;
@@ -777,9 +777,9 @@ limits:
 ```
 
 `on_fail` defaults to `retry` (stay in the phase) and also accepts a phase
-name, `$end`, or `escalate` (stop and ask a person). No gate can end a run
-outright: exhausting `max_attempts` escalates, and only a person running
-`headsign abort <reason>` aborts.
+name, `$end`, or `escalate` (stop and ask a person). No gate can abort a run:
+exhausting `max_attempts` escalates, `on_fail: $end` completes, and only a
+person running `headsign abort <reason>` aborts.
 
 **Quote any `name:` that contains a colon.** Check names tend to quote a
 fragment of the command they run, and `- name: verify git status: clean` is
@@ -863,7 +863,51 @@ validates clean and misbehaves later.
    destinations. A router phase whose own gate fails is an ordinary failing
    phase, and no `when:` will ever see it — failure routing is `on_fail`'s
    job alone.
-5. **A `when:` must test that the destination can be *started*, not that
+5. **An ordinary outcome that fails a gate is a gate asking the wrong
+   question.** A gate decides whether the run may LEAVE the phase, not whether
+   the work succeeded. A lap can end a way the workflow expects — the target
+   turned out to be someone else's to decide, the queue came up empty, the item
+   was taken off the board by something outside this run — and still fail a gate
+   that was written to ask whether the work closed it.
+
+   The failure edge does carry a run onward: `on_fail` takes `retry`, a phase
+   name, `$end`, or `escalate`. What it cannot do is tell those outcomes apart.
+   One destination serves every way the gate can fail, so a phase with two
+   expected endings sends both to the same place. And each exit through it is
+   recorded as a gate failure: the attempt is counted before `on_fail` is read,
+   and `on_fail: $end` answers `COMPLETE` for a lap whose gate had just failed —
+   unless that lap also spent the phase's last `max_attempts`, which escalates
+   before `on_fail` is read at all.
+
+   When no single destination fits, what is left is `headsign abort`. That
+   ending stays distinct on the record — the log writes `abort`, `status` reads
+   `ABORTED`, and the reason you typed is kept — but it is a person stopping the
+   run rather than an edge the graph declared, and its reason is free text
+   somebody wrote rather than a predicate that evaluated true.
+
+   Restate the gate so the expected outcome PASSES it — "this lap's target is
+   settled" rather than "the work closed it" — and put the branch on `on_pass`,
+   where routes tell the cases apart. For a route whose `to:` names a phase the
+   run advances, and `.headsign/log` keeps `routed-when="<the predicate that
+   matched>"` — or `routed-default` for the last route, which validation
+   requires to carry no `when:` — with the line naming the phase the run went
+   to, so which ending happened is readable once the run is over.
+
+   **A route to `$end` is the exception, on both counts.** The run ends rather
+   than advancing, and the line is a bare `complete` naming the phase it ended
+   FROM, with no route recorded on it at all. An ending taken that way is told
+   apart by which endings the workflow declares, not by reading the log.
+
+   The test for this one is a question about the phase rather than about the
+   check: **is every way this gate can fail one you want handled on the failure
+   edge — retried, or sent to the single phase it names?** If one of them is a
+   thing you would rather route on, it belongs on the pass path. headsign's own
+   feedback-triage workflow was written the other way once, with a rejected
+   ticket, a deferred one and an empty queue all carried out of the run by
+   `on_fail: $end` — one destination for three endings, each spending an attempt
+   on its way out. Moving them to the pass path is what removed the question of
+   whether ending cleanly costs an attempt.
+6. **A `when:` must test that the destination can be *started*, not that
    work appears to exist.** These come apart, and the gap is expensive. A
    predicate that greps for units marked ready sends the run onward while
    every ready unit is blocked on something unfinished; the destination's gate
@@ -878,7 +922,7 @@ validates clean and misbehaves later.
    mistake", because nothing can tell — so a phase that keeps failing with an
    unchanged verdict is a reason to suspect the route that feeds it, not only
    the work in front of you.
-6. **A description that assigns the work fixes the wrong thing.** "Spawn a
+7. **A description that assigns the work fixes the wrong thing.** "Spawn a
    subagent to clean this up" reads as an instruction and lands as a
    constraint: one worker per phase, in the order the file happens to list
    them, decided by an author who cannot see the change. Write what has to be

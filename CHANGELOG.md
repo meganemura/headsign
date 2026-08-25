@@ -32,6 +32,21 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **The `design-workflow` skill now says what to do when an ordinary outcome
+  fails a gate.** Its list of mistakes `validate` cannot catch already said that
+  a list-form `on_pass` is never read on the failure path, and stopped there —
+  leaving the author who needs to branch out of an expected-but-failing lap with
+  the half of the answer that says where routes are not read. The failure edge
+  does carry a run onward, but it cannot tell two expected outcomes apart: one
+  destination serves every way the gate can fail, each exit through it is
+  recorded as a gate failure and spends an attempt, and `on_fail: $end` answers
+  `COMPLETE` for a lap whose gate had just failed — unless that lap spent the
+  phase's last `max_attempts`, which escalates before `on_fail` is read. The
+  entry says to restate the gate so the expected outcome passes it and to branch
+  on `on_pass` instead, gives the test for spotting it — is every way this gate
+  can fail one you want handled on the failure edge? — and names this
+  repository's own triage workflow, which was written the other way once.
+
 - **CI runs the coverage thresholds.** `npm run coverage` has enforced 100% of
   lines and functions in `src/` for as long as it has existed, and nothing ran
   it: it went red and stayed red for a release cycle with one `catch` block
