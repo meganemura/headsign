@@ -785,8 +785,10 @@ Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
 `/bin/sh -c` (first failure stops the gate). Every command headsign runs
 inherits headsign's own environment; a check that needs a variable sets it
 in its own `run:` string (`run: "FOO=bar npm test"`), the same way you would
-at a prompt. Deliberately absent: `needs:`, `${{ }}`, matrices, triggers,
-and a per-phase `env:`. A route's `when:` is not `if:` in disguise either —
+at a prompt. One variable headsign sets itself arrives regardless —
+`HEADSIGN_WORKFLOW_FILE`, under [Environment variables](#environment-variables)
+below. Deliberately absent: `needs:`, `${{ }}`, matrices, triggers, and a
+per-phase `env:`. A route's `when:` is not `if:` in disguise either —
 it is a shell command judged by its exit code, not an expression to
 evaluate — so every routing decision is still an exit code choosing among
 destinations you wrote down. That inherited environment has a trap on
@@ -1592,6 +1594,8 @@ race that remains are in
 
 ### Environment variables
 
+headsign reads these from its own environment:
+
 | Variable | Set by | Meaning |
 |---|---|---|
 | `HEADSIGN_OBSERVER` | you, explicitly | Set to any non-empty value (`=1` is the convention) to make a session's stops — and those of any agent it delegates to — pass the stop-boundary hooks unconditionally, regardless of who holds the run. The manual opt-out for a session you know is only observing, and the only control headsign offers over who gets nudged. It is equally the answer for a subprocess your own program starts Claude Code as: pass it in that subprocess's environment rather than moving its working directory outside the run, which can cost the subprocess access to files it still needs there. |
@@ -1601,6 +1605,17 @@ Headsign reads no session or agent identifier from the environment: neither
 variable above names one, and nothing there could — see
 [ADR-0013](adr/0013-claim-only-driver-identity.md), which retired the
 two variables that used to appear here.
+
+The other direction: headsign also SETS a variable, `HEADSIGN_WORKFLOW_FILE`,
+in the environment of a gate's checks, a phase's `ready:` probe, and an
+`on_pass` route's `when:`. Its value is the workflow path headsign recorded
+for this run — the same string `state.json`'s `workflow_path` holds,
+unnormalised and unresolved: relative when the run was started by name,
+absolute when it was started with an absolute `--workflow`. It exists so a
+workflow can check itself — a gate confirming that somebody filled in the
+blanks a distributed workflow shipped with, since the blanks are in the
+workflow file and nowhere else
+([ADR-0033](adr/0033-the-one-variable-headsign-sets.md)).
 
 **The rule:** a session that hasn't run `headsign start` and hasn't been
 asked to drive the run should reach for `headsign status`, never `headsign

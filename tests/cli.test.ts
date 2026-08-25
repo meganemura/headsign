@@ -901,6 +901,57 @@ test("validate <name> validates .headsign/<name>.yaml", () => {
   assert.match(result.stdout, /^OK: workflow 'demo'/);
 });
 
+// --- HEADSIGN_WORKFLOW_FILE: a gate checking the workflow file it runs under (ADR-0033) ---
+
+test("HEADSIGN_WORKFLOW_FILE: a gate check reads the workflow file through it and greps for a mark that appears nowhere in the check's own run: string", () => {
+  const dir = initRepo();
+  writeNamedWorkflow(
+    dir,
+    "feature.yaml",
+    `
+version: 0.1
+name: selfcheck
+entry: build
+phases:
+  build:
+    description: "Check that the workflow file was filled in."
+    gate:
+      checks:
+        - name: "the workflow file carries its own mark"
+          run: 'grep -q "workflow-carries[-]its-own-mark" "$HEADSIGN_WORKFLOW_FILE"'
+        - name: "record the value the check was handed"
+          run: 'printf %s "$HEADSIGN_WORKFLOW_FILE" > seen-path'
+    on_pass: "$end"
+# workflow-carries-its-own-mark
+`,
+  );
+  const startResult = run(["start", "feature"], { cwd: dir });
+  assert.equal(startResult.status, 0);
+  assert.equal(readState(dir).workflow_path, ".headsign/feature.yaml");
+
+  const nextResult = run(["next"], { cwd: dir });
+  assert.equal(nextResult.status, 0);
+  assert.match(nextResult.stdout, /^COMPLETE\n/);
+  // The second check recorded the variable's exact value, which is what pins ADR-0033 §2's
+  // "verbatim" end to end: the grep above would pass just as well against an absolute path,
+  // so normalising anywhere along cli.ts -> engine.ts -> state.json -> gate.ts would not show
+  // up there. It shows up here.
+  assert.equal(fs.readFileSync(path.join(dir, "seen-path"), "utf8"), ".headsign/feature.yaml");
+
+  // Renaming the file is the failure this variable exists to remove: a check that hardcoded
+  // the path would break here, and the `run:` strings above are not touched between the two
+  // runs. Asserted rather than described, because the description is what the ADR is for.
+  fs.renameSync(path.join(dir, ".headsign", "feature.yaml"), path.join(dir, ".headsign", "renamed.yaml"));
+  const restart = run(["start", "renamed"], { cwd: dir });
+  assert.equal(restart.status, 0);
+  assert.equal(readState(dir).workflow_path, ".headsign/renamed.yaml");
+
+  const afterRename = run(["next"], { cwd: dir });
+  assert.equal(afterRename.status, 0);
+  assert.match(afterRename.stdout, /^COMPLETE\n/);
+  assert.equal(fs.readFileSync(path.join(dir, "seen-path"), "utf8"), ".headsign/renamed.yaml");
+});
+
 // --- validate: no-args default resolution (ADR-0009) ---
 
 test("validate with no args and no run here still falls back to the plain .headsign/workflow.yaml default", () => {

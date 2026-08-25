@@ -50,6 +50,12 @@ gate** — so put the cheap check that gives the clearest message first. Every
 command inherits headsign's own environment; **there is no `env:` field at
 any level**, so a check that needs a variable sets it inside its own `run:`
 string (`run: "FOO=bar npm test"`), exactly as you would at a prompt.
+`HEADSIGN_WORKFLOW_FILE` arrives regardless, in every check's, `ready:`'s and
+route `when:`'s environment, holding the workflow path this run recorded,
+exactly as recorded — relative when the run was started by name, absolute when
+it was started with an absolute `--workflow`. It is there for the gate that has
+to read its own file, which is what a workflow shipped with blanks in it needs
+to check that somebody filled them in.
 
 Deliberately absent, in case you are reaching for them out of CI habit:
 `needs:`, `${{ }}` expressions, matrices, triggers, and a per-phase `env:`.

@@ -952,7 +952,7 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   // note: uncounted, state.json untouched on this path. "stay put, don't count it," the cell
   // the table was missing.
   if (phase.ready !== undefined) {
-    const readiness = gate.isReady(phase.ready, cwd);
+    const readiness = gate.isReady(phase.ready, cwd, current.workflow_path);
     if (readiness.kind === "unrunnable") {
       return { kind: "REFUSED", message: unrunnableMessage(current, `the readiness probe \`${phase.ready}\``, readiness.reason) };
     }
@@ -961,7 +961,7 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
     }
   }
 
-  const gateResult = gate.runGate(phase.gate.checks, cwd, onProgress);
+  const gateResult = gate.runGate(phase.gate.checks, cwd, current.workflow_path, onProgress);
   // A check that produced no exit code refuses exactly like an unresolvable route below —
   // ADR-0021 §2's own words: nothing written, so "run `headsign next` again" is honest advice,
   // not a resumption mid-transition.
@@ -974,7 +974,7 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   // failure path, so the transition function stays free of shell execution.
   let route: ResolvedRoute | undefined;
   if (gateResult.kind === "pass" && Array.isArray(phase.on_pass)) {
-    const resolution = gate.resolveRoute(phase.on_pass, cwd);
+    const resolution = gate.resolveRoute(phase.on_pass, cwd, current.workflow_path);
     if (resolution.kind === "error") {
       // Nothing has been written yet: state.json, the log and total_iterations are all
       // untouched, so this refusal leaves the run exactly where it was. Deliberately not
@@ -1056,7 +1056,8 @@ export function claim(cwd: string): ClaimResult {
 //
 // The environment arrives as an ARGUMENT, the shape stophook.ts uses for the same reason
 // ("Nothing here reads the clock or the environment: both arrive as arguments"), rather than
-// this module reaching for process.env — which nothing below cli.ts does. It was the first
+// this module reaching for process.env — which nothing below cli.ts does except gate.ts, and
+// that only to copy it wholesale into the children it spawns (ADR-0033). It was the first
 // thing outside the hook path to need one, so it followed the existing shape instead of
 // inventing one; `start` and `next` follow the same shape now, for the `last_drive` stamp
 // (ADR-0027).

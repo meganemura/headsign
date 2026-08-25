@@ -7705,7 +7705,7 @@ function elapsedSecondsSince(startedAt) {
   const ms = Number(process.hrtime.bigint() - startedAt) / 1e6;
   return Math.round(ms / 100) / 10;
 }
-function runGate(checks, cwd, onProgress) {
+function runGate(checks, cwd, workflowPath, onProgress) {
   onProgress?.({ kind: "gate", total: checks.length });
   for (let i = 0; i < checks.length; i++) {
     const c = checks[i];
@@ -7718,7 +7718,8 @@ function runGate(checks, cwd, onProgress) {
       // Node's spawnSync default maxBuffer is 1MB; a verbose-but-passing check
       // (e.g. a large test suite) can legitimately print more than that.
       maxBuffer: 64 * 1024 * 1024,
-      encoding: "utf8"
+      encoding: "utf8",
+      env: { ...process.env, HEADSIGN_WORKFLOW_FILE: workflowPath }
     });
     const elapsedSeconds = elapsedSecondsSince(startedAt);
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
@@ -7741,25 +7742,27 @@ function runGate(checks, cwd, onProgress) {
   }
   return { kind: "pass" };
 }
-function isReady(sh, cwd) {
+function isReady(sh, cwd, workflowPath) {
   const result = spawnSync("/bin/sh", ["-c", sh], {
     cwd,
     timeout: DEFAULT_TIMEOUT_SECONDS * 1e3,
-    stdio: "ignore"
+    stdio: "ignore",
+    env: { ...process.env, HEADSIGN_WORKFLOW_FILE: workflowPath }
   });
   const spawnError = result.error;
   if (spawnError?.code === "ETIMEDOUT") return { kind: "ready" };
   if (spawnError) return { kind: "unrunnable", reason: spawnError.code ?? spawnError.message };
   return result.status === 0 ? { kind: "ready" } : { kind: "not-ready" };
 }
-function resolveRoute(routes, cwd) {
+function resolveRoute(routes, cwd, workflowPath) {
   for (const route of routes) {
     if (route.when === void 0) return { kind: "default", to: route.to };
     const timeoutSeconds = route.timeout ?? DEFAULT_TIMEOUT_SECONDS;
     const result = spawnSync("/bin/sh", ["-c", route.when], {
       cwd,
       timeout: timeoutSeconds * 1e3,
-      stdio: "ignore"
+      stdio: "ignore",
+      env: { ...process.env, HEADSIGN_WORKFLOW_FILE: workflowPath }
     });
     const spawnError = result.error;
     if (spawnError?.code === "ETIMEDOUT") {
@@ -8565,7 +8568,7 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange, onProgress) 
   }
   const phase = wf.phases[current.phase];
   if (phase.ready !== void 0) {
-    const readiness = isReady(phase.ready, cwd);
+    const readiness = isReady(phase.ready, cwd, current.workflow_path);
     if (readiness.kind === "unrunnable") {
       return { kind: "REFUSED", message: unrunnableMessage(current, `the readiness probe \`${phase.ready}\``, readiness.reason) };
     }
@@ -8573,14 +8576,14 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange, onProgress) 
       return { kind: "ANSWERED", outcome: { kind: "PENDING", phase: current.phase, ready: phase.ready }, workflowName: wf.name, wf };
     }
   }
-  const gateResult = runGate(phase.gate.checks, cwd, onProgress);
+  const gateResult = runGate(phase.gate.checks, cwd, current.workflow_path, onProgress);
   if (gateResult.kind === "unrunnable") {
     const what = `the gate check '${gateResult.check}' (\`${gateResult.run}\`)`;
     return { kind: "REFUSED", message: unrunnableMessage(current, what, gateResult.reason) };
   }
   let route;
   if (gateResult.kind === "pass" && Array.isArray(phase.on_pass)) {
-    const resolution = resolveRoute(phase.on_pass, cwd);
+    const resolution = resolveRoute(phase.on_pass, cwd, current.workflow_path);
     if (resolution.kind === "error") {
       return {
         kind: "REFUSED",

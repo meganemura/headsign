@@ -250,7 +250,7 @@ function reportStatus(result: engine.StatusResult): never {
 //
 // `start` and `next` also pass `process.env` now (ADR-0027), the same way `status` already
 // does below: engine.ts stamps `last_drive` with whichever session actually ran the command,
-// and this file stays the only one that reads the process to find out.
+// resolved from the environment this file hands over — the read itself is stophook.ts's.
 
 function cmdStart(args: string[]): never {
   return reportStart(engine.start(process.cwd(), resolveWorkflowPath(args), localIso(new Date()), process.env));
@@ -285,8 +285,10 @@ function cmdClaim(): never {
 }
 
 // `process.env` is handed over the same way it already is to the two hook evaluators: this file
-// is the only one that reads the process, and `status` now has one line to print about the
-// environment it was called in.
+// reaches for it so that nothing below has to, and `status` now has one line to print about the
+// environment it was called in. Within `src/`, gate.ts is the one other file that reaches for
+// it, and only to copy it wholesale into the commands it spawns (ADR-0033) — the values inside
+// are read further down, in stophook.ts, out of the argument this line passes.
 function cmdStatus(): never {
   return reportStatus(engine.status(process.cwd(), process.env));
 }

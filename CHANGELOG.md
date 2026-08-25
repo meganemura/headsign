@@ -11,6 +11,17 @@ changes), and a patch bump means fixes only.
 
 ### Added
 
+- **A workflow can now read the path it was started under.**
+  `HEADSIGN_WORKFLOW_FILE` is set, verbatim, in the environment of a gate's
+  checks, a phase's `ready:` probe, and an `on_pass` route's `when:` — the
+  same string `state.json` records for the run: relative when the run was
+  started by name, absolute when it was started with an absolute
+  `--workflow`, never normalised. A workflow distributed with blanks in it
+  can now ship a gate that reads its own file to check whoever filled them
+  in, without hardcoding a filename that whoever starts the run is free to
+  choose differently
+  ([ADR-0033](docs/adr/0033-the-one-variable-headsign-sets.md)).
+
 - **`next` now writes progress to stderr while a gate runs, and names a slow
   check's limit.** A gate printed nothing until its last check finished, so a
   caller with a time limit on one command that got cut off mid-gate learned

@@ -22,8 +22,17 @@
 // caller owns that ordering (ADR-0011), which is why it lives in engine.ts and not here.
 // Must NOT know about: state.json, git.
 //
-// Every command here inherits headsign's own environment unmodified — no phase-level `env:`
-// merges over it (ADR-0014 §1).
+// Every command here still inherits headsign's own environment — no phase-level `env:` merges
+// over it (ADR-0014 §1) — with an addition: HEADSIGN_WORKFLOW_FILE, set to the workflow path
+// the caller hands each of the three functions below, unmodified (ADR-0033). That is not §1's
+// knob coming back: an author can type a path into their own `run:` string, and does today,
+// but cannot know at authoring time which one will be right — the workflow is named when the
+// run starts, by somebody who may not be them. The three functions take it as a parameter: the
+// path arrives as an argument, and what happens here is a wholesale copy of the environment
+// into the child, inspecting nothing in it. Two files in `src/` reach for `process.env`:
+// cli.ts, which hands the whole map down so nothing below has to reach for it (ADR-0027),
+// and this one. The values inside it are read further down, in stophook.ts, and
+// always out of an argument.
 //
 // One clock reading that is not ADR-0004's: that ADR gives cli.ts sole custody of the WALL
 // clock (the timestamp written into state.json and the log), so a date on disk always comes
@@ -115,11 +124,13 @@ function elapsedSecondsSince(startedAt: bigint): number {
   return Math.round(ms / 100) / 10;
 }
 
-// `onProgress` is optional and, when given, called once up front with the gate's size and once
-// more after each check that produces an exit code — passed, failed, or timed out, `outcome`
-// names which (ADR-0032 §3) — but never for an unrunnable one: the refusal that ends the lap on
-// it already names the check and the command.
-export function runGate(checks: Check[], cwd: string, onProgress?: (p: GateProgress) => void): GateResult {
+// `workflowPath` is what HEADSIGN_WORKFLOW_FILE carries into every check's environment
+// (ADR-0033) — the caller's own recorded path, passed through unexamined. `onProgress` is
+// optional and, when given, called once up front with the gate's size and once more after each
+// check that produces an exit code — passed, failed, or timed out, `outcome` names which
+// (ADR-0032 §3) — but never for an unrunnable one: the refusal that ends the lap on it already
+// names the check and the command.
+export function runGate(checks: Check[], cwd: string, workflowPath: string, onProgress?: (p: GateProgress) => void): GateResult {
   onProgress?.({ kind: "gate", total: checks.length });
   for (let i = 0; i < checks.length; i++) {
     const c = checks[i];
@@ -133,6 +144,7 @@ export function runGate(checks: Check[], cwd: string, onProgress?: (p: GateProgr
       // (e.g. a large test suite) can legitimately print more than that.
       maxBuffer: 64 * 1024 * 1024,
       encoding: "utf8",
+      env: { ...process.env, HEADSIGN_WORKFLOW_FILE: workflowPath },
     });
     const elapsedSeconds = elapsedSecondsSince(startedAt);
     const outputTail = buildTail(result.stdout ?? "", result.stderr ?? "");
@@ -184,13 +196,14 @@ export type ReadyResult =
   | { kind: "unrunnable"; reason: string };
 
 // Readiness probe for a phase's optional `ready:` field, mirroring runGate's spawnSync
-// pattern (same shell, same cwd). exit 0 -> ready (the real gate should be evaluated);
-// nonzero -> not ready (PENDING, no attempt counted).
-export function isReady(sh: string, cwd: string): ReadyResult {
+// pattern (same shell, same cwd, same HEADSIGN_WORKFLOW_FILE — ADR-0033). exit 0 -> ready
+// (the real gate should be evaluated); nonzero -> not ready (PENDING, no attempt counted).
+export function isReady(sh: string, cwd: string, workflowPath: string): ReadyResult {
   const result = spawnSync("/bin/sh", ["-c", sh], {
     cwd,
     timeout: DEFAULT_TIMEOUT_SECONDS * 1000,
     stdio: "ignore",
+    env: { ...process.env, HEADSIGN_WORKFLOW_FILE: workflowPath },
   });
   const spawnError = result.error as NodeJS.ErrnoException | undefined;
   // A timed-out probe still ran; this stays the one lenient arm in the file, and the gate is
@@ -209,14 +222,14 @@ export type RouteResolution =
 
 // Evaluated only after the gate has already passed, entries tried top to bottom, first
 // `when:` to exit 0 wins, the entry without one (last, by validation) is the default —
-// ADR-0011 §1. Mirrors runGate's spawnSync pattern (same shell, cwd, timeout default), but
-// discards output like isReady does: a `when:` is a predicate, and nothing here is ever shown
-// to the agent.
+// ADR-0011 §1. Mirrors runGate's spawnSync pattern (same shell, cwd, timeout default,
+// HEADSIGN_WORKFLOW_FILE — ADR-0033), but discards output like isReady does: a `when:` is a
+// predicate, and nothing here is ever shown to the agent.
 //
 // Fails toward stopping, unlike isReady: a spawn error or a timeout here has produced no
 // answer, and silently taking the default would move the run to a destination nothing
 // actually selected — ADR-0011 §5.
-export function resolveRoute(routes: Route[], cwd: string): RouteResolution {
+export function resolveRoute(routes: Route[], cwd: string, workflowPath: string): RouteResolution {
   for (const route of routes) {
     if (route.when === undefined) return { kind: "default", to: route.to };
     const timeoutSeconds = route.timeout ?? DEFAULT_TIMEOUT_SECONDS;
@@ -224,6 +237,7 @@ export function resolveRoute(routes: Route[], cwd: string): RouteResolution {
       cwd,
       timeout: timeoutSeconds * 1000,
       stdio: "ignore",
+      env: { ...process.env, HEADSIGN_WORKFLOW_FILE: workflowPath },
     });
     const spawnError = result.error as NodeJS.ErrnoException | undefined;
     if (spawnError?.code === "ETIMEDOUT") {
