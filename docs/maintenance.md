@@ -90,19 +90,19 @@ turned out empty — has no implementation to do and ends `COMPLETE`: that
 clean exit is the design, not a failure.
 
 **The public-repository rule.** This repository is public; the feedback
-sources are not. Nothing that lands here — code, tests, docs, YAML,
-CHANGELOG entries, commit messages — may carry anything that identifies a
-feedback source: no private project or repository names, no ticket ids, no
-quoted logs, paths, or workflow excerpts, no reproduction detail that only
-one reporter's setup could produce. Restate the underlying problem in
-general terms and fix *that*. The check to apply is authorship, sentence
-by sentence: nothing that lands here may be anyone's words but ours. A
+sources are not. The check to apply to everything that lands here — code,
+tests, docs, YAML, CHANGELOG entries, commit messages — is authorship,
+sentence by sentence: nothing may be anyone's words but ours. A
 reporter's sentence fails that check with every private name stripped
 out; so does a light edit that keeps the source's wording or skeleton.
 Write each sentence from scratch (see "Turning a ticket into a public
-issue" below). Private names and ticket ids are only the easiest leaks
-to spot, so a search for identifiers does not clear a change. A problem
-that cannot survive being generalized isn't ready to be worked on here.
+issue" below), restate the underlying problem in general terms, and fix
+*that*. What leaks when the check is skipped: private project or
+repository names, ticket ids, quoted logs, paths, workflow excerpts,
+reproduction detail that only one reporter's setup could produce. Those
+are only the easiest leaks to spot, so a search for identifiers does not
+clear a change. A problem that cannot survive being generalized isn't
+ready to be worked on here.
 
 **The link runs one way, private → public.** What a ticket turned into is
 recorded in that ticket's `Response` section on the private side, with the
