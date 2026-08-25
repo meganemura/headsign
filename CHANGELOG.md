@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-26
+
+Everything here came from the field, and most of it from one shape of
+complaint: a run you cannot see into while it is working. A gate that takes
+fifteen minutes now says how far it got and what each check cost. A workflow
+can read the file it was started under, so one distributed with blanks in it
+can check that they were filled. And the note you write when you step away
+asks what you are waiting for — a question you cannot answer by describing
+yourself, which is what the old one let a stopped run do.
+
 ### Added
 
 - **A workflow can now read the path it was started under.**
@@ -82,6 +92,19 @@ changes), and a patch bump means fixes only.
   lock is a flake surface, and running it twice for one set of assertions
   doubles that for nothing. The gap it was hiding is closed in the same change,
   with a test for a `clear:` entry whose parent directory does not exist.
+
+### Fixed
+
+- **The reference said headsign reads no session identifier from the
+  environment. It reads one.** `CLAUDE_CODE_SESSION_ID` is read in one place,
+  to stamp `last_drive` with whichever session ran `start` or `next` — which is
+  what lets the stop-boundary hooks stop nudging a bystander of an unclaimed
+  run. The sentence was true when it was written: ADR-0013 had retired the
+  environment-derived driver stamp, and ADR-0027 later brought one variable back
+  for a different job, while the paragraph stayed where ADR-0013 left it. Both
+  reference pages now list the variable and say what is true — one session
+  identifier read, never printed, and no agent identifier read from the
+  environment at all, since a delegated agent names itself at its own turn end.
 
 ## [0.9.0] - 2026-08-23
 

@@ -1,6 +1,6 @@
 {
   "name": "headsign",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "A tiny phase gate for coding agents: your shell checks decide pass/fail (never the LLM), your workflow routes the agent (advance / retry / escalate / done). The agent drives, headsign holds the state.",
   "author": {
     "name": "meganemura",
