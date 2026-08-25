@@ -990,10 +990,19 @@ would have no backstop — and, worse, the run would keep pushing the
 session that merely spawned it (see
 [Multiple sessions](#multiple-sessions)).
 
-**To pause deliberately**, write one line explaining why to
-`.headsign/tmp/stop-note` and stop again: the hook passes immediately, no
+**To pause deliberately**, write one line to `.headsign/tmp/stop-note` naming
+what you are waiting for, and stop again: the hook passes immediately, no
 nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
-has a record. The note is consumed (deleted) the moment it's read, and the
+has a record.
+
+**Naming the thing is the check.** "Why are you stopping" can be answered by
+describing yourself, and a note that does — one that reports only where the run
+stands, naming nothing it waits on — is a run that had somewhere to go and
+stopped anyway. "What are you waiting for" has no such answer: name a delegate, a
+person, a build, or find you have nothing to name and keep going. It also
+makes the record readable, since the log carries the note's first line: a
+pause that names its blocker reads differently afterwards from one that does
+not. The note is consumed (deleted) the moment it's read, and the
 working tree returns to exactly what it was before — net zero, so the pause
 itself costs the run nothing and leaves the phase's artifacts where the
 work left them. What lands in the log is the note's first line, cut to 120

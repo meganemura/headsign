@@ -71,8 +71,12 @@ reason that has nothing to do with the new day's behavior.
 ## Decision
 
 **Make the exit condition an artifact.** Actor 1 (a deliberate pause) gets
-a first-class, immediate way to say so: write one line of reason to
-`.headsign/tmp/stop-note` and stop. The hook treats a non-empty note as a
+a first-class, immediate way to say so: write one line naming what you are
+waiting for to `.headsign/tmp/stop-note` and stop (revised 2026-08-26; it
+used to say "one line of reason", and a reason is answerable by describing
+your own state — a run was reported pausing on a note that reported only
+where it stood and named nothing it was waiting for, while work sat
+available). The hook treats a non-empty note as a
 deliberate, self-explaining pause — it passes immediately (no nudge
 consumed, no waiting for a cap), leaves a `paused` line in the log so the
 departure has a trace, and resets `stop_nudges` to 0 so the counter never

@@ -266,6 +266,27 @@ test("note: absent -> blocks, and the message contains both the stop-note instru
   assert.ok(decision.message.includes("headsign abort"), "must name the abort escape hatch");
 });
 
+// The nudge asks for the OBJECT of the wait, not the reason for stopping. It is one of the two
+// stop-boundary messages that carry the question — the other is the SubagentStop adoption
+// confirmation, which shares the same clause — and between them they are what put it in front
+// of an agent in the moment it is deciding. A Stop hook's stderr is fed back to the model on
+// exit 2 (this message); on exit 0, which is the path a pause takes, the docs say a hook's
+// stderr goes to the debug log and Claude never sees it. So the sentence is what does the
+// work, and pinning it is what keeps a later edit from quietly turning it back into
+// "explaining why" — which a note can satisfy by describing its own state while naming no
+// blocker.
+test("Stop: the nudge asks what the agent is waiting for, and says what it means to have no answer", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
+
+  const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
+  assert.equal(decision.block, true);
+  assert.ok(decision.message);
+  assert.ok(decision.message.includes("naming what you are waiting for"), "must ask for the object of the wait");
+  assert.ok(decision.message.includes("if you cannot name it, you are not blocked"), "must say what having no answer means");
+  assert.ok(!decision.message.includes("explaining why"), "must not ask for a reason a self-description satisfies");
+});
+
 test("Stop: the nudge names the way out for a reader who is not driving this run, last, after the pause/abort hint", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));

@@ -43,6 +43,21 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **The pause note asks what you are waiting for, not why you are stopping.**
+  The nudge that a held turn carries, the `workflow` skill, both reference pages
+  and ADR-0006's own Decision section asked for a line of reason. "Why" is
+  answerable by describing yourself, and a run was reported pausing on a note
+  that reported only where it stood and named nothing it was waiting for, while
+  work sat available. "What are you waiting for" has no such
+  answer available: name a delegate, a person, a build, or find you have nothing
+  to name. The wording rides on the nudge because that is the sentence an agent
+  reads immediately before deciding to pause, and because a Stop hook's stderr
+  reaches the model on exit 2 and is promised nothing on exit 0 — the pass path
+  the note takes. Behaviour is unchanged: no note is refused, nothing new is
+  computed, and the log keeps recording the note's first line, which is what
+  makes a pause that names its blocker readable afterwards next to one that does
+  not.
+
 - **The `design-workflow` skill now says what to do when an ordinary outcome
   fails a gate.** Its list of mistakes `validate` cannot catch already said that
   a list-form `on_pass` is never read on the failure path, and stopped there —

@@ -8092,7 +8092,7 @@ function fallbackUnheld(env, nowIso, shouldAttribute) {
 }
 function pauseAndAbortHint(runDir, startDir) {
   const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
-  return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+  return ` To pause, write one line to ${notePathForMessage} naming what you are waiting for \u2014 if you cannot name it, you are not blocked \u2014 and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
 var NOT_DRIVING_HINT = " If you are not driving this run, none of the above is yours to do \u2014 set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead.";
 function withRunLock(runDir, apply) {

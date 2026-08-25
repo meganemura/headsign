@@ -169,9 +169,28 @@ function fallbackUnheld(env: NodeJS.ProcessEnv, nowIso: string, shouldAttribute:
 // Both exits (pause via note, or end for good via abort) are named on every block, not only
 // the last one, so a human who wants out never has to hunt for how. Depends only on
 // runDir/startDir, so both hooks' adoption/nudge messages can share the identical wording.
+//
+// The note asks for WHAT YOU ARE WAITING FOR, not for why you are stopping, and the
+// difference is the whole point of the clause. "Why" is answerable by describing yourself —
+// a run was reported pausing on a note that reported only where it stood and named nothing it
+// was waiting for, while work sat available. "What are you waiting for" has no such answer
+// available: name a subagent, a person, a build, or discover you have nothing to name.
+//
+// This clause rides on the hook's stop-boundary messages — the nudge, and the SubagentStop
+// adoption confirmation, which share it through this function — because those are what put the
+// question in front of an agent in the moment it is deciding. The shipped skill asks it too,
+// but an agent reads a skill whenever it reads it. A Stop hook's stderr is fed
+// back to the model on exit 2, and for exit 0 the docs say outright that a hook's stderr
+// "goes to the debug log only, never the transcript, and Claude never sees it"; the three events
+// whose exit-0 stdout Claude does see are `UserPromptSubmit`, `UserPromptExpansion` and
+// `SessionStart`, and `Stop` is not among them (checked 2026-08-26). So the check cannot be a
+// warning on the pass path: it has to be carried by the sentence the agent reads immediately
+// BEFORE it decides to write a note.
+// Nor could that warning be computed here — telling an idle pause from a real one needs the
+// phase's declared artifacts, and this module must not read workflow.yaml.
 function pauseAndAbortHint(runDir: string, startDir: string): string {
   const notePathForMessage = runDir === startDir ? ".headsign/tmp/stop-note" : `${runDir}/.headsign/tmp/stop-note`;
-  return ` To pause, write one line explaining why to ${notePathForMessage} and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
+  return ` To pause, write one line to ${notePathForMessage} naming what you are waiting for — if you cannot name it, you are not blocked — and stop again; to end the run for good, run \`headsign abort <reason>\`.`;
 }
 
 // Every option a nudge names above this line — run `next`, write a pause note, `abort` — is a

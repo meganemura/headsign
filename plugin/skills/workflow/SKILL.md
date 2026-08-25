@@ -162,8 +162,9 @@ plugin or `npm install` the package. Do not guess at other paths.
    walk back to here. So the only real question is how expensive this
    workflow's earlier gates are to pass again, which you can read off the
    workflow file you are holding. To *pause* rather than end — stepping away
-   to resume later — write one line explaining why to
-   `.headsign/tmp/stop-note` and stop again: the stop-boundary hook passes
+   to resume later — write one line to `.headsign/tmp/stop-note` **naming what
+   you are waiting for**, and stop again. **If you cannot name it, you are not
+   blocked** — run `headsign next` instead. The stop-boundary hook passes
    immediately, and `headsign next`
    picks the run back up later from the same phase. The hook consumes the
    note, so one note covers one turn end — if the wait runs over several
