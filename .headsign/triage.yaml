@@ -10,11 +10,14 @@
 # per tool, so every path below names this one — a ticket sitting in a
 # sibling tool's inbox is not this run's work and must not trip its gate.
 #
-# This repository is PUBLIC. Nothing that identifies a feedback source may
-# enter any artifact here (code, commit messages, docs, tests): no private
-# project names, no ticket ids, no quoted logs or paths. Generalize
-# everything; the ticket-to-commit link lives in the ticket's Response
-# field on the private side only. See docs/maintenance.md.
+# This repository is PUBLIC. The check for every artifact here (code,
+# commit messages, docs, tests) is authorship: nothing may be anyone's
+# words but ours. Never paste ticket text or logs; a light edit that
+# keeps the source's wording or skeleton is still a paste. Write from
+# scratch about the general problem. Private names and ticket ids are
+# only the easiest leaks to spot — a search for identifiers does not
+# clear a change. The ticket-to-commit link lives in the ticket's
+# Response field on the private side only. See docs/maintenance.md.
 version: 0.1
 name: feedback-triage
 entry: triage
@@ -134,10 +137,12 @@ phases:
       feedback repository's feedback/headsign/judged/). Work test-first where
       practical, keep engine.ts pure, respect docs/architecture.md module
       boundaries, keep README.md / README.ja.md in parity, and rebuild the
-      bundle before asking for the verdict. PUBLIC-REPO RULE: commit
-      messages, code, tests and docs must describe the change in general
-      terms only — never the feedback source's project name, ticket id,
-      quoted logs or paths. Rewrite reproduction steps neutrally. Commit in
+      bundle before asking for the verdict. PUBLIC-REPO RULE: every
+      sentence you commit — in code, tests, docs and commit messages —
+      must be written from scratch in our own words. Never paste the
+      ticket's text, logs or paths; a light edit that keeps its wording
+      or skeleton is still a paste. Restate the problem and the
+      reproduction in general terms (docs/maintenance.md). Commit in
       meaningful units.
     gate:
       checks:
@@ -162,8 +167,11 @@ phases:
       nothing — arrange it as you see fit — checking the
       diff against docs/architecture.md's module boundaries,
       .headsign/notes/what-headsign-protects.md, README EN/JA parity — and
-      the public-repo rule above: the diff and its commit messages must
-      contain nothing that identifies the feedback source. Have it REPORT
+      the public-repo rule above: check authorship sentence by sentence —
+      the diff and its commit messages must contain no text that arrived
+      from the ticket, quoted or lightly edited with its wording or
+      skeleton kept. A search for private names and ids is not the check.
+      Have it REPORT
       exactly APPROVED or REJECTED with reasons, then write that verdict
       verbatim to .headsign/tmp/verdict yourself.
     clear: [.headsign/tmp/verdict]
