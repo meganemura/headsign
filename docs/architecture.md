@@ -174,3 +174,8 @@ outside it:
 - [ADR-0026](adr/0026-a-second-place-to-look.md) — a bounded second walk from `CLAUDE_PROJECT_DIR` once the first finds nothing; it records without ever holding the turn *(amends 0006, 0025)*
 - [ADR-0027](adr/0027-recording-who-drove-a-run.md) — `last_drive: { session, at }`, so an unclaimed run stops nudging its bystanders *(supersedes part of 0013, amends 0006)*
 - [ADR-0028](adr/0028-codex-as-a-second-principal.md) — Codex as a second principal; shared plugin, skill, and hook packaging with a documented session-attribution boundary
+- [ADR-0029](adr/0029-status-answers-for-the-file.md) — `status` answers for the file, not only for the record: one computed `graph:` line each for a workflow edited with no lap run and for one restored while a report stands *(amends 0023 §8)*
+- [ADR-0030](adr/0030-the-token-line-is-the-contract-and-nothing-else-is.md) — the token line is the contract and nothing else is: every other line may change in any release, so a tool reading the output pins a version and fails loudly *(amends 0002)*
+- [ADR-0031](adr/0031-when-the-run-entered-the-phase.md) — `phase_entered_at`, stamped where `clear:` runs, so a retry never moves it and a re-entry does *(amends 0017)*
+- [ADR-0032](adr/0032-the-gate-says-how-far-it-got.md) — the gate says how far it got: one stderr line per check that produced an exit code, while the gate is still running *(amends 0002)*
+- [ADR-0033](adr/0033-the-one-variable-headsign-sets.md) — the one variable headsign sets: `HEADSIGN_WORKFLOW_FILE` reaches a gate's checks, a `ready:` probe and an `on_pass` `when:`, carrying the path this run recorded *(amends 0014 §1)*
