@@ -217,6 +217,38 @@ phases:
   assert.match(result.stderr, /^--- gate: 1 check ---\n--- check 1\/1 failed: lint \(\d+(\.\d+)?s\) ---\n$/);
 });
 
+// A check whose PRINTED elapsed time has reached half its declared `timeout:` names that
+// limit too — the rule is about the number on the line, not about how long the check really
+// ran, because the two can differ by up to a rounding step (ADR-0032, "The comparison is made
+// on the number the line prints"). `timeout: 2` keeps this fast, and its half of 1.0 is a
+// tenth-of-a-second multiple, so this fixture sits clear of that edge rather than on it.
+test("next: a check whose printed elapsed time reaches half its declared timeout: shows the limit on stderr", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "slow but passing"
+          run: "sleep 1.3 && true"
+          timeout: 2
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  const result = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /^COMPLETE\n/);
+  assert.match(result.stderr, /^--- gate: 1 check ---\n--- check 1\/1 passed: slow but passing \(\d+(\.\d+)?s of 2s\) ---\n$/);
+});
+
 // Every test above reads `result.stderr` after the process has already exited, so a buggy
 // implementation that buffered every progress line and flushed them all at once, on exit, would
 // pass every one of them just as well as a streaming one — a `close` event follows every `data`

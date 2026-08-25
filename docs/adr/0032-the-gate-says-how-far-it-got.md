@@ -46,6 +46,45 @@ The gate stops at the first failure, so at most one line from a gate says
 anything but `passed`, and it is the last one. The word it carries is `passed`, `failed`,
 or `timed out`.
 
+**When the elapsed time a line shows has reached half the limit, the line
+names the limit too.**
+
+```
+--- check 5/12 passed: acceptance matrix (60.4s of 120s) ---
+```
+
+Every check has a limit — the `timeout:` its author wrote, or the default when
+they wrote none — and an elapsed time alone only reads as "close" to someone
+holding that limit in their head. A check that drifts from a fifth of a second
+toward its limit passes half of it on the way, and half says nothing by itself.
+Printed against the limit it says the whole thing.
+
+Half is where the second number appears, so a check well inside its own limit
+stays `(0.2s)` and only one approaching its own carries the comparison. Nothing
+fails at half, and nothing is bounded by it: this is a display threshold on a
+limit that was already declared, not a budget of headsign's own.
+
+**The comparison is made on the number the line prints, not on the measurement
+behind it.** Elapsed time is rounded to a tenth of a second before it reaches
+this decision, so the rule holds against the two numbers a reader can see, and
+the reader can check it without knowing anything the line does not say. The cost
+is at the edges: a check whose limit is a few hundredths of a second shows `0s`
+and stays below the mark however much of that limit it really spent, and a check
+whose real elapsed time sits within a rounding step of half its limit lands on
+whichever side the rounding puts it. Deciding on the unrounded measurement
+instead would buy accuracy nobody can see and cost the property that matters
+here — a line that agrees with itself, rather than one printing `(60s)` beside a
+limit of `120` while withholding the comparison.
+
+**A check killed at its limit names the limit whatever its elapsed time rounds
+to.** Reaching the mark is a question about what happened, and for a timeout
+headsign knows the answer exactly rather than by measuring: the check ran until
+the limit killed it. The elapsed time beside it is a measurement rounded to one
+decimal, and a limit of a few hundredths of a second — which the schema allows,
+since `timeout:` is any positive number — rounds to `0s` and would compare below
+half, dropping the one number that line exists to carry. So a `timed out` line
+is decided by the fact and not by the rounded measurement.
+
 A caller that stops waiting has read the lines written so far. The count in the
 first line and the index in the last one together say where the gate stood.
 
@@ -79,8 +118,12 @@ line that is sometimes the sole report cannot afford to blur what the fuller
 report distinguishes. So the word is one of three: `passed`, `failed`, or
 `timed out`.
 
-The number beside `timed out` is elapsed time at the kill, which lands at the
-limit. Nothing measured how long the check wanted, and nothing here claims to.
+The first number on a `timed out` line is elapsed time at the kill, and the
+second is the limit it was killed at. The first ordinarily lands on the second,
+since that is what a kill at the limit means — but it is a measurement rounded
+to a tenth of a second, so under a limit of a few hundredths of a second it
+reads `0s`. Nothing measured how long the check wanted, and nothing here claims
+to.
 
 **A check that produced no exit code gets no line.** headsign refuses the lap
 on it (ADR-0021 §2), and the refusal names the check and the command it could
@@ -112,10 +155,20 @@ from every workflow to shorten some.
 
 **Reporting how long a timed-out check wanted to run.** The check was killed at
 its limit, so nothing measured that, and no number here is offered as it. What
-the line carries is elapsed time at the kill.
+the line carries is elapsed time at the kill, and beside it the limit the kill
+happened at.
 
-**A threshold that reports a slow check.** headsign holds no budget measured in
-time (ADR-0017), so a report of that kind would need a limit invented for it.
+**A limit of headsign's own, measured in time.** ADR-0017 refused wall clock as
+a run budget and that stands: nothing here counts how long a run, a phase or a
+lap takes, and nothing fails for being slow. The second number in the line above
+is the workflow's own `timeout:` for that one check, which the schema has always
+carried and `runGate` has always enforced by killing at it.
+
+This corrects a sentence that stood in this section while the change was being
+written. It said a report of a slow check would need a limit invented for it.
+That was wrong on the same distinction: a per-check `timeout:` is a kill limit on
+one command, declared in the file, and ADR-0017's refusal is about budgets that
+bound a run.
 
 **A progress line for the `ready:` probe or for an `on_pass` route's `when:`.**
 Each is one command, and the gate is what this record is about: the probe runs

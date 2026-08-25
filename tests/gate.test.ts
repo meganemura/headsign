@@ -176,6 +176,8 @@ test("onProgress: reports the gate's size first, then one call per passing check
     assert.equal(calls[1].name, "first");
     assert.equal(calls[1].outcome, "passed");
     assert.equal(typeof calls[1].elapsedSeconds, "number");
+    // Neither check declares its own `timeout:`, so both report gate.ts's default.
+    assert.equal(calls[1].timeoutSeconds, 120);
   }
   assert.equal(calls[2]?.kind, "check");
   if (calls[2]?.kind === "check") {
@@ -184,6 +186,7 @@ test("onProgress: reports the gate's size first, then one call per passing check
     // No `name:` on this check, so the same run-string fallback checkName gives everywhere else.
     assert.equal(calls[2].name, "true");
     assert.equal(calls[2].outcome, "passed");
+    assert.equal(calls[2].timeoutSeconds, 120);
   }
 });
 
@@ -209,6 +212,13 @@ test("onProgress: an ordinary failing check gets a `check` call with outcome 'fa
     assert.equal(calls[2].name, "lint");
     assert.equal(calls[2].outcome, "failed");
     assert.equal(typeof calls[2].elapsedSeconds, "number");
+    // No `timeout:` on this check, so the call reports gate.ts's default. The field's PRESENCE
+    // needs no test — `GateProgress`'s check arm declares it required, so an arm that stopped
+    // sending it fails to compile. What no type can check is the VALUE: an arm passing the
+    // default where the check declared its own, or the other way round, compiles perfectly.
+    // That is what this pins on the failing arm, and what the timeout case below pins on its
+    // own by asserting a declared 0.2 rather than the default.
+    assert.equal(calls[2].timeoutSeconds, 120);
   }
 });
 
@@ -227,6 +237,8 @@ test("onProgress: a timed-out check gets a `check` call with outcome 'timed out'
     assert.equal(calls[1].index, 1);
     assert.equal(calls[1].total, 1);
     assert.equal(calls[1].outcome, "timed out");
+    // This check declared its own `timeout:`, so the call reports that, not the default.
+    assert.equal(calls[1].timeoutSeconds, 0.2);
   }
 });
 

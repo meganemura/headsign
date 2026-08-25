@@ -31,19 +31,37 @@ export function start(phase: string, description: string, cleared?: string[], no
 // now sends.
 type GateProgress =
   | { kind: "gate"; total: number }
-  | { kind: "check"; index: number; total: number; name: string; elapsedSeconds: number; outcome: "passed" | "failed" | "timed out" };
+  | { kind: "check"; index: number; total: number; name: string; elapsedSeconds: number; timeoutSeconds: number; outcome: "passed" | "failed" | "timed out" };
+
+// Where the second number joins the first — a display threshold on a limit the workflow already
+// declared (`timeout:`, or gate.ts's default when the author wrote none), not a budget of
+// headsign's own: nothing fails here, and nothing is bounded by it. Below it, a check's own
+// duration reads as unremarkable on its own; at or past it, the duration alone no longer says
+// whether the check is close to its limit or nowhere near it, so the line names the limit too
+// (ADR-0032's "Half is where the second number appears" paragraph). Consulted only for a passed
+// or failed check — a timed-out one names the limit without this comparison, for the reason
+// `gateProgress` below gives.
+const HALF_OF_LIMIT = 0.5;
 
 // One line, called once per event cli.ts's sink receives: the gate's size before the first
 // check starts, then one more per check that finished, whichever of three ways it went —
 // `outcome` supplies the word, and a timeout gets one of its own rather than reading as an
 // ordinary failure (ADR-0032 §3): on the three paths where a failure ends the run, this line is
 // the only report the check gets at all. `elapsedSeconds` prints with no forced decimal (a whole
-// second reads `2s`), the same way `clause()` below prints a failing check's.
+// second reads `2s`), the same way `clause()` below prints a failing check's — and so does the
+// limit beside it, once `elapsedSeconds` has reached `HALF_OF_LIMIT` of `timeoutSeconds`, OR
+// whenever `outcome` is `timed out`, checked on its own rather than folded into that comparison.
+// A killed check reached its limit by definition — headsign knows that from the fact of being
+// killed, not from measuring — while `elapsedSeconds` is a measurement rounded to one decimal,
+// and a `timeout:` under a tenth of a second (the schema allows any positive number) can round
+// its elapsed time down to `0`, landing below half of that same tiny limit. The rounded number is
+// the wrong evidence for a question the fact already answers exactly.
 export function gateProgress(p: GateProgress): string {
   if (p.kind === "gate") {
     return `--- gate: ${p.total} ${p.total === 1 ? "check" : "checks"} ---\n`;
   }
-  return `--- check ${p.index}/${p.total} ${p.outcome}: ${p.name} (${p.elapsedSeconds}s) ---\n`;
+  const ofLimit = p.outcome === "timed out" || p.elapsedSeconds >= p.timeoutSeconds * HALF_OF_LIMIT ? ` of ${p.timeoutSeconds}s` : "";
+  return `--- check ${p.index}/${p.total} ${p.outcome}: ${p.name} (${p.elapsedSeconds}s${ofLimit}) ---\n`;
 }
 
 // `elapsedSeconds` (gate.ts's CheckFailure field, carried through engine.ts unmodified) is

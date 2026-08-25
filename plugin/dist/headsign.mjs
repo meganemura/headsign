@@ -7727,17 +7727,17 @@ function runGate(checks, cwd, onProgress) {
     const checksRun = i + 1;
     const notRunChecks = checks.slice(i + 1).map(checkName);
     if (spawnError?.code === "ETIMEDOUT") {
-      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "timed out" });
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, timeoutSeconds, outcome: "timed out" });
       return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     if (spawnError) {
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
     if (result.status !== 0) {
-      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "failed" });
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, timeoutSeconds, outcome: "failed" });
       return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
-    onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "passed" });
+    onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, timeoutSeconds, outcome: "passed" });
   }
   return { kind: "pass" };
 }
@@ -7786,12 +7786,14 @@ ${clearedBlock(cleared)}${notClearedBlock(notCleared)}--- phase: ${phase} ---
 ${description}
 `;
 }
+var HALF_OF_LIMIT = 0.5;
 function gateProgress(p) {
   if (p.kind === "gate") {
     return `--- gate: ${p.total} ${p.total === 1 ? "check" : "checks"} ---
 `;
   }
-  return `--- check ${p.index}/${p.total} ${p.outcome}: ${p.name} (${p.elapsedSeconds}s) ---
+  const ofLimit = p.outcome === "timed out" || p.elapsedSeconds >= p.timeoutSeconds * HALF_OF_LIMIT ? ` of ${p.timeoutSeconds}s` : "";
+  return `--- check ${p.index}/${p.total} ${p.outcome}: ${p.name} (${p.elapsedSeconds}s${ofLimit}) ---
 `;
 }
 function advance(phase, description, failure, cleared, notCleared, routedBy) {

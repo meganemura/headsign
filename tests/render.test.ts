@@ -22,11 +22,11 @@ test("gateProgress: the gate shape is plural for more than one, zero included", 
 
 test("gateProgress: a passed check names its 1-based index, the gate's total, its name, and its duration", () => {
   assert.equal(
-    render.gateProgress({ kind: "check", index: 1, total: 12, name: "typecheck", elapsedSeconds: 2.1, outcome: "passed" }),
+    render.gateProgress({ kind: "check", index: 1, total: 12, name: "typecheck", elapsedSeconds: 2.1, timeoutSeconds: 120, outcome: "passed" }),
     `--- check 1/12 passed: typecheck (2.1s) ---\n`,
   );
   assert.equal(
-    render.gateProgress({ kind: "check", index: 2, total: 12, name: "tests", elapsedSeconds: 48.3, outcome: "passed" }),
+    render.gateProgress({ kind: "check", index: 2, total: 12, name: "tests", elapsedSeconds: 48.3, timeoutSeconds: 120, outcome: "passed" }),
     `--- check 2/12 passed: tests (48.3s) ---\n`,
   );
 });
@@ -34,17 +34,57 @@ test("gateProgress: a passed check names its 1-based index, the gate's total, it
 // A failing check gets the same line shape with the other outcome word (ADR-0032 §3).
 test("gateProgress: a failed check prints the same shape with 'failed' in place of 'passed'", () => {
   assert.equal(
-    render.gateProgress({ kind: "check", index: 3, total: 12, name: "acceptance matrix", elapsedSeconds: 3.2, outcome: "failed" }),
+    render.gateProgress({ kind: "check", index: 3, total: 12, name: "acceptance matrix", elapsedSeconds: 3.2, timeoutSeconds: 120, outcome: "failed" }),
     `--- check 3/12 failed: acceptance matrix (3.2s) ---\n`,
   );
 });
 
 // A timed-out check gets its own third word rather than reading as an ordinary failure that
-// happened to take two minutes (ADR-0032 §3, its "timeout says so" paragraph).
-test("gateProgress: a timed-out check prints the same shape with 'timed out' in place of 'passed'/'failed'", () => {
+// happened to take two minutes (ADR-0032 §3, its "timeout says so" paragraph). It also always
+// carries the limit, decided by the fact that a killed check reached its limit, not by the
+// rounded `elapsedSeconds` beside it.
+test("gateProgress: a timed-out check prints the same shape with 'timed out' in place of 'passed'/'failed', and always names the limit", () => {
   assert.equal(
-    render.gateProgress({ kind: "check", index: 4, total: 12, name: "coverage", elapsedSeconds: 120.1, outcome: "timed out" }),
-    `--- check 4/12 timed out: coverage (120.1s) ---\n`,
+    render.gateProgress({ kind: "check", index: 4, total: 12, name: "coverage", elapsedSeconds: 120.1, timeoutSeconds: 120, outcome: "timed out" }),
+    `--- check 4/12 timed out: coverage (120.1s of 120s) ---\n`,
+  );
+});
+
+// A `timeout:` under a tenth of a second — legal, since the schema only requires a positive
+// number — can round its elapsed time to `0`, which lands below half of a limit that small. The
+// fact of being killed decides the line regardless: this is the case a comparison against the
+// rounded number alone would get wrong.
+test("gateProgress: a timed-out check with a sub-tenth-of-a-second limit still names it, even though the rounded elapsed is 0", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 1, total: 1, name: "slow thing", elapsedSeconds: 0, timeoutSeconds: 0.03, outcome: "timed out" }),
+    `--- check 1/1 timed out: slow thing (0s of 0.03s) ---\n`,
+  );
+});
+
+// --- gateProgress: the second number, and where it starts appearing (ADR-0032, "Half is where
+// the second number appears") ---
+
+// Below half, the line is exactly what it is today — no limit, whatever the limit is.
+test("gateProgress: a check under half its limit names no limit", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 5, total: 12, name: "acceptance matrix", elapsedSeconds: 59.9, timeoutSeconds: 120, outcome: "passed" }),
+    `--- check 5/12 passed: acceptance matrix (59.9s) ---\n`,
+  );
+});
+
+// At exactly half, the limit already shows: the threshold is "at least half", not "past half".
+test("gateProgress: a check exactly at half its limit names the limit too", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 5, total: 12, name: "acceptance matrix", elapsedSeconds: 60, timeoutSeconds: 120, outcome: "passed" }),
+    `--- check 5/12 passed: acceptance matrix (60s of 120s) ---\n`,
+  );
+});
+
+// Past half, the ADR's own example.
+test("gateProgress: a check past half its limit names the limit too", () => {
+  assert.equal(
+    render.gateProgress({ kind: "check", index: 5, total: 12, name: "acceptance matrix", elapsedSeconds: 60.4, timeoutSeconds: 120, outcome: "passed" }),
+    `--- check 5/12 passed: acceptance matrix (60.4s of 120s) ---\n`,
   );
 });
 

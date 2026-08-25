@@ -676,6 +676,28 @@ The gate stops at the first failure, so at most one line says anything but
 out` — a check killed at its `timeout:` says so, rather than reading as an
 ordinary failure that happened to take that long.
 
+**When the elapsed time a line shows has reached half the check's own limit,
+the line names that limit too.** Every check has a limit. The limit is the
+`timeout:` its author wrote, or headsign's default of 120 seconds when they
+wrote none. Below half, the line stays exactly what it is above. At or past
+half, a second number joins it:
+
+```
+--- check 5/12 passed: acceptance matrix (60.4s of 120s) ---
+```
+
+Nothing fails at the half mark, and nothing is bounded by it. The limit is
+the workflow's own `timeout:`; the mark only decides when a duration is
+worth reading against it. The comparison is made on the number the line
+prints, rounded to a tenth of a second, so the rule can be checked against
+the line itself — which also means a check under a very small `timeout:`,
+whose elapsed time rounds to `0s`, stays below the mark however much of its
+limit it really used. A `timed out` line always carries the second
+number. The reason is the fact, not the measurement: a killed check reached
+its limit by definition, and the elapsed time beside it is only a
+measurement, rounded to a tenth of a second. For a `timeout:` under a tenth
+of a second, that rounded elapsed time can be `0s`, below the half mark.
+
 A check that never produced an exit code gets no line: headsign refuses the
 lap on it instead of spending an attempt, and the refusal already names the
 check and the command it could not run. A check the gate never reached — an

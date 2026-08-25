@@ -96,9 +96,14 @@ export type GateVerdict = Exclude<GateResult, { kind: "unrunnable" }>;
 // (ADR-0021 §2) — a progress line would only repeat it. `runGate` calls the function it is
 // given; it never learns why, and nothing here answers to ADR-0002's stdout contract, because
 // this never reaches stdout.
+// `timeoutSeconds` on the `check` shape is the limit this one check ran under — the `timeout:`
+// its author wrote, or the default when they wrote none — the same value the loop below already
+// computes before spawning and already carries on a `CheckFailure`'s timeout arm. Sent on every
+// check, not only a timed-out one: `render.ts` decides whether a given elapsed time is worth
+// showing next to it, and that decision needs the limit whichever way the check went.
 export type GateProgress =
   | { kind: "gate"; total: number }
-  | { kind: "check"; index: number; total: number; name: string; elapsedSeconds: number; outcome: "passed" | "failed" | "timed out" };
+  | { kind: "check"; index: number; total: number; name: string; elapsedSeconds: number; timeoutSeconds: number; outcome: "passed" | "failed" | "timed out" };
 
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const OUTPUT_TAIL_LIMIT = 4000;
@@ -146,7 +151,7 @@ export function runGate(checks: Check[], cwd: string, onProgress?: (p: GateProgr
       // itself wrote. This line says so in its own word rather than `failed`, though — it is
       // the only report a run-ending failure gets (ADR-0032 §3), and `failed (120.1s)` would
       // read as an ordinary failure that happened to take two minutes.
-      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "timed out" });
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, timeoutSeconds, outcome: "timed out" });
       return { kind: "fail", check, run: c.run, exitCode: "timeout", outputTail, timeoutSeconds, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     if (spawnError) {
@@ -160,12 +165,12 @@ export function runGate(checks: Check[], cwd: string, onProgress?: (p: GateProgr
       return { kind: "unrunnable", check, run: c.run, reason: spawnError.code ?? spawnError.message };
     }
     if (result.status !== 0) {
-      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "failed" });
+      onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, timeoutSeconds, outcome: "failed" });
       return { kind: "fail", check, run: c.run, exitCode: result.status ?? -1, outputTail, elapsedSeconds, checksTotal, checksRun, notRunChecks };
     }
     // Reached only once none of the three return arms above fired: this check passed.
     // `elapsedSeconds` is the same measurement a failing check reports on the same clock.
-    onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, outcome: "passed" });
+    onProgress?.({ kind: "check", index: checksRun, total: checksTotal, name: check, elapsedSeconds, timeoutSeconds, outcome: "passed" });
   }
   return { kind: "pass" };
 }
