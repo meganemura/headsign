@@ -2,28 +2,24 @@
 
 [日本語](workflow-reference.ja.md)
 
-How to write a `.headsign/workflow.yaml`, and what the CLI does with it.
+This page explains how to write a `.headsign/workflow.yaml` and what the CLI does with
+it.
 
-The [README](../README.md) is the page you read before adopting headsign;
-this one is the page you read while writing a workflow. The discipline an
-agent follows *during* a run ships with the plugin, in
-[plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md). The
-internals are in [architecture.md](architecture.md), with the reasoning
-behind each decision in [the ADRs](adr/README.md).
+Read the [README](../README.md) before you adopt headsign. Keep this page open while
+you write a workflow. The plugin includes the discipline that an agent
+follows *during* a run, in [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md). The internals are in
+[architecture.md](architecture.md), with the reasoning behind each decision in [the ADRs](adr/README.md).
 
-This page is the one written for a person, and it holds both halves — how to
-write a workflow and how to run one — while the excerpt an agent reads at the
-moment it writes one ships with the plugin instead, in the
-[`design-workflow` skill](../plugin/skills/design-workflow/SKILL.md) and its
-[schema reference](../plugin/skills/design-workflow/references/schema.md),
-because this page ships nowhere
+This page explains to a person how to write and run a workflow. The plugin
+does not include this page. It includes the excerpt that an agent reads when
+it writes a workflow in the [`design-workflow` skill](../plugin/skills/design-workflow/SKILL.md) and its [schema reference](../plugin/skills/design-workflow/references/schema.md)
 ([ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md)).
 
 ## Enabling the plugin for a whole repository
 
-The two commands in the [README](../README.md#install) install the plugin for
-one person. A repository can instead declare it for everyone who opens it, in a
-`.claude/settings.json` committed with the code:
+The two commands in the [README](../README.md#install) install the plugin for one person. A
+repository can declare it for every user in a `.claude/settings.json` committed with
+the code:
 
 ```json
 {
@@ -36,28 +32,27 @@ one person. A repository can instead declare it for everyone who opens it, in a
 }
 ```
 
-`extraKnownMarketplaces` is where a repository names a plugin source its members
-need — the schema's own description is "Additional marketplaces to make
-available for this repository. Typically used in repository
-.claude/settings.json to ensure team members have required plugin sources". The
-key `headsign` is the marketplace's name, from
-[`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json), and its
-`source` says where that marketplace lives. `enabledPlugins` is keyed
-`plugin@marketplace`, so `headsign@headsign` is the plugin named `headsign` —
-from [`plugin/.claude-plugin/plugin.json`](../plugin/.claude-plugin/plugin.json)
-— inside the marketplace named `headsign`. Both names being the same word is
-this project shipping one plugin, not a rule of the format.
+In `extraKnownMarketplaces`, a repository names a plugin source that its members need.
+The schema describes it as "Additional marketplaces to make available for
+this repository. Typically used in repository .claude/settings.json to
+ensure team members have required plugin sources". The key `headsign` is
+the marketplace's name, from [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json), and its `source` gives
+its location. `enabledPlugins` uses `plugin@marketplace` as its key. Thus,
+`headsign@headsign` identifies the plugin named `headsign` inside the
+marketplace named `headsign`. The plugin name comes from [`plugin/.claude-plugin/plugin.json`](../plugin/.claude-plugin/plugin.json).
+Both names use the same word because this project ships one plugin. The
+format does not require matching names.
 
-Those two keys are Claude Code's rather than headsign's, so what follows
-describes what the file *declares*. What a person's Claude Code does on meeting
-that declaration is Claude Code's own documentation to describe, and that
-documentation is also the copy that stays current when the schema moves; this
-page ships nowhere, but the README freezes in npm caches and forks, which is why
-the moving parts are down here.
+Those two keys belong to Claude Code, so this section describes what the
+file *declares*. Claude Code's documentation describes how Claude Code
+handles that declaration. That documentation stays current when the schema
+changes. This page ships nowhere, but the README remains in npm caches and
+forks. Therefore, this page contains the parts that can change.
 
-**Pinning.** A marketplace `source` also takes a `ref` — a branch or a tag — so
-a team that wants every member on one version points it at a release tag instead
-of leaving it on the default branch:
+**Pinning.** A marketplace `source` also takes a `ref`, which
+is a branch or a tag. A team can point it at a release tag to give every
+member one version. If the team omits it, the source uses the default
+branch:
 
 ```json
 {
@@ -74,42 +69,39 @@ of leaving it on the default branch:
 }
 ```
 
-What that buys is one gate behaviour for the whole team. The workflow schema is
-pre-1.0 and rejects any key it does not define
-([ADR-0015](adr/0015-strict-schema-and-version-0-1.md)), so an unpinned team can
-have one member's copy running a workflow that another member's copy refuses to
-validate — a difference in the harness, arriving as a difference in the work.
-What it costs is that somebody now has to move the pin, and a stale one is
-invisible: nothing looks wrong until a workflow reaches for something the pinned
-version does not have, and that reaches you as "headsign is broken" rather than
-"we are three releases behind". The same entry also carries an `autoUpdate`
-flag; a pin and an auto-update answer the same question in opposite directions,
-so a repository is better off setting one of them deliberately than inheriting
-whichever it gets.
+The pin gives the whole team one gate behaviour. The workflow schema is
+pre-1.0 and rejects each key that it does not define ([ADR-0015](adr/0015-strict-schema-and-version-0-1.md)).
+Without a pin, one copy can run a workflow that another copy refuses to
+validate. That harness difference then becomes a work difference.
 
-**Opting out.** Settings precedence is user < project < local, so the file that
-wins over a project setting is the person's own `.claude/settings.local.json` in
-the same repository:
+Someone must move the pin, and a stale pin is invisible. Nothing looks wrong
+until a workflow uses something that the pinned version does not have. The
+result appears as "headsign is broken" instead of "we are three releases
+behind". The same entry also has an `autoUpdate` flag. A pin and an
+auto-update answer the same question in opposite directions. A repository
+should set one of them deliberately instead of inheriting its current value.
+
+**Opting out.** Settings precedence is user < project < local. Thus, the
+person's own `.claude/settings.local.json` in the same repository overrides a project
+setting:
 
 ```json
 { "enabledPlugins": { "headsign@headsign": false } }
 ```
 
-That is the per-person file rather than the committed one, so opting out is a
-local act that leaves the repository's declaration alone. A project can declare
-the plugin; it cannot make anyone keep it — which is the same boundary as
-[headsign not forcing anyone to use it](../README.md#what-headsign-is-not), one
-layer down.
+That file belongs to one person, while the repository commits the project
+file. Thus, opting out is local and leaves the repository's declaration
+unchanged. A project can declare the plugin, but it cannot make anyone keep
+it. This is the same boundary as [headsign not forcing anyone to use it](../README.md#what-headsign-is-not), one layer down.
 
-**Updates.** Declaring a version and having it are two events, not one. The
-publishing side of that is the distribution map in
-[maintenance.md](maintenance.md), which records that third-party marketplaces
-have auto-update off by default and that users run the update themselves. So
-moving the `ref` in the committed file begins the update; it does not conclude
-it.
+**Updates.** Declaring a version and having it are two separate events. The
+distribution map in [maintenance.md](maintenance.md) describes the publishing side.
+Third-party marketplaces disable auto-update by default, and users run the
+update themselves. Thus, moving the `ref` in the committed file
+starts the update but does not finish it.
 
-Concluding it takes one command under Claude Code, and it wants the qualified
-name:
+Concluding it takes one command under Claude Code, and it wants the
+qualified name:
 
 ```
 claude plugin update headsign@headsign
@@ -123,62 +115,61 @@ codex plugin add headsign@headsign
 ```
 
 `codex plugin add` installs from a marketplace snapshot that Codex keeps on
-disk. Running it alone re-installs whatever that snapshot holds, so a release
-published after the snapshot was taken is invisible to it — the command
-succeeds and changes nothing. `marketplace upgrade` is what refreshes the
-snapshot; `add` then has the new version to find.
+disk. If you run it alone, it installs the version in that snapshot again.
+It cannot see a release published after Codex created the snapshot. The
+command then succeeds and changes nothing. `marketplace upgrade` refreshes the
+snapshot, and `add` can then find the new version.
 
-The bare `claude plugin update headsign` answers `Plugin "headsign" not found`.
-`update` resolves what `claude plugin list` prints, and what it prints is the
-`plugin@marketplace` pair — the same form
-[Enabling the plugin for a whole repository](#enabling-the-plugin-for-a-whole-repository)
-explains for `enabledPlugins`. Inside a session, `/plugin` reaches the same operation through
-a menu.
+The bare `claude plugin update headsign` answers `Plugin "headsign" not found`. `update` resolves the
+value that `claude plugin list` prints. The command prints the `plugin@marketplace`
+pair. This is the form that [Enabling the plugin for a whole repository](#enabling-the-plugin-for-a-whole-repository) explains for `enabledPlugins`.
+Inside a session, `/plugin` reaches the same operation through a menu.
 
-Either way the fetched copy sits unused until the host restarts, which makes
-applying an update a third event after declaring one and having one. Until that
-restart, `headsign version` still reports the copy that is actually running,
-which is the older one — and it answers per host, so two hosts on one machine
-can disagree until both have restarted.
+In either case, the host does not use the fetched copy until it restarts.
+Thus, applying an update is a third event after declaring and having the
+update. Before the restart, `headsign version` still reports the older copy that
+is running. The command reports the version for each host. Two hosts on one
+machine can disagree until both restart.
 
 **The version a project pins is not the version a run uses.** An installed
-plugin copy is version-scoped — one directory per version, the path is in
+plugin copy is version-scoped: one directory per version, and
 [maintenance.md](maintenance.md#live-patching-an-installed-plugin-local-testing)
-— so a project that has moved to a new release does not change what an older
-installed copy does until that copy updates. The committed file says which
-version the team wants; the copy on the machine is what `headsign next` on that
-machine actually runs. When a report comes in that a fix is not there, or that a
-gate behaves differently for one person, establish the version in play before
-reading the workflow file and before reading the gate. `headsign version` — or
-`headsign --version`, which prints the same thing — answers that from the copy
-that is actually running. The number is baked into the bundle when it is built rather than read from
-`package.json`, which a copy cached from the plugin marketplace does not have above
-it (why, and what actually keeps the two in step, is
-[ADR-0002](adr/0002-single-question-and-output-contract.md)). Two older answers are
-still worth having, because they answer a different question, *where* the copy
-is and which channel it came from, and that is how you tell two installed copies
-apart: an installed plugin copy is identified by the version directory it sits
-in, and a CLI installed from npm instead is whatever `npm ls headsign` reports.
+gives the path. A project that moves to a new release does not change what an
+older installed copy does until that copy updates. The committed
+file says which version the team wants; the copy on the machine is what
+`headsign next` on that machine actually runs. When a report comes in that a
+fix is not there, or that a gate behaves differently for one person,
+establish the version in play before reading the workflow file and before
+reading the gate. `headsign version` — or `headsign --version`, which prints the same
+thing — answers that from the copy that is actually running. The build bakes
+the number into the bundle instead of reading it from `package.json`. A copy
+cached from the plugin marketplace does not have that file above it.
+[ADR-0002](adr/0002-single-question-and-output-contract.md) explains why and
+how the build keeps the two values in step. Two older
+answers are still worth having, because they answer a different question:
+*where* the copy is and which channel it came from. That question tells two
+installed copies apart. The version directory identifies an installed plugin
+copy, and `npm ls headsign` reports a CLI installed from npm.
 
 **What this repository does not do.** headsign itself has no committed
 `.claude/settings.json` enabling the headsign plugin, deliberately. Working on
-headsign means running the CLI you are editing — `node plugin/dist/headsign.mjs`,
-built from `src/` — against this repository's own workflows in `.headsign/`.
-Enabling the released plugin here would put the previous version in the driver's
-seat while the next one is being written, and every surprise would then have two
-candidate causes: the change just made, or the copy running the gate. That is the
-distinction between a project that *uses* headsign and the project that *is*
-headsign. The first wants a pinned, released version, the same one for everyone,
-and everything above applies to it. For the second, the absence of the file is
-the setting.
+headsign means running the CLI you are editing — `node plugin/dist/headsign.mjs`, built from
+`src/` — against this repository's own workflows in `.headsign/`.
+Enabling the released plugin here would put the previous version in the
+driver's seat while the next one is being written. Every surprise would then
+have two candidate causes: the change just made, or the copy running the
+gate. That is the distinction between a project that *uses* headsign and
+the project that *is* headsign. The first wants a pinned, released version,
+the same one for everyone, and everything above applies to it. For the
+second, the absence of the file is the setting.
 
 ## Using without the plugin
 
-The plugin is just one way headsign ships, packaged for Claude Code. The
-tool itself is the CLI: gate judgment, state, `PENDING`, locking, logging
-all live in it, and it works from any agent — or by hand at a terminal. The
-plugin adds exactly two things on top: the `workflow` skill and the
-stop-boundary hook backstop. Both have plugin-free equivalents below.
+The plugin is one headsign package for Claude Code. The CLI provides gate
+judgment, state, `PENDING`, locking, and logging. You can use the CLI from
+any agent or a terminal. The plugin adds exactly two things: the `workflow`
+skill and the stop-boundary hook backstop. Both have plugin-free equivalents
+below.
 
 **Install the CLI.** The bundle is committed, so there is nothing to build:
 
@@ -187,29 +178,29 @@ npm install -D headsign
 npx headsign --help
 ```
 
-**Teach your agent the discipline.** The skill is plain instructions, not
-machinery. For Cursor, a custom harness, or a `CLAUDE.md`, this one rule
-carries most of it:
+**Teach your agent the discipline.** The skill provides instructions, not
+machinery. This one rule carries most of the discipline for Cursor, a custom
+harness, or a `CLAUDE.md`:
 
-> When you have done work on the current phase, run `npx headsign next` and
-> obey the first line of the answer. To look without judging, run
-> `npx headsign status`. Never end the run on anything but `COMPLETE`; to
-> stop deliberately, run `npx headsign abort <reason>`.
+> After you work on the current phase, run `npx headsign next`. Obey the
+> first line of the answer. To look without judging, run
+> `npx headsign status`. Never end the run on anything but `COMPLETE`. To stop
+> deliberately, run `npx headsign abort <reason>`.
 
 The full discipline is in
 [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md). Copy
-what you need into your agent's rules, or install it as a standalone skill
-with the GitHub CLI (a preview `gh` feature that lets you pick which agent
-to install into):
+the parts you need into your agent's rules. You can also install it as a
+standalone skill with the GitHub CLI. This preview `gh` feature lets you
+select the agent for the installation:
 
 ```
 gh skill install meganemura/headsign workflow
 ```
 
-Claude Code users can also drop it into `.claude/skills/` as a project
-skill. A skill obtained any of these ways runs outside the plugin and can't
-find its bundled CLI, so install the package as above and it falls back to
-`npx headsign`.
+Claude Code users can also put it in `.claude/skills/` as a project skill.
+A skill obtained through any of these methods runs outside the plugin. It
+cannot find the bundled CLI. Install the package as described above, and the
+skill falls back to `npx headsign`.
 
 **Optional: the backstop without the plugin.** Add this to
 `.claude/settings.json`:
@@ -225,29 +216,31 @@ find its bundled CLI, so install the package as above and it falls back to
 } }
 ```
 
-`Stop` covers the session itself; `SubagentStop` covers an agent the
-session delegated the run to (see [Multiple sessions](#multiple-sessions)).
-Register just the first if you never delegate a run: with no `headsign
-claim` in play, the second never acts.
+`Stop` covers the session. `SubagentStop` covers an agent to which the
+session delegated the run (see [Multiple sessions](#multiple-sessions)).
+Register only the first hook if you never delegate a run. Without a
+`headsign claim`, the second hook never acts.
 
-Each line looks for the project-local install first, then for one on
-`PATH`, then for `node` — and **exits 0 without output the moment one of
-those is missing** — so the same `settings.json` is safe in a checkout
-where headsign was never installed, and safe again after you uninstall it.
-The interpreter is checked separately because finding the CLI is not the
-same as being able to run it: `node_modules/.bin/headsign` is a symlink to
-a `#!/usr/bin/env node` script, so on a machine where node comes from a
-version manager whose shim only an interactive shell sets up, it is present,
-executable, and still exits 127. The plugin's own hooks carry the same
-guard, for the same reason (see
-[ADR-0005](adr/0005-distribution-and-toolchain.md)); the trade both accept
-is that a missing CLI takes the backstop out silently, and the run then
-relies on the agent's own `headsign next` calls. `exec` is what carries the
-hook's exit 2 back out to Claude Code, so keep it.
+Each line looks for the project-local installation first, then for one on
+`PATH`, then for `node`. The line **exits 0 without output the moment
+one of those is missing**. Thus, the same `settings.json` is safe when
+headsign was never installed and after you uninstall it.
+
+The hook checks the interpreter separately because finding the CLI does not
+mean that the hook can run it. `node_modules/.bin/headsign` is a symlink to
+a `#!/usr/bin/env node` script. A version manager can provide node through a
+shim that only an interactive shell configures. In that case, the script is
+present and executable, but it still exits 127.
+
+The plugin's hooks use this guard for the same reason (see
+[ADR-0005](adr/0005-distribution-and-toolchain.md)). Both accept that a
+missing CLI silently removes the backstop. The run then relies on the
+agent's own `headsign next` calls. `exec` carries the hook's exit 2 back to
+Claude Code, so keep it.
 
 ## Writing a workflow
 
-A workflow is one YAML file, committed to your repository:
+A workflow is one YAML file that you commit to your repository:
 
 ```yaml
 # .headsign/workflow.yaml
@@ -295,250 +288,260 @@ limits:
   max_total_iterations: 20
 ```
 
-The `run:` commands above are examples. Replace `bundle exec rspec` with whatever your project actually uses (`npm test`, `pytest`, `go test ./...`, …); a check is just a shell command judged by its exit code.
+The `run:` commands above are examples. Replace `bundle exec rspec` with the
+command that your project uses (`npm test`, `pytest`, `go test ./...`, …).
+A check is a shell command that headsign judges by its exit code.
 
-> **Trust:** a workflow's `run:` commands are shell that `headsign next` executes on your machine, exactly like a `Makefile` target or an npm `postinstall` script. Treat a `.headsign/workflow.yaml` from a repository you didn't write as you would any other executable code in it: read it before running `headsign start` or `headsign next`, and don't run headsign in a repository you don't trust. The same goes for `.headsign/state.json` and `.headsign/lock`: a cloned repository can contain a committed state file or lock, so a `.headsign/` you didn't create is untrusted input, just like the workflow. The same holds on a team: a change to `.headsign/` arrives on a teammate's PR and runs automatically in your loop, so weigh it as heavily as a change to CI configuration.
+> **Trust:** a workflow's `run:` commands are shell commands.
+> `headsign next` executes them on your machine. This behavior matches
+> a `Makefile` target or an npm `postinstall` script. Treat a
+> `.headsign/workflow.yaml` from a repository you did not write as
+> executable code. Read it before you run
+> `headsign start` or `headsign next`. Do not run headsign in a repository
+> that you do not trust. Apply the same care to `.headsign/state.json` and
+> `.headsign/lock`. A cloned repository can contain a committed state file
+> or lock. Therefore, treat a `.headsign/` you did not create as
+> untrusted input, like the workflow. This limit also applies to a team.
+> A change to `.headsign/` arrives in a teammate's PR and runs automatically
+> in your loop. Give it the same weight as a change to CI configuration.
 
-Then ask Claude to start the workflow. It runs `headsign start`, works the
-phase, and keeps asking `headsign next` until the answer is `COMPLETE` — or
-`ESCALATE`, which means the decision comes back to you.
+Then ask Claude to start the workflow. Claude runs `headsign start` and
+works on the phase. It continues to call `headsign next` until the answer is
+`COMPLETE`, or until `ESCALATE` returns the decision to you.
 
-Ready-made workflows for several roles — TDD features, bug fixing, docs,
-releases — live in [example.headsign/](../example.headsign/). They are
-worth reading against a workflow you have drafted yourself, to see how a
+Ready-made workflows for several roles live in
+[example.headsign/](../example.headsign/). The roles include TDD features,
+bug fixing, docs, and releases.
+Compare them with a workflow you drafted to see how a
 finished one handles the same phase.
 
 ### Run state, and where headsign looks for it
 
-Run state lives in `.headsign/state.json` (auto-gitignored). Because all
-state is external, the loop survives context compaction: recovery is just
-`headsign next`.
+Run state lives in `.headsign/state.json` (auto-gitignored). All state is
+external, so the loop survives context compaction. Run `headsign next` to
+recover.
 
 `headsign start`, `next`, and `abort` resolve `.headsign/` in the current
-directory only — they never search parent directories — so run them from the
-repo or git-worktree root; each worktree then keeps its own independent run.
-The exceptions are the stop-boundary hooks, which walk up to find the run's
-`.headsign/` (bounded by the worktree root) so the backstop still fires when
-the turn ended in a subdirectory. That walk only goes up, and it stops at the
-first enclosing `.git` — or at the filesystem root if there is none. From a
-directory *above* the run — a monorepo root, say — the hook won't find it.
-Nor will it from *another checkout entirely* — a sibling clone, a docs
-repository — where the walk stops at that repository's root.
+directory only. They never search parent directories. Run them from the repo
+or git-worktree root. Each worktree then keeps its own independent run. The
+stop-boundary hooks are the exceptions. They walk up to find the run's
+`.headsign/`, within the worktree root. Thus, the backstop still fires when
+a turn ends in a subdirectory. The walk only goes up. It stops at the first
+enclosing `.git`, or at the filesystem root if none exists. The hook cannot
+find a run from a directory *above* it, such as a monorepo root. It also
+cannot find a run from *another checkout entirely*, such as a sibling clone
+or a docs repository. The walk stops at that repository's root.
 
-When that first walk finds nothing, the hook tries once more, the same
-bounded way, from Claude Code's `CLAUDE_PROJECT_DIR` — the project root the
-session was given, independent of where its cwd has since wandered. Find a
-run there that this session last moved — or that nobody has moved yet — and
-the hook writes one line and lets the turn end, unheld but not silent:
-`.headsign/log` gets an `unheld` line marked `by=CLAUDE_PROJECT_DIR`, and
-`headsign status`'s `last stop:` line names the same reason — worded
-differently from what Claude Code's own already-continuing flag produces.
-This closes the ordinary shape of the problem: a session that `cd`'d, or was
-started, outside the run's own git boundary while still inside the project
-Claude Code told it about.
+If the first walk finds nothing, the hook tries once more from Claude Code's
+`CLAUDE_PROJECT_DIR`. The second walk has the same bounds. This variable
+names the session's project root, regardless of where its cwd has moved. The
+hook writes one line and lets the turn end only for a run that this session
+last moved, or that nobody has moved yet. The turn is unheld but not
+silent. `.headsign/log` gets an `unheld`
+line marked `by=CLAUDE_PROJECT_DIR`. The `last stop:` line from
+`headsign status` names the same reason. Its wording differs from Claude
+Code's own already-continuing flag. This fallback handles a common problem.
+The session started outside the run's git boundary or used `cd` to leave it.
+However, it remained inside the project that Claude Code supplied.
 
-A run that somebody *else* last moved is passed over here in the same
-silence the first walk would have given it, and for the same reason: that
-line is a record of a turn end, and a run has no use for one from a session
-that never drove it. It is the second of the two `unheld` lines
-[ADR-0027](adr/0027-recording-who-drove-a-run.md) stops handing to
-bystanders, and losing it leaves this shape looking exactly like the fully
-silent one below — `last moved:` in `headsign status` is what tells them
-apart.
+The hook silently passes over a run that somebody *else* last moved. The
+first walk would also pass over that run. An `unheld` line records a turn
+end. A run has no use for a line from a session that never drove it.
+[ADR-0027](adr/0027-recording-who-drove-a-run.md) stops giving bystanders
+two types of `unheld` lines. This line is the second type. Without it, this
+case looks like the fully silent case below. The `last moved:` line in
+`headsign status` distinguishes them.
 
-It does not close all of them. `CLAUDE_PROJECT_DIR` names a root, and this
-second walk, like the first, only goes up from it — so a run that is not on
-the path upward from that root stays unreached, and the hook writes nothing
-at all: no log line, no `last stop:`. That covers a run *below* the root (a
-package in a monorepo) and one *beside* it (a linked worktree added outside
-the checkout, `git worktree add ../wt-feature`) alike: neither is upward.
-The same silence covers a session whose own project genuinely has no run to
-find, wherever it is standing. And one shape was never silent to begin with,
-and this change leaves it exactly as it was: if the checkout a session
-drifted into runs its *own* headsign workflow, the first walk finds that run
-and nudges about it — correctly formatted, and about the wrong run.
-`headsign status` cannot tell the two apart for you; only knowing where the
-session actually was standing can.
+The fallback does not handle every case. `CLAUDE_PROJECT_DIR` names a root,
+and the second walk only goes up from it. A run outside that upward path
+remains unreached. The hook writes nothing at all: no log line and no
+`last stop:`. This limit applies to a run *below* the root, such as a
+package in a monorepo. It also applies to a run *beside* the root. One
+example is a linked worktree outside the checkout, created with
+`git worktree add ../wt-feature`. Neither run is upward from the root. The
+hook also stays silent when the session's project has no run, regardless of
+the session's location. Another case was never silent, and this change does
+not alter it. The session can enter a checkout that runs its *own* headsign
+workflow. The first walk then finds that run and gives a correctly formatted
+nudge about the wrong run. `headsign status` cannot distinguish the two
+runs. You must know where the session was standing.
 
-How a session comes to be standing there at all is narrower than it first
-looks, and worth knowing because it tells you whether this can happen to you.
-The `cwd` in the hook's payload does follow a `cd` made during a turn —
-measured, 2026-08-01 — but Claude Code refuses a `cd` outside the session's
-**allowed working directories**, naming them in the refusal. So a session
-confined to one directory cannot drift out of it. Reaching another checkout
-takes a session that has more than one: a second directory added at startup
-or later, which is the ordinary arrangement when one session works across a
-project and, say, a notes repository beside it. Whether that turn's own
-evidence tells the story on its own now depends on `CLAUDE_PROJECT_DIR`:
-when it reached the run, `last stop:` says so; when it did not, there is
-still nothing to tell it apart from a backstop that was never installed —
-though `headsign status` in the run's own directory still shows the stop
-before it, and a single nudge anywhere in the run proves the hook is wired.
-Keep the session at the workflow's directory or below, and if a turn ended
-unheld and nothing explains it, ask where the session was standing when it
-ended, and check `last stop:` for which of the two the hook is naming.
-Why this is documented rather than signalled, and why the fallback narrows
-this branch rather than closing it, is in
-[ADR-0006](adr/0006-stop-hook-backstop.md)'s bounded-walk-up section and
-[ADR-0026](adr/0026-a-second-place-to-look.md).
+Only some sessions can reach these locations. The `cwd` in the hook's
+payload follows a `cd` made during a turn. This behavior was measured on
+2026-08-01. Claude Code refuses a `cd` outside the session's **allowed
+working directories**. The refusal names those directories. Thus, a session
+confined to one directory cannot leave it. A session needs more than one
+directory to reach another checkout. The user can add the second directory
+at startup or later. This setup commonly lets one session work across a
+project and a nearby notes repository. `CLAUDE_PROJECT_DIR` determines
+whether the turn's evidence explains what happened. If the fallback reached
+the run, `last stop:` says so. Otherwise, no evidence distinguishes this
+case from an uninstalled backstop. However, `headsign status` in the run's
+directory still shows the preceding stop. One nudge anywhere in the run
+proves that the hook is wired. Keep the session in the workflow's directory
+or below. If a turn ends unheld without an explanation, find where the
+session stood when it ended. Then check which case `last stop:` names. The
+fallback has limited scope. The reasons for this scope and for documenting
+the behavior are in [ADR-0006](adr/0006-stop-hook-backstop.md)'s
+bounded-walk-up section and [ADR-0026](adr/0026-a-second-place-to-look.md).
 
 ### What a run folds away, and what outlives it
 
-A run is bounded, and knowing where those bounds fall is what lets a workflow
-author decide which side of one to put something on.
+A run has bounds. A workflow author must know these bounds when choosing
+where to store data.
 
 **Folded away when `start` runs.** `.headsign/tmp/` is run-scoped scratch:
-`start` deletes it whole and recreates it empty, so nothing a previous run left
-there can be read as this run's. A phase's `clear:` folds its own listed files
-away again on every entry. Nothing else resets either one. That makes `tmp/`
-the place for anything that must be new each run — an identifier minted by the
-entry phase is new in every run without the workflow having to arrange it.
+`start` deletes all of it and creates an empty directory. This run cannot
+read anything that a previous run left there. A phase's `clear:` removes its
+listed files on every entry. Nothing else resets either location. Use `tmp/`
+for anything that must be new in each run. For example, the entry phase can
+create an identifier. The workflow does not need to make that identifier new
+for each run.
 
-**Kept, and growing.** Everything a workflow writes outside `tmp/` outlives the
-run that wrote it; that is what makes it an artifact rather than scratch.
-`.headsign/log` is kept too, and only ever appended to — `start` does not clear
-it, so a new run's first line lands after the old run's last one.
+**Kept, and growing.** Everything that a workflow writes outside `tmp/`
+outlives the run that wrote it. This persistence makes the data an artifact
+rather than scratch. `.headsign/log` also persists, and headsign only
+appends to it. `start` does not clear it. Thus, a new run's first line
+follows the old run's last line.
 
 **Per run, not per tree.** `limits.max_total_iterations` counts this run's
-laps: `start` sets the count to zero. Starting a second run over the same tree
-therefore gives that second run a fresh allowance, and a phase's
-`max_attempts` starts over with it. **Running a workflow over one tree many
-times, one after another, is what headsign is written for; running two at once
-is not.** Those are separate answers and it is worth keeping them apart. The
-concurrent side is decided and enforced: `start` will not overwrite a
-`running` state — it exits 3 and tells you to `next` or `abort` first — while a
-run that has ended is overwritten by the next `start` without complaint. The
-cumulative side is not bounded at all, and that is a decision rather than an
-omission: there is no ceiling that counts across runs, and nothing limits how
-many times you may start one. So a ceiling bounds one walk, never the total
-work done in a directory.
+laps. `start` sets the count to zero. A second run over the same tree gets a
+fresh allowance. A phase's `max_attempts` also starts over. **headsign
+supports many sequential workflow runs over one tree. It does not support
+two concurrent runs over one tree.** headsign enforces the limit on
+concurrent runs. `start` will not overwrite a `running` state. It exits 3
+and tells you to use `next` or `abort` first. The next `start` overwrites an
+ended run without complaint. No cumulative bound applies across runs. This
+behavior is a decision rather than an omission. No ceiling counts across
+runs, and nothing limits how many times you can start one. A ceiling bounds
+one walk only. It never bounds all work in a directory.
 
-If what you need bounded is the whole job rather than one walk, that bound has
-to be something the workflow itself counts — a check reading a tally kept
-where a run cannot fold it away, which means outside `.headsign/tmp/`. And if
-the work arrives in instalments, the choice between starting again and looping
-inside one run comes down to one question: **does the next lap need to see the
-previous lap's attempt counts and working files?** If it does, the loop is the
-form that keeps them — one budget, one log, one set of round numbers. If each
-instalment can be judged on its own, starting again carries less state.
+To bound the whole job, make the workflow count it. A check can read a tally
+from a location that the run cannot remove. The tally must be outside
+`.headsign/tmp/`. For work that arrives in instalments, ask one question:
+**does the next lap need to see the previous lap's attempt counts and
+working files?** If yes, use a loop inside one run. The loop keeps one
+budget, one log, and one set of round numbers. If each instalment can be
+judged independently, start again to carry less state.
 
-**What `abort` costs.** It ends the run: the phase it was standing on, the
-attempt counts, and the position in the graph all go, and no later command
-resumes it. It costs nothing else. `state.json` is gitignored, so ending a run
-leaves the repository's tracked files exactly as they were; the reason typed
-into `headsign abort <reason>` is appended to `.headsign/log` and outlives the
-run; artifacts already written are untouched, and committed ones are safe by
-definition. A later `headsign start` rewrites `state.json` whole and begins at
-the entry phase — it inherits nothing from the aborted run except that log.
-So the question to ask before aborting is only ever *how much walking will it
-cost to get back here*, and the answer is in how expensive the workflow's
-early gates are to re-pass ([the contract](#the-contract) has the reasoning
-about keeping them cheap).
+**What `abort` costs.** It ends the run. The current phase, attempt counts,
+and graph position all disappear. No later command resumes the run. `abort`
+costs nothing else. `state.json` is gitignored, so the repository's tracked
+files stay exactly as they were. headsign appends the reason from
+`headsign abort <reason>` to `.headsign/log`. The reason outlives the run.
+headsign leaves existing artifacts untouched, and committed artifacts are
+safe by definition. A later `headsign start` rewrites all of `state.json`
+and begins at the entry phase. It inherits only the log from the aborted
+run. Before you abort, ask *how much walking will it cost to get back here*.
+The answer depends on the cost of passing the workflow's early gates again.
+[The contract](#the-contract) explains why you should keep these gates
+cheap.
 
 ### One worktree, one run
 
-**One worktree, one run** is the whole of headsign's worktree support, and it
-holds by construction: a linked worktree's `state.json`, lock, and log all
-live in that worktree's own `.headsign/`, and headsign writes nothing under
-the shared `.git` directory — so two worktrees of the same repository can each
-drive a loop, at their own phase, without either one disturbing the other.
-Anything past that is out of scope: worktrees never share run state, and
-headsign neither coordinates the runs in them nor aggregates them into one
-view. A run belongs to the directory it was started in.
+**One worktree, one run** defines all of headsign's worktree support. A
+linked worktree keeps its `state.json`, lock, and log in its own
+`.headsign/`. headsign writes nothing under the shared `.git` directory.
+Thus, two worktrees from one repository can each drive a loop at their own
+phase. Neither loop disturbs the other. Everything beyond this behavior is
+out of scope. Worktrees never share run state. headsign does not coordinate
+their runs or combine them into one view. A run belongs to its starting
+directory.
 
 ### Fanning out, and joining back
 
-That property is enough to build a fan-out on top of headsign without
-headsign gaining a single feature.
-[example.headsign/fan-out.yaml](../example.headsign/fan-out.yaml) writes the
-shape out: a `split` phase whose `description` tells the agent to cut the
-work into independent items, `git worktree add` a worktree per item, and run
-`headsign start` inside each one; a `gather` phase that waits for those
-child runs; and an `integrate` phase that merges the results and removes the
-worktrees.
+You can use this property to build a fan-out on top of headsign, and
+headsign gains no feature for it.
+[example.headsign/fan-out.yaml](../example.headsign/fan-out.yaml) shows the
+structure. A `split` phase has a `description` that tells the agent to
+divide the work into independent items. The agent uses `git worktree add` to
+create one worktree for each item. It runs `headsign start` inside each
+worktree. A `gather` phase waits for those child runs. An `integrate` phase
+merges the results and removes the worktrees.
 
-Read closely what headsign does there, because it is less than it looks. It
-does not start the child runs, does not create their worktrees, and does not
-wait for them — it never learns they exist. The fan-out happens because a
-phase's `description` asked the agent for it, which is the same kind of
-instruction as "use the `/foo` skill" or "have a reviewer subagent check it"
-([Instructions vs. the gate](#instructions-vs-the-gate)): the description is
-the plan, and only the gate is enforced. The parent run is still doing
-exactly one phase at a time — the parallelism lives one layer below it,
-where headsign cannot see it, and the parent's attempts and iteration
-ceiling count the parent's own gate evaluations only. Making the worktrees
-and taking them away again is the agent's job from beginning to end; not
-*managing* worktrees isn't the same as not working in one.
+headsign does less here than the structure suggests. It does not start the
+child runs, create their worktrees, or wait for them. headsign never learns
+that they exist. The fan-out occurs because the phase's `description` tells
+the agent to create it. This description is an instruction like "use the
+`/foo` skill" or "have a reviewer subagent check it", as described in
+[Instructions vs. the gate](#instructions-vs-the-gate). The description is
+the plan, and headsign enforces only the gate. The parent run still performs
+exactly one phase at a time. Parallel work occurs one layer below it, where
+headsign cannot see it. Only the parent's gate evaluations count toward the
+parent's attempts and iteration ceiling. The agent creates and removes the
+worktrees from the beginning to the end. headsign can work in a
+worktree without *managing* worktrees.
 
-What headsign adds is the join, and only the join: one shell command that
-answers "are they all in?". `gather` asks that as two separate questions,
-which is the part worth copying. Its `ready:` asks whether every child has
-reached a terminal state — while any of them is still `RUNNING`, `next`
-answers `PENDING` and spends no attempt, so waiting costs nothing and is not
-a failure. Its gate then asks whether every child is `COMPLETE`, and
-`on_fail: escalate` hands the run to a person when one of them isn't,
-because a child that escalated or was aborted is already somebody's
-decision. Both read the children with `headsign status`, whose first line is
-the documented `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` contract,
-rather than reading a child's `state.json`.
+headsign adds only the join. One shell command answers "are they all in?".
+`gather` asks two separate questions, which is the part to copy. Its
+`ready:` asks whether every child has reached a terminal state. While any
+child is still `RUNNING`, `next` answers `PENDING` and spends no attempt.
+Waiting costs nothing and does not indicate a failure. The gate then asks
+whether every child is `COMPLETE`. If one is not, `on_fail: escalate` gives
+the run to a person. A child already represents somebody's decision if it
+escalated or was aborted. Both checks use `headsign status` to read the
+children. Its first
+line provides the documented `RUNNING` / `COMPLETE` / `ESCALATED` /
+`ABORTED` contract. The checks do not read a child's `state.json`.
 
-So the joining strategies orchestrators hand you as modes — all of them, any
-of them, a quorum of N — are not settings headsign is missing. They are that
-same loop with the test moved, and `fan-out.yaml` writes all three out in
-its comments. It is also why
+Orchestrators provide joining modes for all children, any child, or a quorum
+of N. headsign does not need settings for these strategies. Each strategy
+uses this loop with a different test. The comments in `fan-out.yaml` show
+all three strategies. This is also why
 [ADR-0003](adr/0003-workflow-yaml-vocabulary.md)'s refusal of `needs:` and
-DAG parallelism doesn't need revisiting: what the DAG would have expressed
-is expressible one layer up, and keeping it up there is what stops headsign
-from growing into the orchestrator it declines to be.
+DAG parallelism still stands. One layer above headsign expresses what the
+DAG would express, and keeping that expression there stops headsign from
+growing into the orchestrator it declines to be.
 
 ## Instructions vs. the gate
 
-A phase's `description` is where you write what the agent should do in that
-phase — including "use the `/foo` skill" or "have a read-only reviewer
-subagent check it"; headsign hands it to Claude verbatim. A workflow
-*choreographs* skills and subagent work into a gated sequence — it doesn't
-*orchestrate* them, and it never forces which skill the agent uses. Only the
-gate is enforced: the checks' exit codes are the sole thing that verifies the
-result. To require a skill's use, gate its output (e.g. `grep` the file that
-skill produces). A review/soft-gate phase should list its verdict file (e.g.
-`.headsign/tmp/verdict`) under that phase's `clear:` so a verdict left over
-from a previous pass can't be mistaken for the current one — headsign
-deletes it on entry, and Claude writes a fresh one after the read-only
+A phase's `description` tells the agent what to do in that
+phase. It can include "use the `/foo` skill" or "have a read-only
+reviewer subagent check it". headsign gives it to Claude without changes.
+A workflow *choreographs* skills and subagent work into a gated sequence.
+It does not *orchestrate* them, and it never forces which skill the agent
+uses. headsign
+enforces only the gate. The checks' exit codes are the only verification
+of the result. To require a skill, gate its output (e.g. `grep` the file
+that skill produces). A review/soft-gate phase should list its verdict file
+(e.g. `.headsign/tmp/verdict`) under that phase's `clear:`. This prevents a
+verdict from a previous pass from becoming the current verdict. headsign
+deletes the file on entry. Claude writes a new file after the read-only
 reviewer subagent reports its verdict. **`clear:` removes files, not
-directories.** An entry that turns out to be a directory is left where it
-is and named on entry by a `not cleared:` line that says so, so a phase
-that expected a tree to be emptied finds that out the first time it is
-entered rather than several runs later. `headsign validate` says the same
-thing earlier, as a warning, for an entry written with a trailing slash —
-the one form of the mistake `validate` can spot without reading a
-filesystem. A workflow that does want a directory gone can remove it as
-part of the phase's work, where the intent can be written down, rather than
-in a field that would delete it silently every time the phase is entered.
-And when the judgment itself must live outside the working agent's hands,
-make the check the judge — e.g.
+directories.** An entry that turns out to be a directory stays where it is.
+On entry, a `not cleared:` line names it and says so. Thus, a
+phase that expected an empty tree learns about the directory the first time
+it enters. The phase does not discover it several runs later.
+`headsign validate` gives an earlier warning for an entry with a trailing
+slash. This
+is the only form of the mistake that `validate` can find without reading a
+filesystem. A workflow can remove a directory as part of the phase's work.
+The workflow can state this intent there. It does not use a field that
+silently deletes the directory each time the phase starts. When judgment
+must stay outside the working agent's control, make the check the judge.
+For example,
 `claude -p '… Reply exactly APPROVED or REJECTED.' | grep -qx APPROVED`
-keeps the transition deterministic while the pen changes hands; trade-offs
-in [ADR-0007](adr/0007-verdict-authorship.md).
+keeps the transition deterministic while the pen changes hands.
+See the trade-offs in [ADR-0007](adr/0007-verdict-authorship.md).
 
 A phase is only as meaningful as what its gate can check in shell. A test
-gate proves nothing broke, not that the feature is done — judging "done" is
-what a review gate is for, which is why the example workflow above carries
-both. Work a shell command can't judge — a design call, a UX
-decision — needs either slicing into units a check can verify, or a
-review-style soft gate to carry it. Size your phases to what the gate can
-actually check, not to how the work naturally breaks down. And a review phase
-is the agent's own review discipline, not a substitute for a human reviewing
-the resulting PR.
+gate proves that nothing broke. It does not prove that the feature is done.
+A review gate judges whether the feature is done. The example workflow uses
+both gates. A shell command cannot judge a design call or a UX decision.
+Split such work into units that a check can verify, or use a review-style
+soft gate. Size each phase to what the gate can check. Do not size it to the
+natural divisions in the work. A review phase is the agent's own review
+discipline. It does not replace a human review of the resulting PR.
 
 ## How a run flows
 
-Three roles turn the loop: the agent (Claude) does the work and drives;
-**headsign** runs the current phase's gate and answers with a token; the
-**checks** are ordinary shell, so the verdict is deterministic. Each turn,
-Claude obeys the token — `RETRY` means fix the reported failure and ask
-again, `ADVANCE` means move to the printed phase, a fail-route (`gate failed
-→ routed to …`) sends the work back, and `COMPLETE` ends the run. One pass
-through the example workflow above:
+Three roles run the loop. The agent (Claude) does the work and drives.
+**headsign** runs the current phase's gate and returns a token. The
+**checks** use ordinary shell, so the verdict is deterministic. Each turn,
+Claude obeys the token. `RETRY` means fix the reported failure and ask
+again. `ADVANCE` means move to the printed phase. A fail-route
+(`gate failed → routed to …`) sends the work back. `COMPLETE` ends the run.
+One pass through the example workflow follows:
 
 ```mermaid
 sequenceDiagram
@@ -576,14 +579,14 @@ sequenceDiagram
     H-->>C: COMPLETE
 ```
 
-Every arrow from headsign is driven by a shell exit code, never the LLM's
-own say-so. The stop-boundary hooks (not shown) are the backstop: if the
-run's driver tries to stop while the run is `running`, it's pointed back to
-`headsign next`.
+A shell exit code controls every arrow from headsign, never the LLM's own
+say-so. The stop-boundary
+hooks (not shown) provide the backstop. If the driver tries to stop while
+the run is `running`, the hooks direct it to `headsign next`.
 
 ## The contract
 
-Six commands; a driving session routinely uses one:
+The contract has six commands. A driving session routinely uses one:
 
 | Command | Role |
 |---|---|
@@ -594,62 +597,63 @@ Six commands; a driving session routinely uses one:
 | `headsign status` | read-only view of the current run, for a session that isn't driving it — see [Multiple sessions](#multiple-sessions) |
 | `headsign claim` | hand driver ownership to a delegated agent via the `SubagentStop` hook — for delegating who drives a run; see [Multiple sessions](#multiple-sessions) |
 
-Two more commands sit outside that contract, because they answer about the tool
-rather than about a run: `headsign version` prints the version of the copy that
-is running and nothing else (`--version` prints the same), and `headsign help`
-prints the usage text (`-h`, `--help`, and a bare `headsign` print the same).
-Both always exit 0 — neither is ever a verdict, so neither can be mistaken for
-one.
+Two more commands sit outside that contract. They give information about the
+tool, not a run. `headsign version` prints the running copy's version and
+nothing else. `--version` prints the same information. `headsign help`
+prints the usage text. `-h`, `--help`, and a bare `headsign` print the same
+text.
+Both commands always exit 0. Neither is ever a verdict, so neither can be
+mistaken for one.
 
 Multiple workflows can live as separate files under `.headsign/` (one
-workflow per file); pick one with `headsign start <name>` (→
-`.headsign/<name>.yaml`), or pass `--workflow <path>` for an explicit path.
-Ready-made examples for several roles — TDD features, bug fixing, docs,
-releases — live in [example.headsign/](../example.headsign/). This
-repository runs headsign on itself from its own `.headsign/`, kept separate
-from the examples because those workflows read this project's paths and
-tooling.
+workflow per file). Select one with `headsign start <name>` (→
+`.headsign/<name>.yaml`). You can also pass `--workflow <path>` for an
+explicit path. Ready-made examples cover several roles: TDD features, bug
+fixing, docs, and releases. They live in
+[example.headsign/](../example.headsign/). This repository runs headsign on
+itself from its own `.headsign/`. That directory is separate from the
+examples because its workflows use this project's paths and tools.
 
 A bare `headsign validate` (no name, no `--workflow`) checks whichever
-workflow the current run is actually using: if `.headsign/state.json`
-exists — whatever its status — it validates that run's own
-`workflow_path`, not just a fixed default file, so validating a run
-started with `headsign start <name>` checks the right `.headsign/<name>.yaml`
-without having to repeat the name. With no run present, it falls back to
-`.headsign/workflow.yaml`, as before. An explicit `<name>` or
-`--workflow <path>` always wins over both.
+workflow the current run uses. This rule applies when
+`.headsign/state.json` exists, regardless of its status. The command
+validates that run's own `workflow_path`, not a fixed default file. Thus, validating a run
+started with `headsign start <name>` checks the correct
+`.headsign/<name>.yaml` without requiring the name again. With no run
+present, the command uses `.headsign/workflow.yaml`, as before. An explicit
+`<name>` or `--workflow <path>` always overrides both choices.
 
-`validate` separates errors from **warnings**: an error is a workflow
-headsign refuses to run (exit 3), while a warning is printed to stderr and
-still exits 0. A phase that no route reaches from `entry` is a warning, so a
-half-written phase or an edge you commented out for a minute doesn't stop
-the run you were in the middle of. `start` prints the warnings too, once,
-while the person who wrote the file is still there; `next` doesn't, because
-it is asked every turn.
+`validate` separates errors from **warnings**. An error identifies a
+workflow that headsign refuses to run (exit 3). A warning goes to stderr,
+and the command still exits 0. An unreachable phase from `entry` causes a
+warning.
+Thus, a half-written phase or a temporarily disabled edge does not stop the
+current run. `start` also prints each warning once, while the file's author
+is still present. `next` does not print the warnings because the driver asks
+it every turn.
 
-The other warning is about stopping rather than reaching. If a set of phases
-can cycle on **pass** edges alone and no `limits.max_total_iterations` is
-declared, nothing bounds the run: `max_attempts` counts a phase's failures
-since it last passed, so a loop that turns on passes clears it every lap. A
-sweep like [example.headsign/sweep.yaml](../example.headsign/sweep.yaml) is
-exactly that shape, which is why it declares a ceiling. Cycles that close
-through a *failure* edge are not warned about — the failing phase's
-`max_attempts` really does bound those
+The other warning concerns how a run stops. When a phase set can cycle on
+**pass** edges alone and no `limits.max_total_iterations` is declared,
+nothing bounds the run. `max_attempts` counts a phase's failures since its last pass. A
+loop on pass edges clears that count every lap. A sweep such as
+[example.headsign/sweep.yaml](../example.headsign/sweep.yaml) has this form,
+so it declares a ceiling. headsign does not warn about cycles that close
+through a *failure* edge. The failing phase's `max_attempts` bounds those
 ([ADR-0022](adr/0022-validate-checks-that-a-run-can-end.md)).
 
-A key the schema doesn't define is an error, at every level of the file. A
-phase declaring `max_atempts: 3` stops with `phase 'implement': unknown key
-'max_atempts' (allowed: description, clear, ready, gate, on_pass, on_fail,
-max_attempts)` rather than running a phase that has no attempt budget at
-all — the typo would otherwise have been skipped in silence. The message
-lists the keys that level accepts and offers no did-you-mean guess. The same
-thinking governs `version:`, which must be exactly `0.1`: while the schema
-is pre-1.0 it keeps changing, so a file written for an older one is stopped
-until its fields have been read against the current schema, rather than
-loaded with whatever still happens to fit
+A key that the schema does not define is an error at every file level. A
+phase can declare `max_atempts: 3`. headsign then stops and prints
+`phase 'implement': unknown key 'max_atempts' (allowed: description, clear,
+ready, gate, on_pass, on_fail, max_attempts)`. headsign does not run that
+phase without an attempt budget. Otherwise, it would silently skip the typo. The message lists the keys that the level
+accepts. It gives no did-you-mean guess. The same thinking governs
+`version:`, which must be exactly `0.1`. The pre-1.0 schema keeps
+changing. headsign stops a file written for an older schema until its fields have
+been read against the current schema, rather than loading it with whatever
+still happens to fit
 ([ADR-0015](adr/0015-strict-schema-and-version-0-1.md)).
 
-`next` answers with a machine-readable first line, then instructions:
+`next` prints a machine-readable first line, followed by instructions:
 
 | First line | Exit | Meaning |
 |---|---|---|
@@ -660,8 +664,8 @@ loaded with whatever still happens to fit
 | `ESCALATE <reason>` | 2 | human judgment needed |
 | `ABORT <reason>` | 2 | run was aborted |
 
-**`next` writes progress to stderr while the gate runs.** One line, before the
-first check starts, names how many checks the gate holds. One more line
+**`next` writes progress to stderr while the gate runs.** One line, before
+the first check starts, names how many checks the gate holds. One more line
 follows each check that finishes, naming which way it went:
 
 ```
@@ -672,104 +676,106 @@ follows each check that finishes, naming which way it went:
 ```
 
 The gate stops at the first failure, so at most one line says anything but
-`passed`, and it is the last one. The word is `passed`, `failed`, or `timed
-out` — a check killed at its `timeout:` says so, rather than reading as an
-ordinary failure that happened to take that long.
+`passed`, and that line is last. The word is `passed`, `failed`, or
+`timed out`. A check killed at its `timeout:` uses the last word. It does
+not look like an ordinary failure that took the same time.
 
 **When the elapsed time a line shows has reached half the check's own limit,
-the line names that limit too.** Every check has a limit. The limit is the
-`timeout:` its author wrote, or headsign's default of 120 seconds when they
-wrote none. Below half, the line stays exactly what it is above. At or past
-half, a second number joins it:
+the line names that limit too.** Every check has a limit. The author can set
+the `timeout:`. Otherwise, headsign uses its default of 120 seconds. Below
+half, the line stays exactly as shown. At or past half, it adds a second
+number:
 
 ```
 --- check 5/12 passed: acceptance matrix (60.4s of 120s) ---
 ```
 
 Nothing fails at the half mark, and nothing is bounded by it. The limit is
-the workflow's own `timeout:`; the mark only decides when a duration is
-worth reading against it. The comparison is made on the number the line
-prints, rounded to a tenth of a second, so the rule can be checked against
-the line itself — which also means a check under a very small `timeout:`,
-whose elapsed time rounds to `0s`, stays below the mark however much of its
-limit it really used. A `timed out` line always carries the second
-number. The reason is the fact, not the measurement: a killed check reached
-its limit by definition, and the elapsed time beside it is only a
-measurement, rounded to a tenth of a second. For a `timeout:` under a tenth
-of a second, that rounded elapsed time can be `0s`, below the half mark.
+the workflow's own `timeout:`. The mark only decides when a duration is
+worth reading against that limit. The line rounds the duration to a tenth of a
+second. headsign uses that printed number for the comparison, so readers can
+check the rule from the line. A check can have a very small `timeout:` and
+an elapsed time that rounds to `0s`. That check stays below the mark,
+regardless of how much of its limit it used. A `timed out` line always
+includes the second number. A killed check reached its limit by definition.
+The elapsed time is only a measurement rounded to a tenth of a second. For a
+`timeout:` under a tenth of a second, that elapsed time can be `0s`. The
+value is then below the half mark.
 
-A check that never produced an exit code gets no line: headsign refuses the
-lap on it instead of spending an attempt, and the refusal already names the
-check and the command it could not run. A check the gate never reached — an
-earlier one failed and the loop stopped there — gets none either. No flag
-turns these lines on: the reader who needs them is the one who did not expect
-a slow gate ([ADR-0032](adr/0032-the-gate-says-how-far-it-got.md)).
+A check that produces no exit code gets no line. headsign refuses the lap
+without spending an attempt. The refusal names the check and the command
+that could not run. A check that the gate never reaches also gets no line.
+In that case, an earlier check failed and stopped the loop. No flag enables
+these lines. They serve a reader who did not expect a slow gate
+([ADR-0032](adr/0032-the-gate-says-how-far-it-got.md)).
 
 **A `next` killed inside the gate has spent nothing.** `step()` adds the
-attempt only after the gate returns, so an interrupted lap has written no
-attempt and moved no phase. The lock stays safe too: `acquireLock` replaces a
-lock whose holder process is gone, so a killed `next` leaves nothing to clean
-up.
+attempt only after the gate returns. An interrupted lap writes no attempt
+and moves no phase. The lock also stays safe. `acquireLock` replaces a lock
+when its holder process is gone. Thus, a killed `next` leaves nothing to
+clean up.
 
-**A gate failure that answers `RETRY`, or routes onward through `on_fail`, says
-which of its checks it never reached.** Checks run in order and the gate stops at
-the first failure, so the ones behind it do not run at all — and a lap that
-fails is the lap where the gate examined the least. The block names that:
-`--- 2 of 3 checks ran; 1 not run: deferrals tracked ---`, with the same count in
-`.headsign/log`'s retry and routed-fail lines as `ran=2/3`, so it can be answered
-after the run has ended. Neither appears when the failing check was the last one.
-**A failure that exhausts `max_attempts` is the exception**: it ends the run with
-an `ESCALATE` whose line still carries only its reason, so a phase with
-`max_attempts: 1` never gets this block on stdout. The count and the reached
-index still reach stderr while the gate runs, on that lap like any other. What
-the workflow file is still needed for is narrower: the *names* of the checks
-that never got a turn, since no progress line names one either. This matters
-most in a loop that stops on a failing lap: a check behind the failure may not
-have run in the entire walk, and "it passed" and "it never ran" are otherwise
-the same silence.
+**A gate failure that answers `RETRY`, or routes onward through `on_fail`,
+says which of its checks it never reached.** Checks run in order. The gate
+stops at the first failure, so later checks do not run. A failed lap
+examines the fewest checks. This block names the result:
+`--- 2 of 3 checks ran; 1 not run: deferrals tracked ---`. The retry and
+routed-fail lines in
+`.headsign/log` store the same count as `ran=2/3`. This record keeps the
+answer available after the run ends. Neither form appears when the last
+check fails. **A failure that exhausts `max_attempts` is the exception**. It
+ends the run with an `ESCALATE` line that contains only its reason. Thus, a
+phase with `max_attempts: 1` never gets this block on stdout. The count and
+reached index still go to stderr while the gate runs. This happens on that
+lap as on any other lap. The workflow file is still needed for one narrower thing: the *names* of
+the checks that got no turn. No progress line names such a check. This detail is
+most important when a loop stops on a failed lap. A later check might never
+run during the entire walk. Without the detail, "it passed" and "it never
+ran" produce the same silence.
 
-**A `RETRY` says when it is the same failure again.** From the second identical
-failure onward — same check, same command, same exit code, same output as the
-lap before — the block carries one more line naming how many in a row, and its
-closing advice changes: not "fix the failure above", which assumes the failure
-is one you can fix, but the two readings actually left open. Either something
-did change and this check is not reading it, or nothing changed and the
-question worth answering before spending the rest of the attempts is whether
-this gate can pass at all. Exhaustion says the same thing in its reason, so
-three attempts against a moving target and three against an unchanged one no
-longer arrive in identical words.
+**A `RETRY` says when it is the same failure again.** From the second
+identical failure onward, the block adds a line that gives the streak
+length. An identical failure has the same check, command, exit code, and
+output as the previous lap. The closing advice also changes. It does not
+say "fix the failure above", because the failure might not be fixable. The
+advice gives
+the two remaining explanations. Something changed, but this check does not
+read it. Or nothing changed, so decide whether this gate can pass before you
+spend the remaining attempts. The exhaustion reason says the same
+thing, so three attempts against a moving target and three against an
+unchanged one no longer arrive in identical words.
 
-What none of that claims is that a gate is unpassable. Checks are arbitrary
-shell, so nothing here can decide that — the streak is a fact about what has
-already happened, offered because a gate that cannot pass and a gate you have
-not fixed yet look identical until someone reads the check itself.
+This information does not claim that a gate is unpassable. Checks use
+arbitrary shell, so headsign cannot make that decision. The streak records
+only what already happened. Until someone reads the check, an unpassable
+gate looks like a gate that still needs a fix.
 
-**A passing check's output is discarded.** Only the failing branch keeps output,
-which is why the table above hangs it off `RETRY` alone: a check that exits 0
-has its stdout and stderr dropped, and nothing anywhere records what it said.
-This matters for one shape in particular — **a check that passes because it had
-nothing to examine.** "All thirty-five subjects were correct" and "there were no
-subjects" are the same exit code and, on the record, the same line. Writing the
-count to stdout does not help, because that is the output being dropped. If a
-check can pass vacuously, have it write what it examined somewhere a later
-check reads — a file under `.headsign/tmp/` for something this run acts on, or a
-tracked artifact when the number is part of what the run produced. Then the
-count is gated rather than narrated, and "examined nothing" becomes a thing a
-gate can fail on.
+**A passing check's output is discarded.** Only the failing branch keeps
+output, so the table connects output only to `RETRY`. A check that exits 0
+loses its stdout and stderr. Nothing records what it said. This rule matters
+most for **a check that passes because it had nothing to examine.** "All
+thirty-five subjects were correct" and "there were no subjects" have the
+same exit code. The record also gives them the same line. Writing the count
+to stdout does not help because headsign drops that output. If a check can
+pass vacuously, make it write what it examined where a later check reads it.
+Use a file under `.headsign/tmp/` for something this run uses. Use a tracked
+artifact when the number is part of the run's result. The gate then checks
+the count. It can fail when the check examined nothing.
 
-Exit 3 is a configuration/usage error — which includes a check or a `ready:`
-probe that **could not be run at all** (the command never started, or headsign
-had to kill it before it finished). That is not a gate failure: headsign got no
-exit code, so it has no verdict, and the lap moves nothing — no attempt, no
-iteration, no state written. Fix the command and ask again
+Exit 3 is a configuration/usage error. This includes a check or a `ready:`
+probe that **could not be run at all**. The command either never started, or
+headsign had to kill it before completion. This event is not a gate failure.
+headsign received no exit code, so it has no verdict. The lap moves nothing:
+no attempt, no iteration, and no state written. Fix the command and ask
+again
 ([ADR-0021](adr/0021-a-command-that-never-ran-is-not-an-answer.md)). A check
-that runs and *times out* is a different thing and still an ordinary failure:
-it ran, and the limit it ran past is one you wrote. `next` is idempotent on
-finished runs. On a running one it is a judgment rather than a peek: it runs the
-phase's gate, and a failure spends an attempt (a phase whose `ready:` probe
-hasn't passed yet answers `PENDING` before the gate runs, as above, and
-spends nothing). Hence the driving session's two-command rule — **did work
-→ `next`; want to look → `status`** — with `status` free to call as often
+that runs and *times out* causes an ordinary failure instead. It ran past a
+limit that you wrote. `next` is idempotent on finished runs. On a running
+run, it judges the gate. It does not provide a read-only view. A gate
+failure spends an attempt. If the phase's `ready:` probe has not passed,
+the CLI answers `PENDING` before the gate runs. This result spends nothing.
+Thus, the driving session has a two-command rule: **did work
+→ `next`; want to look → `status`**. You can call `status` as often
 as you like (see [Multiple sessions](#multiple-sessions)).
 
 ### Routing (workflow.yaml)
@@ -781,52 +787,54 @@ as you like (see [Multiple sessions](#multiple-sessions)).
 | `max_attempts` | positive int; counts failures of this phase since it last passed. Running out always answers `ESCALATE` | unlimited |
 | `limits.max_total_iterations` | positive int; global runaway backstop. Reaching it answers `ESCALATE` but does **not** end the run — see below | none |
 
-Checks are CI-familiar `- name:` / `run:` / `timeout:` steps run with
-`/bin/sh -c` (first failure stops the gate). Every command headsign runs
-inherits headsign's own environment; a check that needs a variable sets it
-in its own `run:` string (`run: "FOO=bar npm test"`), the same way you would
-at a prompt. One variable headsign sets itself arrives regardless —
-`HEADSIGN_WORKFLOW_FILE`, under [Environment variables](#environment-variables)
-below. Deliberately absent: `needs:`, `${{ }}`, matrices, triggers, and a
-per-phase `env:`. A route's `when:` is not `if:` in disguise either —
-it is a shell command judged by its exit code, not an expression to
-evaluate — so every routing decision is still an exit code choosing among
-destinations you wrote down. That inherited environment has a trap on
-macOS: `/bin/sh` there is bash 3.2, and in that shell a `run:` string
-where a variable is immediately followed by a non-ASCII character
-(`"$now→"`, not `"$now foo"`) doesn't just expand the variable to nothing
-— it also eats the leading byte of the character right after it, so a
-corrupted string reaches the rest of the command. This isn't a
-Japanese-text or full-width-punctuation problem: any non-ASCII character
-right after an unbraced variable can trigger it, including accented
-letters, arrows, and emoji, and only that one character is at risk —
-non-ASCII text elsewhere in the string, including right before the
-variable, expands fine. It's shell- and locale-specific too: `zsh` and
-`dash` expand the same input correctly, and `LC_ALL=C` sidesteps it, so
-whichever `LANG` you're running headsign under is what matters, since
-checks inherit it along with the rest of your environment. Bracing the
-variable (`${now}`) avoids it in every case tested (measured, 2026-08-01);
-headsign doesn't force a locale to paper over it, since that would change
-how every check's shell commands handle multi-byte output, not just the one
-that hits this.
+Checks use the familiar CI fields `- name:` / `run:` / `timeout:`.
+headsign runs them with `/bin/sh -c`. The first failure stops the gate.
+Every command that headsign runs inherits its environment. A check that needs a variable
+sets it in its own `run:` string (`run: "FOO=bar npm test"`), the same way
+you would at a prompt. headsign always sets one variable:
+`HEADSIGN_WORKFLOW_FILE`, under
+[Environment variables](#environment-variables) below. headsign deliberately
+omits `needs:`, `${{ }}`, matrices, triggers,
+and a per-phase `env:`. A route's `when:` is a shell command, not an `if:`
+expression, so every routing decision is an exit code selecting one of the
+destinations that you wrote.
 
-Neither a gate nor a budget can end a run as `ABORT`: a failure route can
-say `escalate` (stop and ask a person) but never "stop", and exhausting
-`max_attempts` always escalates. `ABORT` comes from `headsign abort
-<reason>`, which is a person's decision and records their reason — so an
-aborted run is always one somebody ended on purpose.
+The inherited environment has a trap on macOS. There, `/bin/sh` is bash
+3.2. In this shell, a problem occurs when a non-ASCII character immediately
+follows a variable in a `run:` string (`"$now→"`, not `"$now foo"`). The
+variable expands to nothing. The shell also removes the leading byte of the
+next character. The rest of the command then receives a corrupted string.
+This problem does not apply only to Japanese text or full-width
+punctuation. Any non-ASCII character after an unbraced variable can trigger
+it, including accented letters, arrows, and emoji. Only that one character
+is at risk. Non-ASCII text elsewhere in the string expands correctly. This
+includes text immediately before the variable. The problem depends on the
+shell and locale. `zsh` and `dash` expand the same input correctly, and
+`LC_ALL=C` prevents the problem. The `LANG` under which you run headsign
+therefore matters because checks inherit it with the rest of the
+environment. Bracing the variable (`${now}`) avoids the problem in every
+case tested (measured, 2026-08-01). headsign does not force a locale because
+that would change how all check commands handle multi-byte output. The
+change would not apply only to the command that has this problem.
+
+A gate or budget cannot end a run as `ABORT`. A failure route can say
+`escalate` (stop and ask a person), but it can never say "stop". Exhausting
+`max_attempts` always escalates. `ABORT` comes from
+`headsign abort <reason>`, which is a person's decision and records their
+reason. Thus, a
+person always ends an aborted run on purpose.
 
 **Two of the four ways a run reaches `ESCALATE` end it; the ceiling and a
-changed graph do not.** Exhausting a phase's `max_attempts` and taking an
-`on_fail: escalate` route both mean something is wrong — the agent can't
-satisfy a gate — and both end the run for good. The other two leave the run
-`running` and wait for an answer: a graph that changed under the run
-([The graph a run is walking under](#the-graph-a-run-is-walking-under)), and
-the ceiling below. Reaching `limits.max_total_iterations` means
-something else: the run turned out to be bigger than the number someone
-typed, which can be true of a run doing nothing wrong. So it answers
-`ESCALATE` (exit 2, a person is being asked) while leaving the run
-`running`, and its message says how to answer:
+changed graph do not.** Two events mean that the agent cannot satisfy a
+gate. They are exhausting a phase's `max_attempts` and taking an
+`on_fail: escalate` route. Both events end the run permanently. The other
+two events leave the run `running` and wait for an answer. One is a changed
+graph
+([The graph a run is walking under](#the-graph-a-run-is-walking-under)).
+The other is the ceiling below. Reaching `limits.max_total_iterations`
+means that the run is bigger than the number someone typed. The run can
+still be correct. headsign answers `ESCALATE` (exit 2, a person is being
+asked) but leaves the run `running`. Its message explains how to answer:
 
 ```
 $ headsign next
@@ -834,31 +842,28 @@ ESCALATE build: max_total_iterations (15) reached — the run is still open: rai
 Human judgment needed. Report the situation to the user and ask for instructions.
 ```
 
-Raise the number in the workflow file and `headsign next` picks the run up
-at the same phase, with its attempts and its `.headsign/tmp/` intact; decide
-it isn't worth more laps and `headsign abort <reason>` ends it. The check
-runs before the gate, so a run standing at that wall spends no iteration and
-no attempt however many times it is asked — the runaway protection is
-unchanged, and `headsign status` still reports `RUNNING`
+Raise the number in the workflow file. Then `headsign next` resumes the run
+at the same phase. It preserves the attempts and `.headsign/tmp/`. If the
+run is not worth more laps, `headsign abort <reason>` ends it. The check
+runs before the gate. Therefore, repeated requests at this wall spend no
+iteration or attempt. The runaway protection stays unchanged, and
+`headsign status` still reports `RUNNING`
 ([ADR-0017](adr/0017-three-budgets-and-the-recoverable-ceiling.md)).
-Because the run really is unfinished, the stop-boundary hook still nudges
-its driver back to `headsign next`: an agent that reports the ceiling to you
-and steps away should write its pause note first (see
-[The backstop](#the-backstop)).
+The run is unfinished, so the stop-boundary hook nudges its driver back to
+`headsign next`. Before an agent reports the ceiling and stops, it should
+write its pause note (see [The backstop](#the-backstop)).
 
-Those three budgets have one thing in common: headsign can count each of them
-itself, inside one `next`, without asking anyone. Tokens and money it cannot —
-it never runs the model, so it never sees what a turn cost. That is a layer
-boundary rather than a gap, and where those numbers do exist they belong to
-your harness; a check can go and read them if you wire it up, at the price of
-coupling your workflow to one vendor's interface. Wall-clock time is the one
-headsign *could* count — `.headsign/log` timestamps every transition — and
-deliberately doesn't: a slow run is not a wrong run, and a lap is what the loop
-spends.
+The three budgets have one property in common. headsign can count each one
+inside one `next` without asking anyone. headsign cannot count tokens or
+money. It never runs the model, so it never sees a turn's cost. This is a
+layer boundary. Those numbers belong to your harness where they exist. A
+check can read them if you connect it. This connection couples your
+workflow to one vendor's interface. Wall-clock time is the one headsign *could* count, because `.headsign/log`
+timestamps every transition, and it deliberately does not. A slow run is not a wrong run, and the loop spends laps.
 
-Two of `on_fail`'s values look interchangeable and are not. `retry` keeps
-the run where it is; naming the phase itself sends the run out of the phase
-and back into it, which runs everything entering a phase runs:
+Two `on_fail` values have different effects. `retry` keeps
+the run in its current phase. The phase name sends the run out of the phase
+and back into it. Re-entry runs all phase entry actions:
 
 | | `on_fail: retry` | `on_fail: <this phase>` |
 |---|---|---|
@@ -866,18 +871,18 @@ and back into it, which runs everything entering a phase runs:
 | `clear:` | not run | runs |
 | Answer token | `RETRY` | `ADVANCE` |
 
-So a self-route deletes the artifacts that phase lists under `clear:`,
-while `retry` leaves them where the work left them. That is exactly what
-you want when re-entering fresh is the point — throwing away a stale review
-verdict, say — and exactly what you don't want when the agent should just
-keep working on the same failure. Reach for `retry` in the second case.
+A self-route deletes the artifacts that the phase lists under `clear:`.
+`retry` leaves them where the work left them. Use a self-route when the
+phase must re-enter fresh, such as when it must discard a stale review
+verdict. Use `retry` when the agent must continue work on the same failure.
 
 ### The router pattern
 
-Some phases exist to decide where the work should go — read the request,
-then send it to the phase that fits. Write that with a list-form `on_pass`:
-each entry has a `when:` (a shell command) and a `to:`, and the last entry,
-which carries no `when:`, is the default. A complete one ships as
+Some phases decide where the work should go. They read the request and send
+it to the applicable phase.
+Write that with a list-form `on_pass`. Each entry has a `when:` (a shell
+command) and a `to:`. The last entry has no `when:` and is the default. A
+complete one ships as
 [example.headsign/router.yaml](../example.headsign/router.yaml); the shape
 is:
 
@@ -900,7 +905,7 @@ is:
       - to: implement          # no when: — the default, and always last
 ```
 
-The rules, in full:
+The complete rules follow:
 
 - Routes are resolved **after** the gate passes, and never on the failure
   path. A router phase whose own gate fails is an ordinary failing phase.
@@ -909,348 +914,346 @@ The rules, in full:
 - `when:` takes an optional `timeout:` (seconds, default 120) and runs in
   headsign's own environment — the same treatment a check gets.
 - `to:` names a phase or `$end`.
-- `validate` rejects a list whose last entry has a `when:` (nothing would
-  be the default) and one whose earlier entry lacks one (everything after
-  it would be unreachable).
-- If a `when:` **can't be run at all** — it fails to spawn, or times out —
-  headsign stops with exit 3 and transitions nowhere, rather than falling
-  through to the default. A non-zero exit is an answer ("not this one"); a
-  command that never ran is not, and the thing being decided here is where
-  the run goes next.
+- `validate` rejects a list whose last entry has a `when:`, because the list
+  would have no default. It also rejects a list whose earlier entry lacks
+  one, because every entry after it would be unreachable.
+- If a `when:` **can't be run at all** — it fails to spawn, or times out
+  —
+  headsign stops with exit 3 and makes no transition. It does not use the
+  default. A non-zero exit answers "not this one." A command that never ran
+  gives no answer about where the run goes next.
 
-An `ADVANCE` reached this way gains one line naming the route that was taken
-(`--- routed: when "grep -qx fix-bug .headsign/tmp/route" → fix-bug ---`, or
-`--- routed: default → implement ---`), and that transition's `.headsign/log`
-entry records the same, so a run's history says why it went this way rather
-than that one. A route to `$end` ends the run with the usual `COMPLETE`, and
-a plain string `on_pass` prints and logs exactly what it always did.
+An `ADVANCE` reached this way gains one line that names the selected route.
+For example, that line can be
+`--- routed: when "grep -qx fix-bug .headsign/tmp/route" → fix-bug ---`
+or
+`--- routed: default → implement ---`. The transition's `.headsign/log`
+entry records the same information. Thus, the run history explains the
+route. A route to `$end` ends the run with the usual `COMPLETE`. A plain
+string `on_pass` prints and logs exactly what it always did.
 
 **The judgment is the agent's; the transition is headsign's.** The agent
 decides by writing a file; headsign decides by running the commands you
-wrote and reading their exit codes. It never takes a phase name out of the
-agent's output or out of that file: what the agent writes can only pick
-among the destinations the workflow file already declares, and cannot name
-one that isn't there. Something unexpected in the file lands on the default,
-or fails the phase's gate first if you check the file's shape there, as the
-example above does.
+wrote and reading their exit codes. headsign never takes a phase name from
+the agent's output or that file. The agent's text can select only a
+destination that the workflow file declares. It cannot name another
+destination. Unexpected file content lands on the default, or fails the phase's gate
+first if you check the file's shape there, as the example does.
 
-**Keep `when:` a cheap predicate, and keep it free of side effects.** Routes
-run on the success path — the fast path through your workflow — and several
-of them can run before one matches. Expensive or consequential work belongs
-in the gate, which runs once and reports what failed; the routes should do
-no more than read the cheap artifact the gate already checked.
+**Keep `when:` a cheap predicate, and keep it free of side effects.**
+Routes run on the success path — the fast path through your workflow —
+and several routes can run before one matches. Put expensive or
+consequential work in the gate. The gate runs once and reports what failed.
+Routes should only read the cheap artifact that the gate already checked.
 
 ### Async review (when review takes a while)
 
-A review phase's gate often depends on something slower than the loop
-itself — a reviewer subagent still reading the diff, a human glancing at a
-PR. Calling `next` before that verdict exists would, without `ready:`,
-burn a counted attempt on a gate that had nothing to judge yet — and since
-that phase's verdict file is also listed under `clear:` (recommended
-above), a verdict that lands a moment later could be discarded by that
-same early call's next re-entry, silently losing a real review. Give the
-phase a `ready:` probe (e.g. `test -f .headsign/tmp/verdict`) and an early
-`next` answers `PENDING` instead: no attempt spent, `clear:` not run,
-verdict left intact for the `next` that actually finds it.
+A review phase's gate often depends on a slower task.
+A reviewer subagent can still read the diff, or a human can inspect a PR.
+Without `ready:`, calling `next` before the verdict exists spends a counted
+attempt on a gate with nothing to judge. The phase's verdict file is also
+listed under `clear:` (recommended above). Thus, the next re-entry after an
+early call can discard a verdict that arrives moments later. This silently
+loses a real review. Give the phase a `ready:` probe (e.g.
+`test -f .headsign/tmp/verdict`). An early `next` then answers `PENDING`. It
+spends no attempt, does not run `clear:`, and preserves the verdict for the
+`next` that finds it.
 
 ### The backstop
 
 Skills are instructions, not guarantees. Two stop-boundary hooks read
-`.headsign/state.json`; while a run is `running`, the hook that fires for
-the run's **driver** blocks that turn from ending and points it back to
-`headsign next`. A turn that isn't the driver's passes straight through
-instead — except while a `claim` marker is armed, where the first delegated
-agent to stop that can name itself is seated as the new driver (see
+`.headsign/state.json`. While a run is `running`, the hook for the run's
+**driver** blocks that turn from ending. It points the driver back to
+`headsign next`. A turn that is not the driver's passes through. One exception
+applies while a `claim` marker is armed. The first delegated agent that
+stops and can name itself becomes the new driver (see
 [Multiple sessions](#multiple-sessions)). Escalated, aborted, and completed
-runs pass through too; those are correct endings.
+runs also pass through because those are correct endings.
 
 Which turns those are depends on whether anyone has claimed the run, and
 the two hooks answer an unclaimed one in opposite directions, on purpose.
-`Stop` nudges, but which session it nudges turns on what `last_drive` has
-on record rather than on who stopped in the run's own directory: a session
-on record is held, any other passes, and a run with nothing on record
-nudges whoever stops — missing the real driver is worse than one stray
-reminder (see [Multiple sessions](#multiple-sessions) for both halves).
-`SubagentStop` passes, because most delegated agents stopping nearby are
-reviewers and workers with no role in the run at all, and holding one of
-those hostage is worse than a missed reminder.
+`Stop` nudges the session that `last_drive` records. It does not use the
+identity of the session that stopped in the run's directory. The recorded
+session is held, and any other session passes. A run with no recorded
+session nudges the session that stops. Missing the real driver is worse
+than one stray reminder (see [Multiple sessions](#multiple-sessions) for
+both halves). `SubagentStop` passes because most nearby delegated agents
+are reviewers and workers with no role in the run. Holding one of them is
+worse than a missed reminder.
 
-Once a run's driver *has* been seated by `headsign claim`, what's recorded
-is an agent identifier, so `Stop` passes every session through
-unconditionally — no session can be that agent — and `SubagentStop` holds
-that one agent and no other. Before a run is claimed, `Stop` makes one
-session-identifier comparison: when `last_drive` names a session, it checks
-the payload's against it and passes on a mismatch. See
+After `headsign claim` seats a run's driver, headsign records an agent
+identifier. `Stop` then passes every session because no session can be that
+agent. `SubagentStop` holds only that agent. Before a run is claimed, `Stop`
+makes one session-identifier comparison. If `last_drive` names a session,
+it compares the payload's identifier and passes on a mismatch. See
 [Multiple sessions](#multiple-sessions).
 
-Two hooks, because a turn can end in two ways: `Stop` fires when a
-session's turn ends, `SubagentStop` when a delegated agent's does. A
-delegated agent never fires `Stop` at all, so without the second hook it
-would have no backstop — and, worse, the run would keep pushing the
-session that merely spawned it (see
+Two hooks handle the two ways that a turn can end. `Stop` fires when a
+session's turn ends. `SubagentStop` fires when a delegated agent's turn
+ends. A delegated agent never fires `Stop`. Without the second hook, it
+would have no backstop. The run would also keep pushing the session that
+only spawned it (see
 [Multiple sessions](#multiple-sessions)).
 
-**To pause deliberately**, write one line to `.headsign/tmp/stop-note` naming
-what you are waiting for, and stop again: the hook passes immediately, no
-nudges needed, and leaves a `paused` line in `.headsign/log` so the pause
-has a record.
+**To pause deliberately**, write one line to `.headsign/tmp/stop-note`
+naming what you are waiting for, and stop again. The hook passes immediately
+and does not nudge. It leaves a `paused` line in `.headsign/log` to record
+the pause.
 
-**Naming the thing is the check.** "Why are you stopping" can be answered by
-describing yourself, and a note that does — one that reports only where the run
-stands, naming nothing it waits on — is a run that had somewhere to go and
-stopped anyway. "What are you waiting for" has no such answer: name a delegate, a
-person, a build, or find you have nothing to name and keep going. It also
-makes the record readable, since the log carries the note's first line: a
-pause that names its blocker reads differently afterwards from one that does
-not. The note is consumed (deleted) the moment it's read, and the
-working tree returns to exactly what it was before — net zero, so the pause
-itself costs the run nothing and leaves the phase's artifacts where the
-work left them. What lands in the log is the note's first line, cut to 120
-characters, with a trailing `…` whenever that cut version isn't the whole
-note, so a truncated line is never mistaken for a complete one. One note
-covers one turn end, so a wait that runs over several exchanges needs the
-note written again before each of them. Tomorrow, `headsign next` picks
-the run up at the same phase and judges its gate, the way any `next`
-does. `headsign abort
-<reason>` is the other exit, and it is permanent, not a pause: the run
-can't be resumed, and a fresh `headsign start` begins again from the entry
-phase, replaying every phase's gate from scratch. `state.json` is rewritten
-whole; `.headsign/log` is not, so the reason you type and everything logged
-before it are kept ([reading the log](#reading-the-log) has the mechanism).
-Ending a run deliberately costs the run, not its history. Keeping that replay cheap
-is a design requirement on the workflow, not something headsign does for
-you: write early phases' gates as fast, idempotent checks (does a file
-exist, does lint pass) rather than ones with real side effects or long
-unrepeatable work, and a fresh start after an abort costs almost nothing.
-The same property pays off every turn, since each `next` runs the gate
-again. A workflow whose early gates are slow or non-idempotent makes its
-own re-runs expensive — that's the workflow author's cost to manage, by
-writing cheap gates, not a cost headsign can absorb on its behalf.
+**Naming the thing is the check.** You can answer "Why are you stopping" by
+describing yourself. Such a note reports only the run's position and names
+nothing that it waits for. It shows that the run could continue but stopped.
+"What are you waiting for" requires a specific answer. Name a delegate, a
+person, or a build. If you cannot name one, keep going. This answer also
+makes the record readable because the log contains the note's first line. A
+pause that names its blocker differs from one that does not. headsign
+consumes (deletes) the note when it reads it. The working tree then returns
+to exactly its previous state. Thus, the pause costs the run nothing and
+preserves the phase's artifacts. The log receives the note's first line, cut
+to 120 characters. It adds a trailing `…` when the cut version is not the
+complete note. Thus, readers cannot mistake a truncated line for a complete
+line. One note covers one turn end. A wait across several exchanges needs a
+new note before each turn ends. Tomorrow, `headsign next` resumes the run at
+the same phase and judges its gate, like any `next`. The other exit is
+`headsign abort <reason>`. It is permanent, not a pause. The run cannot
+resume. A fresh `headsign start` begins at the entry phase and replays every
+phase's gate. headsign rewrites all of `state.json`, but it does not
+rewrite `.headsign/log`. It keeps your reason and all earlier log entries
+([reading the log](#reading-the-log) has the mechanism). Deliberately ending
+a run costs the run, but it preserves the history. The workflow must make
+that replay cheap; headsign does not do this for you. Write early phase
+gates as fast, idempotent checks (does a file exist, does lint pass) rather
+than checks with real side effects or long, unrepeatable work. A fresh start
+after an abort then costs almost nothing. This property also helps every
+turn because each `next` runs the gate again. Slow or non-idempotent early
+gates make re-runs expensive. The workflow author must manage this cost by
+writing cheap gates. headsign cannot absorb the cost.
 
-Stopping *without* a note is pushed back — the hook fails open (never
-traps a session) after 5 consecutive nudges with nothing in between that
-shows someone is still steering: a real evaluation, a consumed note, or a
-sealed claim all reset the count. Every nudge leaves a `held` line in
-`.headsign/log` carrying the count it just spent (`nudges=3`), and the 5th
-writes a `stalled` line in place of that `held` — one line per turn end
-either way, so `stalled`'s own `nudges=5` is that fifth hold as well as the
-moment the cap tripped. Every stop after that passes silently and writes
-nothing at all. That cap is a safety net for a stuck or silently departed
-agent, not the normal way to pause — the note above is. To spot an
-unattended stall from the outside:
+The hook pushes back when the driver stops *without* a note. It fails open
+after 5 consecutive nudges and never traps a session. Three events show
+that someone is still steering and reset the count. They are a real
+evaluation, a consumed note, and a sealed claim. Each nudge adds a `held`
+line to `.headsign/log` with the count that it spent (`nudges=3`). The 5th
+nudge writes a `stalled` line instead of that `held` line. Each turn end
+therefore writes one line. The `stalled` line's `nudges=5` records both the
+fifth hold and the point when the cap tripped. Each later stop passes
+silently and writes nothing. The cap protects against a stuck or silently
+departed agent. Use the note above as the normal pause method. To identify
+an unattended stall from outside:
 `headsign status` (read-only, safe to run from any session — see
 [Multiple sessions](#multiple-sessions)) reports `RUNNING`, and
-`.headsign/log`'s tail shows `stalled`, or `status`'s own `last stop:` line reads
-`not held — the nudge cap is spent` — together they mean the driving agent has
-walked away without a note. Read it off those two rather than out of
-`.headsign/state.json`: the counter behind the cap is reset by every real
-`headsign next`, so on a run being driven it tells you almost nothing.
-Re-drive the run with `headsign next` from the session that's actually
-driving it.
+`.headsign/log`'s tail shows `stalled`, or `status`'s own `last stop:` line
+reads `not held — the nudge cap is spent`. Either result, beside `RUNNING`,
+means that the driving agent left without a note. Use these
+results instead of `.headsign/state.json`. Every real `headsign next`
+resets the counter behind the cap. Thus, the counter gives little
+information for an active run. Re-drive the run with `headsign next` from
+the session that is driving it.
 
 A turn end also passes when Claude Code has **already resumed** the turn it
-belongs to. When the hook holds a turn, Claude Code flags the continuation —
-`stop_hook_active` on the hook's input at that turn's own ending — and
-headsign stands down there: the ending is never blocked, and nothing
-one-shot is spent, so a pause note and an armed `claim` marker both survive
-it untouched. That is why a nudge arrives roughly once per exchange rather
-than once per turn end; the window is one turn wide and closes when the turn
-ends. It is not the nudge cap above — a different mechanism with the same
-visible outcome — and the two are now told apart by what they leave behind:
-the spent cap has its `stalled` line, while an overruled turn end leaves an
-`unheld` line in `.headsign/log` (naming the field it was told,
-`by=stop_hook_active`) and a `last stop:` line in `headsign status`. Both
-writes are best-effort and skipped while the run's lock is held, so a
-*missing* `unheld` line does not prove the hook did not run. The hold that
-was overruled leaves its own line too, which is how an `unheld` is read —
-by the line before it ([reading the log](#reading-the-log)).
+belongs to. When the hook holds a turn, Claude Code flags the continuation.
+It sends `stop_hook_active` in the hook input when that turn ends. headsign
+then stands down and never blocks the ending. It also spends no one-shot
+item. Thus, a pause note and an armed `claim` marker both remain untouched.
+A nudge therefore arrives approximately once per exchange instead of once
+per turn end. The window lasts for one turn and closes when the turn ends.
+This mechanism differs from the nudge cap, although both have the same
+visible result. Their records identify the mechanism. A spent cap has a
+`stalled` line. An overruled turn end leaves an `unheld` line in
+`.headsign/log` and names the supplied field as `by=stop_hook_active`. It
+also leaves a `last stop:` line in `headsign status`. Both writes are
+best-effort. headsign skips them while the run's lock is held. Therefore, a
+*missing* `unheld` line does not prove that the hook did not run. The
+overruled hold also leaves its own line. Read an `unheld` line with the line
+before it ([reading the log](#reading-the-log)).
 
 ### The graph a run is walking under
 
-`next` re-reads the workflow file every lap, so editing it mid-run works —
-that is how you raise a ceiling and carry on, and how a run can improve the
-phases it has already walked past. What headsign adds is that the change
-doesn't happen in silence.
+`next` reads the workflow file again on every lap. You can therefore edit it
+during a run. You can raise a ceiling or improve an earlier phase. headsign
+reports the change.
 
-At `start`, a run records a fingerprint of the **rules** it is walking under:
-every phase reachable from where it stands, plus `limits`. Rules, not
-instructions — a phase's `description` is deliberately left out, so rewriting
-what the agent is told to do is invisible to this, while `gate`, `ready`,
-`clear`, `on_pass`, `on_fail` and `max_attempts` are not. (`clear:` counts as a
-rule because dropping it is how a stale `APPROVED` verdict passes a review
-gate.) Comments and formatting are invisible too: the fingerprint is of the
-parsed file, not its bytes.
+At `start`, a run records a fingerprint of the **rules** it is walking
+under. These rules include every phase it can reach from its current
+position, plus `limits`. The rules exclude instructions, so the fingerprint
+deliberately leaves out a phase's `description`. Rewriting the agent's
+instructions is therefore invisible to the fingerprint. It includes `gate`,
+`ready`, `clear`, `on_pass`, `on_fail` and `max_attempts`. (`clear:` counts
+as a rule because dropping it lets a stale `APPROVED` verdict pass a review
+gate.) The fingerprint also ignores comments and formatting. It represents
+the parsed file rather than its bytes.
 
-**The pin ends at the file.** A check's `run:` string is part of the rules and
-is pinned; whatever that string goes on to execute is not. A gate written as
-`run: "sh checks/coverage.sh"` pins those five words, and editing
-`checks/coverage.sh` to reverse its verdict changes what the gate decides
-while the fingerprint stays as it was — the next lap judges by the new rule and
-reports nothing. This is not a gap that can be closed by trying harder: `run:`
-is an arbitrary shell string, and there is no way to know from it what a
-command will read. So it is stated instead, because the consequence is a
-decision a driver has to make: **editing a script a gate calls, mid-run, is
-changing the rules under the run** — with none of the reporting that editing
-the workflow file gets. If you want that change on the record, abort and start
-again; the artifacts already written are not what a restart costs (see [what a
-run folds away](#what-a-run-folds-away-and-what-outlives-it)).
+**The pin ends at the file.** The rules include and pin a check's `run:`
+string. They do not include anything that the string executes. A gate with
+`run: "sh checks/coverage.sh"` pins those five words. If you edit
+`checks/coverage.sh` to reverse its verdict, you change the gate's decision.
+The fingerprint stays unchanged, so the next lap uses the new rule and
+reports nothing. More effort cannot close this gap. `run:` is an arbitrary
+shell string, so headsign cannot know what a command will read. A driver
+must therefore account for this limit: **editing a script a gate calls,
+mid-run, is changing the rules under the run**. Edits to the workflow file
+get a report, but this edit gets none. To record that change, abort and
+start again. A restart does not cost the artifacts already written (see
+[what a run folds away](#what-a-run-folds-away-and-what-outlives-it)).
 
-When a lap finds those rules changed, it says so once — an `ESCALATE` that
-leaves the run `running`, spends no attempt and no iteration, and names the
-phases that moved. You then have two ways forward:
+When a lap finds changed rules, it reports them once with an `ESCALATE`.
+This report leaves the run `running`, spends no attempt or iteration, and
+names the phases that moved. You then have two ways forward:
 
-- **put the file back**, and the next `next` matches the fingerprint again, says
+- **put the file back**. The next `next` matches the fingerprint again, says
   nothing, and costs nothing. Restoring is free;
-- **run `headsign next --accept-graph-change`**, which accepts the change and
-  carries on. An accepted change is counted, and `COMPLETE` says how many a run
-  accepted — because `.headsign/log` is gitignored and never reaches a pull
-  request, while the final answer is read by whoever is being reported to.
+- **run `headsign next --accept-graph-change`**. This command accepts the
+  change and continues the run. headsign counts each accepted change, and
+  `COMPLETE` gives the total. `.headsign/log` is gitignored and never
+  reaches a pull request. The person who receives the report reads the final
+  answer.
 
 **`headsign status` answers for the file, not only for the record.** A
-difference reaches `state.json` only when a lap reports it, so between an edit
-and the next `headsign next` the record holds nothing about that edit. `status`
-closes that window by hashing the rules on disk as it reads them and comparing
-them with the pin. It prints a `graph:` line in the two cases where the file
-says something the record does not:
+difference reaches `state.json` only after a lap reports it. Between an edit
+and the next `headsign next`, the record has no information about the edit.
+`status` closes this window. It hashes the rules on disk while reading them
+and compares the hash with the pin. It prints a `graph:` line in the two
+cases where the file says something the record does not:
 
 ```
 graph: the file no longer matches the rules this run pinned — `headsign next` will report it before it runs the gate
 graph: the file matches the rules this run pinned again — `headsign next` will clear the line above and cost nothing
 ```
 
-The first is an edit no lap has seen yet. The second is a file put back while a
-report still stands — the one place the free, silent restore above shows before
-you run anything. When the file and the record agree, neither line appears and
-the output is byte-identical to what it always was. So the file differs from the
-pin exactly when one of two lines is showing: `graph: the file no longer
-matches …`, or `graph: changed since this run accepted it …` with no `graph: the
-file matches … again` under it. Read that together with the `--- phase: ---`
-block, which is absent when the workflow cannot be read: no readable file means
-nothing to compare, and `status` says nothing rather than guessing. The
-comparison runs no gate, starts no process, writes nothing and takes no lock, so
-`status` stays a look ([ADR-0029](adr/0029-status-answers-for-the-file.md)).
+The first line identifies an edit that no lap has seen. The second
+identifies a restored file while a report remains. Only this case shows the
+free, silent restore before you run anything. When the file and record
+agree, neither line appears. The output remains byte-identical to its
+previous form. The file differs from the pin exactly when one of two lines
+appears. One line is `graph: the file no longer matches …`. The other is
+`graph: changed since this run accepted it …` without
+`graph: the file matches … again` below it. Also read the `--- phase: ---`
+block. This block is absent when headsign cannot read the workflow. Without
+a readable file, `status` has nothing to compare and does not guess. The
+comparison runs no gate and starts no process. It also writes nothing and
+takes no lock. Thus, `status` stays a look
+([ADR-0029](adr/0029-status-answers-for-the-file.md)).
 
-**A bare `next` never accepts, however many times it is asked.** It reports the
-same change again, counts nothing, and spends neither an attempt nor an
-iteration. That is deliberate: acceptance and retrying used to be the same
-command, so anything that issued `next` more than once without reading the
-output in between — a batch, a loop, a wrapper that retries on non-zero — could
-accept a rules change with nobody having seen the report. The flag is not a
-claim that a human ran it, which headsign cannot know; it is what makes the two
-acts different inputs. Carrying it habitually does not work either: with no
-reported change outstanding, it exits 3 rather than behaving like a plain `next`.
+**A bare `next` never accepts, however many times it is asked.** It reports
+the change again and counts nothing. It spends neither an attempt nor an
+iteration. This limit prevents automatic acceptance. Acceptance and retrying
+previously used the same command. A batch, loop, or wrapper could issue
+`next` repeatedly without reading each result. It could then accept a rules
+change before anyone saw the report. The flag does not claim that a human
+ran the command, because headsign cannot know that. The flag gives
+acceptance and retrying different inputs. Habitual use of the flag also
+fails. Without an outstanding reported change, it exits 3 instead of acting
+like a plain `next`.
 
-Two things are deliberately quiet. A change to a phase this run can no longer
-reach is not reported at all — the run doesn't depend on it. And a change to
-`limits` alone is accepted without a report, so raising the ceiling after
-hitting it stays one stop rather than two; it is still counted, so a run that
-was given more room says so at the end.
+headsign deliberately keeps two changes quiet. It does not report a change
+to a phase that the run can no longer reach. The run does not depend on that
+phase. headsign accepts a change to `limits` alone without a report. Thus,
+raising the ceiling after reaching it takes one stop rather than two.
+headsign still counts the change, so the run reports its extra room at the
+end.
 
-This is a guardrail, not a lock. Anything that can edit the workflow can edit
-`.headsign/state.json` too, and headsign says nothing about that. What it does
-is separate a loosened gate from the edits the documentation recommends, which
-until now were the same act
+This mechanism is a guardrail rather than a lock. Anything that can edit the
+workflow can also edit `.headsign/state.json`, and headsign does not report
+that edit. The guardrail separates a loosened gate from the edits that the
+documentation recommends. Those changes were previously the same act
 ([ADR-0023](adr/0023-pinning-the-graph-a-run-is-walking-under.md)).
 
 ## Multiple sessions
 
-A repository often has more than one Claude Code session open on it at
-once — a lead session plus teammates, or a subagent working alongside the
-session that spawned it. Only one of them should ever be answering
-`headsign next` for a given run; headsign calls that one the **driver**.
-Everyone else is an **observer**. The distinction matters because the
-stop-boundary hooks (above) push a driver that tries to stop mid-run back
-to `headsign next`: a session that obeys a nudge meant for someone else can
-burn a retry or advance a phase it had no business touching, and every
-blocked stop, whoever made it, spends one from the same nudge cap. See
+A repository often has more than one open Claude Code session. For example,
+it can have a lead session with teammates. It can also have a subagent
+beside its parent session. Only one session should run `headsign next` for a
+given run. headsign calls that session the **driver**. Every other session
+is an **observer**. This distinction matters because the stop-boundary hooks
+push a driver back to `headsign next` when it tries to stop mid-run. A
+session can obey a nudge intended for another session. It can then burn a
+retry or advance a phase that it should not touch. Every blocked stop also
+uses one unit from the same nudge cap, regardless of who stopped. See
 [ADR-0008](adr/0008-multi-session-ownership.md) for the field feedback
-that drove the design, and
-[ADR-0013](adr/0013-claim-only-driver-identity.md) for what it has
-since been narrowed to.
+behind the design. See [ADR-0013](adr/0013-claim-only-driver-identity.md)
+for the narrower current design.
 
-There is one way a run learns who drives it, and one kind of driver it can
-learn about: a **delegated agent** that ran `headsign claim` and then ended
-its turn (below). That is still the only path to a driver: `start` and
-`next` now stamp something on every call, but what they stamp is
-`last_drive`, the session that most recently ran one of them, not a driver —
-reusing that word would say something the field isn't
-([ADR-0027](adr/0027-recording-who-drove-a-run.md)). Until a run is
-claimed, headsign still does not know who is driving it, but it can now
-tell a session that has moved the run apart from one that never has. A run
-with no session on record in `last_drive` — every run this release
-predates, any run driven from outside Claude Code (nothing there names a
-session, so `start` and `next` have none to record), and any state a person
-edited by hand — falls back to what headsign has always
-done: any session that stops in its directory gets nudged. Once some
-session has run `start` or `next` against a run, only that session's turn
-ends are held; every other session's stop passes without a word, and no
-delegated agent is held either way. Once a run is claimed, that agent's
-turn ends are the only ones held, and every session's stop passes —
-`last_drive` is never even read for a claimed run.
+A run can learn about only one type of driver. That driver is a **delegated
+agent** that ran `headsign claim` and then ended its turn (below). This
+remains the only path to a driver. `start` and `next` now stamp `last_drive`
+on every call. `last_drive` identifies the session that most recently ran
+one of those commands. It does not identify a driver because that meaning
+would conflict with the field
+([ADR-0027](adr/0027-recording-who-drove-a-run.md)). Before a claim,
+headsign does not know the driver. It can still distinguish a session that
+moved the run from a session that never moved it. Some runs have no session
+in `last_drive`. This group includes every run that predates this release.
+It also includes runs driven outside Claude Code, where nothing identifies a
+session for `start` or `next` to record. A state that a person edited by
+hand also belongs to this group. For these runs, headsign uses its original
+behavior. It nudges any session that stops in the run's directory. After a
+session runs `start` or `next`, headsign holds only that session's turn
+ends. Every other session stops without a message, and headsign never holds
+a delegated agent in either case. After a claim, headsign holds only that
+agent's turn ends. Every session can stop, and headsign does not read
+`last_drive` for a claimed run.
 
-Those two behaviors cover the two shapes a run takes. A session driving its
-own run needs no claiming: `start` stamps it as the mover the moment the
-run begins, so from its first turn on it is the one `last_drive` names, and
-it is nudged for exactly as long as nobody else has claimed the run — the
-same backstop it always wanted. A run handed to a delegated agent does need
-claiming, because that agent shares its spawning session's process and
-can't otherwise be told apart from it — that is what `headsign
-claim` is for (below).
+These behaviors cover both ways to drive a run. A session does not need a
+claim for its own run. `start` records that session as the mover when the
+run begins. From its first turn, `last_drive` identifies it. headsign nudges
+the session until another agent claims the run. This gives the session its
+usual backstop. A delegated agent must claim a run handed to it. That agent
+shares the spawning session's process, so headsign cannot otherwise
+distinguish the two. This is the purpose of `headsign claim` (below).
 
-What this now does, that it deliberately did not do before, is tell a
-session that has moved a run apart from a second session merely standing
-in the same directory. A run still belongs to the directory it lives in —
-one worktree, one run — but a second session watching that directory, once
-the first has run `start` or `next`, is no longer nudged for it: its stop
-passes silently, spending nothing from the cap and writing no line
-anywhere, the same way a non-driving session's does on a claimed run. That
-includes a session no person opened: a program that starts Claude Code as
-a subprocess, for any reason, gets a session standing wherever the caller
-was — the run's directory, unless it was given another — and once that run
-has been moved by someone else, the subprocess's stop passes the same way.
-This is the failure [ADR-0027](adr/0027-recording-who-drove-a-run.md)
-exists to fix: before it, that subprocess had no way to know a nudge
-wasn't meant for it, so it tried to answer, and what came back to whatever
-called it was prose about headsign instead of the output it was started to
-produce — spending, on the way, one from the cap the run's actual driver
-needed.
+headsign now distinguishes a session that moved a run from another session
+in the same directory. Earlier versions deliberately treated both sessions
+the same. A run still belongs to its directory: one worktree, one run. After
+the first session runs `start` or `next`, headsign does not nudge a second
+session that watches that directory. The second session stops silently, uses
+nothing from the cap, and writes no line. A non-driving session gets the
+same behavior on a claimed run. This rule also covers a session that no
+person opened. A program can start Claude Code as a subprocess for any
+reason. The new session starts in the caller's directory unless the program
+specifies another directory. If another session has moved the run, the
+subprocess stops silently. [ADR-0027](adr/0027-recording-who-drove-a-run.md)
+addresses the earlier failure. The subprocess could not tell that another
+session should receive the nudge. It tried to answer the nudge. Its caller
+then received prose about headsign instead of the requested output. This
+response also used one unit from the cap that the actual driver needed.
 
-A gap remains, and it falls on the opposite party. A session that picks up
-a run someone else began — a **handover** — is not nudged either, from the
-moment it first stops until its own first `next` stamps it in turn. It is
-not a bystander; it is the run's next driver, and it still loses the
-backstop for that stretch, because a mismatched stop and one from a
-session that has simply never touched the run look identical to `Stop` —
-nudging either would nudge every bystander too, and buy the stamp nothing.
-What that costs is discovery as much as backstop: a session opening on a
-repository that already has a run used to find out by being nudged, a side
-effect of nudging everyone nearby rather than the backstop's actual job.
-Its replacement is `headsign status`, read-only and safe to run from
-anywhere.
-`HEADSIGN_OBSERVER` (below) is how a session that knows it is only
-observing opts out explicitly, rather than counting on the fix above to
-spare it. It is still the only manual control headsign offers here, but it
-has moved from the only way such a session could be spared a nudge to a
-deliberate, more certain opt-out: most bystanders no longer need it to be
-left alone. Every session that isn't driving — teammates, a subagent that
-wasn't delegated the run, or any session that never ran `headsign start` —
-should reach for `headsign status` instead of `next`, more than ever now: a
-run someone else has already moved no longer announces itself to whoever
-stops nearby, so `status` is the only way left to find one.
+A gap remains for the other party. A session that picks up a run someone
+else began is a **handover**. headsign does not nudge it from its first stop
+through its first `next`. That session is the run's next driver, but it
+loses the backstop during this period. To `Stop`, its mismatched stop looks
+identical to a stop from a session that never touched the run. Nudging
+either one would also nudge every bystander and provide no value for the
+stamp. The gap affects discovery and the backstop. A session that opened a
+repository with an existing run previously learned about the run through a
+nudge. That discovery was a side effect of nudging every nearby session. It
+was outside the backstop's purpose. `headsign status` replaces that
+discovery method. The command is read-only and safe to run from anywhere.
+`HEADSIGN_OBSERVER` (below) lets a session explicitly state that it only
+observes. It does not have to depend on the behavior described here. This is
+still headsign's only manual control for this case. Previously, it was the
+only way to prevent a nudge to an observer. It is now a deliberate and more
+certain opt-out. Most bystanders no longer need it to remain undisturbed.
+Every session that does not drive should use `headsign status` instead of
+`next`. This includes teammates, a subagent that did not receive the run,
+and any session that never ran `headsign start`. A run moved by another
+session no longer announces itself when a nearby session stops. Therefore,
+`status` is the only remaining way to find that run.
 
 ### `headsign status`
 
-Read-only: no gate runs, no state is written, no lock is taken. Safe to run
-from any session, at any time, as often as you like.
+This read-only command runs no gate, writes no state, and takes no lock. You
+can safely run it from any session, at any time, as often as you like.
 
-While a run is `RUNNING`, it ends with the current phase's instructions, in the
-same `--- phase: <name> ---` block `start` and `next` print. That is the one
-way to re-read what the phase asks for without judging it — `next` would run
-the gate and can spend an attempt. It matters most where the work is delegated:
-an agent that never runs headsign cannot see the gate's requirements at all,
-so this block is what gets handed over, verbatim rather than from memory. If
-the workflow file cannot be read, or no longer defines the phase this run is
-on, the block is absent and the output is exactly what it was before.
+While a run is `RUNNING`, the output ends with the current phase's
+instructions in the `--- phase: <name> ---` block. `start` and `next` print
+the same block. This block provides the one way to reread the
+phase instructions without a judgement. `next` would run the gate and can
+spend an attempt. This block matters most for delegated work. An agent that
+never runs headsign cannot see the gate's requirements. The delegating party
+therefore hands over this block, with its original text instead of a summary
+from memory. The block is absent if headsign cannot read the workflow file.
+It is also absent if the file no longer defines the run's current phase. In
+these cases, the output stays exactly as it was before.
 
 ```
 $ headsign status
@@ -1285,159 +1288,160 @@ last moved: 2026-08-01T19:45:29+09:00 — turn ends from any other session pass 
 observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held
 ```
 
-The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED` —
-capitalized like `next`'s tokens, but it's a *report*, not a verdict:
-`status` never prints `ADVANCE`, `RETRY`, or `PENDING`, because it never
-judges anything.
+The first line is one of `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED`.
+It uses capitals like the tokens from `next`, but it is a *report*. It is
+not a verdict. `status` never prints `ADVANCE`, `RETRY`, or `PENDING`,
+because it never judges anything.
 
-**That first line is the contract, and the rest of the output is not.** Two
-things are guaranteed and versioned: `next`'s first-line token with its exit
-code, and `status`'s first line with the exit-code rule beside it. Everything
-else any command prints — the `workflow:`, `driver:`, `last stop:`, `last
-moved:`, `observer:` and `graph:` lines, the `--- last failure: ---` and
-`--- phase: ---` blocks, the wording inside them, the order they appear in, and
-whether a conditional line appears at all — may change in any release, patch
-releases included, with nothing owed beyond a changelog entry. **If you are
-writing a tool that reads this output, pin the version you tested against,
-match strings exactly rather than by catch-all pattern, and fail loudly when a
-match stops matching**: a reader that guesses at unfamiliar output gives a
-confident wrong answer, which is worse than none
-([ADR-0030](adr/0030-the-token-line-is-the-contract-and-nothing-else-is.md)). The `driver:` line (shown only while `RUNNING`) has two
-readings: `not delegated yet — no agent has claimed this run`, and `a
-delegated agent` once a `headsign claim` handoff (below) has been sealed.
+**That first line is the contract, and the rest of the output is not.** The
+contract guarantees and versions two things. One is the first-line token
+from `next` with its exit code. The other is the first line from `status`
+with its exit-code rule. Everything else that any command prints can change
+in any release, patch releases included. This output includes the `workflow:`,
+`driver:`, `last stop:`, `last moved:`, `observer:` and `graph:` lines.
+It also includes the `--- last failure: ---` and `--- phase: ---` blocks.
+Their wording, order, and conditional presence can also change. Only a
+changelog entry is required. **If you are writing a tool that reads this
+output, pin the version you tested against. Match strings exactly rather
+than by catch-all pattern. Fail loudly when a match stops matching.** A
+reader that guesses at unfamiliar output can give a confident wrong answer.
+No answer is better
+([ADR-0030](adr/0030-the-token-line-is-the-contract-and-nothing-else-is.md)).
+The `driver:` line appears only while `RUNNING` and has two readings.
+Before delegation, it shows
+`not delegated yet — no agent has claimed this run`. It shows
+`a delegated agent` after a `headsign claim` handoff (below) is sealed.
 
-It says nothing about whether *you* are that agent, and cannot: the
-identifier on file comes from a hook, and no command can resolve the
-caller's own agent identity to compare against it — the same gap that makes
-`claim` necessary in the first place. What the line is for is confirming
-that a handoff landed. `claim` takes two beats and can fail quietly, so one
-`headsign status` after the confirmation is how anyone — the delegating
-session, the user, a passing observer — checks that the run really did
-change hands.
+The line says nothing about whether *you* are that agent. The identifier on
+file comes from a hook. No command can resolve the caller's agent identity
+and compare it with that identifier. This limit makes `claim` necessary. The
+line confirms that a handoff took effect. `claim` takes two beats and can
+fail quietly. After confirmation, the delegating session, user, or observer
+can run `headsign status` to check that the run changed hands.
 
-Three further lines can appear while a run is `RUNNING`, all three in the
-last example above, and all three about how turns *end*, or the run
-*moves*, rather than where it stands. `last stop:` appears once headsign
-has processed one stop it could attribute to this run, and says what it did
-with that turn end, in one of five readings:
+Three more lines can appear while a run is `RUNNING`. The last example shows
+all three. They describe how turns *end* or how the run *moves*. They do not
+describe where the run stands. `last stop:` appears after headsign processes
+a stop that it can attribute to this run. It gives one of five readings
+about what headsign did with that turn end:
 
-- `held, and pointed back to headsign next` — the ordinary nudge, and the same
+- `held, and pointed back to headsign next` — the ordinary nudge. The same
   stop is a `held` line in `.headsign/log`.
 - `paused by a note` — a `.headsign/tmp/stop-note` was consumed.
-- `not held — the nudge cap is spent` — the backstop had already given up on
-  this run (see [the backstop](#the-backstop)).
+- `not held — the nudge cap is spent` — the backstop had already stopped
+  nudging this run (see [the backstop](#the-backstop)).
 - `not held — Claude Code had already resumed the turn (stop_hook_active)` —
-  headsign was overruled at that turn end, and the same stop is the `unheld`
+  headsign was overruled at that turn end. The same stop is the `unheld`
   line in `.headsign/log`.
 - `not held — the session was not standing in the run's tree
-  (CLAUDE_PROJECT_DIR)` — the session's own directory led the hook
-  to no run at all; the walk from `CLAUDE_PROJECT_DIR` found one instead, and the
-  hook wrote and returned without holding (see
+  (CLAUDE_PROJECT_DIR)` — the session's directory led the hook to no run.
+  The walk from `CLAUDE_PROJECT_DIR` found one. The hook wrote and returned
+  without holding (see
   [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it)).
-  The same stop is also an `unheld` line in `.headsign/log`, marked
-  `by=CLAUDE_PROJECT_DIR` rather than `by=stop_hook_active` — the two share
-  a disposition and differ only in which upstream fact caused it.
-  This line is written only for the party the ordinary path would have
-  nudged: a run `last_drive` credits to a different session withholds it
-  here too, the same test the ordinary path applies
-  ([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9) — that stop falls
-  to the fifth row of the table below instead, with nothing in
-  `.headsign/log` to show for it.
+  The same stop is also an `unheld` line in `.headsign/log`. It has the
+  mark `by=CLAUDE_PROJECT_DIR` instead of `by=stop_hook_active`. Both marks
+  have one disposition, but different upstream facts cause them. This line
+  is written only for the party that the ordinary path would have nudged. A
+  run that `last_drive` credits to a different session withholds this line
+  too, by the same test the ordinary path applies
+  ([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9). That stop
+  falls into the fifth table row below. Nothing in `.headsign/log` shows it.
 
-Each is followed by ` — at <timestamp>`, printed exactly as it was recorded,
-offset and all. The wording says what headsign did with the field it was
-handed, and claims nothing about what Claude Code's own documentation says
-about that field. Read the timestamp along with the disposition: a turn end
-headsign cannot attribute — a bystander agent's, or one from an environment
-that opted out — leaves the line describing the earlier stop rather than
-blanking it, so a stale disposition is possible and its timestamp is how you
-catch one.
+Each reading ends with ` — at <timestamp>`. Headsign prints the recorded
+value exactly, including its offset. The wording says what headsign did with
+the field it received. It makes no claim about the Claude Code documentation
+for that field. Read the timestamp with the disposition. Headsign cannot
+attribute a turn end from a bystander agent or an environment that opted
+out.
+Such a turn end leaves the earlier stop on the line instead of clearing it.
+The disposition can therefore become stale. Use its timestamp to identify
+this case.
 
-`last moved:` appears once a run has a session on record in `last_drive` —
-absent for a run this release predates, one driven from outside Claude Code,
-or one whose state a person edited by hand — and names when this run was
-last **moved**, by whichever session most recently ran `start` or `next`
-against it:
+`last moved:` appears after a run records a session in `last_drive`. It is
+absent for a run that predates this release. It is also absent for a run
+driven outside Claude Code or edited by hand. The line gives the time when a
+session last **moved** this run. That session most recently ran `start` or
+`next` against the run:
 
 ```
 last moved: 2026-08-01T19:45:29+09:00 — turn ends from any other session pass without a nudge
 ```
 
-`last stop:` and `last moved:` answer different questions, and each can go
-stale on its own: the first is when a turn end was last *attributed* to this
-run, the second is when the run was last *moved*. Read together, they tell
-apart two situations that call for different reactions — a fresh `last
-stop:` next to a stale `last moved:` means someone is here but the run isn't
-advancing, while both stale means nobody is. Neither reading says whether
-*you* are the session named: the identifier itself is never printed, and, for
-the same reason `driver:` above cannot, `status` has only the environment to
-ask with and cannot answer "is it me" honestly.
+`last stop:` and `last moved:` answer different questions. Each can become
+stale independently. The first gives the last turn end *attributed* to this
+run. The second gives the last time the run *moved*. Read both lines to
+distinguish two situations. A fresh `last stop:` with a stale `last moved:`
+means someone is present, but the run is not advancing. If both are stale,
+nobody is present. Neither reading says whether *you* are the named session.
+Headsign never prints the identifier. Like `driver:`, `status` has only the
+environment to query. It cannot give an honest answer to "is it me".
 
-The line can also go away again. `start` and `next` record the session that
-ran them whenever they can name one, so a single run of either from an
-environment that names none — a person driving the run from a terminal —
-records none and clears whatever was stamped before, and the run goes back
-to nudging whoever stops in its directory. That is the safe direction on
-purpose: headsign does not keep a stamp it can no longer vouch for, and an
-unstamped run nudges everyone rather than no one.
+The line can disappear. `start` and `next` record the session that ran them
+when they can name it. An environment can name no session when a person
+drives the run from a terminal. One use of either command from that
+environment records no session and clears the earlier stamp. The run then
+nudges each session that stops in its directory. Headsign intentionally
+clears a stamp it can no longer support. An unstamped run nudges everyone
+instead of nobody.
 
-`entered:` names when the run last *arrived* where it is standing, and is the
-third timestamp rather than a third reading of the first two:
+`entered:` gives the time when the run last *arrived* at its current phase.
+This value is a third timestamp. It is not another reading of the first two:
 
 ```
 entered: 2026-08-23T07:49:15+09:00 — when this run last entered the phase above
 ```
 
-It moves exactly when the phase's `clear:` runs, which is the boundary the
-schema already draws — `on_fail: retry` stays in the phase and clears nothing,
-so the stamp holds while the agent works on the same failure; `on_fail: <this
-same phase>` leaves and re-enters, so it moves. That is what separates it from
-`last moved:` above, which every `start` and `next` stamps whatever the answer
-was. Read together: `entered:` says how long this phase has been going, and
-`last moved:` says when anyone last touched the run — a fresh `last moved:`
-under a stale `entered:` is a phase being retried, and two stale ones are a run
-nobody is driving. Subtract to get an elapsed time; headsign prints the
-timestamp exactly as it recorded it and computes no duration of its own
-([ADR-0031](adr/0031-when-the-run-entered-the-phase.md)). A run started before
-the field existed has no stamp and prints no line.
+It changes exactly when the phase's `clear:` runs. The schema already uses
+this boundary. `on_fail: retry` stays in the phase and clears nothing. The
+stamp remains while the agent works on the same failure.
+`on_fail: <this same phase>` leaves and re-enters the phase, so the stamp
+changes. This behavior differs from `last moved:`. Every `start` and `next`
+stamps that value for every answer. Read both lines. `entered:` shows how
+long the current phase has continued. `last moved:` shows when anyone last
+touched the run. A fresh `last moved:` under a stale `entered:` shows that
+the phase is being retried. Two stale values show a run that nobody drives.
+Subtract the timestamps to get an elapsed time. Headsign prints each
+timestamp exactly as recorded and computes no duration
+([ADR-0031](adr/0031-when-the-run-entered-the-phase.md)). A run started
+before the field existed has no stamp and prints no line.
 
-`observer:` appears when `HEADSIGN_OBSERVER` is set in the environment
-`status` itself runs in — normally the session's, but not necessarily, since
-what is read is that one process's environment. It is the only quiet-ending
-cause a caller can answer about *itself*, since there is no identifier to
-resolve.
+`observer:` appears when `HEADSIGN_OBSERVER` is set in the environment where
+`status` runs. This environment normally belongs to the session, but it can
+belong elsewhere. The process reads only its own environment. This
+value is the only quiet-ending cause that a caller can determine about
+*itself*, because no identifier can be resolved.
 
-Conditional means byte-for-byte conditional: a run on which no stop has been
-processed and no `last_drive` recorded, read in an environment without the
-switch, prints exactly what `status` printed before any of these three
-lines existed. None of the three is a judgement —
-`status` still runs no gate, writes nothing, and takes no lock. And because
-the record holds only the most recent stop, while `headsign next` resets the
-nudge counter, `headsign status` is the right **first** command on resuming
-when you want to know how your last turn end was handled: before `next`, and
-before any other work.
+Conditional means conditional at the byte level. Consider a run with no
+processed stop and no recorded `last_drive`. In an environment without the
+switch, it prints the exact `status` output from before these three lines
+existed. None of the lines is a judgement. `status` still runs no gate,
+writes nothing, and takes no lock. The record holds only the most recent
+stop, while `headsign next` resets the nudge counter. To learn how headsign
+handled your last turn end, run `headsign status` **first** when you resume.
+Run it before `next` and before any other work.
 
-**If you are a delegated agent, end your turn and watch what happens: being
-pushed back to `headsign next` means this run is yours to drive.**
-`SubagentStop` holds an agent when it matches the recorded driver, and
-otherwise only to seal a claim — so read *which* message you got, starting
-with its opening words. Both name the workflow and phase, both tell you to
-run `headsign next`, and both end with the same pause and abort advice, so
-the opening is the one part that always tells them apart. A message opening
-`headsign workflow '…' is still running` is the ordinary nudge, and it
-confirms you already drive the run. One opening `Claim confirmed:` means
-something else entirely: an armed marker just seated *you*, possibly one
-another agent armed for itself. If you get that message without having run
-`headsign claim`, you have taken a seat someone else was asking for — say
-so, and let them claim again.
+**If you are a delegated agent, end your turn and observe the result. If the
+hook sends you back to `headsign next`, this run is yours to drive.**
+`SubagentStop` holds an agent that matches the recorded driver. Otherwise,
+it
+holds an agent only to seal a claim. Read the opening words to identify the
+message. Both messages name the workflow and phase. Both tell you to run
+`headsign next`. Both end with the same pause and abort advice. Only the
+opening always distinguishes them. A message that opens with
+`headsign workflow '…' is still running` is the ordinary nudge. It
+confirms
+that you already drive the run. A message that opens with `Claim confirmed:`
+means an armed marker just seated *you*. Another agent might have armed that
+marker for itself. If you receive that message without running
+`headsign claim`, you took another agent's requested seat. Report this event
+and let that agent claim again.
 
-The implication runs one way only. Ending quietly does *not* prove the
-reverse: seven things end a turn quietly, and what you look at to tell them
-apart differs for each one. Two of the seven were added after the other
-five: one exists only because a second walk (above) found a run the first
-one missed, and the other only because a stop is now compared against the
-session that last moved the run — and that one, alone in the table, leaves
-nothing to look at in the log.
+The implication applies in one direction only. A quiet end does *not* prove
+the reverse. Seven causes can end a turn quietly. Each requires different
+evidence. Two causes were added after the first five. One applies when a
+second directory walk finds a run that the first walk missed. The other
+compares a stop with the session that last moved the run. That cause, alone
+in the table, leaves nothing to look at in the log.
 
 | a turn ended quietly because | how you tell |
 | --- | --- |
@@ -1449,161 +1453,158 @@ nothing to look at in the log.
 | nobody has claimed the run, or the stopper is not the driver | `driver:` in `status`, which narrows rather than settles |
 | `HEADSIGN_OBSERVER` is set | the `observer:` line in `status` |
 
-An eighth way is not in the table because there is nothing to look at: the
-session's own directory led nowhere *and* `CLAUDE_PROJECT_DIR` either was
-not set or led nowhere either. That is the one case the backstop still
-cannot see — see
-[Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it),
-above.
+The table omits an eighth cause because it leaves no evidence. The session's
+directory leads nowhere, and `CLAUDE_PROJECT_DIR` is unset or also leads
+nowhere. The backstop still cannot see this one case. See
+[Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it).
 
-Four caveats go with that table, and each one is load-bearing.
+Four essential caveats apply to that table.
 
-**The fifth row alone leaves nothing in the log.** Every other row has
-something to read there, or in `status`; a stop from a session other than
-the one that last moved the run gets nothing written anywhere, on purpose —
-recording a bystander's turn end on a run it never drove is exactly what
-this row exists to stop doing ([ADR-0027](adr/0027-recording-who-drove-a-run.md)).
-`last moved:` in `status` is the only trace, and it names a time, never a
-session.
+**The fifth row alone leaves nothing in the log.** Every other row provides
+evidence in the log or in `status`. Headsign intentionally writes nothing
+for a stop from a session that did not last move the run. This row prevents
+headsign from recording a bystander's turn end for a run it never drove
+([ADR-0027](adr/0027-recording-who-drove-a-run.md)).
+`last moved:` in `status` is the only trace. It names only a time and never
+a session.
 
-**`driver:` narrows the sixth row rather than settling it.** It reports
-whether *some* delegated agent holds the run, never whether the reader is
-that agent (above). Reading the log instead does not rescue it: the log
-spans runs, so a `claimed` line may belong to a run that ended days ago.
+**`driver:` narrows the sixth row but does not settle it.** It reports
+whether *some* delegated agent holds the run. It never reports whether the
+reader is that agent. The log cannot settle this question because it spans
+runs. A `claimed` line can belong to a run that ended days ago.
 
-**A missing `unheld` line proves nothing.** The hook's writes are
-best-effort and skipped while the run's lock is held, so the absence of a
-line does not prove the hook did not run.
+**A missing `unheld` line proves nothing.** The hook makes a best-effort
+write and skips it while the run's lock is held. Therefore, an absent line
+does not prove that the hook did not run.
 
 **An `unheld` line marked `by=stop_hook_active` says that *some* stop hook
-held the turn** and that headsign then stood down — not that headsign was
-the hook that held it. A repository may install more than one. **One marked
-`by=CLAUDE_PROJECT_DIR` says something different: no stop hook held this
-turn at all** — the session's own directory led the hook to no run, and it
-found the run from `CLAUDE_PROJECT_DIR` instead. Reading the mark, not only
-the disposition, is what tells the two apart.
+held the turn.** Headsign then stood down. The mark does not say that
+headsign held the turn. A repository can install more than one stop hook.
+**A line
+marked `by=CLAUDE_PROJECT_DIR` says that no stop hook held this turn.** The
+session's directory led the hook to no run. The hook found the run from
+`CLAUDE_PROJECT_DIR`. Read the mark with the disposition to distinguish
+these
+cases.
 
-And a probe is not free. An ordinary nudge back spends one off that cap; a
-probe that passes while your own pause note is armed consumes the note
-instead; and a probe that lands while *someone else's* claim marker is armed
-consumes the marker — that is the `Claim confirmed` case above, and the other
-agent has to claim again. Spend the probe deliberately rather than
-habitually.
+A probe has a cost. An ordinary nudge back spends one unit from that cap. A
+probe that passes while your pause note is armed consumes the note. A probe
+that lands while *someone else's* claim marker is armed consumes the marker.
+This event produces the `Claim confirmed` case. The other agent must claim
+again. Use a probe deliberately instead of as a habit.
 
-For a *session*, the same test now proves more than it used to, though
-still not everything. `Stop` excludes a stop when a delegated agent holds
-the run, or when the run has a `last_drive` stamp naming a different
-session — so a run `last_drive` names holds only the session it names, and
-every other session's stop passes silently, while a run with no stamp on
-record still nudges whichever session stops there, driver or not, exactly
-as before. Being held there now usually means the run currently credits you
-with having moved it — narrower than owning it, and still not certain,
-since an unstamped run nudges anyone.
+For a *session*, this test now proves more than before, but it still has
+limits. `Stop` excludes a stop when a delegated agent holds the run. It also
+excludes a stop when `last_drive` names a different session. A run with a
+`last_drive` stamp holds only the named session. Stops from every other
+session pass silently. A run with no stamp still nudges any session that
+stops there, whether it is the driver or not. This behavior is unchanged. A
+held turn now usually means that the run credits you with moving it. This
+evidence is narrower than ownership and is not certain, because an unstamped
+run nudges anyone.
 
-Exit code follows a deliberately different contract from `next`'s: `status`
-exits 0 whenever `.headsign/state.json` could be read at all — an
-`ESCALATED` or `ABORTED` run is normal, informative output, not a status
-error — and exits 3 only when there's nothing to report (no run here, or
-state unreadable). A script that wraps `status` in `set -e` therefore never
-dies just because the run it's watching happens to need a human; read the
-run's own state from line 1, not from the exit code.
+The exit code contract intentionally differs from the contract for `next`.
+`status` exits 0 whenever it can read `.headsign/state.json`. An `ESCALATED`
+or `ABORTED` run is normal, informative output and does not cause a status
+error. It exits 3 only when it has nothing to report. This case means
+that no run exists here or that the state is unreadable. A script that wraps
+`status` in `set -e` therefore never dies because the run it watches needs a
+human. Read the run's own state from line 1, not from the exit code.
 
 ### Delegating who drives: `headsign claim`
 
-A **delegated agent** — a teammate under Claude Code's agent-teams
-feature, or a subagent — is the one driver headsign can record, and the
-only one it can tell apart from anybody else. Such an agent shares its
-spawning session's process outright (same pid, same environment) and
-carries no identifier of its own anywhere its Bash tool can reach, so no
-command it runs can say who it is. The one moment it *can* be named is its
-own turn end, which Claude Code reports to a hook with an identifier for
-that agent specifically.
+A **delegated agent** can be an agent-teams teammate or a subagent.
+It is the only driver that headsign can record and identify separately.
+Such an agent shares its spawning session's process outright (same pid,
+same environment). Its Bash tool cannot reach an identifier for the agent.
+Therefore, its commands cannot identify it. Claude Code identifies the agent
+to a hook only when that agent's turn ends.
 
-Skipping the claim fails quietly rather than loudly. An agent that just
-starts calling `headsign next` records nothing, so the run stays unclaimed:
-every nudge it produces goes to whichever *session* stops in the
-directory — typically the one sitting idle, waiting on the delegation —
-while nothing holds the turns of the agent actually doing the work. The backstop
-stays armed and points at the wrong party, and nothing in either one's
-output says so — not even the log: an `unheld` line is written only for a stop
-headsign can attribute to the run, so an unclaimed run records nothing for that
-agent's turn ends either. So when you hand a run to a delegated agent, that
-agent's first headsign command is `headsign claim`, never `headsign next`.
+If an agent skips the claim, the failure is quiet. An agent that starts with
+`headsign next` records nothing, so the run stays unclaimed. Each nudge goes
+to whichever *session* stops in the directory. This is typically the idle
+session that waits for the delegated agent. Nothing holds the turns of the
+agent that does the work. The backstop stays armed and points at the wrong
+party. Neither agent's output reports this problem. The log also does not
+report it. headsign writes an `unheld` line only for a stop that it can
+attribute to the run. Thus, an unclaimed run records nothing when that
+agent's turn ends. When you delegate a run, the agent must first run
+`headsign claim`. It must never start with `headsign next`.
 
-`headsign claim` fixes that by letting a hook do the recording, because
-Claude Code tells the hook what the agent's own environment cannot. Two
-beats:
+`headsign claim` lets a hook record the agent. Claude Code gives the hook
+information that the agent environment does not have.
+The handshake has two steps:
 
-1. From the agent you want driving the run, run `headsign claim`. It arms
-   a one-shot marker and tells you to end your turn — it records nothing
-   itself.
+1. From the agent you want to drive the run, run `headsign claim`. It arms
+   a one-shot marker and tells you to end your turn. The command records
+   nothing itself.
 2. End that turn. **That agent's own turn end is where the seal
-   happens** (Claude Code fires a `SubagentStop` hook for it, carrying an
-   identifier for that agent specifically): headsign writes it into
-   `driver_agent` in `.headsign/state.json`, records a `claimed` line in
-   `.headsign/log`, and confirms it in the hook's message. Wait for that
-   confirmation before running `headsign next` — it is how you know the
-   right agent got seated.
+   happens**. Claude Code fires a `SubagentStop` hook with an identifier for
+   that agent. headsign writes the identifier into `driver_agent` in
+   `.headsign/state.json`. It records a `claimed` line in `.headsign/log`
+   and confirms the claim in the hook's message. Wait for that confirmation
+   before you run `headsign next`. The confirmation shows that headsign
+   seated the correct agent.
 
-A typical delegation: "please drive this run" → the delegated agent runs
-`headsign claim` and ends its turn → the confirmation arrives → it
-proceeds with `headsign next`. Nothing can quietly displace that agent
-afterwards: no command records a driver, a session's own stop never adopts
-a claim, and only another `headsign claim` arms the marker again. So the
-session that handed the work off cannot take the seat back by stopping
-first, or by running `next` itself.
+A typical delegation starts with "please drive this run". The delegated
+agent runs `headsign claim` and ends its turn. After the confirmation
+arrives, the agent proceeds with `headsign next`. Nothing can quietly
+displace that agent afterwards. No command records a driver, and a session's
+own stop never adopts a claim. Only another `headsign claim` arms the marker
+again. The session that delegated the work cannot reclaim the seat by
+stopping first or by running `next` itself.
 
-Being the driver also brings the backstop with it: once seated, that
-agent's own turn endings are pushed back to `headsign next` while the run
-is `running`, and pausing with a stop-note or ending with `headsign
-abort` works from there exactly as it does for a session. An agent that is
-neither the recorded driver nor the first to name itself under an armed claim
-marker is never held — a reviewer subagent, or an agent working on
-something else entirely, stops normally.
+The driver also gets the backstop. While the run is `running`, headsign
+pushes that seated agent back to `headsign next` when its turn ends.
+Pausing with a stop-note or ending with `headsign abort` works exactly as
+it does for a session. headsign holds no agent except the recorded driver
+and the first agent to name itself under an armed claim marker. A reviewer
+subagent, or an agent working on something else, stops normally.
 
 **A seat outlives the agent sitting in it, and that is the one part of a
-handover nobody is told about.** State on disk is what lets a run survive its
-driver disappearing — an API outage, a context running out, a person stopping
-the work. The phase, the attempt count and the workflow file are all still
-there, so a successor establishes where the run stands with one `headsign
-status` and carries on; and because every gate reads the working tree rather
-than a session's memory, the interruption costs no attempt and changes no
-judgment. That much is the design working.
+handover nobody is told about.** Disk state lets a run survive when its
+driver disappears. An API outage, an exhausted context, or a person can
+stop the work. The phase, attempt count, and workflow file remain. A
+successor can run `headsign status` once to find the run's position and
+continue. Every gate reads the working tree instead of a session's memory.
+Therefore, the interruption costs no attempt and changes no judgment. This
+behavior is part of the design.
 
-What also persists is `driver_agent`, holding the name of an agent that may no
-longer exist. headsign cannot tell: an agent id is meaningful only inside the
-process that was given it, so liveness is not a question this tool can ask. The
-consequence falls on the successor. While a driver is recorded, `Stop` passes
-every session's turn end through, and `SubagentStop` holds only the agent whose
-id matches, or the first to name itself under an armed marker — so **until the
-seat changes hands, nothing holds the turns of whoever is actually driving.** The
-run continues; the backstop does not.
+`driver_agent` also persists and can name an agent that no longer exists.
+headsign cannot detect this condition. An agent id has meaning only inside
+the process that received it. Thus, headsign cannot check whether the agent
+is alive. The successor bears the consequence. While headsign records a
+driver, `Stop` passes every session's turn end through. `SubagentStop` holds
+only the agent with the matching id. It can also hold the first agent that
+identifies itself under an armed marker. Therefore, **until the seat changes
+hands, nothing holds the turns of whoever is actually driving.** The run
+continues without the backstop.
 
-So a delegated agent taking over a run should run `headsign claim` and end its
-turn, exactly as the first one did. A *session* taking over cannot, and should not try:
-sealing happens on `SubagentStop` alone (ADR-0010), which is not an event a
-session's turn end produces. `headsign claim` from a session is not a harmless
-no-op either — it checks only that a run exists, so it leaves a live armed marker
-that the next delegated agent to end a turn anywhere under that directory will
-consume, quite possibly a reviewer with no role in the run at all. That session
-can drive perfectly well — `next` asks nobody's permission — but it drives
-without a backstop, and the only ways back to one are to delegate the driving to
-an agent that claims it, or to end the run and start again.
+A delegated agent that takes over a run should run `headsign claim` and end
+its turn. A *session* cannot use this process and should not try. Sealing
+happens only on `SubagentStop` (ADR-0010). A session's turn end does not
+produce that event. `headsign claim` from a session also causes a risk. It
+checks only that a run exists, so it leaves an armed marker. The next
+delegated agent that ends a turn anywhere under that directory consumes the
+marker. That agent can be a reviewer with no role in the run. The session
+can drive because `next` asks nobody's permission. However, it drives
+without a backstop. Two ways lead back to one, and no others: delegate the
+driving to an agent that claims it, or end the run and start again.
 
-This is a handshake, not a lock: if some *other* delegated agent ends a
-turn while the marker is armed and can name itself, it gets adopted
-instead. Run `headsign claim` again from the right one: a new claim
-re-arms the marker, and that agent is now a real contender for it, because
-its own turn end is guaranteed to fire the event that seals. It is still a
-contender and not a winner — another delegated agent naming itself first
-can take this marker too — so re-claim until the confirmation names the
-agent you meant. The full mechanism, the measurements behind it, and the
-race that remains are in
+This mechanism is only a handshake. It does not lock the claim. If another
+delegated agent ends a turn while the marker is armed and can identify
+itself, headsign adopts that agent instead. Run
+`headsign claim` again from the correct agent. A new claim re-arms the
+marker. That agent becomes a contender because its turn end fires the
+sealing event. Another delegated agent can still take the marker by
+identifying itself first. Re-claim until the confirmation names the agent
+you intended. The full mechanism, its measurements, and the remaining race
+are in
 [ADR-0010](adr/0010-subagent-stop-identity.md).
 
 ### Environment variables
 
-headsign reads these from its own environment:
+headsign reads these variables from its environment:
 
 | Variable | Set by | Meaning |
 |---|---|---|
@@ -1611,37 +1612,37 @@ headsign reads these from its own environment:
 | `CLAUDE_CODE_SESSION_ID` | Claude Code | Read in exactly one place (`resolveDriveSession`), to stamp `last_drive` with whichever session ran `start` or `next`. That stamp is what lets the stop-boundary hooks stop nudging a bystander of a run nobody has claimed ([ADR-0027](adr/0027-recording-who-drove-a-run.md)). The value reaches `state.json` and stops there: `status` reports when the run was last moved, never by whom, and no command prints it. |
 | `CLAUDE_PROJECT_DIR` | Claude Code | Read only by the stop-boundary hooks, and only on the branch that today writes nothing: a second, bounded walk from this project root, tried once the walk from the session's own directory finds no run. A run found there gets one `unheld` line, detail `by=CLAUDE_PROJECT_DIR`, when the stopping session is the one that last moved it or nobody has ([ADR-0027](adr/0027-recording-who-drove-a-run.md) §9), and the turn is never held on this path — see [Run state, and where headsign looks for it](#run-state-and-where-headsign-looks-for-it) and [ADR-0026](adr/0026-a-second-place-to-look.md). Not read anywhere else in headsign. |
 
-Headsign reads one session identifier and no agent identifier. The session one
-is `CLAUDE_CODE_SESSION_ID` above, read for `last_drive` and never printed. An
-agent's identity does not come from the environment at all: a delegated agent
-names itself at its own turn end, through the claim handshake, and the hook
-learns it from the `SubagentStop` payload
+Headsign reads one session identifier and no agent identifier. The session
+identifier is `CLAUDE_CODE_SESSION_ID`. headsign reads it for `last_drive`
+and never prints it. The environment provides no agent identity. A delegated
+agent identifies itself when its turn ends during the claim handshake. The
+hook gets the identity from the `SubagentStop` payload
 ([ADR-0010](adr/0010-subagent-stop-identity.md),
 [ADR-0013](adr/0013-claim-only-driver-identity.md),
 [ADR-0027](adr/0027-recording-who-drove-a-run.md)).
 
-The other direction: headsign also SETS a variable, `HEADSIGN_WORKFLOW_FILE`,
-in the environment of a gate's checks, a phase's `ready:` probe, and an
-`on_pass` route's `when:`. Its value is the workflow path headsign recorded
-for this run — the same string `state.json`'s `workflow_path` holds,
-unnormalised and unresolved: relative when the run was started by name,
-absolute when it was started with an absolute `--workflow`. It exists so a
-workflow can check itself — a gate confirming that somebody filled in the
-blanks a distributed workflow shipped with, since the blanks are in the
-workflow file and nowhere else
+headsign also SETS a variable, `HEADSIGN_WORKFLOW_FILE`. It sets the
+variable for a gate's checks, a phase's `ready:` probe, and an `on_pass`
+route's `when:`. Its value is the workflow path that headsign recorded for
+this run. It is the same string that `state.json` stores in `workflow_path`.
+The string remains unnormalised and unresolved. It is relative when a name
+starts the run. It is absolute when an absolute `--workflow` starts the
+run. The variable lets a workflow check itself. For example, a gate can
+confirm that somebody filled in the blanks in a distributed workflow. The
+blanks exist only in the workflow file
 ([ADR-0033](adr/0033-the-one-variable-headsign-sets.md)).
 
-**The rule:** a session that hasn't run `headsign start` and hasn't been
-asked to drive the run should reach for `headsign status`, never `headsign
-next` or `headsign abort`.
+**The rule:** use `headsign status` from a session that has not run
+`headsign start` or received a request to drive the run. Never use
+`headsign next` or `headsign abort` from that session.
 
 ## Nodes, edges, and state
 
-A workflow file describes a **control graph**: it says where the work goes
-next, and nothing else. It is not a knowledge graph — it holds no facts
-about your domain — and not an execution trace, since it is written before
-the run and the run's own history goes to `.headsign/log`. If you already
-think in graph terms, the vocabulary maps over like this:
+A workflow file describes a **control graph**. It says where the work goes
+next, and nothing else. It is not a knowledge graph: it holds no facts about
+your domain. It also differs from an execution trace, because you write it
+before the run. The run history goes to `.headsign/log`. If you
+use graph terms, the vocabulary maps as follows:
 
 | Graph term | In headsign |
 |---|---|
@@ -1657,78 +1658,79 @@ think in graph terms, the vocabulary maps over like this:
 
 ### Reading the log
 
-`.headsign/log` holds every run started in this directory, oldest first, and
-`start` never clears it — an aborted run's stated reason is the only record
-there is of why someone stopped, and it outlives the run that follows it
+`.headsign/log` holds every run that started in this directory. The oldest
+run comes first. `start` never clears it. An aborted run's stated reason is
+the only record there is of why someone stopped. The reason outlives the next run
 ([ADR-0024](adr/0024-the-log-survives-a-restart.md)). The file is gitignored
 and disposable; delete it when you want a clean slate.
 
-Nothing separates one run from the next, because a run already opens with its
-own `start` line. That line is a marker a script can trust: the event word is
-always the second field, and free text like an `abort` reason always comes
-after `a=` and `i=`. So this pulls out the current run, and follows it:
+Each run starts with its own `start` line, so the log needs no separator.
+A script can use that line as a marker. The event word is always the second
+field. Free text such as an `abort` reason always follows `a=` and `i=`.
+This command extracts the current run and follows it:
 
 ```sh
 N=$(grep -n '^[^ ]* start ' .headsign/log | tail -1 | cut -d: -f1)
 tail -n +"$N" -f .headsign/log
 ```
 
-Anchoring on the second field is the part that matters. A plain
-`grep ' start '` also matches `abort … reason="let's start over"`, and would
+You must anchor the search on the second field. A plain
+`grep ' start '` also matches `abort … reason="let's start over"`. It would
 slice the log at somebody's sentence.
 
-Five of the event words are not about the run moving at all, but about a turn
-end: `held`, `paused`, `stalled`, `claimed`, and `unheld`.
+Five event words describe a turn end and do not describe run movement:
+`held`, `paused`, `stalled`, `claimed`, and `unheld`.
 
 ```
 2026-07-31T17:10:04+09:00 held implement a=0 i=48 nudges=3
 2026-07-30T23:06:51+09:00 unheld decide a=0 i=21 by=stop_hook_active
 ```
 
-The first is a turn end headsign pushed back to `headsign next`, carrying the
-number of consecutive holds spent so far — `nudges=` is the key `stalled`
-uses, because it is the same quantity. The second is a turn end Claude Code
-had already resumed, so headsign stood down and the turn ended (see [the
-backstop](#the-backstop)). Its detail is bare rather than quoted because
-`stop_hook_active` is an identifier — and it is the name of a field on the
-hook's payload from Claude Code, not anything headsign sets. It is in the line
-so that the log, headsign's source, and the payload a person can print for
-themselves all use the one word. A *missing* `unheld` line proves nothing on
-its own: the hook's writes are best-effort and skipped while the run's lock is
+The first line records a turn end that headsign pushed back to
+`headsign next`. It includes the number of consecutive holds used so far.
+`stalled` uses the `nudges=` key because it records the same quantity. The
+second line records a turn end that Claude Code had already resumed. Thus,
+headsign stood down, and the turn ended (see [the backstop](#the-backstop)
+). The detail has no quotation marks because `stop_hook_active` is an
+identifier. It names a field in the Claude Code hook payload. headsign does
+not set this field. The log, the headsign source, and a printed payload all
+use this one term. A *missing* `unheld` line proves nothing by itself. The
+hook writes on a best-effort basis and skips writes while the run's lock is
 held.
 
 **The stop-boundary lines are complete now, so the line before an `unheld`
-says what happened.** A `held` before it means headsign nudged and was then
-overruled: the hold and the pass are the two turn ends of one exchange, which
-is why a nudge arrives about once per exchange. A transition line before it —
-an `advance`, a `retry` — means the work was judged (a failing one also
-carries `dur=<seconds>`, how long the failing check actually ran). A `retry`
-or a routed-fail `advance` whose check timed out carries `dur=` too, even
-though the human-readable line for that same failure — RETRY's own
-`--- gate failed: … ---` line for a `retry`, the ADVANCE block's
-`--- gate failed: … → routed to … ---` line for a routed-fail — already
-states the duration a different way, as `timed out after Ns`, and does not
-repeat it there.
-A `paused` before it means somebody stopped on purpose. A `stalled` before it
-means the cap was already spent, and that is the one silence left: the stops
-after the cap trips pass without a line of their own, because `stalled` has
-already recorded that the backstop gave up on this run.
+says what happened.** A preceding `held` means headsign nudged and was then
+overruled. The hold and the pass are the two turn ends in one exchange. Therefore, approximately one nudge arrives during each
+exchange. A preceding transition line, such as an `advance` or a `retry`,
+means that the gate judged the work. A failed transition also includes
+`dur=<seconds>`, which gives the actual duration of the failed check. A
+timed-out `retry` or routed-fail `advance` also includes `dur=`. The
+readable line for that failure already states the duration as
+`timed out after Ns`.
+For a `retry`, RETRY uses its `--- gate failed: … ---` line. For a
+routed-fail, the ADVANCE block uses its
+`--- gate failed: … → routed to … ---` line. It does not repeat `dur=`
+in that readable line. A preceding `paused` means somebody stopped on
+purpose.
+A preceding `stalled` means that the run had already used the cap, and that
+is the one silence left. Stops pass without their own lines after the run
+reaches the cap. `stalled` has already recorded that the backstop
+stopped nudging this run.
 
-The count on a `held` line is also the denominator `stalled` never had. Count
-the `held` lines since the last line that moved the run and you have how much
-of the cap this stretch has spent; the `stalled` that eventually takes the
-fifth hold's place says the same number back as `nudges=5`. Unlike `unheld`,
-that count does not go missing while the run's lock is held: the counter and
-the line are one write, and a nudge headsign cannot record is one it does not
-make either — it lets the turn end instead.
+The count on a `held` line provides the denominator that `stalled` lacked.
+Count the `held` lines after the last line that moved the run. The result
+shows how much of the cap this stretch has used. The `stalled` that replaces
+the fifth hold reports the same number as `nudges=5`. Unlike `unheld`, this
+count remains complete while the run's lock is held. The counter and line
+use one write. If headsign cannot record a nudge, it does not make the
+nudge. It lets the turn end instead.
 
-One of the shipped examples,
+One shipped example,
 [example.headsign/sweep.yaml](../example.headsign/sweep.yaml), applies a
-mechanical change to a queue of files one item per lap; drawn as its graph,
-it looks like this. This is a different picture from the sequence diagram in
-[How a run flows](#how-a-run-flows): that one is a single trip around the
-loop, this one is the shape of the whole workflow, fixed before the run
-starts.
+mechanical change to one queued file during each lap. Its graph looks like
+this. The sequence diagram in [How a run flows](#how-a-run-flows) shows one
+trip around the loop. This graph shows the complete workflow shape, which
+is fixed before the run starts.
 
 ```mermaid
 flowchart TD
@@ -1748,91 +1750,88 @@ flowchart TD
     report -- "pass" --> finish
 ```
 
-Every edge in it is decided by a shell exit code. Only edges that move the
-run are drawn: a phase whose gate fails simply stays where it is, which is
-true of nearly all of them. `verify` is the exception — its failure routes
-back to `apply` instead of staying, and that is the rework edge — and `record` is the branch: its `when:` check
-turns the cycle for as long as the queue still has entries, and its default
-route leaves for `report` once it doesn't. So the stopping condition here is
-the data rather than a counter, and `limits.max_total_iterations` sits above
-the whole thing as the backstop that escalates to a person if the queue
-never drains. A long queue is not a stuck one, which is why that escalation
-leaves the run open rather than ending it: raise the number and the sweep
-carries on from where it stopped.
+A shell exit code decides every edge. The graph shows only edges that move
+the run. Nearly every phase stays in place when its gate fails. `verify` is
+the exception. Its failure routes back to `apply`, which is the rework edge.
+`record` is the branch. Its `when:` check repeats the cycle while the queue
+has entries. Its default route leaves for `report` when the queue is empty.
+Thus, data supplies the stopping condition instead of a counter.
+`limits.max_total_iterations` provides a backstop for the complete graph. It
+escalates to a person if the queue never drains. A long queue can continue
+to make progress. Therefore, that escalation leaves the run open instead
+of ending it. Raise the number, and the sweep continues from its stopping
+point.
 
-Being a graph is not itself an achievement, so here is a plain scorecard of
-what it adds over a loop that just re-prompts until the model says it's
-done:
+This graph adds the following features to a loop that re-prompts until the
+model reports completion:
 
 - **Independent verification: yes, as far as your checks are independent.**
-  The transition is decided by commands in the workflow file, not by the
-  working agent's own report, and a review phase can put the verdict in a
-  read-only reviewer's hands instead. How far that goes — hard, semi, and
-  soft gates — is [ADR-0007](adr/0007-verdict-authorship.md).
+  Commands in the workflow file decide the transition. The working agent's
+  report does not decide it. A review phase can let a read-only reviewer
+  provide the verdict. [ADR-0007](adr/0007-verdict-authorship.md) explains
+  the limit through hard, semi, and soft gates.
 - **A human approval gate: yes.** `ESCALATE` hands the decision back to a
-  person, and a phase whose gate reads a decision file only a person writes
-  holds the run until they write it (the release workflow in
-  [example.headsign/](../example.headsign/) is exactly that).
+  person. A phase can use a gate that reads a decision file only a person
+  writes. The phase holds the run until that person writes the file. The
+  release workflow in [example.headsign/](../example.headsign/) uses this
+  design.
 - **Parallel branches: no, deliberately.** One active phase per run; a k-way
-  branch chooses one destination and never fans out. Composing parallelism
-  outside a run is covered under "What headsign is not" in the
+  branch chooses one destination and never fans out. The "What headsign is
+  not" section explains how to compose parallelism outside a run in the
   [README](../README.md).
 
-If your work is a straight line, you don't need branching, and adding it
-buys nothing — a chain of phases is a complete workflow. What the graph is
-still doing for you there is holding the stopping condition: `$end`,
-`max_attempts`, and `limits.max_total_iterations` are what make a loop end
-for a stated reason rather than when someone gets bored of it.
+If your work follows a straight line, you do not need branching. A chain of
+phases is a complete workflow. The graph still holds the stopping condition.
+`$end`, `max_attempts`, and `limits.max_total_iterations` make a loop end
+for a stated reason instead of a person's loss of interest.
 
 ### The graph the name comes from
 
-The shape has a name now. *Graph engineering*, [as first written
+This shape now has a name. *Graph engineering*, [as first written
 down](https://www.drjoshcsimmons.com/writing/we-are-entering-the-graph-engineering-phase),
-is "designing agentic systems as explicit graphs instead of implicit loops",
-and it draws its line against the older name this way: "Loop engineering was
-the craft of what happens inside one context window. Graph engineering is
-the craft of what happens between them." What headsign holds is exactly the
-between. It has no opinion about what happens inside a phase — how the work
-is done, over how many turns, by how many agents — and it learns nothing
-about it either. The only thing it reads of that work is what a shell
-command exits with.
+means "designing agentic systems as explicit graphs instead of implicit
+loops". It distinguishes the older name with this statement: "Loop
+engineering was the craft of what happens inside one context window. Graph
+engineering is the craft of what happens between them." headsign manages
+exactly what happens between context windows. It has no opinion about work
+inside a phase. It does not know how agents do the work, how many turns they
+use, or how many agents participate. It reads only a shell command's exit
+code.
 
-Of that definition's three terms, one headsign plainly does not satisfy.
-State there is "an object with a schema, checkpointed every time you cross
-an edge", and here an edge carries nothing at all. What survives a
-transition is the run's ledger — `.headsign/state.json`: which phase the run
-stands on, how many attempts it has spent — and the working tree itself,
-which is the real carrier and is not headsign's to describe. Anything a
-phase wants to hand the next one, its agent writes to a file and the next
-phase's check reads it; `.headsign/tmp/` is where those files go by
-convention. There is no typed payload, and no schema for one.
+headsign does not satisfy one of the definition's three terms. The
+definition calls state "an object with a schema, checkpointed every time you
+cross an edge". In headsign, an edge carries nothing. Two things survive a
+transition. The run's ledger in `.headsign/state.json` records its phase and
+used attempts. The working tree carries the actual work, and describing it
+is not headsign's job. An agent writes information for the next phase to a file. The
+next phase's check reads that file. By convention, these files go in
+`.headsign/tmp/`. headsign provides no typed payload and no schema for one.
 
-On the other two, headsign is not short of the definition but inverted
-against it, and that is the difference worth naming. There, the edge is the
-clever part — "an edge is a typed transition that carries state from one
-node to the next" — and the node is meant to be dull: "A good node is
-boring. It does one thing, you can test it alone." Here the boring one is
-the edge. It carries no state and has no type; its whole content is an exit
-code selecting a route that was written in the file before the run started,
-so it can be read in a line and tested in a shell. The node is where nothing
-is constrained: a phase may delegate to subagents, run work in parallel, ask
-a person something, or take twenty turns, and the workflow file neither
-knows nor cares. Boringness moved from the node to the edge. That is the
-same claim the README makes about a harness that needs to be clever having
-the cleverness in the wrong place — judgment belongs inside a phase, and a
-transition is the one place it does not belong.
+On the other two terms, headsign is not short of the definition but inverted
+against it, and that difference is worth naming. The definition makes the edge complex: "an edge is a typed
+transition that carries state from one node to the next". It makes the node
+simple: "A good node is boring. It does one thing, you can test it alone."
+headsign makes the edge simple. It carries no state and has no type. Its
+only content is an exit code that selects a route. The workflow file defines
+that route before the run starts. You can read the edge in one line and test
+it in a shell. headsign puts no constraints on a phase. A phase can delegate
+to subagents, run work in parallel, ask a person a question, or take twenty
+turns, and the workflow file neither knows nor cares. Boringness moved from
+the node to the edge. The README makes the same claim about a harness that
+needs to be clever: the cleverness is in the wrong place. Judgment belongs
+inside a phase, and a transition is the one place it does not belong.
 
-The same definition asks for one more thing: "Treat humans as nodes.
-Approval deserves the same design attention as any other capability."
-headsign has no approval feature and needs none, because a human node is
-already an ordinary phase — one whose gate reads a decision file that only a
-person writes, which is what the `approve` phase in
-[example.headsign/release.yaml](../example.headsign/release.yaml) is. The
-waiting is `ready:` and `PENDING`, which is not a failure and spends no
-attempt; the way back out is `ESCALATE`, which hands the decision to a
-person. What that buys is a deterministic transition, not a wise one: a
-verdict a person types is still an authored verdict, soft on
-[ADR-0007](adr/0007-verdict-authorship.md)'s scale, and the guarantee stops
-at the routing. [ADR-0003](adr/0003-workflow-yaml-vocabulary.md) deferred a
+The definition also states: "Treat humans as nodes. Approval deserves the
+same design attention as any other capability." headsign has no approval
+feature and needs none, because a human node is already an ordinary phase. Its gate reads a
+decision file that only a person writes. The `approve` phase in
+[example.headsign/release.yaml](../example.headsign/release.yaml) uses this
+design. `ready:` and `PENDING` implement the wait. The wait is not a failure
+and spends no attempt. `ESCALATE` ends the wait and gives the decision to a
+person. This process gives a deterministic transition, but it does not give
+a wise one. A person's verdict remains an authored verdict. It is soft on
+the scale in [ADR-0007](adr/0007-verdict-authorship.md), and the guarantee
+stops at routing.
+[ADR-0003](adr/0003-workflow-yaml-vocabulary.md) deferred a
 dedicated `type: approval` to v2 "if real usage demands it". The ordinary
 vocabulary above is why it is still deferred.
