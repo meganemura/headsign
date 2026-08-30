@@ -7,3 +7,7 @@ node_modules/
 # than only in a machine's global ignore, so the exclusion travels with the
 # checkout instead of with one laptop.
 .claude-team/
+
+# Hegel keeps its failing-example database here. It is a local replay cache,
+# rebuilt from a run, and CI disables it outright.
+.hegel/

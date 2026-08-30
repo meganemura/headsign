@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import * as workflow from "../src/workflow.ts";
+import * as hegel from "@hegeldev/hegel";
+import * as gs from "@hegeldev/hegel/generators";
 
 function validWorkflow(): Record<string, unknown> {
   return {
@@ -688,3 +690,322 @@ test("changedFingerprintKeys: a key only the computed map has is not a differenc
 test("changedFingerprintKeys: a key only the saved map has is not a difference — the run can no longer reach it", () => {
   assert.deepEqual(workflow.changedFingerprintKeys({ plan: "p", build: "b" }, { plan: "p" }), []);
 });
+
+// --- properties (hegel) ---
+//
+// Everything above pins one document each. What follows asks the same module about documents
+// nobody typed: hegel draws them, and each assertion is a relation this file's own header or a
+// named ADR already states. The generator below is the shared asset — the same draw feeds the
+// no-throw property, the schema properties and the fingerprint properties.
+
+// Full Unicode minus the two categories a YAML round trip does not return unchanged: a control
+// character and a lone surrogate come back as something else, and `parseWorkflow` below would
+// then fail on the parser's rules rather than on headsign's. The three excluded characters are
+// YAML's other line breaks (NEL, LS, PS), left out for the same reason.
+const phrase = gs.text({ minSize: 1, maxSize: 16, excludeCategories: ["Cc", "Cs"], excludeCharacters: "\u0085\u2028\u2029" });
+
+// Names a phase may carry. `$limits` is in the pool deliberately: workflow.ts's LIMITS_KEY
+// documents the collision it makes with the fingerprint's own key and says `limits` wins, and a
+// key-set property has to hold with that phase present. `retry`, `$end` and `escalate` are out
+// because the schema reads each of them as a token wherever a destination is written, so a
+// phase carrying one of those names cannot be routed to.
+const PHASE_NAMES = ["plan", "build", "review", "docs", "ship", "$limits", "phase-1", "a b", "変更"];
+
+function drawCheck(tc: hegel.TestCase): Record<string, unknown> {
+  const check: Record<string, unknown> = { run: tc.draw(phrase) };
+  if (tc.draw(gs.booleans())) check.name = tc.draw(phrase);
+  if (tc.draw(gs.booleans())) check.timeout = tc.draw(gs.integers({ minValue: 1, maxValue: 600 }));
+  return check;
+}
+
+// The k-way form, built to the two positional rules validateRoutes states: every entry but the
+// last carries a `when:`, and the last one carries none.
+function drawRoutes(tc: hegel.TestCase, targets: string[]): Record<string, unknown>[] {
+  const count = tc.draw(gs.integers({ minValue: 1, maxValue: 3 }));
+  return Array.from({ length: count }, (_unused, i) => {
+    const route: Record<string, unknown> = { to: tc.draw(gs.sampledFrom(targets)) };
+    if (i < count - 1) route.when = tc.draw(phrase);
+    if (tc.draw(gs.booleans())) route.timeout = tc.draw(gs.integers({ minValue: 1, maxValue: 600 }));
+    return route;
+  });
+}
+
+function drawPhase(tc: hegel.TestCase, names: string[]): Record<string, unknown> {
+  const targets = [...names, "$end"];
+  const phase: Record<string, unknown> = {
+    description: tc.draw(phrase),
+    gate: { checks: Array.from({ length: tc.draw(gs.integers({ minValue: 1, maxValue: 3 })) }, () => drawCheck(tc)) },
+    on_pass: tc.draw(gs.booleans()) ? tc.draw(gs.sampledFrom(targets)) : drawRoutes(tc, targets),
+  };
+  if (tc.draw(gs.booleans())) phase.ready = tc.draw(phrase);
+  if (tc.draw(gs.booleans())) {
+    // No trailing '/': that spelling carries a warning of its own, and these properties are
+    // about errors. The relative, `..`-free shape is what validatePhase accepts.
+    phase.clear = Array.from({ length: tc.draw(gs.integers({ minValue: 1, maxValue: 2 })) }, () => `${tc.draw(gs.text({ alphabet: "abc.", minSize: 1, maxSize: 6 }))}x`);
+  }
+  const onFail = tc.draw(gs.sampledFrom([null, "retry", "$end", "escalate", ...names]));
+  if (onFail !== null) phase.on_fail = onFail;
+  // Paired with 'escalate' the schema rejects it outright — the first failure already ends the
+  // run, so the budget could never be reached (validatePhase says so in its message).
+  if (onFail !== "escalate" && tc.draw(gs.booleans())) phase.max_attempts = tc.draw(gs.integers({ minValue: 1, maxValue: 10 }));
+  return phase;
+}
+
+// A document the schema accepts. Unreachable phases and pass-only cycles stay possible on
+// purpose: both are warnings, and a property about errors has to survive them.
+function drawWorkflowDoc(tc: hegel.TestCase): Record<string, unknown> {
+  const count = tc.draw(gs.integers({ minValue: 1, maxValue: 5 }));
+  const names = tc.draw(gs.arrays(gs.sampledFrom(PHASE_NAMES), { minSize: count, maxSize: count, unique: true }));
+  const doc: Record<string, unknown> = {
+    version: 0.1,
+    name: tc.draw(phrase),
+    entry: tc.draw(gs.sampledFrom(names)),
+    // fromEntries, not an assignment loop: it creates an own property for every name it is
+    // handed, which is also what the YAML parser hands validate().
+    phases: Object.fromEntries(names.map((name) => [name, drawPhase(tc, names)])),
+  };
+  if (tc.draw(gs.booleans())) doc.limits = { max_total_iterations: tc.draw(gs.integers({ minValue: 1, maxValue: 1000 })) };
+  return doc;
+}
+
+// Anything a YAML file can parse to, nested: scalars, sequences and mappings, with the schema's
+// own vocabulary in the string pool so near-miss documents get drawn as well as nonsense.
+function drawAnyDocument(tc: hegel.TestCase, depth: number): unknown {
+  const kind = tc.draw(gs.integers({ minValue: 0, maxValue: depth > 0 ? 7 : 5 }));
+  switch (kind) {
+    case 0: return null;
+    case 1: return tc.draw(gs.booleans());
+    case 2: return tc.draw(gs.integers());
+    case 3: return tc.draw(gs.floats());
+    case 4: return tc.draw(gs.text({ maxSize: 12 }));
+    case 5: return tc.draw(gs.sampledFrom(["version", "name", "entry", "phases", "gate", "checks", "run", "on_pass", "on_fail", "$end", "retry", "escalate", "0.1"]));
+    case 6: return Array.from({ length: tc.draw(gs.integers({ minValue: 0, maxValue: 3 })) }, () => drawAnyDocument(tc, depth - 1));
+    default: {
+      const keys = tc.draw(gs.arrays(gs.sampledFrom(["version", "name", "entry", "phases", "limits", "gate", "checks", "on_pass", "on_fail", "description", "run", "to", "when", "x"]), { maxSize: 5, unique: true }));
+      return Object.fromEntries(keys.map((k) => [k, drawAnyDocument(tc, depth - 1)]));
+    }
+  }
+}
+
+// This file's header states it: nothing here throws, whatever it is handed — a problem comes
+// back as text in the error list instead. That is the contract the whole `validate` command
+// rests on, and it is the one property every document can be asked at once.
+test("validate never throws, whatever the document is", () =>
+  hegel.test((tc) => {
+    const doc = drawAnyDocument(tc, 3);
+    const { errors, warnings } = workflow.validate(doc);
+    assert.ok(Array.isArray(errors) && Array.isArray(warnings));
+    assert.ok(errors.every((e) => typeof e === "string"));
+  }));
+
+test("a document built to the schema validates with no errors", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    assert.deepEqual(workflow.validate(doc).errors, []);
+  }));
+
+// Warnings are computed only once the shape is otherwise valid — validate() guards the walks on
+// exactly that — so an accepted document is the only one that can carry them.
+test("warnings arrive only with an empty error list", () =>
+  hegel.test((tc) => {
+    // Both sources, because only one of them can produce a warning at all: a schema-shaped
+    // document is the only kind that reaches the walks, and junk is what has to stay silent.
+    const doc = tc.draw(gs.booleans()) ? drawWorkflowDoc(tc) : drawAnyDocument(tc, 3);
+    const { errors, warnings } = workflow.validate(doc);
+    if (warnings.length > 0) assert.deepEqual(errors, []);
+  }));
+
+// --- the strict schema (ADR-0015): a key the schema does not know is an error ---
+
+const ALLOWED_KEYS_ORACLE = {
+  top: ["version", "name", "entry", "phases", "limits"],
+  phase: ["description", "clear", "ready", "gate", "on_pass", "on_fail", "max_attempts"],
+  gate: ["checks"],
+  check: ["name", "run", "timeout"],
+  route: ["when", "to", "timeout"],
+  limits: ["max_total_iterations"],
+};
+
+type Level = keyof typeof ALLOWED_KEYS_ORACLE;
+
+// Every mapping in the document the schema polices, paired with the level it is policed at.
+// The `phases` mapping itself is absent on purpose: its keys are phase names, which the author
+// chooses.
+function keyedMappings(doc: Record<string, unknown>): { level: Level; map: Record<string, unknown> }[] {
+  const found: { level: Level; map: Record<string, unknown> }[] = [{ level: "top", map: doc }];
+  if (doc.limits) found.push({ level: "limits", map: doc.limits as Record<string, unknown> });
+  for (const phase of Object.values(doc.phases as Record<string, Record<string, unknown>>)) {
+    found.push({ level: "phase", map: phase });
+    const gate = phase.gate as Record<string, unknown>;
+    found.push({ level: "gate", map: gate });
+    for (const check of gate.checks as Record<string, unknown>[]) found.push({ level: "check", map: check });
+    if (Array.isArray(phase.on_pass)) for (const route of phase.on_pass as Record<string, unknown>[]) found.push({ level: "route", map: route });
+  }
+  return found;
+}
+
+test("a key the schema does not know is reported, wherever in the document it is written", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const sites = keyedMappings(doc);
+    const site = sites[tc.draw(gs.integers({ minValue: 0, maxValue: sites.length - 1 }))];
+    // Drawn from the schema's whole vocabulary as often as from nowhere: a key that is legal
+    // one level up is the misspelling ADR-0015 is about, and it has to be rejected here too.
+    const key = tc.draw(gs.booleans())
+      ? tc.draw(gs.sampledFrom(Object.values(ALLOWED_KEYS_ORACLE).flat()))
+      : tc.draw(gs.text({ alphabet: "abcdefghijklmnopqrstuvwxyz_", minSize: 1, maxSize: 10 }));
+    tc.assume(!ALLOWED_KEYS_ORACLE[site.level].includes(key));
+    // defineProperty, not assignment: `map.__proto__ = 1` sets the prototype instead of adding a
+    // key, and the YAML parser gives validate an own property for that name like any other.
+    Object.defineProperty(site.map, key, { value: tc.draw(gs.integers()), enumerable: true, writable: true, configurable: true });
+    const found = workflow.validate(doc).errors;
+    assert.ok(
+      found.some((e) => e.includes(`unknown key '${key}'`)),
+      `expected an unknown-key error naming '${key}' at level ${site.level}, got ${JSON.stringify(found)}`,
+    );
+  }));
+
+// --- load(): the file is read afresh, and the workflow comes back only when nothing is wrong ---
+
+function parseWorkflow(doc: unknown): ReturnType<typeof workflow.load> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-wf-prop-"));
+  const file = path.join(dir, "workflow.yaml");
+  fs.writeFileSync(file, stringifyYaml(doc));
+  try {
+    return workflow.load(file);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// The header's rule stated as one relation: a workflow comes back exactly when the error list
+// is empty, so "no workflow" is how a fatal problem is reported and never anything else.
+test("load hands back a workflow exactly when it reports no error", () =>
+  hegel.test((tc) => {
+    const doc = tc.draw(gs.booleans()) ? drawWorkflowDoc(tc) : drawAnyDocument(tc, 3);
+    const loaded = parseWorkflow(doc);
+    assert.equal(loaded.workflow === null, loaded.errors.length > 0);
+  }, { testCases: 50 }));
+
+// A document the schema accepts survives the trip through the file load reads it from: the run
+// walks the rules that were written, not a reshaped copy of them.
+test("a schema-shaped document round-trips through the YAML file load reads", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const loaded = parseWorkflow(doc);
+    assert.deepEqual(loaded.errors, []);
+    assert.deepEqual(loaded.workflow, doc);
+  }, { testCases: 50 }));
+
+// --- the graph pin (ADR-0023) ---
+
+// The walk the fingerprint is scoped to, written out here rather than borrowed: every
+// destination a run standing on `from` can still be sent to, `on_fail` edges included.
+function reachableNames(doc: Record<string, unknown>, from: string): Set<string> {
+  const phaseMap = doc.phases as Record<string, Record<string, unknown>>;
+  const seen = new Set<string>();
+  const stack = [from];
+  while (stack.length > 0) {
+    const name = stack.pop()!;
+    if (seen.has(name) || !Object.hasOwn(phaseMap, name)) continue;
+    seen.add(name);
+    const p = phaseMap[name];
+    const targets = Array.isArray(p.on_pass) ? (p.on_pass as { to: string }[]).map((r) => r.to) : [p.on_pass as string];
+    for (const t of [...targets, p.on_fail]) if (typeof t === "string" && Object.hasOwn(phaseMap, t)) stack.push(t);
+  }
+  return seen;
+}
+
+test("the pin covers exactly the phases the run can still be sent to, plus $limits", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const names = Object.keys(doc.phases as Record<string, unknown>);
+    const from = tc.draw(gs.sampledFrom(names));
+    const keys = new Set(Object.keys(fingerprintOf(doc, from)));
+    assert.deepEqual(keys, new Set([...reachableNames(doc, from), workflow.LIMITS_KEY]));
+  }));
+
+// Rebuilds every mapping with its keys in a drawn order, sequences untouched. ADR-0023 §2: the
+// hash is of the parsed structure, so key order is the author's business while array order is a
+// rule.
+function reorderKeys(tc: hegel.TestCase, value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((v) => reorderKeys(tc, v));
+  if (typeof value !== "object" || value === null) return value;
+  const entries = Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, reorderKeys(tc, v)] as const);
+  const shuffled = [...entries];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = tc.draw(gs.integers({ minValue: 0, maxValue: i }));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return Object.fromEntries(shuffled);
+}
+
+test("the pin reads the parsed structure: any key order gives the same hashes", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const names = Object.keys(doc.phases as Record<string, unknown>);
+    const from = tc.draw(gs.sampledFrom(names));
+    const before = fingerprintOf(doc, from);
+    assert.deepEqual(fingerprintOf(reorderKeys(tc, doc) as Record<string, unknown>, from), before);
+  }));
+
+// ADR-0003 makes description advisory, and ADR-0023 §2 keeps it out of the pin for that reason:
+// a run must be able to reword its own prose mid-walk without anybody being asked.
+test("rewording every description in the file moves no hash and reports no change", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const names = Object.keys(doc.phases as Record<string, unknown>);
+    const from = tc.draw(gs.sampledFrom(names));
+    const before = fingerprintOf(doc, from);
+    for (const phase of Object.values(doc.phases as Record<string, Record<string, unknown>>)) phase.description = tc.draw(phrase);
+    const after = fingerprintOf(doc, from);
+    assert.deepEqual(after, before);
+    assert.deepEqual(workflow.changedFingerprintKeys(before, after), []);
+  }));
+
+// Edits that leave every edge where it was, so the reachable set — and with it the key set — is
+// the same on both sides and the reported difference is about rules and nothing else.
+const EDGE_PRESERVING_EDITS: ((tc: hegel.TestCase, phase: Record<string, unknown>) => void)[] = [
+  (tc, p) => { (p.gate as { checks: unknown[] }).checks = [{ run: tc.draw(phrase) }]; },
+  (tc, p) => { p.ready = tc.draw(phrase); },
+  (tc, p) => { p.clear = [`${tc.draw(gs.text({ alphabet: "abc", minSize: 1, maxSize: 5 }))}y`]; },
+  (tc, p) => { if (p.on_fail !== "escalate") p.max_attempts = tc.draw(gs.integers({ minValue: 1, maxValue: 10 })); },
+];
+
+// ADR-0023 §1: the report has to name which rules moved. One phase edited means that phase
+// named and no other — the whole reason the pin is a map of hashes and not one hash of the file.
+test("editing one reachable phase's rules reports that phase and no other", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const names = Object.keys(doc.phases as Record<string, unknown>);
+    const from = tc.draw(gs.sampledFrom(names));
+    const reachable = [...reachableNames(doc, from)]
+      // `$limits` is the one name the limits mapping's own hash lands on — workflow.ts's
+      // LIMITS_KEY says the collision is deterministic and that limits wins — so a phase
+      // carrying it is reported under that key rather than under itself.
+      .filter((n) => n !== workflow.LIMITS_KEY);
+    tc.assume(reachable.length > 0);
+    const target = tc.draw(gs.sampledFrom(reachable));
+    const before = fingerprintOf(doc, from);
+    const phase = (doc.phases as Record<string, Record<string, unknown>>)[target];
+    const pinnedBefore = JSON.stringify({ ...phase, description: null });
+    tc.draw(gs.sampledFrom(EDGE_PRESERVING_EDITS))(tc, phase);
+    tc.assume(JSON.stringify({ ...phase, description: null }) !== pinnedBefore);
+    assert.deepEqual(workflow.changedFingerprintKeys(before, fingerprintOf(doc, from)), [target]);
+  }));
+
+// The ceiling is pinned under its own key, and declaring one has to read as a change to that key
+// rather than as a key appearing out of nowhere — a key present on one side only is adopted in
+// silence.
+test("changing the ceiling reports $limits and no phase", () =>
+  hegel.test((tc) => {
+    const doc = drawWorkflowDoc(tc);
+    const names = Object.keys(doc.phases as Record<string, unknown>);
+    const from = tc.draw(gs.sampledFrom(names));
+    const before = fingerprintOf(doc, from);
+    const limit = tc.draw(gs.integers({ minValue: 1, maxValue: 1000 }));
+    tc.assume(JSON.stringify(doc.limits ?? null) !== JSON.stringify({ max_total_iterations: limit }));
+    doc.limits = { max_total_iterations: limit };
+    assert.deepEqual(workflow.changedFingerprintKeys(before, fingerprintOf(doc, from)), [workflow.LIMITS_KEY]);
+  }));
+

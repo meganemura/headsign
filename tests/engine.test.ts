@@ -7,6 +7,8 @@ import * as engine from "../src/engine.ts";
 import type { Workflow, Phase } from "../src/workflow.ts";
 import type { State } from "../src/state.ts";
 import type { GateVerdict } from "../src/gate.ts";
+import * as hegel from "@hegeldev/hegel";
+import * as gs from "@hegeldev/hegel/generators";
 
 function wf(phases: Record<string, Partial<Phase> & { on_pass: Phase["on_pass"] }>, entry?: string): Workflow {
   const built: Record<string, Phase> = {};
@@ -1514,3 +1516,246 @@ test("a failure whose check kept its name but changed its command is not a repea
   const third = engine.step(workflow, second, FAIL("unit", "npm run test:ci", 1)).state;
   assert.equal(third.last_failure?.repeats, 1, "same name, different command: not a repeat");
 });
+
+// --- properties (hegel) ---
+//
+// The transition table above pins one row each. These ask the same function about tables nobody
+// typed. step() is the natural place for them: it is the whole state machine, it is pure (its
+// own header says so), and every claim below is one this file's neighbours already state about
+// one row at a time.
+
+// Names a generated graph uses. Small and fixed so a drawn phase and a drawn destination land
+// on each other often — a pool of unique strings would make almost every edge a fresh phase.
+const NAMES = ["a", "b", "c", "d"];
+
+function drawPhase(tc: hegel.TestCase, names: string[]): Phase {
+  const targets = [...names, "$end"];
+  const routed = tc.draw(gs.booleans());
+  const onFail = tc.draw(gs.sampledFrom([null, "retry", "$end", "escalate", ...names]));
+  const phase: Phase = {
+    description: tc.draw(gs.text({ alphabet: "desc ", minSize: 1, maxSize: 8 })),
+    gate: { checks: [{ run: "true" }] },
+    on_pass: routed
+      ? [{ when: "true", to: tc.draw(gs.sampledFrom(targets)) }, { to: tc.draw(gs.sampledFrom(targets)) }]
+      : tc.draw(gs.sampledFrom(targets)),
+  };
+  if (onFail !== null) phase.on_fail = onFail;
+  // The schema rejects the pairing, so a generated graph must not build it either: with
+  // 'escalate' the first failure already ends the run and the budget could never be reached.
+  if (onFail !== "escalate" && tc.draw(gs.booleans())) phase.max_attempts = tc.draw(gs.integers({ minValue: 1, maxValue: 4 }));
+  return phase;
+}
+
+function drawWorkflow(tc: hegel.TestCase): Workflow {
+  const count = tc.draw(gs.integers({ minValue: 1, maxValue: NAMES.length }));
+  const names = NAMES.slice(0, count);
+  return {
+    version: 0.1,
+    name: "generated",
+    entry: names[0],
+    phases: Object.fromEntries(names.map((n) => [n, drawPhase(tc, names)])),
+  };
+}
+
+// A running record with counters and a stored failure drawn rather than zeroed: the claims
+// below are about what step() does to whatever it is handed, and a record that always starts
+// clean would never exercise the carry-through.
+function drawRunningState(tc: hegel.TestCase, workflow: Workflow): State {
+  const names = Object.keys(workflow.phases);
+  const attempts: Record<string, number> = {};
+  for (const n of names) if (tc.draw(gs.booleans())) attempts[n] = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+  return st(tc.draw(gs.sampledFrom(names)), {
+    attempts,
+    total_iterations: tc.draw(gs.integers({ minValue: 0, maxValue: 50 })),
+    stop_nudges: tc.draw(gs.integers({ minValue: 0, maxValue: 5 })),
+    last_failure: tc.draw(gs.booleans()) ? null : drawLastFailure(tc, names),
+    driver_agent: tc.draw(gs.booleans()) ? null : "agent-1",
+  });
+}
+
+function drawLastFailure(tc: hegel.TestCase, names: string[]) {
+  return {
+    phase: tc.draw(gs.sampledFrom(names)),
+    check: tc.draw(gs.sampledFrom(["unit", "lint", "types"])),
+    run: tc.draw(gs.sampledFrom(["npm test", "eslint"])),
+    exit_code: tc.draw(gs.sampledFrom([1, 2, "timeout"])) as number | "timeout",
+    output_tail: tc.draw(gs.sampledFrom(["out", "other"])),
+    repeats: tc.draw(gs.integers({ minValue: 1, maxValue: 4 })),
+  };
+}
+
+function drawVerdict(tc: hegel.TestCase): GateVerdict {
+  if (tc.draw(gs.booleans())) return { kind: "pass" };
+  return {
+    kind: "fail",
+    check: tc.draw(gs.sampledFrom(["unit", "lint", "types"])),
+    run: tc.draw(gs.sampledFrom(["npm test", "eslint"])),
+    exitCode: tc.draw(gs.sampledFrom([1, 2, "timeout"])) as number | "timeout",
+    outputTail: tc.draw(gs.sampledFrom(["out", "other"])),
+  };
+}
+
+// A k-way on_pass is only ever handed to step() with the branch already resolved (gate.ts ran
+// the `when:` predicates a moment earlier), so the harness resolves one too. Without it step()
+// throws by design, and the throw would be this file's mistake rather than a finding.
+function drawRoute(tc: hegel.TestCase, phase: Phase): engine.ResolvedRoute | undefined {
+  if (!Array.isArray(phase.on_pass)) return undefined;
+  const routes = phase.on_pass;
+  const i = tc.draw(gs.integers({ minValue: 0, maxValue: routes.length - 1 }));
+  const chosen = routes[i];
+  return chosen.when === undefined ? { kind: "default", to: chosen.to } : { kind: "matched", to: chosen.to, when: chosen.when };
+}
+
+// step()'s header calls it deterministic; this is the other half of the same claim. The lap
+// writes state.json from the record step() hands back, so a step that edited its argument in
+// place would put a change on disk that no return value accounts for.
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const inner of Object.values(value)) deepFreeze(inner);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+test("step leaves the record it is handed exactly as it found it", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    const incoming = drawRunningState(tc, workflow);
+    const before = structuredClone(incoming);
+    engine.step(workflow, deepFreeze(incoming), drawVerdict(tc), drawRoute(tc, workflow.phases[incoming.phase]));
+    assert.deepEqual(incoming, before);
+  }));
+
+// One call, one lap: the ceiling in checkIterationLimit counts these, so a lap that counted
+// twice or not at all would move the wall. The nudge reset is ADR-0006's loop-guard rule —
+// step() runs only on a real gate evaluation, which is exactly what clears the counter.
+test("every step counts one lap and clears the stop nudges", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    const incoming = drawRunningState(tc, workflow);
+    const { state } = engine.step(workflow, incoming, drawVerdict(tc), drawRoute(tc, workflow.phases[incoming.phase]));
+    assert.equal(state.total_iterations, incoming.total_iterations + 1);
+    assert.equal(state.stop_nudges, 0);
+  }));
+
+// The attempt counters are per-phase, and a lap judges one phase. `attempts are cleared only
+// when that phase's own gate passes` states it for one pair of phases; this states it for every
+// other phase at once.
+test("a lap touches the attempt count of the phase it judged and of no other", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    const incoming = drawRunningState(tc, workflow);
+    const judged = incoming.phase;
+    const { state } = engine.step(workflow, incoming, drawVerdict(tc), drawRoute(tc, workflow.phases[judged]));
+    for (const name of Object.keys(workflow.phases)) {
+      if (name === judged) continue;
+      assert.equal(state.attempts[name], incoming.attempts[name], `attempts of '${name}' moved while '${judged}' was judged`);
+    }
+  }));
+
+// The record on disk and the words printed have to agree about whether the run is over. ABORT is
+// absent from the list on purpose: only `headsign abort`, a person's own action, produces one
+// (ADR-0014 §3), and PENDING is decided a lap earlier, before any gate runs.
+test("the outcome and the recorded status say the same thing about the run", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    const incoming = drawRunningState(tc, workflow);
+    const { state, outcome } = engine.step(workflow, incoming, drawVerdict(tc), drawRoute(tc, workflow.phases[incoming.phase]));
+    const expected = { COMPLETE: "complete", ESCALATE: "escalated", ADVANCE: "running", RETRY: "running" }[
+      outcome.kind as "COMPLETE" | "ESCALATE" | "ADVANCE" | "RETRY"
+    ];
+    assert.equal(state.status, expected, `outcome ${outcome.kind} left status ${state.status}`);
+    // An ended run always says why, so `status` can answer for it later without inventing one.
+    if (state.status === "escalated") assert.ok((state.end_reason ?? "").length > 0);
+  }));
+
+// A pass is the one thing that clears a phase's budget, and it clears the stored failure with
+// it: `status` reads last_failure back, and a passing gate leaves nothing to read.
+test("a passing gate clears the judged phase's attempts and the stored failure", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    const incoming = drawRunningState(tc, workflow);
+    const judged = incoming.phase;
+    const { state } = engine.step(workflow, incoming, { kind: "pass" }, drawRoute(tc, workflow.phases[judged]));
+    assert.equal(state.attempts[judged], undefined);
+    assert.equal(state.last_failure, null);
+  }));
+
+// RETRY stands still and ADVANCE moves somewhere the workflow declares. describePhase already
+// refuses a destination naming no phase; this says the destinations step() actually produces
+// never need that refusal.
+test("a retry stays where it is and an advance lands on a declared phase", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    const incoming = drawRunningState(tc, workflow);
+    const { state, outcome } = engine.step(workflow, incoming, drawVerdict(tc), drawRoute(tc, workflow.phases[incoming.phase]));
+    if (outcome.kind === "RETRY") {
+      assert.equal(state.phase, incoming.phase);
+      assert.equal(outcome.phase, incoming.phase);
+    }
+    if (outcome.kind === "ADVANCE") {
+      assert.equal(state.phase, outcome.phase);
+      assert.ok(Object.hasOwn(workflow.phases, outcome.phase));
+    }
+  }));
+
+// --- the repeated-failure streak ---
+
+// sameFailureStreak compares phase, check, run, exit_code and output_tail. Feeding the same
+// failure back on a retry adds one; changing any compared field starts the count again. The
+// example tests take these fields one at a time — this takes them together.
+test("an unchanged failure extends the streak and any changed field restarts it", () =>
+  hegel.test((tc) => {
+    const workflow = wf({ a: { on_pass: "$end" } });
+    const first = engine.step(workflow, st("a"), FAIL("unit", "npm test", 1));
+    assert.equal(first.state.last_failure?.repeats, 1);
+
+    // The repeat is drawn rather than stumbled on: four fields drawn freely agree by accident
+    // once in two dozen cases, which would leave the extending arm barely exercised.
+    const same = tc.draw(gs.booleans());
+    const second = same
+      ? { check: "unit", run: "npm test", exitCode: 1 as number | "timeout", outputTail: "out" }
+      : {
+          check: tc.draw(gs.sampledFrom(["unit", "lint"])),
+          run: tc.draw(gs.sampledFrom(["npm test", "eslint"])),
+          exitCode: tc.draw(gs.sampledFrom([1, 2, "timeout"])) as number | "timeout",
+          outputTail: tc.draw(gs.sampledFrom(["out", "other"])),
+        };
+    const changed = second.check !== "unit" || second.run !== "npm test" || second.exitCode !== 1 || second.outputTail !== "out";
+    const result = engine.step(workflow, first.state, { kind: "fail", ...second });
+    assert.equal(result.state.last_failure?.repeats, changed ? 1 : 2);
+  }));
+
+// --- walking a whole run ---
+
+// hegel-typescript has no stateful-testing API yet, so the rule loop is written out: draw a
+// verdict, take a lap, check the record still holds together, stop when the run ends. What this
+// adds over the single-lap properties above is history — a budget can only be overspent by a
+// phase that has already failed several times.
+test("a run walked lap by lap keeps every counter within the rules that produced it", () =>
+  hegel.test((tc) => {
+    const workflow = drawWorkflow(tc);
+    let current = st(workflow.entry);
+    const laps = tc.draw(gs.integers({ minValue: 1, maxValue: 30 }));
+    for (let lap = 0; lap < laps; lap++) {
+      if (current.status !== "running") {
+        // An ended run is not judged again — the record would otherwise gain a lap it never
+        // walked. step() refuses instead, and the refusal names the status it found.
+        assert.throws(() => engine.step(workflow, current, { kind: "pass" }), /run is already/);
+        break;
+      }
+      const phase = workflow.phases[current.phase];
+      const { state, outcome } = engine.step(workflow, current, drawVerdict(tc), drawRoute(tc, phase));
+      assert.equal(state.total_iterations, lap + 1);
+      assert.ok(Object.hasOwn(workflow.phases, state.phase));
+      if (state.status === "running") {
+        // Reaching the budget escalates on the spot (ADR-0014 §2), so a run still going has
+        // never spent one. The check reads the budget of the phase the run now stands on.
+        const budget = workflow.phases[state.phase].max_attempts;
+        if (budget !== undefined) assert.ok((state.attempts[state.phase] ?? 0) < budget, `${state.phase} kept walking on ${state.attempts[state.phase]} of ${budget} attempts`);
+      } else {
+        assert.ok(outcome.kind === "COMPLETE" || outcome.kind === "ESCALATE");
+      }
+      current = state;
+    }
+  }));

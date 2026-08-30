@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as render from "../src/render.ts";
 import type { State } from "../src/state.ts";
+import * as hegel from "@hegeldev/hegel";
+import * as gs from "@hegeldev/hegel/generators";
 
 test("start", () => {
   const actual = render.start("plan", "Plan the work.");
@@ -1259,3 +1261,112 @@ test("a fail-routed advance whose last check failed adds no not-run line, byte-i
   const without = render.advance("q", "Ask.", { check: "c", run: "r", exitCode: 1, routedTo: "q" });
   assert.equal(withCounts, without);
 });
+
+// --- properties (hegel) ---
+//
+// The logLine tests above pin one event each, to the byte. These ask the two things every line
+// has to satisfy at once, whichever event it is about: ADR-0004 records a run as one line per
+// event, and the counters a line prints are the ones in the record the caller is about to write.
+
+// Free text a producer can put in a line: a check name, a reason, a note, a workflow name. The
+// line breaks are left out, which scopes the property to the producers that keep the text on one
+// line themselves — engine.checkIterationLimit builds its ceiling reason as a single line, and
+// stophook truncates a pause note to its first line before it gets here. `headsign abort`'s
+// reason is a third producer, and it joins its arguments as typed; a reason typed with a line
+// break reaches logLine intact and splits the record, which is reported separately.
+const detailText = gs.text({ minSize: 0, maxSize: 20, excludeCategories: ["Cc", "Cs"] });
+
+function drawFailure(tc: hegel.TestCase) {
+  const failure: {
+    check: string; run: string; exitCode: number | "timeout"; outputTail: string;
+    elapsedSeconds?: number; checksTotal?: number; checksRun?: number; notRunChecks?: string[];
+  } = {
+    check: tc.draw(detailText),
+    run: tc.draw(detailText),
+    exitCode: tc.draw(gs.booleans()) ? "timeout" : tc.draw(gs.integers({ minValue: -1, maxValue: 255 })),
+    outputTail: tc.draw(detailText),
+  };
+  if (tc.draw(gs.booleans())) failure.elapsedSeconds = tc.draw(gs.integers({ minValue: 0, maxValue: 6000 })) / 10;
+  if (tc.draw(gs.booleans())) {
+    failure.checksTotal = tc.draw(gs.integers({ minValue: 1, maxValue: 6 }));
+    failure.checksRun = tc.draw(gs.integers({ minValue: 0, maxValue: failure.checksTotal }));
+    failure.notRunChecks = [];
+  }
+  return failure;
+}
+
+// Every event word logLine writes. PENDING is absent on purpose: it has no line format, and
+// eventName throws on it — the test above says so.
+function drawEvent(tc: hegel.TestCase): Parameters<typeof render.logLine>[1] {
+  const kind = tc.draw(gs.sampledFrom([
+    "START", "ADVANCE", "COMPLETE", "RETRY", "ESCALATE", "ABORT",
+    "CEILING", "GRAPH_CHANGED", "PAUSED", "HELD", "STALLED", "UNHELD", "CLAIMED",
+  ] as const));
+  switch (kind) {
+    case "START": return { kind, workflow: tc.draw(detailText) };
+    case "ADVANCE": {
+      const phase = tc.draw(gs.sampledFrom(["plan", "build", "review"]));
+      const shape = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
+      if (shape === 0) return { kind, phase, description: tc.draw(detailText) };
+      if (shape === 1) return { kind, phase, description: tc.draw(detailText), routedBy: { when: tc.draw(detailText) } };
+      if (shape === 2) return { kind, phase, description: tc.draw(detailText), routedBy: { default: true } };
+      return { kind, phase, description: tc.draw(detailText), failure: { ...drawFailure(tc), routedTo: phase } };
+    }
+    case "COMPLETE": return tc.draw(gs.booleans()) ? { kind } : { kind, acceptedGraphChanges: tc.draw(gs.integers({ minValue: 1, maxValue: 9 })) };
+    case "RETRY": return {
+      kind,
+      phase: tc.draw(gs.sampledFrom(["plan", "build", "review"])),
+      attempt: tc.draw(gs.integers({ minValue: 1, maxValue: 9 })),
+      failure: drawFailure(tc),
+      repeats: tc.draw(gs.integers({ minValue: 1, maxValue: 9 })),
+    };
+    case "ESCALATE":
+    case "ABORT":
+    case "CEILING": return { kind, reason: tc.draw(detailText) };
+    case "GRAPH_CHANGED": return {
+      kind,
+      disposition: tc.draw(gs.sampledFrom(["reported", "accepted"] as const)),
+      keys: tc.draw(gs.arrays(gs.sampledFrom(["plan", "build", "$limits"]), { maxSize: 3, unique: true })),
+    };
+    case "PAUSED": return { kind, note: tc.draw(detailText) };
+    case "HELD": return { kind, nudges: tc.draw(gs.integers({ minValue: 1, maxValue: 5 })) };
+    case "STALLED":
+    case "CLAIMED": return { kind };
+    case "UNHELD": return { kind, cause: tc.draw(gs.sampledFrom(["stop_hook_active", "CLAUDE_PROJECT_DIR"] as const)) };
+  }
+}
+
+function drawLoggedState(tc: hegel.TestCase): State {
+  const phase = tc.draw(gs.sampledFrom(["plan", "build", "review"]));
+  const attempts: Record<string, number> = {};
+  if (tc.draw(gs.booleans())) attempts[phase] = tc.draw(gs.integers({ minValue: 0, maxValue: 9 }));
+  return baseState({ phase, attempts, total_iterations: tc.draw(gs.integers({ minValue: 0, maxValue: 500 })) });
+}
+
+// ADR-0004 records a run as one line per event, which is what lets a reader count the holds
+// since the last transition with a single grep. Whatever the event and whatever text it carries,
+// the line ends once and breaks nowhere else.
+test("one event is one line, whatever the event carries", () =>
+  hegel.test((tc) => {
+    const line = render.logLine("2026-08-30T10:00:00+09:00", drawEvent(tc), drawLoggedState(tc), "plan");
+    assert.equal(line.endsWith("\n"), true);
+    assert.equal(line.slice(0, -1).includes("\n"), false, `the record broke into more than one line: ${JSON.stringify(line)}`);
+  }));
+
+// The head is the same five fields on every line, in the same order, and `a=`/`i=` come straight
+// out of the record the caller is about to write — a line composed from the state BEFORE the
+// transition would read correctly and count wrong, and this is what says it does not.
+test("every line opens with the timestamp, the event word, the phase and the counters it was handed", () =>
+  hegel.test((tc) => {
+    const state = drawLoggedState(tc);
+    const line = render.logLine("2026-08-30T10:00:00+09:00", drawEvent(tc), state, "plan");
+    // The newline is dropped first: a detail-free event ends the line right after `i=`, so it
+    // would otherwise ride along on the last field.
+    const [ts, event, phase, attemptField, iterationField] = line.slice(0, -1).split(" ");
+    assert.equal(ts, "2026-08-30T10:00:00+09:00");
+    assert.ok(event.length > 0);
+    assert.equal(phase, state.phase);
+    assert.equal(attemptField, `a=${state.attempts[state.phase] ?? 0}`);
+    assert.equal(iterationField, `i=${state.total_iterations}`);
+  }));
+
