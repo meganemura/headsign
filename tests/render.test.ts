@@ -1268,23 +1268,33 @@ test("a fail-routed advance whose last check failed adds no not-run line, byte-i
 // has to satisfy at once, whichever event it is about: ADR-0004 records a run as one line per
 // event, and the counters a line prints are the ones in the record the caller is about to write.
 
-// Free text a producer can put in a line: a check name, a reason, a note, a workflow name. The
-// line breaks are left out, which scopes the property to the producers that keep the text on one
-// line themselves — engine.checkIterationLimit builds its ceiling reason as a single line, and
-// stophook truncates a pause note to its first line before it gets here. `headsign abort`'s
-// reason is a third producer, and it joins its arguments as typed; a reason typed with a line
-// break reaches logLine intact and splits the record, which is reported separately.
-const detailText = gs.text({ minSize: 0, maxSize: 20, excludeCategories: ["Cc", "Cs"] });
+// Free text a producer can put in a line: a check name, a reason, a note, a workflow name. Only
+// lone surrogates are out — they are not text a UTF-8 file can hold, so a difference there would
+// be the encoder's rather than this module's.
+const detailBase = gs.text({ minSize: 0, maxSize: 20, excludeCategories: ["Cs"] });
+
+// Half the draws carry a line break, spliced in at a drawn position. Built rather than hoped
+// for: those two characters are the whole question the one-line property asks, and a generator
+// ranging over Unicode lands on U+000A or U+000D about never. They are what a person can type —
+// `headsign abort` joins its arguments as typed, and a reason typed with one used to split the
+// record in two.
+function drawText(tc: hegel.TestCase): string {
+  const base = tc.draw(detailBase);
+  if (!tc.draw(gs.booleans())) return base;
+  const brk = tc.draw(gs.sampledFrom(["\n", "\r", "\r\n"]));
+  const at = tc.draw(gs.integers({ minValue: 0, maxValue: base.length }));
+  return base.slice(0, at) + brk + base.slice(at);
+}
 
 function drawFailure(tc: hegel.TestCase) {
   const failure: {
     check: string; run: string; exitCode: number | "timeout"; outputTail: string;
     elapsedSeconds?: number; checksTotal?: number; checksRun?: number; notRunChecks?: string[];
   } = {
-    check: tc.draw(detailText),
-    run: tc.draw(detailText),
+    check: drawText(tc),
+    run: drawText(tc),
     exitCode: tc.draw(gs.booleans()) ? "timeout" : tc.draw(gs.integers({ minValue: -1, maxValue: 255 })),
-    outputTail: tc.draw(detailText),
+    outputTail: drawText(tc),
   };
   if (tc.draw(gs.booleans())) failure.elapsedSeconds = tc.draw(gs.integers({ minValue: 0, maxValue: 6000 })) / 10;
   if (tc.draw(gs.booleans())) {
@@ -1303,14 +1313,14 @@ function drawEvent(tc: hegel.TestCase): Parameters<typeof render.logLine>[1] {
     "CEILING", "GRAPH_CHANGED", "PAUSED", "HELD", "STALLED", "UNHELD", "CLAIMED",
   ] as const));
   switch (kind) {
-    case "START": return { kind, workflow: tc.draw(detailText) };
+    case "START": return { kind, workflow: drawText(tc) };
     case "ADVANCE": {
       const phase = tc.draw(gs.sampledFrom(["plan", "build", "review"]));
       const shape = tc.draw(gs.integers({ minValue: 0, maxValue: 3 }));
-      if (shape === 0) return { kind, phase, description: tc.draw(detailText) };
-      if (shape === 1) return { kind, phase, description: tc.draw(detailText), routedBy: { when: tc.draw(detailText) } };
-      if (shape === 2) return { kind, phase, description: tc.draw(detailText), routedBy: { default: true } };
-      return { kind, phase, description: tc.draw(detailText), failure: { ...drawFailure(tc), routedTo: phase } };
+      if (shape === 0) return { kind, phase, description: drawText(tc) };
+      if (shape === 1) return { kind, phase, description: drawText(tc), routedBy: { when: drawText(tc) } };
+      if (shape === 2) return { kind, phase, description: drawText(tc), routedBy: { default: true } };
+      return { kind, phase, description: drawText(tc), failure: { ...drawFailure(tc), routedTo: phase } };
     }
     case "COMPLETE": return tc.draw(gs.booleans()) ? { kind } : { kind, acceptedGraphChanges: tc.draw(gs.integers({ minValue: 1, maxValue: 9 })) };
     case "RETRY": return {
@@ -1322,13 +1332,13 @@ function drawEvent(tc: hegel.TestCase): Parameters<typeof render.logLine>[1] {
     };
     case "ESCALATE":
     case "ABORT":
-    case "CEILING": return { kind, reason: tc.draw(detailText) };
+    case "CEILING": return { kind, reason: drawText(tc) };
     case "GRAPH_CHANGED": return {
       kind,
       disposition: tc.draw(gs.sampledFrom(["reported", "accepted"] as const)),
       keys: tc.draw(gs.arrays(gs.sampledFrom(["plan", "build", "$limits"]), { maxSize: 3, unique: true })),
     };
-    case "PAUSED": return { kind, note: tc.draw(detailText) };
+    case "PAUSED": return { kind, note: drawText(tc) };
     case "HELD": return { kind, nudges: tc.draw(gs.integers({ minValue: 1, maxValue: 5 })) };
     case "STALLED":
     case "CLAIMED": return { kind };
@@ -1350,7 +1360,10 @@ test("one event is one line, whatever the event carries", () =>
   hegel.test((tc) => {
     const line = render.logLine("2026-08-30T10:00:00+09:00", drawEvent(tc), drawLoggedState(tc), "plan");
     assert.equal(line.endsWith("\n"), true);
-    assert.equal(line.slice(0, -1).includes("\n"), false, `the record broke into more than one line: ${JSON.stringify(line)}`);
+    const body = line.slice(0, -1);
+    // Both characters, not just the newline: a reader that splits on either one gets one record.
+    assert.equal(body.includes("\n"), false, `the record broke into more than one line: ${JSON.stringify(line)}`);
+    assert.equal(body.includes("\r"), false, `the record carries a carriage return: ${JSON.stringify(line)}`);
   }));
 
 // The head is the same five fields on every line, in the same order, and `a=`/`i=` come straight
@@ -1370,3 +1383,22 @@ test("every line opens with the timestamp, the event word, the phase and the cou
     assert.equal(iterationField, `i=${state.total_iterations}`);
   }));
 
+// The producer that made the property above worth having: `headsign abort` takes its reason off
+// the command line, so a line break in it is one keystroke away. It arrives as the two characters
+// a reader knows, on the one line the record is.
+test("logLine: a reason typed with a line break stays on one line, as an escape", () => {
+  const line = render.logLine("ts", { kind: "ABORT", reason: "broke\nbadly" }, baseState({ phase: "build" }));
+  assert.equal(line, `ts abort build a=0 i=0 reason="broke\\nbadly"\n`);
+});
+
+test("logLine: a carriage return is escaped too, so a reader splitting on either character gets one record", () => {
+  const line = render.logLine("ts", { kind: "ABORT", reason: "a\r\nb" }, baseState({ phase: "build" }));
+  assert.equal(line, `ts abort build a=0 i=0 reason="a\\r\\nb"\n`);
+});
+
+// The escape is applied to the finished line, so it covers the head as well as the detail — a
+// phase name is author-written text like any other field.
+test("logLine: a line break in the phase name is escaped like any other field", () => {
+  const line = render.logLine("ts", { kind: "CLAIMED" }, baseState({ phase: "bu\nild" }));
+  assert.equal(line, `ts claimed bu\\nild a=0 i=0\n`);
+});

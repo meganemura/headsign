@@ -469,7 +469,22 @@ export function logLine(ts: string, event: LogEvent, state: State, prevPhase?: s
   const i = state.total_iterations;
   const head = `${ts} ${eventName(event)} ${phase} a=${a} i=${i}`;
   const detail = logDetail(event, prevPhase);
-  return detail ? `${head} ${detail}\n` : `${head}\n`;
+  return oneLine(detail ? `${head} ${detail}` : head) + "\n";
+}
+
+// ADR-0004 records a run as one line per event, and this is what keeps it one. Several fields
+// above carry text a person typed — an abort reason, a pause note, a check's name, a phase's
+// name — and `headsign abort` takes its reason straight off the command line, where a line
+// break is one keystroke away. A reason typed with one used to put a second line in the file
+// with no timestamp on it, which is a line every reader of this file has to skip past.
+// Applied once, to the finished line, rather than inside each arm of logDetail: an arm added
+// later then cannot forget it. Written as the two characters a reader already knows, so what
+// happened stays legible; it is an escape for READING and not for reading back, because
+// nothing parses a value out of these lines again. Only the two characters that end a line are
+// touched — a tab or a quote inside free text is somebody's text, and this function's job is
+// the record's shape.
+function oneLine(text: string): string {
+  return text.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 
 function eventName(event: LogEvent): string {

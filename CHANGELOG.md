@@ -9,6 +9,17 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `.headsign/log` record is one line again, whatever text it carries.**
+  `headsign abort $'broke\nbadly'` wrote the reason as typed, which put a
+  second line in the file carrying no timestamp, no event word and no counters
+  — one every reader has to skip past, and one that a `grep -c` over the events
+  counted. The same door was open through a check's `name:`/`run:` or a phase
+  name written with a line break. `logLine` now escapes carriage returns and
+  line feeds on the finished line, so the words survive and the file keeps its
+  shape ([ADR-0034](docs/adr/0034-a-record-is-one-line.md)).
+
 ## [0.10.0] - 2026-08-26
 
 Everything here came from the field, and most of it from one shape of

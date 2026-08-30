@@ -7946,9 +7946,10 @@ function logLine(ts, event, state, prevPhase) {
   const i = state.total_iterations;
   const head = `${ts} ${eventName(event)} ${phase} a=${a} i=${i}`;
   const detail = logDetail(event, prevPhase);
-  return detail ? `${head} ${detail}
-` : `${head}
-`;
+  return oneLine(detail ? `${head} ${detail}` : head) + "\n";
+}
+function oneLine(text) {
+  return text.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 function eventName(event) {
   switch (event.kind) {
