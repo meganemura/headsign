@@ -305,6 +305,13 @@ The `run:` commands above are examples. Replace `bundle exec rspec` with the
 command that your project uses (`npm test`, `pytest`, `go test ./...`, …).
 A check is a shell command that headsign judges by its exit code.
 
+Phase names are yours to choose, with one restriction: a name that JavaScript
+already puts on every object — `toString`, `constructor`, `__proto__`, and the
+rest of `Object.prototype` — is rejected. A run keys its attempt counts and its
+graph pin by phase name, and those names do not survive as keys. `validate`,
+which `start` and every `next` run, says so and asks for a rename. Names that
+merely look reserved, such as `to_string`, are ordinary names.
+
 > **Trust:** a workflow's `run:` commands are shell commands.
 > `headsign next` executes them on your machine. This behavior matches
 > a `Makefile` target or an npm `postinstall` script. Treat a

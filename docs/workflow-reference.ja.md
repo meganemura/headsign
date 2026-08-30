@@ -275,6 +275,12 @@ limits:
 `bundle exec rspec` は、プロジェクトが実際に使うコマンド(`npm test`、`pytest`、`go test ./...` など)に置き換えてください。
 チェックは、exit code で判定されるシェルコマンドです。
 
+フェーズ名は自由に付けられますが、1 つだけ制限があります。
+JavaScript がすべてのオブジェクトに最初から持たせている名前——`toString`、`constructor`、`__proto__` など `Object.prototype` が持つ名前——は拒否されます。
+run は試行回数とグラフの pin をフェーズ名で引くので、これらの名前はキーとして残らないためです。
+`start` と `next` のたびに走る `validate` がその旨を伝え、改名を求めます。
+`to_string` のように似ているだけの名前は、ふつうの名前として扱われます。
+
 > **信頼について:** ワークフローの `run:` は、`headsign next` があなたのマシン上で実行するシェルコマンドです。
 > `Makefile` のターゲットや npm の `postinstall` と同じ扱いになります。
 > 自分で書いていないリポジトリの `.headsign/workflow.yaml` は、その中の実行可能コードと同様に扱ってください。

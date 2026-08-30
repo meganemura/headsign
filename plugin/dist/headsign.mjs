@@ -7381,6 +7381,7 @@ var ALLOWED_KEYS = {
   route: ["when", "to", "timeout"],
   limits: ["max_total_iterations"]
 };
+var RESERVED_PHASE_NAMES = new Set(Object.getOwnPropertyNames(Object.prototype));
 var isMap = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isPosInt = (v) => typeof v === "number" && Number.isInteger(v) && v > 0;
 function rejectUnknownKeys(level, m, where, errors) {
@@ -7417,6 +7418,13 @@ function validate(doc) {
   }
   const phases = doc.phases;
   const names = new Set(Object.keys(phases));
+  for (const name of names) {
+    if (RESERVED_PHASE_NAMES.has(name)) {
+      errors.push(
+        `phase '${name}': that name is already a property of every JavaScript object, so headsign cannot key this phase's attempt count or its graph pin by it \u2014 rename the phase`
+      );
+    }
+  }
   if (typeof doc.entry === "string" && !names.has(doc.entry)) errors.push(`entry '${doc.entry}' does not name a defined phase`);
   for (const [name, raw] of Object.entries(phases)) {
     if (isMap(raw)) validatePhase(name, raw, names, errors);
@@ -7576,7 +7584,7 @@ function sha256(text) {
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (!isMap(value)) return value;
-  const sorted = {};
+  const sorted = /* @__PURE__ */ Object.create(null);
   for (const key of Object.keys(value).sort()) {
     if (value[key] === void 0) continue;
     sorted[key] = canonical(value[key]);
@@ -7589,7 +7597,7 @@ function hashOf(value) {
 function graphFingerprint(wf, from) {
   const names = new Set(Object.keys(wf.phases));
   const reachable = reachableFrom(from, wf.phases, names);
-  const fingerprint = {};
+  const fingerprint = /* @__PURE__ */ Object.create(null);
   for (const name of Object.keys(wf.phases)) {
     if (!reachable.has(name)) continue;
     const { [UNPINNED_PHASE_KEY]: _advisory, ...pinned } = wf.phases[name];
@@ -7602,7 +7610,7 @@ function fingerprintDigest(fingerprint) {
   return hashOf(fingerprint);
 }
 function changedFingerprintKeys(saved, computed) {
-  return Object.keys(computed).filter((key) => key in saved && saved[key] !== computed[key]);
+  return Object.keys(computed).filter((key) => Object.hasOwn(saved, key) && saved[key] !== computed[key]);
 }
 
 // src/state.ts

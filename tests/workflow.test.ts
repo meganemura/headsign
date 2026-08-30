@@ -1009,3 +1009,67 @@ test("changing the ceiling reports $limits and no phase", () =>
     assert.deepEqual(workflow.changedFingerprintKeys(before, fingerprintOf(doc, from)), [workflow.LIMITS_KEY]);
   }));
 
+// --- a phase name has to be a name the run's own maps can hold ---
+//
+// A phase name becomes a key of `state.attempts` and of the graph fingerprint. Two names that
+// the language already puts on every object broke both, silently: a `toString` phase counted its
+// attempts as a string (so `max_attempts` compared a string to a number and never fired), and a
+// `__proto__` phase never entered the fingerprint at all (so an edit to its rules was invisible).
+// ADR-0035 is why the schema rejects the whole class rather than each map hardening itself.
+
+function docNamed(name: string): Record<string, unknown> {
+  return {
+    version: 0.1,
+    name: "demo",
+    entry: name,
+    phases: Object.fromEntries([[name, { description: "d", gate: { checks: [{ run: "true" }] }, on_pass: "$end" }]]),
+  };
+}
+
+test("a phase named toString is rejected, and the message says the name is the problem", () => {
+  const found = errors(docNamed("toString"));
+  assert.ok(found.some((e) => e.includes("phase 'toString'") && e.includes("rename the phase")), JSON.stringify(found));
+});
+
+test("a phase named __proto__ is rejected", () => {
+  assert.ok(errors(docNamed("__proto__")).some((e) => e.includes("phase '__proto__'")));
+});
+
+test("every name the language already puts on an object is rejected", () =>
+  hegel.test((tc) => {
+    const name = tc.draw(gs.sampledFrom(Object.getOwnPropertyNames(Object.prototype)));
+    assert.ok(errors(docNamed(name)).some((e) => e.includes(`phase '${name}'`)), `'${name}' was accepted`);
+  }));
+
+test("an ordinary name that merely looks reserved is accepted", () => {
+  assert.deepEqual(errors(docNamed("to_string")), []);
+});
+
+// graphFingerprint is exported and the tests below call it with hand-built documents, so it
+// keeps its own guard — the same standing engine.ts's describePhase has behind validate.
+test("graphFingerprint pins a phase whose name is a built-in object property, rather than dropping it", () => {
+  const fingerprint = fingerprintOf(docNamed("__proto__"), "__proto__");
+  assert.deepEqual(Object.keys(fingerprint).sort(), ["$limits", "__proto__"]);
+  assert.equal(typeof fingerprint["__proto__"], "string");
+});
+
+// The rule is that a key only one side carries is adopted or dropped in silence. `in` would have
+// answered yes for a name every object inherits, turning a newly reachable `toString` phase into
+// a reported change.
+test("changedFingerprintKeys: a computed key named after an object property that the saved map never carried is not a difference", () => {
+  assert.deepEqual(workflow.changedFingerprintKeys({ plan: "p" }, { plan: "p", toString: "t" }), []);
+});
+
+test("changedFingerprintKeys: the same key IS a difference once both maps carry it", () => {
+  assert.deepEqual(workflow.changedFingerprintKeys({ toString: "t" }, { toString: "T" }), ["toString"]);
+});
+
+// fingerprintDigest hashes the whole map through the same key-sorting walk the phase hashes go
+// through, so that walk has to be able to hold these names too — a digest that ignored the
+// `__proto__` entry would answer "the same difference I already reported" about a different one.
+test("fingerprintDigest: a map differing only in a key named after an object property gets a different digest", () => {
+  // A computed key, because the plain `__proto__: "a"` spelling in an object literal is the
+  // prototype setter rather than an entry — the same trap the fix under test is about.
+  const withProto = (hash: string): Record<string, string> => ({ plan: "p", $limits: "l", ["__proto__"]: hash });
+  assert.notEqual(workflow.fingerprintDigest(withProto("a")), workflow.fingerprintDigest(withProto("b")));
+});

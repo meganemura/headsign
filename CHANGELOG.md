@@ -11,6 +11,18 @@ changes), and a patch bump means fixes only.
 
 ### Fixed
 
+- **A phase can no longer be named after a built-in object property, because
+  two such names broke a run silently.** A phase named `toString` counted
+  nothing: its attempt count read back the function every object inherits, so
+  it grew by string concatenation and `max_attempts` compared a string to a
+  number and never fired. A phase named `__proto__` was never written into the
+  graph pin at all, so an edit to its rules matched nothing and the run walked
+  rewritten rules without reporting them. `validate` now rejects any phase name
+  that `Object.prototype` already carries — read off the prototype, so a name
+  the language adds later is covered — and the message asks for a rename. Names
+  that merely look reserved (`to_string`, `proto`) are unaffected
+  ([ADR-0035](docs/adr/0035-a-phase-name-has-to-be-a-key.md)).
+
 - **A `.headsign/log` record is one line again, whatever text it carries.**
   `headsign abort $'broke\nbadly'` wrote the reason as typed, which put a
   second line in the file carrying no timestamp, no event word and no counters

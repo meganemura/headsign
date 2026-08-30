@@ -56,6 +56,16 @@ const ALLOWED_KEYS = {
   limits: ["max_total_iterations"],
 } as const;
 
+// The names a phase may not carry. A phase name becomes a KEY of two plain objects a run
+// keeps — `state.attempts` and the graph fingerprint — and a name the language already puts on
+// every object is not a key those maps can hold. `attempts['toString']` reads back the
+// inherited function instead of a count, so `+ 1` concatenates and `>= max_attempts` compares a
+// string to a number and never fires; `fingerprint['__proto__'] = hash` sets a prototype
+// instead of adding an entry, so the phase goes unpinned and an edit to its rules is invisible.
+// Both were real. Read off `Object.prototype` rather than typed out, so a name added to the
+// language later is covered without anybody remembering this list — see ADR-0035.
+const RESERVED_PHASE_NAMES = new Set(Object.getOwnPropertyNames(Object.prototype));
+
 const isMap = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isPosInt = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v) && v > 0;
 
@@ -102,6 +112,13 @@ export function validate(doc: unknown): { errors: string[]; warnings: string[] }
   }
   const phases = doc.phases;
   const names = new Set(Object.keys(phases));
+  for (const name of names) {
+    if (RESERVED_PHASE_NAMES.has(name)) {
+      errors.push(
+        `phase '${name}': that name is already a property of every JavaScript object, so headsign cannot key this phase's attempt count or its graph pin by it — rename the phase`,
+      );
+    }
+  }
   if (typeof doc.entry === "string" && !names.has(doc.entry)) errors.push(`entry '${doc.entry}' does not name a defined phase`);
 
   for (const [name, raw] of Object.entries(phases)) {
@@ -353,7 +370,11 @@ function sha256(text: string): string {
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (!isMap(value)) return value;
-  const sorted: Record<string, unknown> = {};
+  // No prototype: the keys here are the author's, and `sorted['__proto__'] = …` on an ordinary
+  // object sets a prototype instead of adding an entry. validate rejects such a phase name
+  // before a workflow ever reaches this file's callers (RESERVED_PHASE_NAMES above); this is the
+  // second line of defence, the same standing engine.ts's describePhase has.
+  const sorted: Record<string, unknown> = Object.create(null);
   for (const key of Object.keys(value).sort()) {
     if (value[key] === undefined) continue;
     sorted[key] = canonical(value[key]);
@@ -375,7 +396,8 @@ function hashOf(value: unknown): string {
 export function graphFingerprint(wf: Workflow, from: string): GraphFingerprint {
   const names = new Set(Object.keys(wf.phases));
   const reachable = reachableFrom(from, wf.phases, names);
-  const fingerprint: GraphFingerprint = {};
+  // No prototype, for the reason canonical() states one screen up.
+  const fingerprint: GraphFingerprint = Object.create(null);
   // File order, not walk order: the difference is reported to a person as a list of names, and
   // the same pair of files must always produce the same list.
   for (const name of Object.keys(wf.phases)) {
@@ -400,5 +422,9 @@ export function fingerprintDigest(fingerprint: GraphFingerprint): string {
 // the rule rather than an optimisation — ADR-0023 §3 says why a computed-only or saved-only
 // key is adopted or dropped in silence rather than reported.
 export function changedFingerprintKeys(saved: GraphFingerprint, computed: GraphFingerprint): string[] {
-  return Object.keys(computed).filter((key) => key in saved && saved[key] !== computed[key]);
+  // `Object.hasOwn`, not `key in saved`: `in` also answers for what the object INHERITS, so a
+  // key named after an object property (`toString`) would read as present in a saved map that
+  // never carried it — reported as a change rather than adopted in silence, which is the
+  // opposite of what the rule above says.
+  return Object.keys(computed).filter((key) => Object.hasOwn(saved, key) && saved[key] !== computed[key]);
 }
