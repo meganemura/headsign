@@ -100,12 +100,31 @@ test("fail routes to a named phase (ADVANCE with failure note); attempts of the 
   });
 });
 
-test("fail routes to escalate", () => {
+test("fail routes to escalate, and the reason names the check that went red", () => {
   const workflow = wf({ a: { on_pass: "$end", on_fail: "escalate" } });
-  const { state, outcome } = engine.step(workflow, st("a"), FAIL());
+  const { state, outcome } = engine.step(workflow, st("a"), FAIL("lint", "eslint", 2));
   assert.equal(state.status, "escalated");
-  assert.equal(state.end_reason, "a: gate failed (on_fail: escalate)");
-  assert.deepEqual(outcome, { kind: "ESCALATE", reason: "a: gate failed (on_fail: escalate)" });
+  // The sentence has to stand on its own: this road ends the run on one failure, so
+  // `last_failure` is null (below) and a person reading the record afterwards has the reason
+  // and nothing else. The output tail stays out of it — long, and already on stderr.
+  assert.equal(state.end_reason, "a: gate failed (on_fail: escalate) — check 'lint' exited 2");
+  assert.equal(state.last_failure, null, "the field keeps its one meaning: a failure the run is still sitting on");
+  assert.deepEqual(outcome, {
+    kind: "ESCALATE",
+    reason: "a: gate failed (on_fail: escalate) — check 'lint' exited 2",
+    failedCheck: { check: "lint", exitCode: 2 },
+  });
+});
+
+test("an escalating timeout says it timed out, and for how long it was given", () => {
+  const workflow = wf({ a: { on_pass: "$end", on_fail: "escalate" } });
+  // A timeout has no exit code to print, and "exited timeout" would be a sentence about a
+  // number that does not exist. The budget it was given is the number that explains it.
+  const verdict: GateVerdict = { kind: "fail", check: "tests", run: "npm test", exitCode: "timeout", outputTail: "", timeoutSeconds: 600 };
+  const { state, outcome } = engine.step(workflow, st("a"), verdict);
+  assert.equal(state.end_reason, "a: gate failed (on_fail: escalate) — check 'tests' timed out after 600s");
+  assert.equal(outcome.kind, "ESCALATE");
+  if (outcome.kind === "ESCALATE") assert.deepEqual(outcome.failedCheck, { check: "tests", exitCode: "timeout" });
 });
 
 test("fail routes to $end (COMPLETE)", () => {

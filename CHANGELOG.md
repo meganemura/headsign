@@ -79,6 +79,19 @@ changes), and a patch bump means fixes only.
   gate runs, the failing check is named there, and a run that ends in ESCALATE
   names the phase in its reason and not the check.
 
+- **A run that ends on `on_fail: escalate` now names the check that ended it.**
+  The reason said `<phase>: gate failed (on_fail: escalate)` and stopped there,
+  which left the person it was handed to with a phase and no command — the
+  check's name was printed on stderr while the gate ran, and a caller that did
+  not keep stderr had nothing. The sentence now carries the check and its exit
+  code (or, for a timeout, the budget it was given), and `.headsign/log`'s
+  `escalate` line gains the same `check=` and `exit=` keys `retry` already
+  writes, appended after `reason=`. `last_failure` is untouched and still
+  `null` in every terminal state: the field means a failure the run is sitting
+  on, and this road ends the run. Exhausting `max_attempts` keeps its own
+  sentence, which already speaks about the streak of failures. The output tail
+  stays out of both — it is long, and it is on stderr.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because

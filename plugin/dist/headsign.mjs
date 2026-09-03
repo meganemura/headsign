@@ -8010,6 +8010,7 @@ function logDetail(event, prevPhase) {
       }
       return event.failure ? `from=${prevPhase} routed-fail check="${event.failure.check}" exit=${event.failure.exitCode}${durSuffix(event.failure.elapsedSeconds)}${ranSuffix(event.failure.checksRun, event.failure.checksTotal)}` : `from=${prevPhase}`;
     case "ESCALATE":
+      return event.failedCheck ? `reason="${event.reason}" check="${event.failedCheck.check}" exit=${event.failedCheck.exitCode}` : `reason="${event.reason}"`;
     case "ABORT":
     // Same `reason="…"` shape as the two endings: only the event word separates them, so a
     // reader who knows one line format knows all three.
@@ -8361,10 +8362,12 @@ function step(workflow, state, gateResult, route) {
     return { state: next2, outcome: { kind: "COMPLETE", ...graphChangeNote(next2) } };
   }
   if (onFail === "escalate") {
-    const reason = `${phaseName}: gate failed (on_fail: escalate)`;
+    const failedCheck = { check: failure.check, exitCode: failure.exitCode };
+    const what = failure.exitCode === "timeout" ? `check '${failure.check}' timed out${failure.timeoutSeconds !== void 0 ? ` after ${failure.timeoutSeconds}s` : ""}` : `check '${failure.check}' exited ${failure.exitCode}`;
+    const reason = `${phaseName}: gate failed (on_fail: escalate) \u2014 ${what}`;
     next2.status = "escalated";
     next2.end_reason = reason;
-    return { state: next2, outcome: { kind: "ESCALATE", reason } };
+    return { state: next2, outcome: { kind: "ESCALATE", reason, failedCheck } };
   }
   next2.phase = onFail;
   return { state: next2, outcome: { kind: "ADVANCE", phase: onFail, description: describePhase(workflow, onFail), failure: { ...failure, routedTo: onFail } } };

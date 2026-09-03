@@ -560,6 +560,13 @@ function logDetail(event: LogEvent, prevPhase?: string): string {
           `${durSuffix(event.failure.elapsedSeconds)}${ranSuffix(event.failure.checksRun, event.failure.checksTotal)}`
         : `from=${prevPhase}`;
     case "ESCALATE":
+      // `check=` and `exit=` are the same two keys `retry` writes, so one grep over a log
+      // answers "which check ended this run" whether the run stopped at the first failure or
+      // after a budget of them. Appended after `reason=` rather than put in front of it: the
+      // key that was already on this line stays where a reader of an older log found it.
+      return event.failedCheck
+        ? `reason="${event.reason}" check="${event.failedCheck.check}" exit=${event.failedCheck.exitCode}`
+        : `reason="${event.reason}"`;
     case "ABORT":
     // Same `reason="…"` shape as the two endings: only the event word separates them, so a
     // reader who knows one line format knows all three.

@@ -63,7 +63,13 @@ export type Outcome =
   // never carried over from an old record the way `state.last_failure.repeats` sometimes is,
   // because this Outcome is always built fresh off a live gate verdict.
   | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; repeats: number }
-  | { kind: "ESCALATE"; reason: string }
+  // `failedCheck`: which check went red, on the one road to ESCALATE that knows. `on_fail:
+  // escalate` ends the run on a single failure, so `last_failure` is null by the time anyone
+  // reads the record (ADR-0012 §3 keeps that field for a run still sitting in its phase), and
+  // the only other copy of the check's name is a stderr line the caller may not have kept.
+  // Absent on every other road: the ceiling and the graph-change report name no check, and
+  // exhaustion's own sentence already speaks about the streak of them.
+  | { kind: "ESCALATE"; reason: string; failedCheck?: { check: string; exitCode: number | "timeout" } }
   | { kind: "ABORT"; reason: string }
   // Constructed only by the lap below (the `ready` probe, short-circuited before the gate
   // runs — same treatment as the phase-missing guard). step() never produces this: it stays
@@ -375,10 +381,24 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   // `escalate` is the only end-the-run token on the failure path — ADR-0014 §3. ABORT is never
   // a verdict this function reaches; only `headsign abort`, a person's own action, produces it.
   if (onFail === "escalate") {
-    const reason = `${phaseName}: gate failed (on_fail: escalate)`;
+    // The clause after the dash is built the way exhaustion's is, and for the same reason: the
+    // sentence has to hold on its own, because a person meeting it has the run's record and
+    // nothing else. What it deliberately leaves out is the output tail — that is long, it is
+    // already on stderr while the gate runs (ADR-0032), and a log line is one line (ADR-0034).
+    const failedCheck = { check: failure.check, exitCode: failure.exitCode };
+    // Single quotes around the name, where the rest of this project reaches for double ones:
+    // this sentence is copied verbatim into `.headsign/log` inside `reason="…"`, and a double
+    // quote here would close that field early for anyone reading the line. The log tolerates a
+    // quote a PERSON typed (ADR-0034 escapes line breaks and leaves the rest alone); one
+    // headsign emits on every run of this road is a different thing.
+    const what =
+      failure.exitCode === "timeout"
+        ? `check '${failure.check}' timed out${failure.timeoutSeconds !== undefined ? ` after ${failure.timeoutSeconds}s` : ""}`
+        : `check '${failure.check}' exited ${failure.exitCode}`;
+    const reason = `${phaseName}: gate failed (on_fail: escalate) — ${what}`;
     next.status = "escalated";
     next.end_reason = reason;
-    return { state: next, outcome: { kind: "ESCALATE", reason } };
+    return { state: next, outcome: { kind: "ESCALATE", reason, failedCheck } };
   }
 
   next.phase = onFail;

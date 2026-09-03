@@ -445,6 +445,49 @@ phases:
   assert.match(abortResult.stderr, /escalated/);
 });
 
+test("escalate: the reason names the failing check, in the answer, the record and the log", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - name: "the bundle is current"
+          run: "exit 3"
+    on_pass: "$end"
+    on_fail: escalate
+`,
+  );
+  run(["start"], { cwd: dir });
+  const escalated = run(["next"], { cwd: dir });
+  assert.equal(escalated.status, 2);
+  // One failure ends this run, so the person who reads it next has the reason and no
+  // `last_failure` to fall back on — and the check's name is otherwise only on stderr, which
+  // a driver may not have kept.
+  assert.match(escalated.stdout, /^ESCALATE build: gate failed \(on_fail: escalate\) — check 'the bundle is current' exited 3\n/);
+  const state = readState(dir);
+  assert.equal(state.end_reason, "build: gate failed (on_fail: escalate) — check 'the bundle is current' exited 3");
+  assert.equal(state.last_failure, null, "the field still means a failure the run is sitting on");
+  assert.equal(state.status, "escalated");
+
+  // The log line carries the same two keys `retry` writes, so one grep answers "which check
+  // ended this run" whichever way the run stopped. `reason=` keeps the place it always had.
+  const escalateLine = readLog(dir).find((l) => l.includes(" escalate "));
+  assert.ok(escalateLine, "the run wrote an escalate line");
+  assert.match(escalateLine, /reason="build: gate failed \(on_fail: escalate\) — check 'the bundle is current' exited 3" check="the bundle is current" exit=3$/);
+
+  // And the terminal reprint answers out of the record, so it says the same thing.
+  const reprint = run(["next"], { cwd: dir });
+  assert.equal(reprint.status, 2);
+  assert.match(reprint.stdout, /^ESCALATE build: gate failed \(on_fail: escalate\) — check 'the bundle is current' exited 3\n/);
+});
+
 test("abort then next reprints ABORT idempotently", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
