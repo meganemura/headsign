@@ -18,18 +18,24 @@ changes), and a patch bump means fixes only.
   that directory, and the pictures it pointed at sat outside every deletion.
   Step 1 now carries the rule that the anchor is whichever deletion an artifact
   sits behind — `tmp/` for the run, `clear:` for the entry — and that anything
-  outside both needs git to date it. A new section covers the other half: a
-  round that legitimately produces nothing for a phase needs an edge past that
-  phase, decided by a `when:` on a fact in the tree, which puts the skip in
-  `.headsign/log` with its condition named.
+  outside both needs git to date it, by the command that matches whether the
+  phase commits the file. A new section covers the other half: a round that
+  legitimately produces nothing for a phase needs an edge past that phase,
+  decided by a `when:` on a fact in the tree, which puts the skip in
+  `.headsign/log` with its condition named. That section opens by settling what
+  a round is: a workflow that routes its last phase back to its first holds
+  many rounds inside one run, so there the `tmp/` wipe dates the run and only
+  `clear:` dates the round.
 
 - **The `workflow` skill now says which command answers "continue this run, or
   start over".** A `start` refused because a run was in progress left the
   driver reading `headsign status` for something it never holds: status runs no
   check, so whether a phase has any work in it yet is a fact about the tree
   that only the gate reads. The Notes now name `headsign next` as both the
-  answer and the cheapest probe, with what one failing lap costs — one attempt,
-  one iteration, and nothing deleted while `on_fail` is the default `retry`.
+  answer and the cheapest probe, with what a lap costs — nothing at all while a
+  `ready:` holds it at `PENDING`, and once the gate runs, whatever that gate
+  holds, plus one attempt and one iteration on a failure and nothing deleted
+  while `on_fail` is the default `retry`.
   Rule 6's account of what ending a run costs, and the same passage in both
   reference pages, gain the one place that does empty: `.headsign/tmp/`, which
   the next `start` deletes whole.

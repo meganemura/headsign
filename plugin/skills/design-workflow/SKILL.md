@@ -1138,6 +1138,15 @@ where the phase's subject is missing: nothing was implemented, so there is
 nothing to screenshot; no document moved, so there is nothing to review. The
 gate runs anyway, and asks for the artifact anyway.
 
+**Settle what a round is before you reach for a deletion, because a round is
+not always a run.** A workflow whose last phase routes back to its first holds
+many rounds inside one run: `start` empties `.headsign/tmp/` once for all of
+them, and a file written there in one round is still sitting there in the next.
+In that shape the run-scoped deletion proves nothing about a round, and the
+round-scoped one is the phase's `clear:`. A looping workflow that wants an
+artifact dated to the round therefore reaches for `clear:` or for git, and the
+`tmp/` wipe answers a question it is not being asked.
+
 **What that round produces is a green gate over an earlier round's artifact.**
 Whoever is driving finds the directory the last round left, points the check at
 it, and the run advances. The log then records the phase as passed, so the

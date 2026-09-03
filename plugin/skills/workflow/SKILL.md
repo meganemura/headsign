@@ -324,7 +324,11 @@ plugin or `npm install` the package. Do not guess at other paths.
   `headsign next` is the command that answers it.** The refusal names the phase
   and both moves. Continuing is the cheaper one, and it is also the probe: it
   runs that phase's gate and names the first check that is not satisfied, which
-  is how you find out whether the phase's work has been done at all. It costs
+  is how you find out whether the phase's work has been done at all. Read that
+  phase in the workflow file before you call, because the gate is what you are
+  about to spend: a `ready:` that has not passed answers `PENDING` and spends
+  nothing at all, and a gate holding a full build spends that build. Once the
+  gate does run, a failure costs
   one attempt of that phase and one iteration toward `max_total_iterations`
   where the workflow sets one, and while that phase's `on_fail` is the default
   `retry` it deletes nothing — the run stays where it stood, with its files
