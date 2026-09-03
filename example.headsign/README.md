@@ -21,6 +21,7 @@ headsign start tdd-feature  # .headsign/tdd-feature.yaml
 | [release.yaml](release.yaml) | release engineer | prepare (versions/changelog/clean tree) → verify (CI mirror) → approve (human GO file) → ship (tag at HEAD) |
 | [router.yaml](router.yaml) | request intake that dispatches one of three kinds of work | classify (agent writes one word) → fix-bug / write-docs / implement → review (rejection re-enters classify) |
 | [sweep.yaml](sweep.yaml) | one mechanical change applied across many files (codemod, migration) | survey (build the work queue) → apply one item → verify → record (round again while the queue has work) → report |
+| [refinery.yaml](refinery.yaml) | a merge queue, driven by a shell loop or a CI job rather than an agent | rehearse (merge on a temp branch; a conflict aborts and ends the run) → verify (build and tests on the rehearsed merge) → land (merge, push, read the remote back) |
 | [fan-out.yaml](fan-out.yaml) | work divided into independent pieces, by whatever machinery the agent judges best | split (the agent records its division; pieces it gave their own runs are listed) → gather (`ready:` all children finished, gate all COMPLETE; skipped when the list is empty) → integrate (combined result green, then no worktree left behind) |
 
 Things these examples demonstrate beyond the Quick start:
@@ -50,6 +51,52 @@ Things these examples demonstrate beyond the Quick start:
 - the graph sequences checks while the agent sequences work (fan-out's
   header): a phase order fixes when a fact must be proven, and fixes nothing
   about who does the work or how many of them there are
+- a workflow with no agent in it at all (refinery): every gate is a hard gate,
+  so the caller can be a `for` loop in a shell script or a CI job. What the
+  graph is doing there is not judgment but custody — a conflict and a red test
+  each reach a person with the reason attached, instead of reaching main
+
+### Driving refinery without an agent
+
+The other examples assume a coding agent reads each phase's instructions and
+does the work. refinery does not: the work is `git` and the project's own
+build, and every gate is a command, so the whole run is a loop that reads one
+line and looks at it.
+
+```sh
+headsign start refinery
+echo "$BRANCH" > .headsign/tmp/branch   # after start: it empties .headsign/tmp/
+
+for i in 1 2 3 4 5 6; do
+  line=$(headsign next 2>>refinery.err | head -1)
+  echo "$line"
+  case "$line" in COMPLETE*|ESCALATE*|ABORT*) break;; esac
+done
+```
+
+Three things that loop is doing on purpose.
+
+**It reads the first line of stdout and nothing else.** That line is the
+contract — a token, then the phase — and everything under it may be reworded
+in any release.
+
+**It keeps stderr.** The name of the check that failed is printed there while
+the gate runs (`--- check 2/2 failed: tests (0.4s) ---`). A run that ends in
+ESCALATE names the phase in its reason and not the check, so a driver that
+sends stderr to `/dev/null` throws away the one line that says which command
+went red.
+
+**It counts.** The `for` bound is the same number as the file's
+`max_total_iterations`, so a driver bug cannot spin: headsign stops answering
+at its own ceiling, and the loop stops asking at the same place.
+
+One subtlety worth knowing before you adapt this: **a workflow that checks out
+other branches has to survive its own checkouts.** `rehearse` moves the tree to
+the branch under test, and if `.headsign/` is tracked and that branch does not
+carry this file, the file is gone. It holds together here because the checkout
+and the merge of main are one check — main comes back before any lap reads the
+file again. Keep `.headsign/` untracked, or keep the workflow on main, and that
+question does not arise.
 
 These files are the ones headsign ships for you to copy. The workflows this
 repository actually runs on itself live separately, in `.headsign/` at the
@@ -147,6 +194,20 @@ flowchart TD
   record -- "when: queue not empty" --> apply
   record -- "default (queue empty)" --> report["report"]
   report -- "pass" --> done["$end"]
+```
+
+**refinery.yaml** — a straight line with no way back: every failure is a
+person's, because neither a conflict nor somebody else's red test is
+something this run can work its way out of.
+
+```mermaid
+flowchart TD
+  rehearse["rehearse"] -- "pass" --> verify["verify"]
+  verify -- "pass" --> land["land"]
+  land -- "pass" --> done["$end"]
+  rehearse -- "fail" --> escalate["escalate"]
+  verify -- "fail" --> escalate
+  land -- "fail" --> escalate
 ```
 
 **fan-out.yaml** — the join, taken only when the agent gave some piece a run

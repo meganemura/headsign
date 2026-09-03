@@ -1,0 +1,103 @@
+# refinery.yaml — merging one branch into main, with hard gates only.
+#
+# Nothing here asks anyone to judge anything. Every gate is a command that
+# exits 0 or does not, so the caller can be a shell loop or a CI job with no
+# agent in it at all — the shape README.md's "who calls next" list names first.
+# What the graph buys is that a conflict and a red test each reach a person
+# with a reason attached, instead of reaching main.
+#
+# The branch to merge arrives in .headsign/tmp/branch, which the driver writes
+# AFTER `headsign start`: that directory is emptied when a run begins, so a
+# name written before the start is gone by the first lap. A driver loop is in
+# example.headsign/README.md. Keep its stderr — the name of the check that
+# failed is printed there, and a run that ends in ESCALATE keeps the phase in
+# its reason and not the check.
+#
+# Every `run:` is /bin/sh (POSIX). The two project commands are marked SWAP.
+version: 0.1
+name: refinery
+entry: rehearse
+
+phases:
+  # ── rehearse ─────────────────────────────────────────────────────────────
+  # The merge is tried first on a throwaway branch, so that a conflict is found
+  # somewhere that can be abandoned. `git merge --abort` puts the tree back
+  # before the check reports, which is what lets a person pick up an escalated
+  # run without cleaning anything up first.
+  rehearse:
+    description: >
+      Rehearse the merge on a temporary branch, against a freshly fetched
+      origin. The driver has written the branch name to .headsign/tmp/branch.
+      A conflict ends the run, and the tree it hands over is clean.
+    # Until the driver has written the branch name there is nothing to rehearse.
+    # `ready:` answers PENDING and spends no attempt, rather than failing a gate
+    # about a file the caller has not written yet.
+    ready: "test -s .headsign/tmp/branch"
+    gate:
+      checks:
+        - name: origin is up to date
+          run: "git fetch -q origin"
+        # The merge is the check: it either applies or it does not, and the
+        # abort runs inside the same command so that no later check — and no
+        # person — meets a half-merged tree.
+        - name: the branch merges into main without conflict
+          run: >
+            b=$(cat .headsign/tmp/branch) &&
+            git checkout -q -B refinery/temp "origin/$b" &&
+            { git merge --no-ff --no-edit -q origin/main || { git merge --abort; exit 1; }; }
+    on_pass: verify
+    # A conflict is not something this run can work its way out of, so there is
+    # nothing for a retry to do differently. The same reasoning holds for both
+    # phases below, and it is why this file has no loop-backs at all.
+    on_fail: escalate
+
+  # ── verify ───────────────────────────────────────────────────────────────
+  # Run against the rehearsed merge — the tree as it will be on main, rather
+  # than the branch as its author last saw it. That difference is the whole
+  # reason the rehearsal happens before this phase instead of after it.
+  verify:
+    description: >
+      Run this project's build and tests on the rehearsed merge. A failure
+      belongs to whoever wrote the branch, so the run ends here rather than
+      trying again.
+    gate:
+      checks:
+        # SWAP: this project's build command.
+        - name: build
+          run: "npm run -s build"
+        # SWAP: this project's test command, and a timeout that fits it. The
+        # default is 120 seconds, which a full suite outgrows quietly.
+        - name: tests
+          run: "npm test -s"
+          timeout: 600
+    on_pass: land
+    on_fail: escalate
+
+  # ── land ─────────────────────────────────────────────────────────────────
+  # The only phase that writes anything anyone else can see.
+  land:
+    description: >
+      Merge the branch into main and push it. The run is finished once the
+      remote agrees.
+    gate:
+      checks:
+        - name: merge into main
+          run: >
+            b=$(cat .headsign/tmp/branch) &&
+            git checkout -q main &&
+            git merge --no-ff --no-edit -q "origin/$b"
+        - name: push
+          run: "git push -q origin main"
+        # A push can be refused after the merge succeeded — somebody else got
+        # there first. Reading the remote back is what tells the two apart, and
+        # it is the difference between "we merged" and "main has it".
+        - name: the push landed
+          run: 'test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"'
+    on_pass: $end
+    on_fail: escalate
+
+limits:
+  # Three phases pass in three laps, and every failure ends the run rather than
+  # looping, so this is a backstop against a driver that calls `next` forever —
+  # not a budget the work is expected to spend. PENDING laps are not counted.
+  max_total_iterations: 6

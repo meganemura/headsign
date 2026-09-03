@@ -68,6 +68,17 @@ changes), and a patch bump means fixes only.
   branches belong to lock races and are covered or not depending on how the race
   lands.
 
+- **A ninth shipped example: `refinery.yaml`, a merge queue with no agent in
+  it.** Every gate is a command, so the caller is a shell loop or a CI job
+  rather than a coding agent — the first entry on the README's list of callers,
+  and until now the one with nothing to copy. It rehearses the merge on a
+  temporary branch so a conflict leaves the tree clean, runs the project's build
+  and tests on the rehearsed merge rather than on the branch as written, and
+  reads the remote back after pushing. The examples README gains the driver loop
+  it is meant to be called from, and says why that loop keeps stderr: while a
+  gate runs, the failing check is named there, and a run that ends in ESCALATE
+  names the phase in its reason and not the check.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because
