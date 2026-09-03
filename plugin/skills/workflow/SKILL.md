@@ -206,6 +206,14 @@ plugin or `npm install` the package. Do not guess at other paths.
    hand the first failure of that phase straight to a person — a deliberate
    design, not a mishap, and one this repository's own workflows use.
 
+   **Starting over is `headsign start` on its own.** An ended run does not
+   have to be cleared out of the way first: `headsign abort` on one is
+   refused — `already escalated; nothing to abort`, exit 3 — because there is
+   nothing left for it to end, and that refusal changes nothing, so a run
+   recovered that way was recovered by the `start`. The `start` rewrites
+   `state.json` whole, which is also what puts every phase's attempt count
+   back to zero.
+
    **So the remaining attempts on a gate you believe cannot pass are not a
    reserve you are protecting by not spending them** — spending them ends the
    run, and not spending them leaves it open with nothing recorded about why.
@@ -317,7 +325,13 @@ plugin or `npm install` the package. Do not guess at other paths.
   itself leaves and re-enters it, which prints `ADVANCE` and runs that
   phase's `clear:` (deleting the files it lists). Re-entering is right when
   starting the phase fresh is the point — a stale review verdict has to go
-  — and wrong when the work should simply continue.
+  — and wrong when the work should simply continue. **What re-entry does not
+  reset is `max_attempts`.** That count is failures of the phase since it
+  last *passed*, so a phase you leave on a failure and come back to — by
+  naming itself, or through another phase, or around a longer route — resumes
+  the count where it stopped, and `headsign status` shows it as `attempt
+  n/max` while the run is in that phase. A budget of 2 is spent by two
+  rejections however many phases sat between them.
 - `headsign status` is a different kind of command, on purpose: it never
   judges, so its first-line vocabulary is separate from `next`'s tokens —
   `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED`, capitalized like a

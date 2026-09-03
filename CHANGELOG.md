@@ -92,6 +92,17 @@ changes), and a patch bump means fixes only.
   sentence, which already speaks about the streak of failures. The output tail
   stays out of both — it is long, and it is on stderr.
 
+- **The skills say what `max_attempts` counts, and how a run that ended gets
+  going again.** Two reports from one run, both from a workflow whose failure
+  route leaves a phase and comes back to it. The budget counts failures since
+  the phase last *passed*, so the count survives the trip and a phase visited
+  three times spends three visits' worth against one number — which is the
+  property `validate` leans on when it declines to warn about a cycle closing
+  through a failure edge. That is now stated where the number is chosen, and
+  beside the note on re-entry. And a run that ended is restarted by `headsign
+  start` alone: `headsign abort` on one is refused, changes nothing, and the
+  `start` is what recovers it.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because

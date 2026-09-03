@@ -407,7 +407,18 @@ different things — so they get three different treatments.
   out ends the run for good, and redoing the work means starting again from
   the entry phase. Give the number, the reason, **and the consequence**
   ("if this is exhausted the run is over") and let the person confirm or
-  change it. Draw the proposal from what the phase is: phases where going
+  change it. **Say what the number counts, because it is not what most
+  readers assume**: failures of that phase since it last *passed*, which is
+  not the same as failures since the run last entered it. A route that leaves
+  the phase on a failure and comes back later — through another phase, or
+  around a longer way — finds the count where it left it, so a phase that is
+  visited three times before it passes has three visits' worth of failures
+  against one budget. That is the property the graph rules lean on: a cycle
+  closing through a failure edge is bounded precisely because the count does
+  not reset, which is why `validate` does not warn about one. Size the number
+  to how many times the work can fail *before it succeeds*, and where a phase
+  is meant to be attempted afresh on each visit, say so in a comment, because
+  the file cannot. Draw the proposal from what the phase is: phases where going
   round several times is part of the job (implementation, rework after a
   rejected review) get more; phases that should land in one pass get fewer.
 - **`timeout:` — never guess it. It goes one of three ways, and you say
