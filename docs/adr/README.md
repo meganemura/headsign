@@ -45,3 +45,13 @@ record the reasoning each choice rests on.
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless
 the change is large enough to be its own record.
+
+**A skill may say more about a decision recorded here, and the decision
+stands unchanged.** The two skills carry the guidance that puts an ADR's decision
+to work, and field reports keep asking them for cases the decision covers and
+the text never spelled out — how long an anchor lasts, what dates an artifact,
+what a lap costs. Answering one of those edits `plugin/skills/`, `CHANGELOG.md`
+and, where the same fact lives there, the reference pages; it leaves the ADR
+alone, and the ADR stays true. Amend an ADR when what it decided is now decided
+differently, and take a skill's growth as the sign that its decision is being
+used.
