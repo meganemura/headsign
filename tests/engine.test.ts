@@ -308,6 +308,20 @@ test("a retry carries the gate verdict's elapsedSeconds into both last_failure.e
   if (outcome.kind === "RETRY") assert.equal(outcome.failure.elapsedSeconds, 12.3);
 });
 
+// The other half of the same carry: a verdict that has no elapsedSeconds at all. gate.ts has
+// timed every check it ran since v0.6.0, so the shape now reaches step() only from a caller
+// older than that — and what must not happen is a key holding `undefined`, which reads back
+// out of state.json as a field that exists and says nothing.
+test("a retry from a verdict with no elapsedSeconds leaves the key out rather than storing undefined", () => {
+  const workflow = wf({ a: { on_pass: "$end" } });
+  const verdict: GateVerdict = { kind: "fail", check: "unit", run: "npm test", exitCode: 1, outputTail: "out" };
+  const { state, outcome } = engine.step(workflow, st("a"), verdict);
+  assert.ok(state.last_failure !== null);
+  assert.ok(!("elapsed_seconds" in (state.last_failure as object)), "absent, not present-and-undefined");
+  assert.equal(outcome.kind, "RETRY");
+  if (outcome.kind === "RETRY") assert.ok(!("elapsedSeconds" in outcome.failure), "and absent in the outcome too");
+});
+
 // --- repeats: how many times in a row the SAME failure has just landed (2026-08-13). What
 // counts as the same lives in `sameFailureStreak` and is not restated here — the tests below
 // each name the one field they vary. ---

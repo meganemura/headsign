@@ -84,6 +84,31 @@ test("a phase whose body is not a mapping is rejected", () => {
   assert.ok(errors(doc).some((e) => e.includes("phase 'plan' must be a mapping")));
 });
 
+test("a phase whose description is an empty string is rejected", () => {
+  const doc = validWorkflow();
+  // `description:` with nothing after it parses to an empty string rather than a missing key,
+  // so the type test alone would let it through — and the phase would then hand the agent an
+  // empty instruction, which is the one thing a phase must never do.
+  phases(doc).plan.description = "";
+  assert.ok(errors(doc).some((e) => e.includes("phase 'plan': description is required")));
+});
+
+test("a gate check that is not a mapping is rejected", () => {
+  const doc = validWorkflow();
+  // The shape someone writes when they read `checks:` as a list of commands. It reports here,
+  // naming the index, rather than reaching the gate as a check with no `run` to spawn.
+  phases(doc).plan.gate = { checks: ["npm test"] };
+  assert.ok(errors(doc).some((e) => e.includes("phase 'plan': gate.checks[0].run is required")));
+});
+
+test("a gate check whose run is an empty string is rejected", () => {
+  const doc = validWorkflow();
+  // A `run:` left blank is a check that always passes: `sh -c ""` exits 0. The gate would be
+  // green about nothing, which is the failure this message exists to prevent.
+  phases(doc).plan.gate = { checks: [{ run: "" }] };
+  assert.ok(errors(doc).some((e) => e.includes("phase 'plan': gate.checks[0].run is required")));
+});
+
 test("a gate check with a non-positive timeout is rejected", () => {
   const doc = validWorkflow();
   phases(doc).plan.gate = { checks: [{ run: "true", timeout: 0 }] };

@@ -51,6 +51,23 @@ changes), and a patch bump means fixes only.
   `description` or comment edit is silent by design, and the silence says
   which half was edited.
 
+- **Branch coverage of `src/` is gated, at 97%.** It was measured and reported
+  on every CI run and enforced at nothing, so the two thresholds that are
+  enforced said nothing about the third number moving. Eleven tests took it from
+  96.2% to 98.3%, each pinning a promise nothing exercised: `validate` rejecting
+  an empty `description`, a check that is a string rather than a mapping, and an
+  empty `run:`; `abort ""` recording null and printing that it has no reason;
+  `status` staying quiet about a `last_drive` with an empty half; `start`
+  amending a `.gitignore` whose last line has no newline; a west-of-UTC
+  timestamp carrying a minus offset; `--workflow` with no path after it
+  refusing; both `graph:` lines end to end through `status`;
+  `--accept-graph-change` refusing a change other than the one reported; and a
+  failure carrying no elapsed time leaving the key out rather than holding
+  `undefined`. The
+  floor sits below the measured number rather than at it, because a handful of
+  branches belong to lock races and are covered or not depending on how the race
+  lands.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because

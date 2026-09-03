@@ -679,6 +679,58 @@ test("start ensures .headsign/.gitignore contains state.json, lock, log, and tmp
   assert.ok(lines.includes("tmp/"));
 });
 
+test("start amends a .gitignore whose last line has no newline, rather than joining two entries", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  // An editor that saves without a trailing newline is common enough, and the append would
+  // otherwise produce `somethinglock` — a pattern matching neither entry, leaving whichever
+  // file it swallowed tracked.
+  fs.writeFileSync(path.join(dir, ".headsign", ".gitignore"), "something");
+  run(["start"], { cwd: dir });
+  const lines = fs
+    .readFileSync(path.join(dir, ".headsign", ".gitignore"), "utf8")
+    .split("\n")
+    .map((l) => l.trim());
+  assert.ok(lines.includes("something"), "the entry that was already there survives");
+  for (const entry of ["state.json", "lock", "log", "tmp/"]) assert.ok(lines.includes(entry));
+});
+
+test("abort with an empty reason records null and says so, rather than an empty ABORT line", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  // `headsign abort ""` is what a caller building the command from a variable produces when
+  // the variable is empty. The run still ends — refusing it would leave a run nobody can end —
+  // and the record holds null rather than "", so a reader sees the same absence a pre-field
+  // record shows.
+  const aborted = run(["abort", ""], { cwd: dir });
+  assert.equal(aborted.status, 2);
+  assert.match(aborted.stdout, /^ABORT \(no reason given\)\n/);
+  assert.equal(readState(dir).end_reason, null);
+  // And the terminal reprint answers the same way, from the record rather than from the call.
+  const reprint = run(["next"], { cwd: dir });
+  assert.equal(reprint.status, 2);
+  assert.match(reprint.stdout, /^ABORT \(no reason given\)\n/);
+});
+
+test("status stays silent about a last_drive whose session or timestamp is empty", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir });
+  // Two hand-edited shapes, each well-formed as an object and empty in one half. Both mean
+  // "nothing to report" rather than a crash: `status` is the command a person runs while
+  // diagnosing, so a malformed record must not be the thing that stops them looking.
+  const statePath = path.join(dir, ".headsign", "state.json");
+  for (const last_drive of [{ session: "", at: "2026-09-03T00:00:00+09:00" }, { session: "s", at: "" }]) {
+    const state = readState(dir);
+    fs.writeFileSync(statePath, JSON.stringify({ ...state, last_drive }, null, 2));
+    const result = run(["status"], { cwd: dir });
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /^RUNNING build/);
+    assert.ok(!result.stdout.includes("last moved:"), `an empty half must print no line: ${JSON.stringify(last_drive)}`);
+  }
+});
+
 // --- .headsign/tmp/: run-scoped scratch directory (F1) ---
 
 test("start creates .headsign/tmp/ and empties any pre-existing contents from a previous run", () => {
@@ -1682,6 +1734,30 @@ test("log: timestamp reflects TZ (Asia/Tokyo, +09:00), not UTC", () => {
   run(["start"], { cwd: dir, env: { ...process.env, TZ: "Asia/Tokyo" } });
   const lines = readLog(dir);
   assert.match(lines[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00 start /);
+});
+
+test("log: a timezone west of UTC carries a minus offset, not a plus", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  // The sign comes off the running machine's own offset, so one side of it is whichever side
+  // the machine sits on and the other side is never taken — unless a child process is handed a
+  // TZ. Both sides are pinned here, one test each, because a timestamp whose sign is wrong
+  // reads as a run that happened at another time of day.
+  run(["start"], { cwd: dir, env: { ...process.env, TZ: "America/Los_Angeles" } });
+  assert.match(readLog(dir)[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}-0[78]:00 start /);
+});
+
+test("start with --workflow and no path after it refuses, rather than reading the default", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  // The flag is last on the line, which is what a caller building the command from a variable
+  // produces when the variable is empty. Falling back to `.headsign/workflow.yaml` would start
+  // a run against a file nobody named.
+  const result = run(["start", "--workflow"], { cwd: dir });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /--workflow requires a path argument/);
+  assert.equal(result.stdout, "");
+  assert.ok(!fs.existsSync(path.join(dir, ".headsign", "state.json")), "no run may begin");
 });
 
 // Reading one run out of an append-only log: the event name is ALWAYS the second field and
@@ -2961,6 +3037,32 @@ test("next: a change to the current phase's rules mid-run escalates without endi
   );
 });
 
+test("status: the two graph lines a run's own record cannot hold, end to end (ADR-0029)", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  // A file edited with no lap run leaves nothing in the record, so this line is computed from
+  // the file each time `status` is called. It is the question a read-only viewer of a run has
+  // to ask before it can trust the picture it draws: is the file on disk the graph this run
+  // pinned? Answering it from timestamps is what these lines exist to replace.
+  const edited = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(edited.status, 0, "looking is free, whatever the file says");
+  assert.doesNotMatch(edited.stdout, /^graph:/m, "an unedited file says nothing");
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW_LOOSENED);
+  const changed = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.match(changed.stdout, /^graph: the file no longer matches the rules this run pinned — `headsign next` will report it before it runs the gate$/m);
+  assert.equal(readState(dir).status, "running", "and it judged nothing to say so");
+
+  // Restoring the file while a report stands: the standing question keeps its line, and the
+  // answer sits under it. Both are true at once, which is why the two print together.
+  run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  const restored = run(["status"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.match(restored.stdout, /^graph: changed since this run accepted it — restore the file, or `headsign next --accept-graph-change` to accept$/m);
+  assert.match(restored.stdout, /^graph: the file matches the rules this run pinned again — `headsign next` will clear the line above and cost nothing$/m);
+});
+
 // The flag's own guard, exercised end to end: a habitually-attached flag must be visibly wrong
 // (exit 3), not a quiet no-op that teaches a caller it is always safe to include.
 test("next: --accept-graph-change with nothing reported refuses with exit 3, and leaves the run untouched", () => {
@@ -2974,6 +3076,28 @@ test("next: --accept-graph-change with nothing reported refuses with exit 3, and
   assert.match(refused.stderr, /^ERROR: --accept-graph-change was given, but there is no reported graph change to accept right now\./);
   assert.equal(readState(dir).status, "running", "a refused flag leaves the run exactly where it was");
   assert.deepEqual(readLog(dir), before, "and writes no log line");
+});
+
+test("next: --accept-graph-change refuses a change other than the one that was reported", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW_LOOSENED);
+  run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+
+  // The flag accepts the change a person was shown, and this edit is a third state: the file
+  // now differs from the pin AND from what the report named. Accepting here would wave through
+  // rules nobody read, which is the whole thing the two-beat handshake is for.
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW_LOOSENED.replace(`run: "true"`, `run: "test -f other.txt"`));
+  const refused = run(["next", "--accept-graph-change"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(refused.status, 3);
+  assert.match(refused.stderr, /^ERROR: --accept-graph-change was given, but there is no reported graph change to accept right now\./);
+  assert.equal(readState(dir).status, "running", "and the run stands where it stood");
+
+  // The bare lap reports the new state, which is the beat the flag was asking to skip.
+  const reported = run(["next"], { cwd: dir, env: NO_OBSERVER_ENV });
+  assert.equal(reported.status, 2);
+  assert.match(reported.stdout, /^ESCALATE build: the workflow's rules changed under this run/);
 });
 
 test("next: COMPLETE names how many changes the run accepted to its own rules, and says nothing when there were none", () => {
