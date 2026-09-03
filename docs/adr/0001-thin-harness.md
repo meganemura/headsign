@@ -57,6 +57,9 @@ that matters: the transition decision.
   became a normal mode of operation, a strictly read-only `status` was added
   for sessions that are *not* driving the run — the driving session still
   gets exactly one question, and `status` never judges or transitions.)
+  The five requests this entry has since been reached for, and the four
+  reasons they were refused on, are collected in
+  [ADR-0036](0036-a-request-for-a-second-question.md).
 
 ## Consequences
 
