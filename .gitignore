@@ -11,3 +11,7 @@ node_modules/
 # Hegel keeps its failing-example database here. It is a local replay cache,
 # rebuilt from a run, and CI disables it outright.
 .hegel/
+
+# depug writes its runtime evidence here, one directory per test run. Rebuilt
+# by whatever run last needed it, and only ever read while diagnosing that run.
+tmp/
