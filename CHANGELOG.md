@@ -9,6 +9,20 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **The `design-workflow` skill now says where a run-scoped mark stops, and
+  what to do with a round that has nothing for a phase.** A gate that counted
+  three screenshots at a path the round wrote into `.headsign/tmp/` passed on
+  any round's screenshots: the mark belonged to the run because `start` empties
+  that directory, and the pictures it pointed at sat outside every deletion.
+  Step 1 now carries the rule that the anchor is whichever deletion an artifact
+  sits behind — `tmp/` for the run, `clear:` for the entry — and that anything
+  outside both needs git to date it. A new section covers the other half: a
+  round that legitimately produces nothing for a phase needs an edge past that
+  phase, decided by a `when:` on a fact in the tree, which puts the skip in
+  `.headsign/log` with its condition named.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because

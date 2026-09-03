@@ -227,6 +227,27 @@ run-scoped claim, because a second entry finds the first entry's anchor still
 sitting there and measures against it. Decide which of the two you want, and
 say which in the handover — "anchored" does not say when.
 
+**A mark under `tmp/` belongs to this run, and a path written inside it can
+lead anywhere.** A phase writes the directory of the screenshots it took into
+`.headsign/tmp/shots`, and the gate counts the image files it finds at that
+path. `start` emptied `tmp/`, so the mark is this run's. The images sit outside
+`tmp/`, where nothing was emptied, so a directory an earlier run filled passes
+the count exactly as well as a fresh one does. The check reads a declaration
+and measures it against the filesystem, which has the shape of an anchored
+check, and what it proves is that three files exist somewhere. The claim it was
+written for was that this run produced them.
+
+**The anchor is whatever headsign deletes.** There are two deletions: `start`
+empties `tmp/` for the whole run, and a phase's `clear:` folds its own listed
+paths away on every entry. An artifact behind one of them belongs to this run
+by construction. An artifact outside both needs git to date it, and which
+command does that depends on what the phase does with the file: `git status
+--porcelain -- shots/` sees a file the round wrote and has not committed, and a
+diff against a base commit the run recorded sees one the round committed. A
+phase that sometimes commits and sometimes does not needs a check that accepts
+either. A timestamp settles nothing here, because a check has no run-scoped
+clock to compare one against.
+
 **Ordering is not the only way to place a guard, and it is the fragile way.**
 The guard-goes-first rule above rests on the order of lines in the gate, which
 nothing checks: put the guard second and every run still passes for as long as
@@ -340,6 +361,11 @@ decision — has three honest destinations, and you should say which one you
 chose for each: slice it into units a check can verify, carry it with a
 review phase whose gate reads a verdict file, or leave it to the human
 reviewing the pull request.
+
+**Then check each phase against the round that has no work for it.** If a unit
+of work can legitimately leave one phase with nothing to produce, that phase
+needs an edge that carries such a round past it; *A round that has nothing for
+a phase*, below, has the shape and the reason.
 
 ### 3. Draw the shape, and agree it
 
@@ -1104,6 +1130,56 @@ stops being run. The same shape turns up in a phase's *instructions* rather
 than its gate, where a rule that forbids a legitimate case sends the work into
 a record that is not true; *Work that arrives from outside the run*, above, is
 that version of it.
+
+## A round that has nothing for a phase
+
+A phase is written for the round that has work for it. Then a round arrives
+where the phase's subject is missing: nothing was implemented, so there is
+nothing to screenshot; no document moved, so there is nothing to review. The
+gate runs anyway, and asks for the artifact anyway.
+
+**What that round produces is a green gate over an earlier round's artifact.**
+Whoever is driving finds the directory the last round left, points the check at
+it, and the run advances. The log then records the phase as passed, so the
+run's history says the round showed something it never made, and a later reader
+of that history has nothing to tell the two apart with. This is the gate-shaped
+case of the rule at the end of *How much gate is enough*: a legitimate case
+with no route of its own takes the route nobody records.
+
+**Give the empty round an edge of its own, and let a command decide which round
+it is.** A list-form `on_pass` on the phase before the one that can be empty
+carries it past:
+
+```yaml
+  try:
+    # ... description and gate ...
+    on_pass:
+      # A round that changed no source has nothing to show, and says so here,
+      # where git decides it — rather than in the show gate, which would have
+      # to accept an old directory to let this round through.
+      - when: 'git diff --quiet "$(cat .headsign/tmp/base)" -- src/'
+        to: verdict
+      - to: show
+```
+
+The `when:` reads git, so which edge the round takes stays out of the round's
+hands. An `ADVANCE` reached this way prints the route it took and writes the
+same line into `.headsign/log`, so a phase skipped this way leaves a record
+naming the condition that skipped it.
+
+The base commit is the entry phase's mark under `tmp/`, and it carries the same
+requirement every anchor carries: a check that the file names a real commit,
+placed where the gate runs it before anything measures against it. Comparing
+against `HEAD` instead reads only what is uncommitted, so a round that
+committed its work looks empty to it.
+
+**Where no command can tell the two rounds apart, have the round declare which
+one it is in.** The phase writes what it reused, and why, to a file the gate
+reads, and the gate passes on a fresh artifact or on that declaration. A check
+on a declaration is fakeable, and that is the trade you are making: a fakeable
+check that leaves the exception in the record beats an anchored check that the
+round walks around in silence. Say which of the two the gate is when you hand
+the workflow over.
 
 ## What goes in the comments
 
