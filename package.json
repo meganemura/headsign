@@ -38,9 +38,12 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
+  "depug": {
+    "include": ["src"]
+  },
   "devDependencies": {
     "@hegeldev/hegel": "0.4.5",
-    "@meganemura/depug": "0.1.1",
+    "@meganemura/depug": "0.1.2",
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
