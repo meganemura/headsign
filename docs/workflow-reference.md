@@ -450,8 +450,9 @@ costs nothing else. `state.json` is gitignored, so the repository's tracked
 files stay exactly as they were. headsign appends the reason from
 `headsign abort <reason>` to `.headsign/log`. The reason outlives the run.
 headsign leaves existing artifacts untouched, and committed artifacts are
-safe by definition. A later `headsign start` rewrites all of `state.json`
-and begins at the entry phase. It inherits only the log from the aborted
+safe by definition. A later `headsign start` rewrites all of `state.json`,
+deletes all of `.headsign/tmp/`, and begins at the entry phase. So the marks
+and notes that the run kept in `tmp/` go when the replacement run starts. It inherits only the log from the aborted
 run. Before you abort, ask *how much walking will it cost to get back here*.
 The answer depends on the cost of passing the workflow's early gates again.
 [The contract](#the-contract) explains why you should keep these gates

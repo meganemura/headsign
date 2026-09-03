@@ -158,10 +158,13 @@ plugin or `npm install` the package. Do not guess at other paths.
    this is worth knowing before you have to decide in a hurry: `state.json` is
    gitignored, so ending a run leaves every tracked file exactly as it was, and
    the artifacts the run already wrote are untouched — committed ones by
-   definition. What you lose is the position: the phase, the attempt counts, the
-   walk back to here. So the only real question is how expensive this
-   workflow's earlier gates are to pass again, which you can read off the
-   workflow file you are holding. To *pause* rather than end — stepping away
+   definition. One place empties, and it empties at the next `start` rather than
+   at the abort: `.headsign/tmp/`, which a run begins by deleting whole, so
+   marks and notes kept there go when the replacement run starts. What you lose
+   is the position: the phase, the attempt counts, the walk back to here. So
+   the only real question is how expensive this workflow's earlier gates are to
+   pass again, which you can read off the workflow file you are holding.
+   To *pause* rather than end — stepping away
    to resume later — write one line to `.headsign/tmp/stop-note` **naming what
    you are waiting for**, and stop again. **If you cannot name it, you are not
    blocked** — run `headsign next` instead. The stop-boundary hook passes
@@ -317,5 +320,19 @@ plugin or `npm install` the package. Do not guess at other paths.
   and 3 only when there's no run to read. Use it whenever you want to look
   without the risk of touching anything — see the discipline's first rule,
   above, for when that's required rather than optional.
+- **A `start` that reports a run already in progress asks you a question, and
+  `headsign next` is the command that answers it.** The refusal names the phase
+  and both moves. Continuing is the cheaper one, and it is also the probe: it
+  runs that phase's gate and names the first check that is not satisfied, which
+  is how you find out whether the phase's work has been done at all. It costs
+  one attempt of that phase and one iteration toward `max_total_iterations`
+  where the workflow sets one, and while that phase's `on_fail` is the default
+  `retry` it deletes nothing — the run stays where it stood, with its files
+  where they are. `headsign status` answers a neighbouring question rather than
+  this one: it runs no check, so it reports the phase and when the run entered
+  it, and what has been produced inside that phase is a fact about the tree
+  that only the gate reads. Ending the run instead costs the position, and
+  costs everything under `.headsign/tmp/` as well — the next `start` empties
+  that directory whole.
 - Lock contention from parallel subagents is normal — wait briefly and
   retry once; the error message itself carries the recovery.

@@ -23,6 +23,17 @@ changes), and a patch bump means fixes only.
   phase, decided by a `when:` on a fact in the tree, which puts the skip in
   `.headsign/log` with its condition named.
 
+- **The `workflow` skill now says which command answers "continue this run, or
+  start over".** A `start` refused because a run was in progress left the
+  driver reading `headsign status` for something it never holds: status runs no
+  check, so whether a phase has any work in it yet is a fact about the tree
+  that only the gate reads. The Notes now name `headsign next` as both the
+  answer and the cheapest probe, with what one failing lap costs — one attempt,
+  one iteration, and nothing deleted while `on_fail` is the default `retry`.
+  Rule 6's account of what ending a run costs, and the same passage in both
+  reference pages, gain the one place that does empty: `.headsign/tmp/`, which
+  the next `start` deletes whole.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because
