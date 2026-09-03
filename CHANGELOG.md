@@ -40,6 +40,17 @@ changes), and a patch bump means fixes only.
   reference pages, gain the one place that does empty: `.headsign/tmp/`, which
   the next `start` deletes whole.
 
+- **The `workflow` skill says what an edit to a live run's file is reported
+  as, where the person about to edit one is reading.** The rule was already
+  in the skill, five lines under the sentence a reader quoted back — inside a
+  long rule about what to do when a run escalates, which is where you arrive
+  after something happened rather than while deciding whether to touch the
+  file. The note on writing workflows now carries it: the run pins the rules
+  and not the words, so a `gate`/`ready`/`clear`/`on_pass`/`on_fail`/
+  `max_attempts`/`limits` edit is reported once at the next lap, a
+  `description` or comment edit is silent by design, and the silence says
+  which half was edited.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because

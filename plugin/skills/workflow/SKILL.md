@@ -269,7 +269,14 @@ plugin or `npm install` the package. Do not guess at other paths.
 - **You can write the workflow too, not just run it.** A workflow is one
   YAML file; `headsign validate --workflow <path>` checks it statically —
   no gate runs, no state is touched — so drafting or editing one is safe at
-  any time. Errors (exit 3) must be fixed; warnings print to stderr and
+  any time. **A run pins the rules and not the words**, which decides what
+  you hear when you edit the file a run is walking: change `gate`, `ready`,
+  `clear`, `on_pass`, `on_fail`, `max_attempts` or `limits` and the next
+  `next` reports it once before it runs the gate; change a `description`, a
+  comment, or the formatting and the run says nothing, because those sit
+  outside the pin by design. So silence after an edit tells you which half
+  you edited, and rule 6 above has what to do with the report when there is
+  one. Errors (exit 3) must be fixed; warnings print to stderr and
   still exit 0, so a phase nothing routes to yet won't stop the run you are
   in. Two things a phase cannot declare: an environment (a check that needs
   a variable writes it into its own `run:` string, e.g. `run: "FOO=bar npm
