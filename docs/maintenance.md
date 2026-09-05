@@ -68,20 +68,29 @@ setting, never a relative or sibling path — a relative one breaks the moment
 you work from a git worktree:
 
 ```
-git config --global headsign.feedbackDir <path>
+git config --global headquarters.issuesDir <path>
 ```
 
-Everything downstream — the triage workflow's gate check, and the phase
-instructions that say where to read and move tickets — resolves the
-directory through that config value, so a machine that hasn't set it
-simply has no tickets to triage.
+Everything downstream — the triage workflow's gate checks, and the phase
+instructions that say where to read tickets and where to put what you
+decided — resolves the directory through that config value, so a machine
+that hasn't set it has no tickets to triage. A machine that has set it also
+needs `bd` and `jq` on PATH: a ticket is a `bd` issue, and the gates read
+its JSON.
+
+A ticket's shape, since the gates are written against it: labels carry the
+tool (`tool:headsign`) and the severity, the status carries how far it has
+come (`open` -> `judged` -> `closed`), and the judgment and the response are
+comments written with `--actor tool:headsign`. **`judged` is a status the
+hub adds** — bd does not ship it — and a hub that lost that setting makes
+the gates fail rather than report an empty queue, which is the behaviour
+those gates need from it.
 
 **Running the loop.** `headsign start triage` (that's
 `.headsign/triage.yaml`, one of this repository's own workflows — it reads a
 per-machine git config value, so it is not shipped as an example). One run
-judges **one** ticket: read it, fill its
-`Judgment` section with a decision and a reason, move it on, then either
-implement it or end the run. Three is the upper bound once the loop is
+judges **one** ticket: read it, write a comment holding a decision and a
+reason, move its status on, then either implement it or end the run. Three is the upper bound once the loop is
 second nature, and that is a cap, not a target — past it you are batching,
 which is the one thing this structure exists to prevent. Triage is where
 the thinking happens, and a queue swept in a single pass is a queue nobody
@@ -105,8 +114,8 @@ clear a change. A problem that cannot survive being generalized isn't
 ready to be worked on here.
 
 **The link runs one way, private → public.** What a ticket turned into is
-recorded in that ticket's `Response` section on the private side, with the
-public commit hash. Never add the reverse link: nothing in this repository
+recorded in a comment on that ticket on the private side, with the public
+commit hash. Never add the reverse link: nothing in this repository
 points back at a ticket, a private repository, or a reporter.
 
 **Turning a ticket into a public issue** is for the generalizable ones

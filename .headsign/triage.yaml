@@ -2,13 +2,24 @@
 #
 # Feedback tickets accumulate, pull-style, in a PRIVATE aggregation
 # repository; its location resolves via `git config --global
-# headsign.feedbackDir` (never a relative/sibling path — that breaks under
-# git worktrees). Tickets carry frontmatter (severity, created), a Judgment
-# section (decision: accept / reject / defer + reason) and a Response
-# section, and move feedback/headsign/inbox/ -> judged/ -> done/ as they
-# progress. That hub holds several tools' queues side by side, one directory
-# per tool, so every path below names this one — a ticket sitting in a
-# sibling tool's inbox is not this run's work and must not trip its gate.
+# headquarters.issuesDir` (never a relative/sibling path — that breaks under
+# git worktrees). A ticket is a `bd` issue: labels carry the tool and the
+# severity, the status carries how far it has come (open -> judged ->
+# closed), and the Judgment and the Response are comments whose `author` is
+# `tool:headsign`. That hub holds several tools' queues side by side and
+# tells them apart by label, so every command below names this one — an
+# issue labelled for a sibling tool is not this run's work and must not trip
+# its gate.
+#
+# `judged` is not one of bd's built-in statuses. The hub configures it
+# (`status.custom`), and a hub that lost that setting makes every query
+# below fail loudly rather than answer "nothing to do": bd refuses the
+# unknown status, prints no JSON, and `jq -e` exits non-zero. Measured
+# before this file was written, because three of these gates asserts an
+# absence and a silent empty answer would certify a queue nobody looked at.
+#
+# Read before writing: `bd -C "$HQ" dolt pull`. Publishing what you wrote
+# follows the hub's own README — this file does not own that step.
 #
 # This repository is PUBLIC. The check for every artifact here (code,
 # commit messages, docs, tests) is authorship: nothing may be anyone's
@@ -25,23 +36,25 @@ entry: triage
 phases:
   triage:
     description: >
-      Let FB="$(git config --global headsign.feedbackDir)/feedback/headsign".
-      If judged/ under it already holds a ticket with "decision:
-      accept", that is your work item from an earlier run — touch
-      .headsign/tmp/triage-done and run `headsign next` to proceed.
-      Otherwise take exactly ONE ticket from inbox/ — severity
-      high before mid before low (frontmatter), oldest `created` first
-      within a severity — and judge it alone; never batch. Fill its
-      Judgment section: decision (accept / reject / defer) plus a reason.
-      Then move it with `git mv`: accept and defer go to judged/;
-      reject goes straight to done/ with the reason written
-      carefully, and its frontmatter `status:` follows the directory it
-      lands in. Commit in the feedback repository. **If the decision was
-      reject or defer, also touch .headsign/tmp/judged-not-accepted** —
-      that is what sends the reason to be reviewed instead of straight to
-      the reporter. When triage is done — one ticket judged, or the inbox
-      turned out empty — touch .headsign/tmp/triage-done and run `headsign
-      next`.
+      Let HQ="$(git config --global headquarters.issuesDir)". Pull first:
+      `bd -C "$HQ" dolt pull`. If an issue labelled tool:headsign already
+      sits at status judged, that is your work item from an earlier run —
+      touch .headsign/tmp/triage-done and run `headsign next` to proceed.
+      Otherwise take exactly ONE issue from
+      `bd -C "$HQ" list --label tool:headsign --status open` — severity
+      high before mid before low (the severity: label), oldest first within
+      a severity — and judge it alone; never batch. Write the judgment as a
+      comment on that issue, `bd -C "$HQ" comments add <id> --file <path>
+      --actor tool:headsign`, holding a decision (accept / reject / defer)
+      and a reason. Then set where it stands: accept and defer take
+      `bd -C "$HQ" update <id> --status judged`; reject takes
+      `bd -C "$HQ" close <id>` with the reason written carefully, because
+      for a rejected ticket the reason is the whole answer. **If the
+      decision was reject or defer, also touch
+      .headsign/tmp/judged-not-accepted** — that is what sends the reason
+      to be reviewed instead of straight to the reporter. When triage is
+      done — one ticket judged, or the queue turned out empty — touch
+      .headsign/tmp/triage-done and run `headsign next`.
     # ready: is this run's own "I finished triaging" declaration, NOT a
     # probe of the queue: the queue alone cannot distinguish "just
     # rejected the last ticket" (should end cleanly) from "haven't
@@ -64,30 +77,49 @@ phases:
       # remove: branching belongs on the pass path so nobody has to ask
       # whether ending cleanly costs an attempt.
       checks:
-        # Reachability first, because the check under it asserts an ABSENCE: a
-        # glob that expands to nothing makes `grep -qs` report no match, and
-        # `!` turns that into a pass identical to a clean inbox. An unset
-        # `headsign.feedbackDir` or a hub that moved would otherwise report a
-        # tidy queue while never looking at one. A gate check rather than
-        # `ready:` on purpose — a missing config is a thing to surface, not a
-        # thing to wait for.
-        - name: feedback queue is reachable
-          run: 'test -d "$(git config --global headsign.feedbackDir)/feedback/headsign/inbox"'
-        - name: no judged ticket left in inbox/
-          run: '! grep -qs "^- decision: ." "$(git config --global headsign.feedbackDir)"/feedback/headsign/inbox/*.md'
-    # Judged state lives in the ticket files themselves: an accepted ticket
-    # sitting in judged/ IS the work queue (capacity one by convention),
-    # which is why the first route reads the durable ticket rather than a
-    # marker — an accepted ticket left over from an earlier run has to find
-    # its way to implement too. The second route cannot be read off the
-    # queue that way: a rejected ticket lands in done/ next to every
-    # previously rejected one, so "did THIS run reject something" is the
-    # phase's own declaration, exactly like `ready:` above.
+        # Reachability first, because the check under it asserts an ABSENCE:
+        # a query that answers nothing looks exactly like a clean queue. An
+        # unset `headquarters.issuesDir`, a hub that moved, a bd that is not
+        # installed — each would otherwise report a tidy queue while never
+        # looking at one. Asking for the array and requiring it to BE an
+        # array is what separates "bd answered, and the answer was empty"
+        # from "bd never answered". A gate check rather than `ready:` on
+        # purpose — a missing config is a thing to surface, not to wait for.
+        - name: the hub answers for this tool
+          run: >
+            bd -C "$(git config --global headquarters.issuesDir)" list
+            --label tool:headsign --status open --json | jq -e 'type == "array"' >/dev/null
+        # The mistake this catches is the one the two writes make possible:
+        # the judgment comment landed and the status never moved, so a
+        # judged ticket still sits in the open queue and the next run picks
+        # it up as unjudged. `author` is the mark, not the comment's text —
+        # a comment is written by whoever wrote it, and only this tool
+        # writes as `tool:headsign`.
+        - name: no judged ticket left at status open
+          run: |
+            HQ="$(git config --global headquarters.issuesDir)"
+            ! bd -C "$HQ" list --label tool:headsign --status open --json |
+              jq -r '.[].id' |
+              while read -r id; do
+                bd -C "$HQ" comments "$id" --json |
+                  jq -e 'any(.[]; .author == "tool:headsign")' >/dev/null && echo "$id"
+              done | grep -q .
+    # The marker is read FIRST, and that order is load-bearing now: accept
+    # and defer both leave the ticket at status judged, so the queue alone
+    # can no longer tell them apart — it could when accept and defer wrote
+    # their decision into a file this route could grep. What still separates
+    # them is whose run it was, and that is the phase's own declaration.
+    #
+    # Under it, the durable status carries the case the marker cannot: an
+    # accepted ticket left at judged by an earlier run has to find its way
+    # to implement too, and that run's marker is long gone.
     on_pass:
-      - when: 'grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/headsign/judged/*.md'
-        to: implement
       - when: "test -f .headsign/tmp/judged-not-accepted"
         to: review_judgment
+      - when: >
+          bd -C "$(git config --global headquarters.issuesDir)" list
+          --label tool:headsign --status judged --json | jq -e 'length > 0' >/dev/null
+        to: implement
       - to: "$end"
     # An empty inbox takes the default route and ends the run cleanly
     # (COMPLETE); that is the intended outcome, not a failure. A real
@@ -111,9 +143,11 @@ phases:
       field left undeclared, a limit nobody set; and each of the
       reporter's own proposals is answered rather than restated. Have it
       REPORT exactly APPROVED or REJECTED with reasons, then write that
-      verdict verbatim to .headsign/tmp/verdict yourself. On REJECTED, fix
-      the ticket text in the feedback repository and commit there before
-      asking again.
+      verdict verbatim to .headsign/tmp/verdict yourself. On REJECTED,
+      correct the judgment on the issue — `bd -C "$HQ" comments add <id>`
+      with the corrected text, `--actor tool:headsign` — before asking
+      again. The reporter has not been told anything yet, so a correction
+      here is a correction to a draft.
     # Re-entering rather than staying (`on_fail: review_judgment`, not
     # `retry`): the stale verdict has to go, and `clear:` runs on entry.
     clear: [.headsign/tmp/verdict]
@@ -133,8 +167,10 @@ phases:
 
   implement:
     description: >
-      Implement the accepted ticket (the "decision: accept" file in the
-      feedback repository's feedback/headsign/judged/). Work test-first where
+      Implement the accepted ticket — the issue labelled tool:headsign
+      that stands at status judged, read with
+      `bd -C "$HQ" show <id>` and `bd -C "$HQ" comments <id>`.
+      Work test-first where
       practical, keep engine.ts pure, respect docs/architecture.md module
       boundaries, keep README.md / README.ja.md in parity, and rebuild the
       bundle before asking for the verdict. PUBLIC-REPO RULE: every
@@ -211,23 +247,25 @@ phases:
 
   respond:
     description: >
-      Close the loop on the private side: fill the ticket's Response
-      section with what was done and the public commit hash(es), `git mv`
-      the ticket from feedback/headsign/judged/ to feedback/headsign/done/
-      with its frontmatter `status:` following the move, and commit the
-      feedback repository. The link always points private -> public; never
-      add the reverse link in this repository.
+      Close the loop on the private side: write the response as a comment
+      on the issue — what was done and the public commit hash(es),
+      `bd -C "$HQ" comments add <id> --file <path> --actor tool:headsign` —
+      then `bd -C "$HQ" close <id>`. The link always points private ->
+      public; never add the reverse link in this repository. If a mistake
+      turns up after the response is sent, add a corrected comment with a
+      dated heading rather than rewriting the one already read: it lands
+      after the reporter's mark, which is what puts it in their next sweep.
     gate:
       checks:
-        # Reachability first, for the reason the triage gate states: the check
-        # under it asserts an absence, and an unreachable path satisfies it
-        # without reading anything — here that would certify a loop closed
-        # while the ticket sits in judged/.
-        - name: feedback queue is reachable
-          run: 'test -d "$(git config --global headsign.feedbackDir)/feedback/headsign/judged"'
-        # Mechanical: the accepted ticket really left the queue.
-        - name: no accepted ticket left in judged/
-          run: '! grep -qs "decision: accept" "$(git config --global headsign.feedbackDir)"/feedback/headsign/judged/*.md'
+        # One query does both jobs here, which the directory version needed
+        # two checks for. Asking how many issues stand at judged is only
+        # answerable when bd ran and the hub knows that status, so a hub
+        # that moved or lost its custom status makes this red — it cannot
+        # answer "none left" without having looked.
+        - name: no judged ticket left behind
+          run: >
+            bd -C "$(git config --global headquarters.issuesDir)" list
+            --label tool:headsign --status judged --json | jq -e 'length == 0' >/dev/null
     on_pass: "$end"
     max_attempts: 3
 

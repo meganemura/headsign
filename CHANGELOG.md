@@ -103,6 +103,17 @@ changes), and a patch bump means fixes only.
   start` alone: `headsign abort` on one is refused, changes nothing, and the
   `start` is what recovers it.
 
+- **This repository's own triage workflow reads the feedback hub through
+  `bd`, not through directories of Markdown.** The hub moved its tickets into
+  an issue tracker, so the queue that `.headsign/triage.yaml` walks is now a
+  label and a status rather than `inbox/`, `judged/` and `done/`, and the
+  judgment and the response are comments rather than sections of a file. The
+  shape of the workflow is untouched: the same five phases, the same edges,
+  the same budgets. What changed is every command under them, plus the
+  per-machine config key, which is `headquarters.issuesDir`. `bd` and `jq`
+  are now needed on a machine that runs this loop, and `docs/maintenance.md`
+  says so.
+
 ### Fixed
 
 - **A phase can no longer be named after a built-in object property, because
