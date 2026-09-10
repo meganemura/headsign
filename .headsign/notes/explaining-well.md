@@ -179,6 +179,53 @@ middle of a list silently orphans everything below it. "Something earlier in
 the program is responsible for refusing this" kept those sentences short and
 kept the explanation about this function.
 
+### A fixed format needs its fields, not the formatter's name
+
+Saying that another function formats an answer leaves the answer unknown. Give
+the stable field order, the conditional fields, and any character escaping a
+caller can observe.
+
+*The cases.* The first `cli.ts` attempt said, “The module prints each engine
+result through the matching renderer.” The judge could not predict the fixed
+completion, escalation, abort, claim, validation, and status text. The first
+`render.ts` attempt said, “`logLine` creates one physical line from the supplied
+timestamp, event, and post-event state.” The judge still could not predict the
+record or the treatment of line breaks. Both explanations passed after they
+listed the output shapes and conditional fields. The `render.ts` revision also
+stated that carriage returns become `\r` and line feeds become `\n`.
+
+### Cover inputs next to the documented input
+
+A parser explanation must say what happens to unknown options and extra
+arguments. These inputs sit beside the documented form, and callers can supply
+them without changing the operation they invoke.
+
+*The case.* The second `cli.ts` attempt explained `--workflow <path>` but did not
+explain unknown options or extra arguments. The approved attempt stated which
+commands ignore extras, which command joins them as a reason, and how an
+unknown option can become a workflow name.
+
+### State what happens beyond a resource limit
+
+A number alone does not explain a limit. Say whether crossing it truncates a
+value, stops the operation, or returns a different result.
+
+*The case.* The first `gate.ts` attempt said, “Output has a 64 MiB capture
+limit.” The judge could not predict the exceeded case. The approved attempt
+said that excess captured output stops the child and returns `unrunnable`,
+usually with `ENOBUFS`.
+
+### Define accepted values from validation behavior
+
+A declared type cannot explain a loader when runtime validation accepts a
+wider set. Enumerate the values that the validator accepts.
+
+*The case.* The first `workflow.ts` attempt said that an optional check name
+could be any value accepted by its stored type. The validator does not check
+that field. The approved attempt named strings, numbers, booleans, lists,
+mappings, and null. This also exposed a mismatch: the exported `Check` interface
+declares a string, while a loaded workflow can contain any YAML value there.
+
 ## Writing about a seam rather than a module
 
 ### Contracts say what a module owns; the gaps are always what it requires
