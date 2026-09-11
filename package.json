@@ -39,11 +39,13 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "depug": {
-    "include": ["src"]
+    "include": [
+      "src"
+    ]
   },
   "devDependencies": {
     "@hegeldev/hegel": "0.4.5",
-    "@meganemura/depug": "0.1.2",
+    "@meganemura/depug": "0.1.3",
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
