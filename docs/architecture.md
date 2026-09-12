@@ -131,7 +131,7 @@ outside it:
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
 - **The session-start hook** reports a nearby running run before work begins.
-  It reads state and prints guidance. It changes nothing (ADR-0037).
+  It reads state and prints guidance without changing the run (ADR-0037).
 - **Stop-boundary hooks** are the backstop: skills are instructions, not
   guarantees. If the run's driver tries to stop while a run is `running`,
   the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events

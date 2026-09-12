@@ -384,8 +384,8 @@ written; this paragraph is the amendment to it, and the count is two.
 
 - **A backstop gap during a handover**, bounded by a fresh session's own
   first `next` rather than by one turn (§6).
-- **Automatic discovery of a nearby run**, initially replaced by `headsign
-  status` rather than a side effect of being nudged (§6). ADR-0037 restores
+- **Automatic discovery of a nearby run.** This decision initially used
+  `headsign status` and removed the nudge side effect (§6). ADR-0037 restores
   discovery at `SessionStart` without changing driver ownership.
 - **A bystander's flagged turn end no longer writes `unheld
   by=stop_hook_active`** on an unclaimed run once this session was never

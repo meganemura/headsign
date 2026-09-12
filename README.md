@@ -120,8 +120,8 @@ codex plugin add headsign@headsign
 ```
 
 Codex requires a separate trust review for plugin hooks. After installation,
-open `/hooks`, review the three commands, and trust them. Run discovery and
-the backstop can then run. One thing in them looks wrong and is not: the plugin's own directory
+open `/hooks`, review the three commands, and trust them. Workflow discovery and
+the backstop then become active. One thing in them looks wrong and is not: the plugin's own directory
 arrives in `CLAUDE_PLUGIN_ROOT`. Codex defines that name. Its first-party plugin also uses
 the name to register hooks.
 [ADR-0028](docs/adr/0028-codex-as-a-second-principal.md) records the

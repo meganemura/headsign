@@ -21,9 +21,9 @@ prints the workflow, phase, and the last pause note when one exists. It tells
 the reader to inspect the run with `headsign status` and continue it with
 `headsign next`.
 
-The hook labels all state values as untrusted data and quotes each value. It
-does not run a gate. It does not write state, logs, locks, or markers. It does
-not decide that the current session owns the run.
+The hook labels all state values as untrusted data and quotes each value. Its
+read-only scope covers state lookup and notice output. The gate engine owns
+gate execution, and the stop hooks own persistent records and driver choices.
 
 The hook stays silent when it finds no run, when the run has ended, or when it
 cannot parse its input or state. Discovery must not prevent a session from
@@ -36,5 +36,5 @@ starting.
   does not consume the stop-nudge budget.
 - The Stop hook still passes on a `last_drive.session` mismatch. The handover
   backstop gap remains until the new session runs `headsign next`.
-- `stop-note` remains a one-turn exit ticket. This decision adds no paused
-  state and no resume command.
+- `stop-note` remains a one-turn exit ticket. The running state and `next`
+  remain the pause and resume mechanisms.

@@ -232,8 +232,8 @@ skill falls back to `npx headsign`.
 } }
 ```
 
-`SessionStart` reports a running workflow before the session begins work. It
-does not run a gate or change the run. The other two hooks form the backstop.
+`SessionStart` reads a running workflow and prints guidance before the session
+begins work. The other two hooks form the backstop.
 `Stop` covers the session. `SubagentStop` covers an agent to which the
 session delegated the run (see [Multiple sessions](#multiple-sessions)).
 Omit `SubagentStop` if you never delegate a run. Without a `headsign claim`,

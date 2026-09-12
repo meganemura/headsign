@@ -1,7 +1,7 @@
 // Responsibility: stop-boundary hook decisions — stdin JSON -> allow/block (ADR-0006).
 // Two-event, one-driver-identifier-space split: ADR-0010 §1, ADR-0013 §1, ADR-0027 §2.3/§3.
 // Lock-before-write / re-read-under-lock: see withRunLock, below.
-// Bounded cwd walk-up: see findRunDir, below, and ADR-0006's "Bounded walk-up".
+// Bounded cwd walk-up: runfinder.ts owns the shared search; see ADR-0006's "Bounded walk-up".
 // CLAUDE_PROJECT_DIR second starting point: see fallbackUnheld, below, and ADR-0026.
 // What a hook write can produce: ADR-0006 (paused/stalled), ADR-0009 (claimed).
 // last_stop, stamped on every attributable stop: ADR-0025 §4.
