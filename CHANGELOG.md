@@ -14,7 +14,7 @@ changes), and a patch bump means fixes only.
 - **A new session now learns about a running workflow before it starts work.**
   The plugin registers a read-only `SessionStart` hook. It reports the workflow,
   phase, and last pause note, then points to `headsign status` and `headsign
-  next`. Repository values are labelled as untrusted data and quoted. The hook
+  next`. The hook labels and quotes repository values as untrusted data. It
   runs no gate and changes no run state. The existing handover backstop gap
   remains until the new session runs `next`.
 

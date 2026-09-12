@@ -36,5 +36,5 @@ starting.
   does not consume the stop-nudge budget.
 - The Stop hook still passes on a `last_drive.session` mismatch. The handover
   backstop gap remains until the new session runs `headsign next`.
-- `stop-note` remains a one-turn exit ticket. No new paused state or resume
-  command is added.
+- `stop-note` remains a one-turn exit ticket. This decision adds no paused
+  state and no resume command.

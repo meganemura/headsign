@@ -17,6 +17,8 @@ export function evaluate(cwd: string, stdinRaw: string): SessionStartNotice | nu
     if (!runDir) return null;
     const current = readState(runDir);
     if (!current || current.status !== "running") return null;
+    if (typeof current.workflow !== "string" || current.workflow.length === 0) return null;
+    if (typeof current.phase !== "string" || current.phase.length === 0) return null;
 
     const pauseNote =
       current.last_stop?.disposition === "paused" && typeof current.last_stop.note === "string" && current.last_stop.note.length > 0

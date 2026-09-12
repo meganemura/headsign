@@ -2952,6 +2952,21 @@ test("session-start-hook: malformed input fails open without output", () => {
   assert.equal(result.stderr, "");
 });
 
+test("session-start-hook: a state without required names fails open without output", () => {
+  const dir = initRepo();
+  writeWorkflow(dir, TWO_PHASE_WORKFLOW);
+  run(["start"], { cwd: dir, env: NO_OBSERVER_ENV });
+  const damaged = readState(dir);
+  delete damaged.workflow;
+  fs.writeFileSync(path.join(dir, ".headsign", "state.json"), JSON.stringify(damaged));
+
+  const result = run(["session-start-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir }), env: NO_OBSERVER_ENV });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "");
+});
+
 test("status: a paused stop's note is truncated to 120 chars plus an ellipsis, the same rule the log line's is", () => {
   const dir = initRepo();
   writeWorkflow(dir, TWO_PHASE_WORKFLOW);
