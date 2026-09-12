@@ -119,9 +119,13 @@ codex plugin marketplace add meganemura/headsign
 codex plugin add headsign@headsign
 ```
 
-Codex requires a separate trust review for plugin hooks. After installation,
-open `/hooks`, review the three commands, and trust them. Workflow discovery and
-the backstop then become active. One thing in them looks wrong and is not: the plugin's own directory
+Codex requires a separate trust review for plugin hooks. After installation:
+
+1. Open `/hooks`.
+2. Review the three commands.
+3. Trust the commands to activate workflow discovery and the backstop.
+
+One thing in them looks wrong and is not: the plugin's own directory
 arrives in `CLAUDE_PLUGIN_ROOT`. Codex defines that name. Its first-party plugin also uses
 the name to register hooks.
 [ADR-0028](docs/adr/0028-codex-as-a-second-principal.md) records the
@@ -134,11 +138,9 @@ In Claude Code, as a plugin:
 /plugin install headsign@headsign
 ```
 
-Both hosts receive the same four things. They receive the bundled CLI (no npm
-install, no build) and a `workflow` skill for the loop discipline. They also
-receive a `design-workflow` skill that writes the YAML with you. A session-start
-hook reports an existing run. Stop-boundary hooks prevent an agent from silently
-quitting mid-run.
+Both hosts receive four parts: the bundled CLI (no npm install or build), the
+`workflow` skill, the `design-workflow` skill, and one hook set. The hook set
+contains SessionStart discovery and two stop-boundary hooks.
 
 Codex documents `cwd`, `session_id`, `Stop`, and `SubagentStop` in its hook
 contract, so the backstop runs on both hosts. The research did not confirm a

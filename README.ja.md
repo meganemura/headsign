@@ -125,7 +125,11 @@ codex plugin add headsign@headsign
 ```
 
 Codex は、プラグインの hook に個別の信頼確認を求めます。
-インストール後に `/hooks` を開き、三つのコマンドを確認して信頼すると、run の発見とバックストップが動きます。
+インストール後に次の手順を実行します。
+
+1. `/hooks` を開きます。
+2. 三つのコマンドを確認します。
+3. コマンドを信頼し、run の発見とバックストップを有効にします。
 
 そのコマンドの中に、間違いに見えて間違いではないものが一つあります。
 プラグイン自身の置き場が `CLAUDE_PLUGIN_ROOT` で渡されることです。
@@ -139,8 +143,9 @@ Claude Code では、プラグインとして:
 /plugin install headsign@headsign
 ```
 
-どちらのホストでも、同じ四つが同梱されます。
-同梱されるのは、バンドル済み CLI(npm install もビルドも不要)、ループの規律を教える `workflow` スキル、YAML を一緒に書く `design-workflow` スキル、run を発見するセッション開始 hook と停止境界の hook です。
+どちらのホストにも四つの要素が同梱されます。
+バンドル済み CLI(npm install もビルドも不要)、`workflow` スキル、`design-workflow` スキル、hook set です。
+hook set は、run を発見する SessionStart hook と二つの停止境界 hook を含みます。
 
 Codex の hook 契約には、`cwd`、`session_id`、`Stop`、`SubagentStop` が明記されています。
 そのため、バックストップは両方のホストで動きます。
