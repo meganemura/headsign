@@ -32,7 +32,7 @@ plugin/                          # what gets distributed (Claude Code and Codex 
   .claude-plugin/plugin.json
   .codex-plugin/plugin.json
   skills/workflow/SKILL.md       # the discipline taught to the agent
-  hooks/hooks.json               # the two stop-boundary hooks (the backstop)
+  hooks/hooks.json               # run discovery plus the two stop-boundary hooks
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
 docs/                            # this file + ADRs
@@ -73,6 +73,8 @@ thin harness need this?
 | `src/gate.ts` | run one phase's checks (shell, timeout, output tail), timing every one that finishes — pass or fail — with a monotonic clock and reporting each live to an optional progress observer (ADR-0032) — outside ADR-0004's guarantee (that guarantee is about the wall-clock datetime that lands on disk, not this interval), since this module already touches the outside world; resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011); every command it runs also gets `HEADSIGN_WORKFLOW_FILE`, the workflow path the caller hands in, verbatim (ADR-0033) | what a route target means, state, git |
 | `src/engine.ts` | one operation on a run — `start`, one lap of `next`, `abort`, `claim`, `status` — carried out and reported as a value. The ONLY place routing rules live, *the order a lap asks its questions in included* (ADR-0018); inside it, `step()` is still the pure transition function (workflow, state, gate result, resolved route) → (new state, outcome), and a resolved route still arrives as data rather than being evaluated here | argv, how an answer is worded, what it exits with, the clock, the environment (`status` is handed one, the same way every operation is handed a timestamp) |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
+| `src/runfinder.ts` | find the nearest run from a hook directory, bounded by the first Git root | run state, hooks, workflows |
+| `src/sessionhook.ts` | SessionStart input + existing run state → optional discovery notice; read-only | gate execution, routing, driver ownership |
 | `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, and the module where every environment value headsign reads is read — `CLAUDE_CODE_SESSION_ID` for `last_drive` (ADR-0027) and `CLAUDE_PROJECT_DIR` for the second walk (ADR-0026), each out of an argument cli.ts passed | workflow.yaml, gates |
 
 `render.ts` owns the entire outcome contract (the START/ADVANCE/RETRY/COMPLETE/ESCALATE/ABORT
@@ -128,6 +130,8 @@ outside it:
   it needs an eighth, prefer sharpening one of the seven).
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
+- **The session-start hook** reports a nearby running run before work begins.
+  It reads state and prints guidance. It changes nothing (ADR-0037).
 - **Stop-boundary hooks** are the backstop: skills are instructions, not
   guarantees. If the run's driver tries to stop while a run is `running`,
   the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events

@@ -18,10 +18,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { readState, writeState, statePath, appendLog, acquireLock, releaseLock } from "./state.ts";
+import { readState, writeState, appendLog, acquireLock, releaseLock } from "./state.ts";
 import type { State, UnheldCause } from "./state.ts";
 import { logLine } from "./render.ts";
 import type { LogEvent } from "./render.ts";
+import { findRunDir } from "./runfinder.ts";
 
 interface HookDecision {
   block: boolean;
@@ -124,18 +125,6 @@ function withLastStop(fresh: State, disposition: StopDisposition, nowIso: string
 function recordUnheld(runDir: string, nowIso: string, cause: UnheldCause): HookDecision {
   withRunLock(runDir, (fresh) => ({ state: withLastStop(fresh, "unheld", nowIso, cause), log: stamped(nowIso, { kind: "UNHELD", cause }) }));
   return { block: false };
-}
-
-// Walk up from startDir to find a run's .headsign/state.json: ADR-0006's "Bounded walk-up".
-function findRunDir(startDir: string): string | null {
-  let dir = startDir;
-  for (;;) {
-    if (fs.existsSync(statePath(dir))) return dir;
-    if (fs.existsSync(path.join(dir, ".git"))) return null; // repo/worktree root, no run here — stop
-    const parent = path.dirname(dir);
-    if (parent === dir) return null; // filesystem root
-    dir = parent;
-  }
 }
 
 // The second starting point (ADR-0026): reached only from the branch that today returns having

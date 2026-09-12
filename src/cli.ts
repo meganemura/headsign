@@ -16,6 +16,7 @@ import * as state from "./state.ts";
 import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
+import * as sessionhook from "./sessionhook.ts";
 
 // Local-time ISO 8601, numeric UTC offset, second precision — the format and why it is
 // shaped this way is ADR-0004's, "`.headsign/log` (the transition log)" section, "Line
@@ -330,6 +331,11 @@ function cmdSubagentStopHook(): never {
   return process.exit(0);
 }
 
+function cmdSessionStartHook(): never {
+  const notice = sessionhook.evaluate(process.cwd(), readStdin());
+  return exitAfter(notice?.message ?? "", 0);
+}
+
 // The version the CLI reports, substituted by esbuild at build time (the `--define` in
 // package.json's `build` script) rather than read from package.json at runtime. Read at
 // runtime it would be unreliable: this bundle ships through two channels and package.json is
@@ -429,6 +435,7 @@ function main(): void {
     case "claim": return cmdClaim();
     case "stop-hook": return cmdStopHook();
     case "subagent-stop-hook": return cmdSubagentStopHook();
+    case "session-start-hook": return cmdSessionStartHook();
     default: errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }
 }

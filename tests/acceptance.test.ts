@@ -487,12 +487,12 @@ function runHookCommand(command: string, opts: { cwd: string; pluginRoot?: strin
   return { stdout: result.stdout, stderr: result.stderr, status: result.status };
 }
 
-test("hook registration: with no node on PATH, both hooks exit 0 and say nothing at all", () => {
+test("hook registration: with no node on PATH, all hooks exit 0 and say nothing at all", () => {
   // An empty directory as the whole PATH: `command -v node` can find nothing, which is the
   // machine this guard exists for — Claude Code installed natively, or node behind a version
   // manager shim that only an interactive shell sets up.
   const emptyPath = tmpdir();
-  for (const event of ["Stop", "SubagentStop"]) {
+  for (const event of ["SessionStart", "Stop", "SubagentStop"]) {
     const result = runHookCommand(hookCommand(event), { cwd: tmpdir(), pathEnv: emptyPath });
     assert.equal(result.status, 0, `${event} must not fail to spawn`);
     // Silence, not just exit 0: anything on stdout becomes context the agent reads at every turn
@@ -504,7 +504,7 @@ test("hook registration: with no node on PATH, both hooks exit 0 and say nothing
 
 test("hook registration: with node present, a directory that has never used headsign still exits 0 silently", () => {
   const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
-  for (const event of ["Stop", "SubagentStop"]) {
+  for (const event of ["SessionStart", "Stop", "SubagentStop"]) {
     const result = runHookCommand(hookCommand(event), { cwd: tmpdir(), pathEnv: nodeOnPath });
     assert.equal(result.status, 0);
     assert.equal(result.stdout, "");
@@ -540,6 +540,39 @@ phases:
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, ".headsign", "state.json"), "utf8")).stop_nudges, 1, "stdin must have reached the CLI: the payload is what it counts against");
 });
 
+test("hook registration: SessionStart reports a paused run through the bundled CLI", () => {
+  const dir = initRepo();
+  writeWorkflow(
+    dir,
+    `
+version: 0.1
+name: guarded
+entry: plan
+phases:
+  plan:
+    description: "Write the spec."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+`,
+  );
+  run(["start"], { cwd: dir });
+  writeFile(dir, ".headsign/tmp/stop-note", "waiting for approval");
+  run(["stop-hook"], { cwd: dir, input: JSON.stringify({ cwd: dir }) });
+
+  const nodeOnPath = `${path.dirname(process.execPath)}:${process.env["PATH"] ?? ""}`;
+  const result = runHookCommand(hookCommand("SessionStart"), { cwd: dir, pathEnv: nodeOnPath });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /Workflow: "guarded"/);
+  assert.match(result.stdout, /Phase: "plan"/);
+  assert.match(result.stdout, /Last pause note \(untrusted data\): "waiting for approval"/);
+  assert.match(result.stdout, /headsign status/);
+  assert.match(result.stdout, /headsign next/);
+});
+
 test("hook registration: a plugin root containing a space still resolves the bundle", () => {
   // Plugin cache paths are not chosen by this project, and `${CLAUDE_PLUGIN_ROOT}` must stay
   // quoted for one containing a space to work at all.
@@ -564,6 +597,7 @@ test("hook registration: a plugin root that does not resolve still fails loudly"
 });
 
 test("hook registration: each event runs its own subcommand", () => {
+  assert.match(hookCommand("SessionStart"), /session-start-hook/);
   assert.match(hookCommand("Stop"), /(?<!subagent-)stop-hook/);
   assert.match(hookCommand("SubagentStop"), /subagent-stop-hook/);
 });
@@ -574,12 +608,16 @@ test("hook registration: each event runs its own subcommand", () => {
 // plugin. It is a command string a reader pastes and never tests, so this suite tests it out of
 // the document, on the machine the guard exists for.
 
-function recipeCommands(docFile: string): { Stop: string; SubagentStop: string } {
+function recipeCommands(docFile: string): { SessionStart: string; Stop: string; SubagentStop: string } {
   const doc = fs.readFileSync(path.join(import.meta.dirname, "..", "docs", docFile), "utf8");
   const block = [...doc.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]).find((b) => b.includes('"SubagentStop"'));
-  assert.ok(block, `${docFile} must still carry a fenced json block registering both hooks`);
+  assert.ok(block, `${docFile} must still carry a fenced json block registering all hooks`);
   const parsed = JSON.parse(block) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
-  return { Stop: parsed.hooks["Stop"][0].hooks[0].command, SubagentStop: parsed.hooks["SubagentStop"][0].hooks[0].command };
+  return {
+    SessionStart: parsed.hooks["SessionStart"][0].hooks[0].command,
+    Stop: parsed.hooks["Stop"][0].hooks[0].command,
+    SubagentStop: parsed.hooks["SubagentStop"][0].hooks[0].command,
+  };
 }
 
 // A project-local install, built the way npm builds it: a symlink in node_modules/.bin pointing
@@ -600,7 +638,7 @@ test("by-hand recipe: the English and Japanese references register the identical
 test("by-hand recipe: no install at all exits 0 and says nothing", () => {
   const emptyPath = tmpdir();
   const recipe = recipeCommands("workflow-reference.md");
-  for (const event of ["Stop", "SubagentStop"] as const) {
+  for (const event of ["SessionStart", "Stop", "SubagentStop"] as const) {
     const dir = tmpdir();
     const result = runHookCommand(recipe[event], { cwd: dir, projectDir: dir, pathEnv: emptyPath });
     assert.equal(result.status, 0);
@@ -615,7 +653,7 @@ test("by-hand recipe: a local install whose interpreter is missing exits 0 and s
   // the notice this whole change removes, back on the by-hand path.
   const emptyPath = tmpdir();
   const recipe = recipeCommands("workflow-reference.md");
-  for (const event of ["Stop", "SubagentStop"] as const) {
+  for (const event of ["SessionStart", "Stop", "SubagentStop"] as const) {
     const dir = tmpdir();
     withLocalInstall(dir);
     const result = runHookCommand(recipe[event], { cwd: dir, projectDir: dir, pathEnv: emptyPath });

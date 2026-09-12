@@ -11,6 +11,13 @@ changes), and a patch bump means fixes only.
 
 ### Changed
 
+- **A new session now learns about a running workflow before it starts work.**
+  The plugin registers a read-only `SessionStart` hook. It reports the workflow,
+  phase, and last pause note, then points to `headsign status` and `headsign
+  next`. Repository values are labelled as untrusted data and quoted. The hook
+  runs no gate and changes no run state. The existing handover backstop gap
+  remains until the new session runs `next`.
+
 - **The `design-workflow` skill now says where a run-scoped mark stops, and
   what to do with a round that has nothing for a phase.** A gate that counted
   three screenshots at a path the round wrote into `.headsign/tmp/` passed on

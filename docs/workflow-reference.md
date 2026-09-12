@@ -220,6 +220,9 @@ skill falls back to `npx headsign`.
 
 ```json
 { "hooks": {
+  "SessionStart": [ { "hooks": [
+    { "type": "command", "command": "HS=\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/headsign\"; [ -x \"$HS\" ] || HS=$(command -v headsign) || exit 0; command -v node >/dev/null 2>&1 || exit 0; exec \"$HS\" session-start-hook" }
+  ] } ],
   "Stop": [ { "hooks": [
     { "type": "command", "command": "HS=\"${CLAUDE_PROJECT_DIR}/node_modules/.bin/headsign\"; [ -x \"$HS\" ] || HS=$(command -v headsign) || exit 0; command -v node >/dev/null 2>&1 || exit 0; exec \"$HS\" stop-hook" }
   ] } ],
@@ -229,10 +232,12 @@ skill falls back to `npx headsign`.
 } }
 ```
 
+`SessionStart` reports a running workflow before the session begins work. It
+does not run a gate or change the run. The other two hooks form the backstop.
 `Stop` covers the session. `SubagentStop` covers an agent to which the
 session delegated the run (see [Multiple sessions](#multiple-sessions)).
-Register only the first hook if you never delegate a run. Without a
-`headsign claim`, the second hook never acts.
+Omit `SubagentStop` if you never delegate a run. Without a `headsign claim`,
+that hook never acts.
 
 Each line looks for the project-local installation first, then for one on
 `PATH`, then for `node`. The line **exits 0 without output the moment
@@ -1239,16 +1244,19 @@ then received prose about headsign instead of the requested output. This
 response also used one unit from the cap that the actual driver needed.
 
 A gap remains for the other party. A session that picks up a run someone
-else began is a **handover**. headsign does not nudge it from its first stop
-through its first `next`. That session is the run's next driver, but it
-loses the backstop during this period. To `Stop`, its mismatched stop looks
+else began is a **handover**. The `SessionStart` hook reports the running
+workflow, phase, and last pause note before work begins. It points to
+`headsign status` and `headsign next`, but it changes nothing. headsign does
+not nudge the session from its first stop through its first `next`. That
+session is the run's next driver, but it loses the backstop during this
+period. To `Stop`, its mismatched stop looks
 identical to a stop from a session that never touched the run. Nudging
 either one would also nudge every bystander and provide no value for the
-stamp. The gap affects discovery and the backstop. A session that opened a
+stamp. The gap now affects only the backstop. A session that opened a
 repository with an existing run previously learned about the run through a
-nudge. That discovery was a side effect of nudging every nearby session. It
-was outside the backstop's purpose. `headsign status` replaces that
-discovery method. The command is read-only and safe to run from anywhere.
+nudge. That discovery was a side effect of nudging every nearby session. The
+read-only `SessionStart` hook now provides the signal without using a nudge.
+`headsign status` provides the full read-only view.
 `HEADSIGN_OBSERVER` (below) lets a session explicitly state that it only
 observes. It does not have to depend on the behavior described here. This is
 still headsign's only manual control for this case. Previously, it was the
