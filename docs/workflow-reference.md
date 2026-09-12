@@ -232,10 +232,8 @@ skill falls back to `npx headsign`.
 } }
 ```
 
-`SessionStart` reads run state and prints guidance before the session
-begins work. The other two hooks form the backstop.
-`Stop` covers the session. `SubagentStop` covers an agent to which the
-session delegated the run (see [Multiple sessions](#multiple-sessions)).
+`SessionStart` reads run state and gives guidance before work, while `Stop`
+and `SubagentStop` backstop the session and its [delegated agent](#multiple-sessions).
 Omit `SubagentStop` if you never delegate a run. Without a `headsign claim`,
 that hook never acts.
 

@@ -2,13 +2,11 @@
 
 ## Context
 
-ADR-0027 stopped a second session from receiving another session's Stop
-nudge. That rule protects bystanders. It also creates a handover gap. A new
-session receives no signal until it runs `headsign next`.
+ADR-0027 protects bystanders by withholding another session's Stop nudge,
+which creates a handover gap until the new session runs `headsign next`.
 
-The run already has the information needed for discovery. `state.json` says
-whether it is running and names its workflow and phase. A consumed pause note
-also leaves its first line in `last_stop`.
+`state.json` provides the discovery data: running status, workflow, phase, and
+the first line of a consumed pause note in `last_stop`.
 
 `SessionStart` provides a different boundary from `Stop`. Output from this
 hook can inform a new session without holding a turn or claiming a driver.
@@ -34,7 +32,7 @@ starting.
 - A new session can discover a paused or active run before its first turn.
 - A bystander can also see the notice, which leaves its turn and stop-nudge
   budget unchanged.
-- The Stop hook still passes on a `last_drive.session` mismatch. The handover
+- The Stop hook passes on a `last_drive.session` mismatch, and the handover
   backstop gap remains until the new session runs `headsign next`.
 - This decision keeps the state model unchanged: `stop-note` releases one
   turn, and `next` resumes the running run.
