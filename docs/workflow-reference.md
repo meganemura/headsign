@@ -232,7 +232,7 @@ skill falls back to `npx headsign`.
 } }
 ```
 
-`SessionStart` reads a running workflow and prints guidance before the session
+`SessionStart` reads run state and prints guidance before the session
 begins work. The other two hooks form the backstop.
 `Stop` covers the session. `SubagentStop` covers an agent to which the
 session delegated the run (see [Multiple sessions](#multiple-sessions)).
@@ -1265,8 +1265,8 @@ certain opt-out. Most bystanders no longer need it to remain undisturbed.
 Every session that does not drive should use `headsign status` instead of
 `next`. This includes teammates, a subagent that did not receive the run,
 and any session that never ran `headsign start`. A run moved by another
-session no longer announces itself when a nearby session stops.
-`status` is the only remaining way to find that run.
+session stays silent when a nearby session stops. The `SessionStart` hook
+supplies the initial notice, and `status` supplies the detailed view.
 
 ### `headsign status`
 

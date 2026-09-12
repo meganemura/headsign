@@ -32,9 +32,9 @@ starting.
 ## Consequences
 
 - A new session can discover a paused or active run before its first turn.
-- A bystander can also see the notice. The notice does not hold its turn and
-  does not consume the stop-nudge budget.
+- A bystander can also see the notice, which leaves its turn and stop-nudge
+  budget unchanged.
 - The Stop hook still passes on a `last_drive.session` mismatch. The handover
   backstop gap remains until the new session runs `headsign next`.
-- `stop-note` remains a one-turn exit ticket. The running state and `next`
-  remain the pause and resume mechanisms.
+- This decision keeps the state model unchanged: `stop-note` releases one
+  turn, and `next` resumes the running run.
