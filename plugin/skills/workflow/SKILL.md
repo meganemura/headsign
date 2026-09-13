@@ -43,7 +43,24 @@ ships with the plugin. Use a PATH-installed `headsign`, or `npx headsign`
 on the terms above; otherwise stop and tell the user to either install the
 plugin or `npm install` the package. Do not guess at other paths.
 
+When the user selects a local checkout, use its supplied bundle path and read
+its current skills. An installed plugin is a cached copy; a source edit alone
+does not update that copy. Keep an existing run when switching CLI copies.
+Do not abort, restart, or edit its state just to enable optimization.
+
 ## The discipline
+
+Keep useful observations about the workflow, skills, checks, host integration,
+or headsign while you work. Do not treat routine waiting as a defect. When a
+terminal verdict supplies an assessment path, use the bundled `optimize` skill
+and record its disposition there. Report an escalation to the user first. Do
+not delay that handoff for improvement work. An explicit request to stop takes
+priority; use `DEFERRED` when appropriate and possible.
+
+Optimization is enabled at `start` unless the user chooses `--no-optimize`.
+Legacy and opt-out runs have no assessment path; do not invent one. Keep
+mid-run observations outside `assessment.md`. If a retrospective already
+produced useful findings, use them instead of repeating the investigation.
 
 1. **First, check whether this session is the driver.** If this session did
    not run `headsign start`, and hasn't been explicitly asked (by the user,
@@ -124,9 +141,15 @@ plugin or `npm install` the package. Do not guess at other paths.
    prints the first phase's instructions. If `start` reports it cannot read
    `.headsign/workflow.yaml`, this repository names its workflows rather than
    keeping a default: list `.headsign/` and start the one you were asked for.
-4. **When you have done work you think finishes the phase — or have just
-   recovered from compaction and need to know where the run stands — run
-   `headsign next` and obey the token on stdout's first line** — merged
+4. **On resume or after compaction, first run `headsign status`.** Read the
+   phase instructions and existing artifacts. `RUNNING` means the run has not
+   ended; it does not report active agent processes. An unclaimed run can still
+   have a main-session driver. If you are authorized to continue, do the phase's
+   unfinished work, including any required delegation. A status check alone
+   does not perform that work.
+
+   **When the phase's work is ready for its gate, run `headsign next` and obey
+   the token on stdout's first line** — merged
    with stderr, a progress line from the running gate may arrive first, so
    read stdout on its own. That one habit is the whole protocol. `next` is
    a judgment, not a peek: it runs the phase's gate, and a failure spends
@@ -167,21 +190,27 @@ plugin or `npm install` the package. Do not guess at other paths.
    To *pause* rather than end — stepping away
    to resume later — write one line to `.headsign/tmp/stop-note` **naming what
    you are waiting for**, and stop again. **If you cannot name it, you are not
-   blocked** — run `headsign next` instead. The stop-boundary hook passes
+   blocked** — continue the phase's work, then call `headsign next` when ready. The stop-boundary hook passes
    immediately, and `headsign next`
    picks the run back up later from the same phase. The hook consumes the
    note, so one note covers one turn end — if the wait runs over several
-   exchanges, write it again before each turn that ends still waiting. `ESCALATE` means stop
-   working and ask the user for direction. **Some kinds end the run and some do
+   exchanges, write it again before each turn that ends still waiting. Read the
+   `ESCALATE` reason before you act. A terminal escalation stops work and goes
+   to the user. A budget change also needs the user. A reported graph repair
+   can continue under existing authority as described below. **Some kinds end the run and some do
    not, so read which one you got before deciding anything** — `headsign status`
    answers it directly, since a run that ended reads `ESCALATED` rather than
    `RUNNING`. Two kinds leave it `running`, so the user can answer and have you
    continue from the same phase. One reads
    `max_total_iterations (<n>) reached`: the user can raise that limit. The
    other reads `the workflow's rules changed under this run` — the workflow file was edited while the run
-   was walking it, which headsign allows but reports once; the user either
-   puts the file back or tells you to run `headsign next --accept-graph-change`,
-   which accepts the change and counts it (the count is named at `COMPLETE`).
+   was walking it, which headsign allows but reports. If the current task
+   authorizes a reversible repair, you can make that repair when it preserves
+   the required outcome and the user's constraints. Report what changed and
+   which authority covers it. Then run `headsign next --accept-graph-change`
+   as a separate action to accept the reported graph. Otherwise, ask the user
+   to restore the file or authorize the change. The acceptance is counted and
+   named at `COMPLETE`.
    **A bare `next` never accepts it, however many times you run it** — it
    reports the same change again and spends nothing, so do not try to get past
    this by asking twice. If *you* made that edit, say so plainly when you report
@@ -214,22 +243,37 @@ plugin or `npm install` the package. Do not guess at other paths.
    `state.json` whole, which is also what puts every phase's attempt count
    back to zero.
 
-   **So the remaining attempts on a gate you believe cannot pass are not a
-   reserve you are protecting by not spending them** — spending them ends the
-   run, and not spending them leaves it open with nothing recorded about why.
-   If you have concluded a gate cannot pass, that conclusion is the thing to
-   report to the user, immediately; do not sit on the attempts waiting for
-   permission you were never going to get from them. Report a non-ending one and
-   wait for
-   direction like any other escalation — but because the run is still open, the
-   hook will push you back to `headsign next`, so write the pause note above
-   before you stop.
+   **If the gate cannot represent the legitimate work, diagnose the procedure.**
+   Do not spend attempts just to force an escalation, or manufacture unrelated
+   work to satisfy the gate. A rejected proposal may need a return route; a
+   validation task may need evidence rather than a code edit. Repair the
+   workflow within existing authority and accept any reported graph change
+   separately. If repair needs a new decision, report the blocker and pause.
+   Before a necessary restart, preserve useful reasons and evidence outside
+   `tmp/`; a new `start` removes that directory. For a nonterminal
+   escalation that needs a budget decision or missing authority, report it
+   and wait. Write the pause note above before stopping while the run is open.
+   An authorized graph repair follows the separate acceptance call described
+   above and can continue without that wait.
 7. If the current phase's gate reads a verdict file (a review phase), spawn
    a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
    have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then
    *you* write that reported verdict, verbatim, to the verdict file and run
    `headsign next` — the reviewer stays unable to touch code or the
    verdict, so the judgment and the work stay separated.
+
+   Check that the gate actually requires the current review's final decision
+   and the artifact it reviewed. File existence, size, or a historical
+   `APPROVED` line does not establish acceptance of the current revision.
+   If the gate passes despite an unresolved rejection, repair the check and
+   arrange the necessary rework and review. Do not treat that pass as acceptance.
+   Keep review history separate from the current verdict consumed by the gate.
+
+When delegated work takes longer than a wait call, inspect its progress and
+remaining scope before intervening. A wait timeout is not a failed task.
+Continue useful independent work or wait again when progress is sound. Narrow
+or redirect a task when its observed work warrants it; preserve its findings
+and required review coverage when you do.
 
 ## Notes
 
@@ -341,23 +385,12 @@ plugin or `npm install` the package. Do not guess at other paths.
   and 3 only when there's no run to read. Use it whenever you want to look
   without the risk of touching anything — see the discipline's first rule,
   above, for when that's required rather than optional.
-- **A `start` that reports a run already in progress asks you a question, and
-  `headsign next` is the command that answers it.** The refusal names the phase
-  and both moves. Continuing is the cheaper one, and it is also the probe: it
-  runs that phase's gate and names the first check that is not satisfied, which
-  is how you find out whether the phase's work has been done at all. Read that
-  phase in the workflow file before you call, because the gate is what you are
-  about to spend: a `ready:` that has not passed answers `PENDING` and spends
-  nothing at all, and a gate holding a full build spends that build. Once the
-  gate does run, a failure costs
-  one attempt of that phase and one iteration toward `max_total_iterations`
-  where the workflow sets one, and while that phase's `on_fail` is the default
-  `retry` it deletes nothing — the run stays where it stood, with its files
-  where they are. `headsign status` answers a neighbouring question rather than
-  this one: it runs no check, so it reports the phase and when the run entered
-  it, and what has been produced inside that phase is a fact about the tree
-  that only the gate reads. Ending the run instead costs the position, and
-  costs everything under `.headsign/tmp/` as well — the next `start` empties
-  that directory whole.
+- **When `start` reports an existing run, inspect it before continuing.**
+  Run `headsign status`, read the phase instructions, and inspect its artifacts
+  and any existing delegated work. If authorized, finish the missing work and
+  call `next` when it is ready for judgment. The gate can be expensive, and
+  failure spends an attempt and an iteration. Do not use it merely to discover
+  whether anyone started working. Ending the run loses its position; the next
+  `start` also removes everything under `.headsign/tmp/`.
 - Lock contention from parallel subagents is normal — wait briefly and
   retry once; the error message itself carries the recovery.

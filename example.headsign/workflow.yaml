@@ -40,17 +40,35 @@ phases:
       Spawn a read-only reviewer subagent (Read/Grep/Glob) to check the diff
       against whatever standard your project holds itself to — module
       boundaries, the tests actually covering the change, documentation kept
-      in step. Have it REPORT exactly APPROVED or REJECTED with reasons, then
-      write that verdict verbatim to .headsign/tmp/verdict yourself. That
-      last step is what makes this a soft gate: you are holding the pen
-      (docs/adr/0007), which is fine for a self-check and is not a substitute
-      for someone else reading the change.
-    clear: [.headsign/tmp/verdict]
+      in step. As the driving agent, fingerprint HEAD, tracked changes, and
+      untracked non-ignored files before and after the reviewer reads them.
+      Give the first identifier to the reviewer, then record two lines:
+      APPROVED or REJECTED, followed by REVISION and the unchanged fingerprint.
+      Write those two lines to .headsign/tmp/verdict and put reasons in
+      .headsign/tmp/review-notes.md. You hold the pen on the gate file, so the
+      independent read remains the source of the decision.
+    clear: [.headsign/tmp/verdict, .headsign/tmp/review-notes.md, .headsign/tmp/review-current, .headsign/tmp/review-untracked]
     ready: "test -f .headsign/tmp/verdict"
     gate:
       checks:
-        - name: review approved
-          run: "grep -qx APPROVED .headsign/tmp/verdict"
+        - name: current review approved
+          run: >-
+            awk 'NR == 1 { ok = ($0 == "APPROVED") }
+            NR == 2 { value = substr($0, 10); ok = ok &&
+            substr($0, 1, 9) == "REVISION " &&
+            (length(value) == 40 || length(value) == 64) &&
+            value !~ /[^0-9a-f]/ } NR > 2 { ok = 0 }
+            END { exit !(ok && NR == 2) }' .headsign/tmp/verdict
+        - name: review covers current fingerprint scope
+          run: >-
+            expected=$(sed -n '2s/^REVISION //p' .headsign/tmp/verdict) &&
+            git rev-parse 'HEAD^{tree}' > .headsign/tmp/review-current &&
+            git diff --no-ext-diff --binary HEAD -- >> .headsign/tmp/review-current &&
+            git ls-files --others --exclude-standard -z > .headsign/tmp/review-untracked &&
+            xargs -0 sh -c 'for f do printf "%s\0" "$f";
+            git hash-object -- "$f" || exit; done' sh < .headsign/tmp/review-untracked >> .headsign/tmp/review-current &&
+            current=$(git hash-object .headsign/tmp/review-current) &&
+            test -n "$expected" && test "$expected" = "$current"
     on_pass: $end
     on_fail: implement
     max_attempts: 3

@@ -9,21 +9,22 @@
 > for agent loops. In each iteration, the agent asks where it may go. headsign
 > runs the gates and answers: proceed, retry, or terminus.
 
-**headsign is a tiny phase gate for coding agents.** Your agent does the work
-and keeps the conversation. headsign holds the run's state and decides whether
-the work may move to the next phase. An agent needs one rule: **do the work,
-run `headsign next`, and obey the first line of the answer.**
+**headsign is a small harness that helps coding agents sharpen their own tools.**
+The agent does the work and keeps the conversation. headsign holds the run's
+state and runs shell checks to decide whether work can advance.
+The driving rule is: **do the work, run `headsign next`, and follow its verdict.**
 
-It holds only that decision. headsign does not define your phases or how the
-agent completes a phase. If the agent wants to hand a step to three
-subagents, or run two things at once, that is its call to make, not this
-tool's to grant. You or the agent can rewrite
-the workflow file between runs. Better judgment about agent work will improve
-that file, and judgment about how to shape agent work is getting better
-quickly on the agent's side of the line. The loop your agent designs for
-your repository beats the one a harness author guessed at from outside it. A harness
-that encodes today's answer would limit later improvements. You can change the
-graph while the tool stays stable.
+**Optimization by default.** New runs prompt the agent to assess the procedure
+at completion or terminal escalation. The agent can improve a workflow,
+repair a check, retain a useful method, or leave a consequential proposal.
+An edit is optional; the opportunity to reconsider the method is built in.
+
+The design bets on more capable future models. The model chooses the method
+and judges which improvements matter. headsign supplies state, gate results,
+and a bounded reminder. It does not invoke a model itself.
+Prefer changes that improve later outcomes over convenient nearby edits.
+A workflow can evolve within the user's objective and constraints, including
+during a run through explicit acceptance of reported graph changes.
 
 ## TL;AR — Too Long; Agents Read.
 
@@ -95,10 +96,10 @@ is more useful than a diagram.
 
 ## Why
 
-An agent will tell you a job is finished when it isn't. Not out of malice:
-a model ending its turn has no way to check itself. It can say "implemented it, tests should pass"
-whether the tests pass or fail. Later work then depends on that claim. headsign
-replaces the claim with an exit code.
+A completion report can omit a required check. Later work then depends on
+a claim that has not been tested. headsign runs the phase's checks before
+it records the transition. Better models can also improve those checks and
+the procedure around them.
 
 **The transition is not the agent's to declare.** When the agent asks where
 the work goes
@@ -138,8 +139,8 @@ In Claude Code, as a plugin:
 /plugin install headsign@headsign
 ```
 
-Both hosts receive four parts: the bundled CLI (no npm install or build), the
-`workflow` skill, the `design-workflow` skill, and one hook set. The hook set
+Both hosts receive five parts: the bundled CLI (no npm install or build), the
+`workflow` skill, the `design-workflow` skill, the `optimize` skill, and one hook set. The hook set
 contains SessionStart discovery and two stop-boundary hooks.
 
 Codex documents `cwd`, `session_id`, `Stop`, and `SubagentStop` in its hook
@@ -147,7 +148,8 @@ contract, so the backstop runs on both hosts. The research did not confirm a
 stable public session variable for ordinary Codex CLI commands. Thus, headsign
 cannot stamp `last_drive.session` during Codex `start` or `next` calls. On an unclaimed
 Codex run with no existing stamp, every matching session can receive the
-backstop. `HEADSIGN_OBSERVER=1` remains the explicit read-only opt-out.
+running-run backstop. The terminal optimization fallback requires positive
+attribution and passes when that stamp is unknown. `HEADSIGN_OBSERVER=1` remains the explicit read-only opt-out.
 
 A repository can enable it for everyone who opens it. Team members then do not
 install it individually. Commit the following `.claude/settings.json`:
@@ -185,6 +187,41 @@ explains how to teach another agent the discipline and install the hook
 backstop without the plugin. It also covers release tags, opt-outs, and updates
 for the repository-wide declaration:
 [docs/workflow-reference.md](docs/workflow-reference.md).
+
+## Optimization by default
+
+The bundled skills divide the work:
+
+| Skill | Responsibility |
+|---|---|
+| `design-workflow` | Design or revise the workflow and its checks |
+| `workflow` | Drive the current run and collect useful observations |
+| `optimize` | Assess the procedure and apply or propose consequential improvements |
+
+New runs enable optimization by default. Use `headsign start --no-optimize`,
+or add the option after a workflow name, to opt out for one run. At the first
+repeated gate failure, headsign asks whether the work or the procedure needs
+repair. At `COMPLETE` or terminal `ESCALATE`, it asks the responsible agent to
+use the `optimize` skill. The assessment can retain the current method, apply
+an authorized repair, record a proposal, or defer the work. It favors future
+outcomes and consequential opportunities over edit counts.
+
+The assessment directory is gitignored and survives later starts. Move useful
+knowledge into reviewed workflow instructions, checks, or project documents.
+An older run keeps its current state after an upgrade; optimization starts
+with the next new run. Do not restart work just to enable it.
+
+The assessment is a self-report. It does not prove that an improvement is
+correct or authorized. A valid record lives at
+`.headsign/optimization/<run-id>/assessment.md`. Its first line is
+`NO_CHANGE`, `APPLIED`, `PROPOSED`, or `DEFERRED`, followed by a nonempty
+explanation. Terminal notices can repeat until this record exists. The stop
+hook requests at most one extra turn when it can identify the responsible
+session or agent. Unknown identity leaves stopping unblocked, so the CLI
+notice remains the guidance. Aborted runs, old runs, opt-out runs, pauses, and
+observer sessions do not receive this fallback. For an explicit stop, the
+skill records `DEFERRED` when possible. A nonempty stop note suppresses the
+request for that stop. The hook cannot infer other stop intent from its input.
 
 ## What a loop looks like
 
@@ -262,7 +299,10 @@ forks. Before you write the file, learn these stable limits:
   and gives the decision and its reason to a person.
 
 Run state lives in a file next to the workflow. Therefore, a loop survives
-context compaction. Run `headsign next` again to recover it. The state file
+context compaction. On resume, run `headsign status`, read the current phase,
+and complete its work before `headsign next` judges the gate. `RUNNING` reports
+an unfinished run, not active agent processes. The authorized driver starts
+any required delegated work. The state file
 belongs to the directory where the run started. Separate clones and worktrees
 never share a run. For two sessions in the same directory, the following
 guide defines who drives and who only watches:
@@ -342,8 +382,7 @@ instead of silence. A read-only
 
 ### Where it sits among neighbors
 
-**Curated skill packs** (Superpowers and similar tools) provide polished, fixed
-workflows. headsign provides the gate machinery. You provide a workflow for
+**Skill packs** provide reusable instructions for agents. headsign provides the gate machinery. You provide a workflow for
 your repository or select one from
 [example.headsign/](example.headsign/).
 
@@ -358,7 +397,8 @@ npm run build     # esbuild → plugin/dist/headsign.mjs (committed artifact)
 
 Node ≥ 20 is required to run headsign. Node ≥ 22.6 is required for development
 because tests run TypeScript natively. [docs/](docs/README.md) contains the
-design, each design decision, and the release procedure.
+design, each design decision, and the release procedure. For a local Codex
+plugin, see [Local plugin development](docs/maintenance.md#local-plugin-development).
 
 ## License
 

@@ -341,8 +341,11 @@ finished one handles the same phase.
 ### Run state, and where headsign looks for it
 
 Run state lives in `.headsign/state.json` (auto-gitignored). All state is
-external, so the loop survives context compaction. Run `headsign next` to
-recover.
+external, so the loop survives context compaction. On resume, read
+`headsign status`, inspect the current phase's artifacts, and perform its
+unfinished work before calling `next`. The authorized driver starts any
+required delegated work. `RUNNING` describes the stored run, not process
+activity. An unclaimed run can still have a main-session driver.
 
 `headsign start`, `next`, and `abort` resolve `.headsign/` in the current
 directory only. They never search parent directories. Run them from the repo
@@ -438,6 +441,19 @@ ended run without complaint. No cumulative bound applies across runs. This
 behavior is a decision rather than an omission. No ceiling counts across
 runs, and nothing limits how many times you can start one. A ceiling bounds
 one walk only. It never bounds all work in a directory.
+
+Each successful new start creates a fresh optimization identity unless
+`--no-optimize` is present. Older state has no identity and receives no later
+optimization prompt. Assessment records live outside `tmp/`, so a later start
+does not remove them. `start` now takes the run lock before it replaces an
+ended run. A terminal stop hook can write that state, and the lock prevents
+the hook from updating the replacement run.
+
+Valid state stores
+`optimization: { id, stop_requested, friction_noticed }`. An opt-out stores
+`optimization: null`. The two booleans record whether the terminal fallback
+requested its one continuation and whether the repeated-failure diagnostic
+appeared. They do not record the quality of the assessment.
 
 To bound the whole job, make the workflow count it. A check can read a tally
 from a location that the run cannot remove. The tally must be outside
@@ -614,7 +630,7 @@ The contract has six commands. A driving session routinely uses one:
 
 | Command | Role |
 |---|---|
-| `headsign start [name] [--workflow path]` | initialize state, print the entry phase's instructions |
+| `headsign start [name] [--workflow path] [--no-optimize]` | initialize state, print the entry phase's instructions; optimization is enabled unless opted out |
 | `headsign next` | **the only question a driving session asks.** Run the current gate, transition, answer |
 | `headsign abort [reason]` | record a human-directed stop |
 | `headsign validate [name] [--workflow path]` | static check of the workflow file |
@@ -983,6 +999,77 @@ loses a real review. Give the phase a `ready:` probe (e.g.
 spends no attempt, does not run `clear:`, and preserves the verdict for the
 `next` that finds it.
 
+### Optimization at the boundary
+
+Procedure repair can also be necessary during a run. If a gate requires an
+artifact that its instructions never produce, inspect the producer, consumer,
+and artifact lifetime together. A validation task need not produce a code edit;
+a rejected proposal needs a route that permits rework. Repair those contracts
+within the task's authority instead of spending retries on unchanged failure.
+
+A review gate must check the current final decision and the artifact reviewed.
+Report size or a historical approval does not establish that relation. Keep
+history separate from the current verdict and verify rejection, missing input,
+and changed artifacts when repairing such a gate. The CLI executes the supplied
+check; the workflow author defines this relation.
+
+Optimization is enabled for each new run unless `start` receives
+`--no-optimize`. The run stores a fresh identifier. Its durable assessment
+path is `.headsign/optimization/<id>/assessment.md`. This directory is
+gitignored and survives later starts. Promote useful conclusions into the
+workflow, its comments, or normal project documents. The raw assessment does
+not publish itself.
+
+The assessment must be a regular file of at most 64 KiB. CRLF and LF line
+endings have the same meaning. Its first line is exactly one of:
+
+```
+NO_CHANGE
+APPLIED
+PROPOSED
+DEFERRED
+```
+
+The remaining text must be nonempty. `NO_CHANGE` gives a short reason.
+`APPLIED`, `PROPOSED`, and `DEFERRED` name the concrete case, the opportunity,
+and the next action. `APPLIED` also records suitable verification. The record
+reports an assessment. It does not prove that the reasoning, authority, or
+result is correct.
+
+`headsign status` reports `optimization: assessed — <path>` or
+`optimization: unassessed — <path>` when the metadata is valid. It omits the
+line for legacy, opt-out, and malformed state. This line is read-only and is
+outside the stable first-line contract.
+
+The first repeated failure of the same gate prints one diagnostic prompt.
+It asks whether the work remains unfinished or the procedure needs repair.
+Further failures in that run do not repeat it. A command that did not run is
+still a configuration error. Routine waiting is not an optimization event.
+
+`COMPLETE` and terminal `ESCALATE` print the assessment path and the bundled
+`optimize` skill while no valid record exists. This text can repeat on later
+CLI calls. It preserves the first-line token and exit code. A nonempty
+`.headsign/tmp/stop-note` suppresses the optional request for that stop without
+reopening the run. Completion remains a historical fact if later optimization
+work edits an artifact. Verify that artifact again when the edit affects it.
+
+The Stop and SubagentStop hooks provide one fallback opportunity. They block
+at most one additional stop for the run. They act only for an enabled,
+unassessed run at terminal `COMPLETE` or terminal `ESCALATE`, and only when the
+recorded session or delegated agent matches the hook payload. Unknown identity
+passes and leaves the CLI notice as guidance. The hooks also pass for legacy,
+opt-out, aborted, paused, observer, malformed, or already-requested cases.
+They honor `stop_hook_active` and fail open on lock, input, or I/O errors.
+The hook records its request before it emits the message, so concurrent hooks
+cannot request more turns. A request does not prove that the host delivered
+the message or that an assessment occurred.
+
+One automatic assessment pass uses the task's remaining scope and budget. It
+can apply a bounded authorized repair or preserve a larger opportunity as a
+proposal. It does not start recursive optimization or reduce the choice to a
+small edit. An explicit stop takes priority; the skill can write `DEFERRED`
+when possible.
+
 ### The backstop
 
 Skills are instructions, not guarantees. Two stop-boundary hooks read
@@ -1037,8 +1124,8 @@ preserves the phase's artifacts. The log receives the note's first line, cut
 to 120 characters. It adds a trailing `…` when the cut version is not the
 complete note. Readers cannot mistake a truncated line for a complete
 line. One note covers one turn end. A wait across several exchanges needs a
-new note before each turn ends. Tomorrow, `headsign next` resumes the run at
-the same phase and judges its gate, like any `next`. The other exit is
+new note before each turn ends. On resume, first read `headsign status` and
+finish the phase's work. Then `headsign next` judges its gate. The other exit is
 `headsign abort <reason>`. It is permanent, not a pause. The run cannot
 resume. A fresh `headsign start` begins at the entry phase and replays every
 phase's gate. headsign rewrites all of `state.json`, but it does not
@@ -1168,6 +1255,14 @@ ran the command, because headsign cannot know that. The flag gives
 acceptance and retrying different inputs. Habitual use of the flag also
 fails. Without an outstanding reported change, it exits 3 instead of acting
 like a plain `next`.
+
+The authority for the edit comes from the current task. An agent can make a
+reversible workflow repair when it preserves the requested result and the
+user's constraints. Changes to the result, budget, access, publication,
+external communication, or unrelated work require the relevant authority.
+The report and `--accept-graph-change` remain separate actions. The flag
+records explicit acceptance of the outstanding change, separate from retry.
+It does not identify a person or grant authority.
 
 headsign deliberately keeps two changes quiet. It does not report a change
 to a phase that the run can no longer reach. The run does not depend on that

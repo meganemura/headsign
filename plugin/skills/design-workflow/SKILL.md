@@ -18,8 +18,8 @@ description: >-
 A headsign workflow is one YAML file, committed to the repository. It names
 the phases of a job and, for each phase, the shell commands whose exit codes
 decide whether the work may leave it. This skill works out what those phases
-and those commands should be **for this repository**, settles the shape with
-the person who asked, and writes the file.
+and those commands should be **for this repository**, uses the user's objective
+and constraints to choose the shape, and writes the file.
 
 When this skill runs inside the headsign plugin in Claude Code or Codex, the
 CLI is bundled with it and no install is needed. In Claude Code,
@@ -47,6 +47,11 @@ outside its plugin (for example, in `.claude/skills/` or `.agents/skills/`) — 
 ships with the plugin. Use a PATH-installed `headsign`, or `npx headsign`
 on the terms above; otherwise stop and tell the user to either install the
 plugin or `npm install` the package. Do not guess at other paths.
+
+When the user selects a local checkout, use its supplied bundle path and read
+its current skills. An installed plugin is a cached copy; a source edit alone
+does not update that copy. Keep an existing run when switching CLI copies.
+Do not abort, restart, or edit its state just to enable optimization.
 
 ## What this skill does not do
 
@@ -81,10 +86,44 @@ plugin or `npm install` the package. Do not guess at other paths.
    who has not yet. If a user arrives holding that prompt's output, take it
    (step 1) — but do not treat its wording as a specification for yours.
 
+## Design for revision
+
+Assume later models can improve this method. Keep required outcomes and useful
+checks explicit, and preserve the reasons and concrete cases that justify them.
+Prefer a consequential improvement over an easy nearby edit. A valid design
+can also retain a useful method or propose a larger change for later work.
+
+New runs already prompt a terminal assessment through the `optimize` skill.
+Add a dedicated retrospective phase only when the work needs its own artifacts
+or transition checks. When a workflow already has one, reuse its findings;
+optimization need not repeat the same investigation.
+
+Repair a demonstrated mismatch at its source. Read the producer instruction,
+the gate that consumes its artifact, and the artifact's lifetime together.
+Use the same path on both sides and keep it until its last consumer finishes.
+Required evidence may be a validation result without a code edit. A veto or
+rejection needs a defined route that preserves its reason and permits rework.
+
+For a review gate, establish the current final decision and the revision it
+covers. Test a rejection, an absent verdict, and a changed revision as well as
+approval. A gate that checks only report size cannot make those distinctions.
+Keep historical review text separate from the current decision used by a gate.
+
+For revisions, compare the requested outcomes and constraints before and after
+the change. Existing task authority can cover reversible structural repairs.
+Changes to outcomes, explicit budgets, access, or external actions need the
+relevant authority. A graph fingerprint does not establish that authority:
+descriptions and external check scripts can change requirements too.
+
+During a live run, preserve its recorded path and current phase. Let the
+`workflow` driver handle any reported change through a separate
+`next --accept-graph-change` call. Authoring the file does not accept that change.
+
 ## Asking well
 
-You write the file, but you do not decide the shape of someone else's work
-alone. The manner is the one this repository's own design workflow uses:
+Use the user's existing decisions and delegated authority. Ask when a missing
+answer affects the required outcome or a constraint you cannot choose. Routine
+design choices within that authority do not need another confirmation:
 
 - **One question at a time.** A batch of questions gets a batch of shallow
   answers.
@@ -99,25 +138,17 @@ alone. The manner is the one this repository's own design workflow uses:
   "I put 5 here because implementation legitimately takes several passes;
   3 would surface a stuck loop sooner but ends the run earlier" is a
   question they can answer in one line.
-- **Do not guess an answer to keep moving.** Ask, and wait for the answer.
+- **Do not invent required authority.** Ask for a missing decision when it
+  blocks the work. Continue independent work while you wait.
 - **Keep the answers where they survive.** A decision that explains why the
   file has the shape it has belongs in the file's comments (see *What goes
   in the comments*); the rest belongs in what you report at the end. The
   conversation does not survive; the file does.
 
-**When no answer is coming, waiting still comes first — but there is a way to
-stop that is not a guess.** Sometimes there is nobody at the other end: the
-person who asked has stepped away, or this is running unattended inside
-something larger. Waiting remains the default and you exhaust it before
-concluding anything else. What that situation does not license is inventing
-the answer and settling it. What it also does not license is going quiet and
-leaving nothing behind. Write everything the missing answer does not block,
-then hand over — with the question as you would have asked it, the candidates
-and their costs, and your own recommendation with its reason. **Put the fact
-that it is unconfirmed where the person cannot miss it**: at the top of what
-you report, and in a comment on the line it affects. The failure this guards
-against is a workflow received as settled when one of its numbers was never
-agreed by anyone.
+**When a required answer is unavailable, finish the independent work.**
+Keep the dependent decision open. Report the missing answer, its effect, and
+your recommendation with its reason. Mark any affected draft as unconfirmed.
+Elapsed time does not supply authority; existing delegation can supply it.
 
 ## The procedure
 
@@ -367,13 +398,13 @@ of work can legitimately leave one phase with nothing to produce, that phase
 needs an edge that carries such a round past it; *A round that has nothing for
 a phase*, below, has the shape and the reason.
 
-### 3. Draw the shape, and agree it
+### 3. Draw the shape
 
 Draw the phases and the edges in ASCII: the pass edges, the edge taken when
 a gate fails and the work goes back for rework, and the branch if the work
-has one. Show it to the person and settle it **before** writing YAML — a
-shape is cheap to argue with as a picture and expensive to argue with as a
-file. This same picture becomes the file's header comment in step 6.
+has one. Use the picture to check the required outcomes and explain the design.
+Proceed within the task's authority; ask only about unresolved requirements
+or constraints. This picture becomes the file's header comment in step 6.
 
 **A straight line is a complete workflow.** If the work does not branch, do
 not add a branch to make the graph look serious; what the graph is doing for
@@ -403,11 +434,11 @@ different things — so they get three different treatments.
   the loop is the form that keeps those meaning what they say — and if you
   restart instead, nothing carries over except what the workflow itself wrote
   outside `tmp/`.
-- **`max_attempts` — propose it, but do not settle it silently.** Running
+- **`max_attempts` — explain the choice and preserve agreed budgets.** Running
   out ends the run for good, and redoing the work means starting again from
   the entry phase. Give the number, the reason, **and the consequence**
-  ("if this is exhausted the run is over") and let the person confirm or
-  change it. **Say what the number counts, because it is not what most
+  ("if this is exhausted the run is over"). Use a delegated design choice when
+  authorized; otherwise ask the person to settle the budget. **Say what the number counts, because it is not what most
   readers assume**: failures of that phase since it last *passed*, which is
   not the same as failures since the run last entered it. A route that leaves
   the phase on a failure and comes back later — through another phase, or
@@ -797,14 +828,34 @@ phases:
   review:
     description: >
       Have a read-only reviewer — one that did not write the change — report
-      APPROVED or REJECTED, then write that verdict yourself to
-      .headsign/tmp/verdict.
-    clear: [.headsign/tmp/verdict]  # deleted on entry to this phase
+      APPROVED or REJECTED for the current repository state. As the driving
+      agent, fingerprint HEAD, tracked changes, and untracked non-ignored files
+      before and after the read-only review. Write two lines to
+      .headsign/tmp/verdict: the decision, then
+      REVISION followed by the unchanged fingerprint. Put reasons in
+      .headsign/tmp/review-notes.md.
+    clear: [.headsign/tmp/verdict, .headsign/tmp/review-notes.md, .headsign/tmp/review-current, .headsign/tmp/review-untracked]
     ready: "test -f .headsign/tmp/verdict"   # judge only once this passes
     gate:
       checks:
-        - name: review approved
-          run: "grep -qx APPROVED .headsign/tmp/verdict"
+        - name: current review approved
+          run: >-
+            awk 'NR == 1 { ok = ($0 == "APPROVED") }
+            NR == 2 { value = substr($0, 10); ok = ok &&
+            substr($0, 1, 9) == "REVISION " &&
+            (length(value) == 40 || length(value) == 64) &&
+            value !~ /[^0-9a-f]/ } NR > 2 { ok = 0 }
+            END { exit !(ok && NR == 2) }' .headsign/tmp/verdict
+        - name: review covers current fingerprint scope
+          run: >-
+            expected=$(sed -n '2s/^REVISION //p' .headsign/tmp/verdict) &&
+            git rev-parse 'HEAD^{tree}' > .headsign/tmp/review-current &&
+            git diff --no-ext-diff --binary HEAD -- >> .headsign/tmp/review-current &&
+            git ls-files --others --exclude-standard -z > .headsign/tmp/review-untracked &&
+            xargs -0 sh -c 'for f do printf "%s\0" "$f";
+            git hash-object -- "$f" || exit; done' sh < .headsign/tmp/review-untracked >> .headsign/tmp/review-current &&
+            current=$(git hash-object .headsign/tmp/review-current) &&
+            test -n "$expected" && test "$expected" = "$current"
     on_pass: $end
     on_fail: implement              # rejection goes back for rework
     max_attempts: 3
@@ -812,6 +863,19 @@ phases:
 limits:
   max_total_iterations: 20          # global runaway backstop
 ```
+
+The two review checks make one current decision. The first accepts exactly two
+records and rejects a missing, rejected, or mixed historical verdict. The
+second binds approval to HEAD, tracked changes, and untracked non-ignored file
+contents. Ignored files and changes inside a submodule are outside this example.
+The driving agent calculates the fingerprint before the reviewer reads, gives
+that identifier to the reviewer, and calculates it again before recording the
+decision. The reviewer stays read-only and supplies the independent judgment.
+If the values differ, review the new state.
+A narrower workflow must scope every fingerprint input to its reviewed paths,
+including committed content. Keep the decision file separate from
+review notes so later reasons cannot turn an earlier approval into a current
+verdict.
 
 `on_fail` defaults to `retry` (stay in the phase) and also accepts a phase
 name, `$end`, or `escalate` (stop and ask a person). No gate can abort a run:

@@ -102,8 +102,9 @@ phases:
     max_attempts: 3
 
   # REVIEW — the soft gate that makes "done" mean something. A read-only
-  # reviewer subagent reads the doc AS the target reader and reports a verdict;
-  # the agent writes that verdict to a file the gate greps. This is the one
+  # reviewer subagent reads the doc AS the target reader and reports a verdict
+  # bound to the reviewed fingerprint scope. The agent writes that verdict
+  # to a file the gate checks. This is the one
   # judgment shell can't make, so it is carried by a review the agent runs on
   # itself — not a substitute for a human reviewing the eventual PR.
   #
@@ -120,16 +121,35 @@ phases:
   review:
     description: >
       Spawn a read-only reviewer subagent. Have it read docs/guide.md as the
-      audience named in docs/outline.md and report APPROVED or REJECTED with
-      concrete reasons. Then write that verdict yourself to
-      .headsign/tmp/verdict — the single word APPROVED or REJECTED on its own
-      line — and, if REJECTED, act on the reasons when you loop back to draft.
-    clear: [.headsign/tmp/verdict]
+      audience named in docs/outline.md.
+      As the driving agent, fingerprint HEAD, tracked changes, and untracked
+      non-ignored files before and after the read-only review. Give the first
+      identifier to the reviewer. It must report APPROVED or REJECTED for that
+      state. Write the decision and REVISION with the unchanged identifier to
+      .headsign/tmp/verdict and its concrete reasons
+      to .headsign/tmp/review-notes.md. Act on rejection reasons in draft.
+    clear: [.headsign/tmp/verdict, .headsign/tmp/review-notes.md, .headsign/tmp/review-current, .headsign/tmp/review-untracked]
     ready: "test -f .headsign/tmp/verdict"
     gate:
       checks:
-        - name: reader review approved
-          run: "grep -qx APPROVED .headsign/tmp/verdict"
+        - name: current reader review approved
+          run: >-
+            awk 'NR == 1 { ok = ($0 == "APPROVED") }
+            NR == 2 { value = substr($0, 10); ok = ok &&
+            substr($0, 1, 9) == "REVISION " &&
+            (length(value) == 40 || length(value) == 64) &&
+            value !~ /[^0-9a-f]/ } NR > 2 { ok = 0 }
+            END { exit !(ok && NR == 2) }' .headsign/tmp/verdict
+        - name: review covers current fingerprint scope
+          run: >-
+            expected=$(sed -n '2s/^REVISION //p' .headsign/tmp/verdict) &&
+            git rev-parse 'HEAD^{tree}' > .headsign/tmp/review-current &&
+            git diff --no-ext-diff --binary HEAD -- >> .headsign/tmp/review-current &&
+            git ls-files --others --exclude-standard -z > .headsign/tmp/review-untracked &&
+            xargs -0 sh -c 'for f do printf "%s\0" "$f";
+            git hash-object -- "$f" || exit; done' sh < .headsign/tmp/review-untracked >> .headsign/tmp/review-current &&
+            current=$(git hash-object .headsign/tmp/review-current) &&
+            test -n "$expected" && test "$expected" = "$current"
     on_pass: $end
     on_fail: draft
     max_attempts: 3

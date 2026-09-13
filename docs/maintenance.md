@@ -20,6 +20,10 @@ without its rebuilt bundle.
 
 ## Every change (day-to-day hygiene)
 
+- Follow [AGENTS.md](../AGENTS.md). For design changes, read
+  [ADR-0039](adr/0039-design-for-the-model-that-improves-the-method.md) and
+  explain alignment in the change rationale or review. Give delegated agents
+  the relevant decisions; review skill instructions for conflicting policy.
 - `npm run typecheck && npm test && npm run build` — and commit
   `plugin/dist/headsign.mjs` together with the src change. CI fails
   otherwise (`dist matches src`).
@@ -34,6 +38,55 @@ without its rebuilt bundle.
   [docs/adr/README.md](adr/README.md)) in the same change. Docs that state
   numbers (the dated line count in `architecture.md`) get refreshed when they
   drift.
+
+## Local plugin development
+
+A local Codex marketplace can read this checkout, including uncommitted plugin
+changes. The installed plugin remains a cached snapshot. Reinstall after edits
+to skills, hooks, or the bundle.
+
+From the checkout root, build runtime changes and inspect the current source:
+
+```sh
+npm run build
+codex plugin marketplace list
+```
+
+If `headsign` is already registered from Git, replace that registration with
+the checkout. These commands change the machine's Codex configuration:
+
+```sh
+codex plugin marketplace remove headsign
+codex plugin marketplace add "$PWD"
+```
+
+For a first registration, use only the `add` command. If the marketplace
+already points here, keep it. Record the previous source before switching so
+you can restore it later.
+
+Give `plugin/.codex-plugin/plugin.json` a fresh local version suffix, such as
+`0.10.0+codex.local-<timestamp>`, preserving the release version before `+`.
+This selects a new cache entry. Keep this development suffix out of a release;
+restore the release version when preparing one. Then install:
+
+```sh
+codex plugin add headsign@headsign --json
+```
+
+Check the reported source and installed path. Compare the installed bundle
+and skills with the checkout. `headsign version` reports the bundle's package
+version; it does not identify a skill revision or the manifest's local suffix.
+`marketplace upgrade` refreshes Git sources; it does not rebuild local code.
+
+A new session is the reliable boundary for loading the updated plugin.
+For an existing task, explicitly supply the checkout's absolute bundle path
+and ask the agent to reread its current skills. From the consumer repository,
+use `node /absolute/path/to/headsign/plugin/dist/headsign.mjs status` before
+continuing. Do not assume that already-loaded hooks changed with the install.
+
+Keep the existing run. An upgrade does not require `abort`, `start`, or state
+migration. Legacy runs have no optimization identity and receive no automatic
+assessment prompt. The next new run enables optimization by default.
 
 ## The fitness check
 
@@ -498,4 +551,3 @@ it.
   doing so.
 - No branch protections beyond CI at the moment (single-maintainer); add a
   required-check rule on `main` when a second maintainer joins.
-

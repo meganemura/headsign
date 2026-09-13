@@ -4,10 +4,19 @@
 > for agent loops: each iteration, the agent asks where it's bound; headsign
 > runs the gates and answers — proceed, retry, or terminus.
 
-headsign is a **phase gate** for coding agents. Claude Code or Codex drives the work;
-headsign holds the workflow state and decides transitions. The judgment is
-always deterministic (shell exit codes) — the LLM never participates in the
-verdict, it only reads it.
+headsign combines a **phase gate** with skills that help agents improve their
+procedure. Claude Code or Codex drives the work. The CLI holds workflow state
+and selects transitions from shell exit codes. A check can read an authored
+review verdict; that remains a model judgment, as ADR-0007 explains.
+
+Optimization is enabled for new runs by default. The CLI supplies observations,
+an assessment path, and a bounded terminal reminder. The agent judges the
+opportunity and can repair the procedure within the task's authority.
+The CLI does not invoke a model or evaluate the quality of that repair.
+
+[ADR-0039](adr/0039-design-for-the-model-that-improves-the-method.md) governs
+future design changes. Contributors follow [AGENTS.md](../AGENTS.md), including
+its instructions for delegated work and design review.
 
 ## The loop
 
@@ -32,6 +41,8 @@ plugin/                          # what gets distributed (Claude Code and Codex 
   .claude-plugin/plugin.json
   .codex-plugin/plugin.json
   skills/workflow/SKILL.md       # the discipline taught to the agent
+  skills/design-workflow/SKILL.md # workflow design and revision
+  skills/optimize/SKILL.md       # terminal procedure assessment
   hooks/hooks.json               # run discovery plus the two stop-boundary hooks
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
@@ -40,6 +51,7 @@ docs/                            # this file + ADRs
 consumer repository:
   .headsign/workflow.yaml        # workflow definition (committed)
   .headsign/state.json           # run state (never committed)
+  .headsign/optimization/<id>/assessment.md # durable run assessment (never committed)
 ```
 
 ## Module map
@@ -70,6 +82,7 @@ thin harness need this?
 | `src/cli.ts` | argv parsing, command dispatch, printing, process exit code — one typed command becomes one `engine.ts` call, and the value it answers with becomes text and a status. Also the only place the **wall clock** (`localIso(new Date())`) is read, and the place `process.env` is reached for so that nothing below has to — both passed down as arguments. (`gate.ts` reaches for it too, but only to copy it wholesale into the commands it spawns, ADR-0033, inspecting nothing in it; the values inside are read in `stophook.ts`, always out of an argument.) | routing rules — *including the order `next` asks its questions in* (ADR-0018) — the YAML schema, what any operation does to a run |
 | `src/workflow.ts` | load + validate `workflow.yaml`; owns the schema types, and the fingerprint of the *rules* a run is walking under (ADR-0023) — a fact about the schema and the reachability walk, both of which are this module's | state.json, gates, git |
 | `src/state.ts` | read/write `state.json` (atomic write); owns the state shape, the graph pin's three fields included | routing rules, YAML |
+| `src/optimization.ts` | validate run optimization metadata and durable assessment records; construct the run-specific path and guidance | model judgment, task authority, workflow routing |
 | `src/gate.ts` | run one phase's checks (shell, timeout, output tail), timing every one that finishes — pass or fail — with a monotonic clock and reporting each live to an optional progress observer (ADR-0032) — outside ADR-0004's guarantee (that guarantee is about the wall-clock datetime that lands on disk, not this interval), since this module already touches the outside world; resolve which route of a list-form `on_pass` matched, by running its `when:` commands the same way (ADR-0011); every command it runs also gets `HEADSIGN_WORKFLOW_FILE`, the workflow path the caller hands in, verbatim (ADR-0033) | what a route target means, state, git |
 | `src/engine.ts` | one operation on a run — `start`, one lap of `next`, `abort`, `claim`, `status` — carried out and reported as a value. The ONLY place routing rules live, *the order a lap asks its questions in included* (ADR-0018); inside it, `step()` is still the pure transition function (workflow, state, gate result, resolved route) → (new state, outcome), and a resolved route still arrives as data rather than being evaluated here | argv, how an answer is worded, what it exits with, the clock, the environment (`status` is handed one, the same way every operation is handed a timestamp) |
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
@@ -147,6 +160,12 @@ outside it:
   has no session on record or names the one that just stopped, and passes
   every other session — once someone has claimed the run, it passes all of
   them.
+- **The optimization skill** assesses the procedure after terminal completion
+  or escalation. The runtime records an opportunity and observable facts. It
+  does not judge whether a change improves the procedure. A valid run-specific
+  assessment can retain the method, apply an authorized repair, preserve a
+  proposal, or defer the work. Terminal hooks can request one extra turn when
+  they can positively identify the responsible session or delegated agent.
 
 ## Design records
 
@@ -183,3 +202,4 @@ outside it:
 - [ADR-0031](adr/0031-when-the-run-entered-the-phase.md) — `phase_entered_at`, stamped where `clear:` runs, so a retry never moves it and a re-entry does *(amends 0017)*
 - [ADR-0032](adr/0032-the-gate-says-how-far-it-got.md) — the gate says how far it got: one stderr line per check that produced an exit code, while the gate is still running *(amends 0002)*
 - [ADR-0033](adr/0033-the-one-variable-headsign-sets.md) — the one variable headsign sets: `HEADSIGN_WORKFLOW_FILE` reaches a gate's checks, a `ready:` probe and an `on_pass` `when:`, carrying the path this run recorded *(amends 0014 §1)*
+- [ADR-0038](adr/0038-a-run-assesses-its-procedure.md) — each new run assesses its procedure at completion or terminal escalation; the runtime supplies a durable record and one attributed continuation

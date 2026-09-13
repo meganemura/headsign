@@ -9,7 +9,20 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
-### Changed
+### Added
+
+- **New runs now prompt an assessment of how their procedure can improve.**
+  Optimization is on by default, with `headsign start --no-optimize` as a
+  per-run opt-out. The first repeated gate failure prints one diagnostic prompt.
+  `COMPLETE` and terminal `ESCALATE` name the new bundled `optimize` skill and
+  `.headsign/optimization/<run-id>/assessment.md` until a valid disposition
+  exists. The new `optimization:` line in `headsign status` reports assessment
+  state. The stop hooks can request one extra turn only when they can identify
+  the responsible session or delegated agent. Assessment records are gitignored,
+  survive later starts, and use `NO_CHANGE`, `APPLIED`, `PROPOSED`, or `DEFERRED`
+  plus an explanation. The record is a self-report, not proof of an improvement.
+  Starting a run now uses the run lock because a terminal hook can update the
+  state it replaces.
 
 - **A new session now learns about a running workflow before it starts work.**
   The plugin registers a read-only `SessionStart` hook. It reports the workflow,
@@ -17,6 +30,54 @@ changes), and a patch bump means fixes only.
   next`. The hook labels and quotes repository values as untrusted data. It
   runs no gate and changes no run state. The existing handover backstop gap
   remains until the new session runs `next`.
+
+- **A ninth shipped example: `refinery.yaml`, a merge queue with no agent in
+  it.** Every gate is a command, so the caller is a shell loop or a CI job
+  rather than a coding agent — the first entry on the README's list of callers,
+  and until now the one with nothing to copy. It rehearses the merge on a
+  temporary branch so a conflict leaves the tree clean, runs the project's build
+  and tests on the rehearsed merge rather than on the branch as written, and
+  reads the remote back after pushing. The examples README gains the driver loop
+  it is meant to be called from, and says why that loop keeps stderr: while a
+  gate runs, the failing check is named there, and a run that ends in ESCALATE
+  names the phase in its reason and not the check.
+
+### Changed
+
+- **Resume guidance now puts phase work before gate judgment.** A saved
+  `RUNNING` status does not report agent activity. The driving skill starts
+  required work, investigates incompatible gates instead of exhausting retries,
+  and checks that review verdicts cover the current artifact. Workflow design
+  guidance aligns artifact lifetimes and legitimate return routes.
+  An existing-run refusal also directs the driver to inspect and finish phase
+  work before calling `next`.
+  Rule 6 and both reference pages name `.headsign/tmp/` as the directory that
+  the next `start` deletes. The skill says a delegated task that outlasts a wait
+  call has not failed; inspect its progress before intervening.
+
+- **Review examples now bind approval to the reviewed state.** The shipped
+  `workflow.yaml`, `docs.yaml`, `router.yaml`, and `tdd-feature.yaml` examples
+  and the `design-workflow` skill's review example use a two-line verdict file:
+  the decision, then `REVISION <fingerprint>` of HEAD, tracked changes, and
+  untracked non-ignored files. The gate recomputes the fingerprint and rejects
+  approval of an earlier revision. Reasons go to `.headsign/tmp/review-notes.md`.
+  Ignored files and submodule contents are outside the fingerprint.
+
+- **The skills and guides now share the optimization discipline.** Workflow
+  design uses existing task authority, preserves reasons for useful checks,
+  and reuses retrospective findings. The README pair introduces the future
+  model and impact focus. Maintenance documents local plugin updates and
+  continuation of existing runs.
+
+- **Workflow repairs now follow task scope and authority.** An agent can make
+  reversible graph changes within the authorized objective. Changes to the
+  requested result, budgets, access, external communication, publication, or
+  unrelated work still need the relevant authority. A reported graph change
+  still requires `headsign next --accept-graph-change`; a repeated bare
+  `next` never accepts it.
+  The `design-workflow` skill uses delegated authority to choose the drawn shape
+  and `max_attempts` without another confirmation. It asks when a missing answer
+  affects a required outcome or constraint.
 
 - **The `design-workflow` skill now says where a run-scoped mark stops, and
   what to do with a round that has nothing for a phase.** A gate that counted
@@ -33,19 +94,6 @@ changes), and a patch bump means fixes only.
   a round is: a workflow that routes its last phase back to its first holds
   many rounds inside one run, so there the `tmp/` wipe dates the run and only
   `clear:` dates the round.
-
-- **The `workflow` skill now says which command answers "continue this run, or
-  start over".** A `start` refused because a run was in progress left the
-  driver reading `headsign status` for something it never holds: status runs no
-  check, so whether a phase has any work in it yet is a fact about the tree
-  that only the gate reads. The Notes now name `headsign next` as both the
-  answer and the cheapest probe, with what a lap costs — nothing at all while a
-  `ready:` holds it at `PENDING`, and once the gate runs, whatever that gate
-  holds, plus one attempt and one iteration on a failure and nothing deleted
-  while `on_fail` is the default `retry`.
-  Rule 6's account of what ending a run costs, and the same passage in both
-  reference pages, gain the one place that does empty: `.headsign/tmp/`, which
-  the next `start` deletes whole.
 
 - **The `workflow` skill says what an edit to a live run's file is reported
   as, where the person about to edit one is reading.** The rule was already
@@ -74,17 +122,6 @@ changes), and a patch bump means fixes only.
   floor sits below the measured number rather than at it, because a handful of
   branches belong to lock races and are covered or not depending on how the race
   lands.
-
-- **A ninth shipped example: `refinery.yaml`, a merge queue with no agent in
-  it.** Every gate is a command, so the caller is a shell loop or a CI job
-  rather than a coding agent — the first entry on the README's list of callers,
-  and until now the one with nothing to copy. It rehearses the merge on a
-  temporary branch so a conflict leaves the tree clean, runs the project's build
-  and tests on the rehearsed merge rather than on the branch as written, and
-  reads the remote back after pushing. The examples README gains the driver loop
-  it is meant to be called from, and says why that loop keeps stderr: while a
-  gate runs, the failing check is named there, and a run that ends in ESCALATE
-  names the phase in its reason and not the check.
 
 - **A run that ends on `on_fail: escalate` now names the check that ended it.**
   The reason said `<phase>: gate failed (on_fail: escalate)` and stopped there,
