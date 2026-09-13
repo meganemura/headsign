@@ -16,8 +16,12 @@ hook can inform a new session without holding a turn or claiming a driver.
 The plugin registers a `SessionStart` hook. It searches upward from the hook's
 `cwd` and stops at the first Git boundary. When it finds a running run, it
 prints the workflow, phase, and the last pause note when one exists. It tells
-the reader to inspect the run with `headsign status` and continue it with
-`headsign next`.
+the authorized driver to inspect the run with `headsign status`, perform the
+phase's unfinished work, and then judge it with `headsign next`.
+
+Clarified on 2026-09-13: `RUNNING` means persisted unfinished work. It does not
+assert that an agent process is active. Discovery starts no phase work or
+delegation. The responsible agent performs that work before asking the gate.
 
 The hook labels all state values as untrusted data and quotes each value. Its
 read-only scope covers state lookup and notice output. The gate engine owns
@@ -35,4 +39,4 @@ starting.
 - The Stop hook passes on a `last_drive.session` mismatch, and the handover
   backstop gap remains until the new session runs `headsign next`.
 - This decision keeps the state model unchanged: `stop-note` releases one
-  turn, and `next` resumes the running run.
+  turn, and `next` judges the current phase when its work is ready.

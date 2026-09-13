@@ -2,6 +2,13 @@
 
 - Status: accepted
 - Date: 2026-07-23
+- Revised: 2026-09-13 ([ADR-0039](0039-design-for-the-model-that-improves-the-method.md)
+  establishes the forward design policy. Smallness includes the instructions
+  an agent carries; "Fat Skills" assigns judgment without prescribing volume.)
+- Revised: 2026-09-13 (ADR-0038 adds a run-specific optimization identity,
+  terminal notices, and a bundled assessment skill. The CLI still invokes no
+  model and decides no improvement. It supplies observable facts and one
+  bounded opportunity.)
 
 ## Context
 

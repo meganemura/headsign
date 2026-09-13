@@ -32,6 +32,11 @@
   though they still write no other state, so the guarantee this ADR needs —
   PENDING never resets `stop_nudges` — survives, though the literal wording
   about the disk no longer holds.)
+- Revised: 2026-09-13 ([ADR-0038](0038-a-run-assesses-its-procedure.md)
+  adds a separate terminal fallback. An enabled, unassessed COMPLETE or
+  terminal ESCALATED run can request one extra continuation after positive
+  attribution. The fallback honors `stop_hook_active`, shares the run lock,
+  and fails open. The running-run backstop and its nudge budget remain.)
 
 ## Context
 

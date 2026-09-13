@@ -4,6 +4,11 @@ The *why* behind headsign, one decision per file. For the overview and the
 module map, start with [../architecture.md](../architecture.md); these ADRs
 record the reasoning each choice rests on.
 
+Before changing headsign, read
+[ADR-0039](0039-design-for-the-model-that-improves-the-method.md).
+It governs future design choices. [AGENTS.md](../../AGENTS.md) makes that
+reading part of the development instructions, including delegated work.
+
 | ADR | Decision |
 |---|---|
 | [0001](0001-thin-harness.md) | Thin harness — Claude drives, the CLI only holds state and judges; the non-goals that keep it small *(its 500-code-line budget retired by 0016)* |
@@ -43,13 +48,15 @@ record the reasoning each choice rests on.
 | [0035](0035-a-phase-name-has-to-be-a-key.md) | A phase name has to be a name the run's own maps can hold — `validate` rejects a name `Object.prototype` already carries, because a `toString` phase counted its attempts as a string (so `max_attempts` never fired) and a `__proto__` phase was never pinned *(amends 0015, relates to 0023)* |
 | [0036](0036-a-request-for-a-second-question.md) | A request for a second question, and the four answers it gets — the five times ADR-0001's non-goal has been reached for, what each request actually rested on, and the four reasons that dispose of it: a cheaper mouth for a question already answered, a declaration nothing can check, a looking command asked to run something, and a gate asked about the run rather than the tree *(collects 0001's non-goal, 0029 §4, 0030's refusal of a machine-readable mode, and 0033 §4; amends none of them)* |
 | [0037](0037-session-start-discovers-a-run.md) | A running run introduces itself at session start — read-only discovery restores the handover signal without restoring bystander nudges *(amends 0027 §6)* |
+| [0038](0038-a-run-assesses-its-procedure.md) | A run assesses its procedure at completion or terminal escalation — default activation, durable dispositions, one attributed Stop continuation, and authority-bounded repairs *(amends 0001, 0006, 0023, 0027, 0030)* |
+| [0039](0039-design-for-the-model-that-improves-the-method.md) | Design for a model that improves its method — future capabilities, optimization by default, consequential outcomes, explicit bets, task authority, and smallness across code and skills *(amends 0001; governs changes to 0038)* |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless
 the change is large enough to be its own record.
 
 **A skill may say more about a decision recorded here, and the decision
-stands unchanged.** The two skills carry the guidance that puts an ADR's decision
+stands unchanged.** The three skills carry the guidance that puts an ADR's decision
 to work, and field reports keep asking them for cases the decision covers and
 the text never spelled out — how long an anchor lasts, what dates an artifact,
 what a lap costs. Answering one of those edits `plugin/skills/`, `CHANGELOG.md`

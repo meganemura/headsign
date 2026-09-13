@@ -5,6 +5,9 @@
 - Amends [ADR-0002](0002-single-question-and-output-contract.md): its output
   contract said what is guaranteed. This says what is not, which the same
   section left to inference.
+- Revised: 2026-09-13 ([ADR-0038](0038-a-run-assesses-its-procedure.md)
+  adds repeatable diagnostic and terminal assessment text after the token.
+  The first-line tokens and exit codes remain unchanged.)
 
 ## Context
 

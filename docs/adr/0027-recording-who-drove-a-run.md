@@ -19,6 +19,10 @@
   "What this gives up" therefore names two lost `unheld` lines rather than
   one. Nothing above is retracted and no text above is edited — §9 sets out
   why the extension follows from §3 rather than adding to it.)
+- Revised: 2026-09-13 ([ADR-0038](0038-a-run-assesses-its-procedure.md)
+  uses the same positive session attribution for the terminal optimization
+  fallback. Delegated attribution still uses the separate agent identifier.
+  Unknown identity passes.)
 
 ## Context
 

@@ -1,6 +1,11 @@
 # ADR-0023: Pinning the graph a run is walking under
 
 - Status: accepted
+- Revised: 2026-09-13 ([ADR-0038](0038-a-run-assesses-its-procedure.md)
+  replaces blanket human approval language with task scope and authority.
+  Reversible repairs can occur within an authorized objective. The distinct
+  `--accept-graph-change` call still follows an active report and grants no
+  authority by itself.)
 - Date: 2026-07-30
 - Amends: [ADR-0016](0016-explainability-as-the-fitness-function.md) §5 (its
   rule for a run that rewrites its own workflow is now machine-checked rather
