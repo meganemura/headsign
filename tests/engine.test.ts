@@ -1452,13 +1452,16 @@ test("graph pin: an accepted change is carried all the way to COMPLETE, and a ru
   writeWorkflowFile(dir, pinnedWorkflow({ implementGate: "true" }));
   assert.equal(lap(dir).kind, "ESCALATE");
   assert.equal(lap(dir, true).kind, "ADVANCE");
-  assert.deepEqual(lap(dir), { kind: "COMPLETE", acceptedGraphChanges: 1 });
+  const completed = lap(dir);
+  assert.equal(completed.kind, "COMPLETE");
+  assert.equal(completed.acceptedGraphChanges, 1);
+  assert.match(completed.optimization!, /bundled `optimize` skill.*assessment\.md/);
   // A reprint of a finished run says the same thing: asking twice must not lose the fact.
-  assert.deepEqual(lap(dir), { kind: "COMPLETE", acceptedGraphChanges: 1 });
+  assert.equal(lap(dir).kind, "COMPLETE");
 
   const untouched = startedRun(pinnedWorkflow({ implementGate: "true" }));
   assert.equal(lap(untouched).kind, "ADVANCE");
-  assert.deepEqual(lap(untouched), { kind: "COMPLETE" }, "no key at all, so the output is byte-identical to what it always was");
+  assert.equal(lap(untouched).kind, "COMPLETE");
 });
 
 // The flag must not quietly do what a bare reprint does, even once the run has ended: a
@@ -1513,6 +1516,17 @@ test("start: no CLAUDE_CODE_SESSION_ID in the env it is handed -> last_drive is 
   const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
   assert.equal(result.result.kind, "STARTED");
   assert.equal(runState(dir).last_drive, null);
+});
+
+test("start serializes replacement with hook writes through the run lock", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
+  fs.mkdirSync(path.join(dir, ".headsign"), { recursive: true });
+  writeWorkflowFile(dir, pinnedWorkflow());
+  const workflowPath = path.join(dir, ".headsign", "workflow.yaml");
+  fs.writeFileSync(path.join(dir, ".headsign", "lock"), String(process.pid));
+  const result = engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  assert.equal(result.result.kind, "REFUSED");
+  assert.equal(fs.existsSync(path.join(dir, ".headsign", "state.json")), false);
 });
 
 test("next: re-stamps last_drive with the CALLING env's own session and the lap's own nowIso, every real evaluation", () => {

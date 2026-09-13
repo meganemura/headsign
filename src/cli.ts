@@ -97,14 +97,14 @@ function printOutcome(
     case "ADVANCE":
       return exitAfter(render.advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, ctx?.notCleared, outcome.routedBy), 0);
     case "COMPLETE":
-      return exitAfter(render.complete(workflowName, outcome.acceptedGraphChanges), 0);
+      return exitAfter(render.complete(workflowName, outcome.acceptedGraphChanges, outcome.optimization), 0);
     case "RETRY":
       return exitAfter(
-        render.retry({ phase: outcome.phase, attempt: outcome.attempt, ...(outcome.maxAttempts !== undefined && { maxAttempts: outcome.maxAttempts }), repeats: outcome.repeats, ...outcome.failure }),
+        render.retry({ phase: outcome.phase, attempt: outcome.attempt, ...(outcome.maxAttempts !== undefined && { maxAttempts: outcome.maxAttempts }), repeats: outcome.repeats, ...(outcome.diagnoseFriction && { diagnoseFriction: true }), ...outcome.failure }),
         1,
       );
     case "ESCALATE":
-      return exitAfter(render.escalate(outcome.reason), 2);
+      return exitAfter(render.escalate(outcome.reason, outcome.optimization, outcome.diagnoseFriction), 2);
     case "ABORT":
       return exitAfter(render.abort(outcome.reason), 2);
     case "PENDING":
@@ -197,7 +197,7 @@ function reportStatus(result: engine.StatusResult): never {
     case "REFUSED":
       return errorExit(result.message);
     case "TERMINAL":
-      return exitAfter(render.statusTerminal(result.status, result.workflowName, result.endReason), 0);
+      return exitAfter(render.statusTerminal(result.status, result.workflowName, result.endReason, result.optimizationPath, result.optimizationAssessed), 0);
     case "RUNNING":
       // The two words the run's claimed-ness is reported in, and the only place they are
       // written. Deliberately neither of them says anything about *who is reading*
@@ -215,7 +215,9 @@ function reportStatus(result: engine.StatusResult): never {
           attemptUnknown: result.attemptUnknown,
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
-          driver: result.delegated ? "a delegated agent" : "not delegated yet — no agent has claimed this run",
+          driver: result.delegated
+            ? "a delegated agent has claimed this persisted unfinished run; RUNNING does not report process activity. Only the authorized driver may complete or delegate phase work, then run headsign next"
+            : "no delegated-agent claim is recorded; RUNNING does not identify a main-session driver or report process activity. Only the authorized driver may complete or delegate phase work, then run headsign next",
           // All three conditional, and all genuinely ABSENT rather than present-and-empty
           // when there is nothing to say — which is what makes a run on which none of them has
           // happened print exactly what `status` printed before any of these lines existed.
@@ -236,6 +238,8 @@ function reportStatus(result: engine.StatusResult): never {
           // what it printed before this line existed.
           ...(result.graphUnreported !== undefined && { graphUnreported: result.graphUnreported }),
           ...(result.description !== undefined && { description: result.description }),
+          ...(result.optimizationPath !== null && { optimizationPath: result.optimizationPath }),
+          optimizationAssessed: result.optimizationAssessed,
         }),
         0,
       );
@@ -256,7 +260,10 @@ function reportStatus(result: engine.StatusResult): never {
 // resolved from the environment this file hands over — the read itself is stophook.ts's.
 
 function cmdStart(args: string[]): never {
-  return reportStart(engine.start(process.cwd(), resolveWorkflowPath(args), localIso(new Date()), process.env));
+  const occurrences = args.filter((arg) => arg === "--no-optimize").length;
+  if (occurrences > 1) errorExit("--no-optimize may be given only once");
+  const workflowArgs = args.filter((arg) => arg !== "--no-optimize");
+  return reportStart(engine.start(process.cwd(), resolveWorkflowPath(workflowArgs), localIso(new Date()), process.env, occurrences === 0));
 }
 
 // `next`'s one flag, parsed the same way `resolveWorkflowPath` above parses `--workflow`:
@@ -393,7 +400,7 @@ function cmdVersion(): never {
 const HELP_TEXT = `headsign — a tiny phase gate for coding agents
 
 Usage:
-  headsign start [name] [--workflow <path>]     start a run (name → .headsign/<name>.yaml) — writes state.json, log, .gitignore; wipes and recreates tmp/; deletes the entry phase's clear: paths
+  headsign start [name] [--workflow <path>] [--no-optimize]  start a run; optimization is enabled unless opted out — writes state.json, log, .gitignore; wipes and recreates tmp/; deletes the entry phase's clear: paths
   headsign next [--accept-graph-change]         run the current gate and answer with a verdict — writes state.json, log, lock; on advancing, deletes the next phase's clear: paths
   headsign abort [reason]                       end the run for good (records why) — writes state.json, log
   headsign status                               read-only view of the current run (never judges)

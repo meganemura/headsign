@@ -24,6 +24,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import * as workflowMod from "./workflow.ts";
 // The module namespace `state` is shadowed inside the pure functions below, whose own
 // parameter for the run record is also called `state`. Those functions never touch the
@@ -37,6 +38,7 @@ import * as render from "./render.ts";
 // itself never inspected (ADR-0008) — belongs with the hooks that honour it, and a second copy
 // here could drift into reporting an opt-out that the hooks do not act on.
 import * as stophook from "./stophook.ts";
+import * as optimization from "./optimization.ts";
 import type { Workflow, Route } from "./workflow.ts";
 import type { State, UnheldCause, LastFailure } from "./state.ts";
 import type { GateVerdict, CheckFailure, RouteResolution, GateProgress } from "./gate.ts";
@@ -57,19 +59,19 @@ export type Outcome =
   // `acceptedGraphChanges` is set only when this run accepted a change (see reconcileGraphPin
   // below), through the same spread `routedBy` uses — ADR-0023 §8's byte-identical-when-zero
   // guarantee.
-  | { kind: "COMPLETE"; acceptedGraphChanges?: number }
+  | { kind: "COMPLETE"; acceptedGraphChanges?: number; optimization?: string }
   // `repeats`: how many consecutive times (state.LastFailure's field, computed by
   // sameFailureStreak below) this exact failure has just happened — always a real number here,
   // never carried over from an old record the way `state.last_failure.repeats` sometimes is,
   // because this Outcome is always built fresh off a live gate verdict.
-  | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; repeats: number }
+  | { kind: "RETRY"; phase: string; attempt: number; maxAttempts?: number; failure: FailureInfo; repeats: number; diagnoseFriction?: boolean }
   // `failedCheck`: which check went red, on the one road to ESCALATE that knows. `on_fail:
   // escalate` ends the run on a single failure, so `last_failure` is null by the time anyone
   // reads the record (ADR-0012 §3 keeps that field for a run still sitting in its phase), and
   // the only other copy of the check's name is a stderr line the caller may not have kept.
   // Absent on every other road: the ceiling and the graph-change report name no check, and
   // exhaustion's own sentence already speaks about the streak of them.
-  | { kind: "ESCALATE"; reason: string; failedCheck?: { check: string; exitCode: number | "timeout" } }
+  | { kind: "ESCALATE"; reason: string; failedCheck?: { check: string; exitCode: number | "timeout" }; optimization?: string; diagnoseFriction?: boolean }
   | { kind: "ABORT"; reason: string }
   // Constructed only by the lap below (the `ready` probe, short-circuited before the gate
   // runs — same treatment as the phase-missing guard). step() never produces this: it stays
@@ -83,6 +85,7 @@ export type Outcome =
 // and the caller reads its `reason` (the wider union has arms without one). Same idiom as
 // ResolvedRoute above: narrow the type rather than make the call site re-check what it knows.
 export type CeilingOutcome = Extract<Outcome, { kind: "ESCALATE" }>;
+type TerminalOutcome = Extract<Outcome, { kind: "COMPLETE" | "ESCALATE" | "ABORT" }>;
 
 // The three exported entry points below are TOTAL: every input either produces an answer or
 // is refused by name. That is deliberate, and it is what makes them safe to export.
@@ -219,7 +222,7 @@ export function checkIterationLimit(workflow: Workflow, state: State): CeilingOu
   return { kind: "ESCALATE", reason };
 }
 
-export function terminalOutcome(state: State): Outcome {
+export function terminalOutcome(state: State): TerminalOutcome {
   // Without this a run that is still going falls past both arms below and comes back as
   // ABORT with an empty reason — a still-running run reported as one somebody ended.
   if (state.status === "running") {
@@ -332,6 +335,9 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
   // reads `state.last_failure`, which the exhaustion branch is about to null out, so it has to
   // run before that happens either way.
   const repeats = sameFailureStreak(state.last_failure, phaseName, failure);
+  const optimizationMetadata = optimization.metadata(state);
+  const diagnoseFriction = repeats >= 2 && optimizationMetadata !== null && !optimizationMetadata.friction_noticed;
+  if (diagnoseFriction) next.optimization = { ...optimizationMetadata, friction_noticed: true };
 
   const maxAttempts = phase.max_attempts;
   // Exhaustion always escalates — ADR-0014 §2's "spent budget is the canonical moment to ask
@@ -354,7 +360,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
     next.last_failure = null;
     next.end_reason = reason;
     next.status = "escalated";
-    return { state: next, outcome: { kind: "ESCALATE", reason } };
+    return { state: next, outcome: { kind: "ESCALATE", reason, ...(diagnoseFriction && { diagnoseFriction: true }) } };
   }
 
   const onFail = phase.on_fail ?? "retry";
@@ -370,7 +376,7 @@ export function step(workflow: Workflow, state: State, gateResult: GateVerdict, 
       ...(failure.elapsedSeconds !== undefined && { elapsed_seconds: failure.elapsedSeconds }),
       repeats,
     };
-    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], ...(maxAttempts !== undefined && { maxAttempts }), failure, repeats } };
+    return { state: next, outcome: { kind: "RETRY", phase: phaseName, attempt: next.attempts[phaseName], ...(maxAttempts !== undefined && { maxAttempts }), failure, repeats, ...(diagnoseFriction && { diagnoseFriction: true }) } };
   }
 
   next.last_failure = null;
@@ -455,7 +461,7 @@ export interface StatusFailure { check: string; run: string; exitCode: number | 
 
 export type StatusResult =
   | Refused
-  | { kind: "TERMINAL"; status: Exclude<State["status"], "running">; workflowName: string; endReason: string | null }
+  | { kind: "TERMINAL"; status: Exclude<State["status"], "running">; workflowName: string; endReason: string | null; optimizationPath: string | null; optimizationAssessed: boolean }
   | {
       kind: "RUNNING";
       phase: string;
@@ -507,6 +513,8 @@ export type StatusResult =
       // below): the workflow could not be read, or no longer defines this phase. render.ts
       // decides nothing about when to show it; it prints the block only when this is present.
       description?: string;
+      optimizationPath: string | null;
+      optimizationAssessed: boolean;
     };
 
 // Shared by next, claim and status (ADR-0004/0008): all three are cwd-only lookups of the
@@ -528,7 +536,7 @@ function ensureHeadsignGitignored(cwd: string): void {
   const gitignorePath = path.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath);
   let content = original;
-  for (const entry of ["state.json", "lock", "log", "tmp/"]) {
+  for (const entry of ["state.json", "lock", "log", "tmp/", "optimization/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
     const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
     content = `${content}${sep}${entry}\n`;
@@ -635,70 +643,77 @@ function driveStamp(env: NodeJS.ProcessEnv, nowIso: string): State["last_drive"]
   return session === null ? null : { session, at: nowIso };
 }
 
-export function start(cwd: string, workflowPath: string, nowIso: string, env: NodeJS.ProcessEnv): StartResult {
+export function start(cwd: string, workflowPath: string, nowIso: string, env: NodeJS.ProcessEnv, optimize = true): StartResult {
   const loaded = workflowMod.load(workflowPath);
   const wf = loaded.workflow;
   if (!wf) return { warnings: null, result: { kind: "WORKFLOW_INVALID", workflowPath, errors: loaded.errors } };
   const warnings = loaded.warnings.length > 0 ? { workflowPath, warnings: loaded.warnings } : null;
 
-  const existing = state.readState(cwd);
-  if (existing && existing.status === "running") {
-    return {
-      warnings,
-      result: {
-        kind: "REFUSED",
-        message: `a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`,
-      },
-    };
-  }
+  const lock = state.acquireLock(cwd);
+  if (!lock.ok) return { warnings, result: { kind: "REFUSED", message: `another headsign operation is running in this repo (pid ${lock.pid}); wait for it to finish.` } };
+  try {
+    const existing = state.readState(cwd);
+    if (existing && existing.status === "running") {
+      return {
+        warnings,
+        result: {
+          kind: "REFUSED",
+          message: `a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign status\` to inspect it. If authorized, complete or delegate the phase work before \`headsign next\`. Use \`headsign abort\` to stop the run.`,
+        },
+      };
+    }
 
-  // A new run always begins undelegated — ADR-0013: the CLI cannot learn who is running it at
-  // agent granularity. Until claimed, both hooks nudge whoever stopped — ADR-0008's
-  // Consequences, "behaves exactly as it did before this ADR."
-  const freshState: State = {
-    workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
-    attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
-    driver_agent: null,
+    // A new run always begins undelegated — ADR-0013: the CLI cannot learn who is running it at
+    // agent granularity. Until claimed, both hooks nudge whoever stopped — ADR-0008's
+    // Consequences, "behaves exactly as it did before this ADR."
+    const freshState: State = {
+      workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
+      attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
+      driver_agent: null,
     // No stop has been processed yet, and `start` must not invent one: the field is written only
     // by the stop-boundary hooks, at a stop they actually saw.
-    last_stop: null,
+      last_stop: null,
     // Beside `last_stop`, never inside it (state.ts's `last_drive` doc): this answers who
     // DROVE the run — ran the command — a different question from what happened at a turn
     // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
     // run started outside Claude Code, not damage.
-    last_drive: driveStamp(env, nowIso),
+      last_drive: driveStamp(env, nowIso),
     // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
     // so — the two belong to the same moment (ADR-0031).
-    phase_entered_at: nowIso,
+      phase_entered_at: nowIso,
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
-    graph_fingerprint: workflowMod.graphFingerprint(wf, wf.entry),
-    graph_change_reported: null,
-    accepted_graph_changes: 0,
-  };
-  state.writeState(cwd, freshState);
-  ensureHeadsignGitignored(cwd);
+      graph_fingerprint: workflowMod.graphFingerprint(wf, wf.entry),
+      graph_change_reported: null,
+      accepted_graph_changes: 0,
+      optimization: optimize ? { id: randomUUID(), stop_requested: false, friction_noticed: false } : null,
+    };
+    state.writeState(cwd, freshState);
+    ensureHeadsignGitignored(cwd);
   // Record the run's first transition — ADR-0024: the log is never cleared here, appended
   // only, and survives a restart. This `start` line is what marks where the new run begins.
-  state.appendLog(cwd, render.logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
+    state.appendLog(cwd, render.logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
   // Every run starts with a clean scratch dir — ADR-0004's start/abort details section.
-  const tmpDir = path.join(cwd, ".headsign", "tmp");
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  fs.mkdirSync(tmpDir, { recursive: true });
-  const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
+    const tmpDir = path.join(cwd, ".headsign", "tmp");
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+    return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
+  } finally {
+    state.releaseLock(cwd);
+  }
 }
 
-// The answer a terminal (non-"running") record gets, with one exception: `--accept-graph-change`
-// on a run that has already ended has nothing to accept either, so it refuses the same way it
-// would mid-run rather than silently reprinting the terminal outcome as if the flag had been
-// ignored — the flag must never quietly do what a bare `next` does. Shared by both of `next`'s
-// terminal checks below (the pre-lock read and the re-read under it) so the two cannot answer
-// this one question differently.
-function terminalAnswer(current: State, acceptGraphChange: boolean): NextResult {
+// Shared by both terminal checks so a pre-lock read and a re-read under lock answer alike.
+function terminalAnswerWithOptimization(cwd: string, current: State, acceptGraphChange: boolean): NextResult {
   if (acceptGraphChange) return { kind: "REFUSED", message: NOTHING_TO_ACCEPT_MESSAGE };
-  return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+  const outcome = terminalOutcome(current);
+  if (outcome.kind === "ABORT") return { kind: "ANSWERED", outcome, workflowName: current.workflow };
+  const guidance = optimization.guidance(cwd, current);
+  if (guidance === null) return { kind: "ANSWERED", outcome, workflowName: current.workflow };
+  if (outcome.kind === "COMPLETE") return { kind: "ANSWERED", outcome: { ...outcome, optimization: guidance }, workflowName: current.workflow };
+  return { kind: "ANSWERED", outcome: { ...outcome, optimization: guidance }, workflowName: current.workflow };
 }
 
 // One lap of `headsign next`: read the record, check the run is still going, load the
@@ -717,7 +732,7 @@ function terminalAnswer(current: State, acceptGraphChange: boolean): NextResult 
 export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, acceptGraphChange = false, onProgress?: (p: GateProgress) => void): NextResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
-  if (current.status !== "running") return terminalAnswer(current, acceptGraphChange);
+  if (current.status !== "running") return terminalAnswerWithOptimization(cwd, current, acceptGraphChange);
 
   const loaded = workflowMod.load(current.workflow_path);
   if (!loaded.workflow) return { kind: "WORKFLOW_INVALID", workflowPath: current.workflow_path, errors: loaded.errors };
@@ -746,7 +761,7 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, accept
     // adoption gate. The stamp just below is last_drive, answering a different question
     // (ADR-0027 §4).
 
-    if (fresh.status !== "running") return terminalAnswer(fresh, acceptGraphChange);
+    if (fresh.status !== "running") return terminalAnswerWithOptimization(cwd, fresh, acceptGraphChange);
 
     // Stamp who ran this lap (ADR-0027 §5): the two commands a driver runs, `start` and every
     // `next` that reaches this point, record who ran them — including PENDING and the global
@@ -1025,9 +1040,14 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
   }
   state.writeState(cwd, nextState);
   state.appendLog(cwd, render.logLine(nowIso, outcome, nextState, current.phase));
+  let reportedOutcome = outcome;
+  if ((outcome.kind === "COMPLETE" || (outcome.kind === "ESCALATE" && nextState.status === "escalated"))) {
+    const guidance = optimization.guidance(cwd, nextState);
+    if (guidance !== null) reportedOutcome = { ...outcome, optimization: guidance };
+  }
   // Both are undefined unless the outcome was an ADVANCE, and a non-advancing answer must
   // carry no key for either rather than two keys holding nothing.
-  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, ...(cleared !== undefined && { cleared }), ...(notCleared !== undefined && { notCleared }) };
+  return { kind: "ANSWERED", outcome: reportedOutcome, workflowName: wf.name, wf, ...(cleared !== undefined && { cleared }), ...(notCleared !== undefined && { notCleared }) };
 }
 
 export function abort(cwd: string, reason: string, nowIso: string): AbortResult {
@@ -1112,7 +1132,8 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
 
   if (current.status !== "running") {
-    return { kind: "TERMINAL", status: current.status, workflowName: current.workflow, endReason: current.end_reason };
+    const assessmentPath = optimization.assessmentPath(cwd, current);
+    return { kind: "TERMINAL", status: current.status, workflowName: current.workflow, endReason: current.end_reason, optimizationPath: assessmentPath, optimizationAssessed: optimization.hasAssessment(cwd, current) };
   }
 
   const { workflow: wf } = workflowMod.load(current.workflow_path);
@@ -1178,5 +1199,7 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
     ...(phase?.description !== undefined && { description: phase.description }),
+    optimizationPath: optimization.assessmentPath(cwd, current),
+    optimizationAssessed: optimization.hasAssessment(cwd, current),
   };
 }

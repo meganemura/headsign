@@ -143,7 +143,7 @@ export function pending(phase: string, description: string, ready: string): stri
 // naming the count, and the closing sentence itself, which says what changed and what it means
 // (check the check, not "fix and retry") rather than asserting the gate cannot pass — that
 // would need running an arbitrary shell to know, and is not this function's business.
-export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string; repeats?: number }): string {
+export function retry(o: Failure & { phase: string; attempt: number; maxAttempts?: number; outputTail: string; repeats?: number; diagnoseFriction?: boolean }): string {
   const n = o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   // Right after the gate-failed line, ahead of the repeats line: this one is about the gate's
   // own shape (how many of its checks this lap reached), the repeats line is about history
@@ -151,6 +151,7 @@ export function retry(o: Failure & { phase: string; attempt: number; maxAttempts
   const notRun = notRunLine(o.checksRun, o.checksTotal, o.notRunChecks);
   const repeating = o.repeats !== undefined && o.repeats >= 2;
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time — ${o.repeats} in a row ---\n` : "";
+  const diagnosticLine = o.diagnoseFriction ? "Is the work unfinished, or does this procedure need repair? Record useful evidence for the optimize skill.\n" : "";
   // Said only where a budget exists to run out of: a phase with no `max_attempts` has nothing
   // to spend, so asserting a run-ending consequence there would be a claim this function cannot
   // back up. Starting over begins at the workflow's entry phase (engine.ts's `start`), which is
@@ -166,7 +167,7 @@ export function retry(o: Failure & { phase: string; attempt: number; maxAttempts
   const closing = repeating
     ? `This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.${exhaustionClause}\n`
     : "Fix the failure above, then run `headsign next` again.\n";
-  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${notRun}${repeatLine}${o.outputTail}\n${closing}`;
+  return `RETRY ${n} ${o.phase}\n--- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---\n${notRun}${repeatLine}${o.outputTail}\n${diagnosticLine}${closing}`;
 }
 
 // One line naming what this lap's gate never got to, right after the gate-failed line: `runGate`
@@ -184,15 +185,18 @@ function notRunLine(checksRun?: number, checksTotal?: number, notRunChecks?: str
 
 // ADR-0016 §5 allows a run to rewrite its own workflow while running; ADR-0023 §8 is why the
 // count is reported HERE, on COMPLETE, rather than only in the gitignored log.
-export function complete(name: string, acceptedGraphChanges?: number): string {
+export function complete(name: string, acceptedGraphChanges?: number, optimization?: string): string {
   const accepted = acceptedGraphChanges ?? 0;
   const changeLine =
     accepted > 0 ? `This run accepted ${accepted} ${accepted === 1 ? "change" : "changes"} to its own workflow rules while it was running.\n` : "";
-  return `COMPLETE\nWorkflow '${name}' finished.\n${changeLine}`;
+  const optimizationLine = optimization === undefined ? "" : `${optimization}\n`;
+  return `COMPLETE\nWorkflow '${name}' finished.\n${changeLine}${optimizationLine}`;
 }
 
-export function escalate(reason: string): string {
-  return `ESCALATE ${reason}\nHuman judgment needed. Report the situation to the user and ask for instructions.\n`;
+export function escalate(reason: string, optimization?: string, diagnoseFriction = false): string {
+  const optimizationLine = optimization === undefined ? "" : `${optimization}\n`;
+  const diagnosticLine = diagnoseFriction ? "Is the work unfinished, or does this procedure need repair? Record useful evidence for the optimize skill.\n" : "";
+  return `ESCALATE ${reason}\nHuman judgment needed. Report the situation to the user and ask for instructions.\n${diagnosticLine}${optimizationLine}`;
 }
 
 export function abort(reason: string): string {
@@ -253,7 +257,7 @@ export function statusRunning(o: {
   lastFailure?: (Failure & { outputTail: string }) | null;
   // Two values, worded by cli.ts's reportStatus and handed straight through — see it for
   // why neither says who is reading (ADR-0013) and why the line is worth printing at all.
-  driver: "a delegated agent" | "not delegated yet — no agent has claimed this run";
+  driver: string;
   // What headsign did with the last turn end it could attribute to this run, straight off the
   // record (no log parsing). Optional, so a run on which no stop has been processed prints what
   // `status` has always printed, to the byte. The wordings below say what HEADSIGN did and, for
@@ -308,6 +312,8 @@ export function statusRunning(o: {
   // line, because a description can run to several lines and must not sit in the middle of
   // the single-line lines above it.
   description?: string;
+  optimizationPath?: string;
+  optimizationAssessed?: boolean;
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
   const lastFailureBlock = o.lastFailure
@@ -360,8 +366,9 @@ export function statusRunning(o: {
   // The only line here that is about the CALLER rather than the run — last among the
   // conditional lines above the phase block, which comes after everything else in turn.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
+  const optimizationLine = o.optimizationPath ? `optimization: ${o.optimizationAssessed ? "assessed" : "unassessed"} — ${o.optimizationPath}\n` : "";
   const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
+  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for
@@ -399,9 +406,10 @@ function lastStopWording(o: { disposition: "nudged" | "unheld" | "paused" | "sta
   return LAST_STOP_WORDING[o.disposition];
 }
 
-export function statusTerminal(status: "complete" | "escalated" | "aborted", workflowName: string, endReason: string | null): string {
+export function statusTerminal(status: "complete" | "escalated" | "aborted", workflowName: string, endReason: string | null, optimizationPath?: string | null, optimizationAssessed = false): string {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}\n` : "";
-  return `${status.toUpperCase()}\nworkflow: ${workflowName}\n${reasonLine}`;
+  const optimizationLine = optimizationPath === undefined || optimizationPath === null ? "" : `optimization: ${optimizationAssessed ? "assessed" : "unassessed"} — ${optimizationPath}\n`;
+  return `${status.toUpperCase()}\nworkflow: ${workflowName}\n${reasonLine}${optimizationLine}`;
 }
 
 // What a `.headsign/log` line can be about: every real transition engine.ts logs, plus the

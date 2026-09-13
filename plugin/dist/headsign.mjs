@@ -114,17 +114,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path5) {
-      const ctrl = callVisitor(key, node, visitor, path5);
+    function visit_(key, node, visitor, path6) {
+      const ctrl = callVisitor(key, node, visitor, path6);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path5, ctrl);
-        return visit_(key, ctrl, visitor, path5);
+        replaceNode(key, path6, ctrl);
+        return visit_(key, ctrl, visitor, path6);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path5 = Object.freeze(path5.concat(node));
+          path6 = Object.freeze(path6.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path5);
+            const ci = visit_(i, node.items[i], visitor, path6);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -135,13 +135,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path5 = Object.freeze(path5.concat(node));
-          const ck = visit_("key", node.key, visitor, path5);
+          path6 = Object.freeze(path6.concat(node));
+          const ck = visit_("key", node.key, visitor, path6);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path5);
+          const cv = visit_("value", node.value, visitor, path6);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -162,17 +162,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path5) {
-      const ctrl = await callVisitor(key, node, visitor, path5);
+    async function visitAsync_(key, node, visitor, path6) {
+      const ctrl = await callVisitor(key, node, visitor, path6);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path5, ctrl);
-        return visitAsync_(key, ctrl, visitor, path5);
+        replaceNode(key, path6, ctrl);
+        return visitAsync_(key, ctrl, visitor, path6);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path5 = Object.freeze(path5.concat(node));
+          path6 = Object.freeze(path6.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path5);
+            const ci = await visitAsync_(i, node.items[i], visitor, path6);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -183,13 +183,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path5 = Object.freeze(path5.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path5);
+          path6 = Object.freeze(path6.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path6);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path5);
+          const cv = await visitAsync_("value", node.value, visitor, path6);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -216,23 +216,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path5) {
+    function callVisitor(key, node, visitor, path6) {
       if (typeof visitor === "function")
-        return visitor(key, node, path5);
+        return visitor(key, node, path6);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path5);
+        return visitor.Map?.(key, node, path6);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path5);
+        return visitor.Seq?.(key, node, path6);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path5);
+        return visitor.Pair?.(key, node, path6);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path5);
+        return visitor.Scalar?.(key, node, path6);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path5);
+        return visitor.Alias?.(key, node, path6);
       return void 0;
     }
-    function replaceNode(key, path5, node) {
-      const parent = path5[path5.length - 1];
+    function replaceNode(key, path6, node) {
+      const parent = path6[path6.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -842,10 +842,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path5, value) {
+    function collectionFromPath(schema, path6, value) {
       let v = value;
-      for (let i = path5.length - 1; i >= 0; --i) {
-        const k = path5[i];
+      for (let i = path6.length - 1; i >= 0; --i) {
+        const k = path6[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -864,7 +864,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path5) => path5 == null || typeof path5 === "object" && !!path5[Symbol.iterator]().next().done;
+    var isEmptyPath = (path6) => path6 == null || typeof path6 === "object" && !!path6[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -894,11 +894,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path5, value) {
-        if (isEmptyPath(path5))
+      addIn(path6, value) {
+        if (isEmptyPath(path6))
           this.add(value);
         else {
-          const [key, ...rest] = path5;
+          const [key, ...rest] = path6;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -912,8 +912,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path5) {
-        const [key, ...rest] = path5;
+      deleteIn(path6) {
+        const [key, ...rest] = path6;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -927,8 +927,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path5, keepScalar) {
-        const [key, ...rest] = path5;
+      getIn(path6, keepScalar) {
+        const [key, ...rest] = path6;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -946,8 +946,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path5) {
-        const [key, ...rest] = path5;
+      hasIn(path6) {
+        const [key, ...rest] = path6;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -957,8 +957,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path5, value) {
-        const [key, ...rest] = path5;
+      setIn(path6, value) {
+        const [key, ...rest] = path6;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3473,9 +3473,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path5, value) {
+      addIn(path6, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path5, value);
+          this.contents.addIn(path6, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3550,14 +3550,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path5) {
-        if (Collection.isEmptyPath(path5)) {
+      deleteIn(path6) {
+        if (Collection.isEmptyPath(path6)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path5) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path6) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3572,10 +3572,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path5, keepScalar) {
-        if (Collection.isEmptyPath(path5))
+      getIn(path6, keepScalar) {
+        if (Collection.isEmptyPath(path6))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path5, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path6, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3586,10 +3586,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path5) {
-        if (Collection.isEmptyPath(path5))
+      hasIn(path6) {
+        if (Collection.isEmptyPath(path6))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path5) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path6) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3606,13 +3606,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path5, value) {
-        if (Collection.isEmptyPath(path5)) {
+      setIn(path6, value) {
+        if (Collection.isEmptyPath(path6)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path5), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path6), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path5, value);
+          this.contents.setIn(path6, value);
         }
       }
       /**
@@ -5572,9 +5572,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path5) => {
+    visit.itemAtPath = (cst, path6) => {
       let item = cst;
-      for (const [field, index] of path5) {
+      for (const [field, index] of path6) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5583,23 +5583,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path5) => {
-      const parent = visit.itemAtPath(cst, path5.slice(0, -1));
-      const field = path5[path5.length - 1][0];
+    visit.parentCollection = (cst, path6) => {
+      const parent = visit.itemAtPath(cst, path6.slice(0, -1));
+      const field = path6[path6.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path5, item, visitor) {
-      let ctrl = visitor(item, path5);
+    function _visit(path6, item, visitor) {
+      let ctrl = visitor(item, path6);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path5.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path6.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5610,10 +5610,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path5);
+            ctrl = ctrl(item, path6);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path5) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path6) : ctrl;
     }
     exports.visit = visit;
   }
@@ -6915,14 +6915,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs7 = this.flowScalar(this.type);
+              const fs8 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map.items.push({ start: start3, key: fs7, sep: [] });
+                map.items.push({ start: start3, key: fs8, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs7);
+                this.stack.push(fs8);
               } else {
-                Object.assign(it, { key: fs7, sep: [] });
+                Object.assign(it, { key: fs8, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -7050,13 +7050,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs7 = this.flowScalar(this.type);
+              const fs8 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs7, sep: [] });
+                fc.items.push({ start: [], key: fs8, sep: [] });
               else if (it.sep)
-                this.stack.push(fs7);
+                this.stack.push(fs8);
               else
-                Object.assign(it, { key: fs7, sep: [] });
+                Object.assign(it, { key: fs8, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -7365,7 +7365,7 @@ var require_dist = __commonJS({
 });
 
 // src/cli.ts
-import fs6 from "node:fs";
+import fs7 from "node:fs";
 
 // src/workflow.ts
 var import_yaml = __toESM(require_dist(), 1);
@@ -7390,12 +7390,12 @@ function rejectUnknownKeys(level, m, where, errors) {
     if (!allowed.includes(key)) errors.push(`${where}unknown key '${key}' (allowed: ${allowed.join(", ")})`);
   }
 }
-function load(path5) {
+function load(path6) {
   let doc;
   try {
-    doc = (0, import_yaml.parse)(fs.readFileSync(path5, "utf8"));
+    doc = (0, import_yaml.parse)(fs.readFileSync(path6, "utf8"));
   } catch (err) {
-    return { workflow: null, errors: [`could not read/parse ${path5}: ${err.message}`], warnings: [] };
+    return { workflow: null, errors: [`could not read/parse ${path6}: ${err.message}`], warnings: [] };
   }
   const { errors, warnings } = validate(doc);
   return errors.length > 0 ? { workflow: null, errors, warnings } : { workflow: doc, errors: [], warnings };
@@ -7699,8 +7699,9 @@ function isAlive(pid) {
 }
 
 // src/engine.ts
-import fs5 from "node:fs";
-import path4 from "node:path";
+import fs6 from "node:fs";
+import path5 from "node:path";
+import { randomUUID } from "node:crypto";
 
 // src/gate.ts
 import { spawnSync } from "node:child_process";
@@ -7845,31 +7846,37 @@ function retry(o) {
   const repeating = o.repeats !== void 0 && o.repeats >= 2;
   const repeatLine = repeating ? `--- same check, same exit code, same output as last time \u2014 ${o.repeats} in a row ---
 ` : "";
+  const diagnosticLine = o.diagnoseFriction ? "Is the work unfinished, or does this procedure need repair? Record useful evidence for the optimize skill.\n" : "";
   const exhaustionClause = repeating && o.maxAttempts !== void 0 ? " Once attempts run out, this run ends, and a new one starts over from the entry phase." : "";
   const closing = repeating ? `This check produced exactly what it produced last time. If you changed something since, this check is not reading it; if you did not, work out whether this gate can pass at all before spending the rest of your attempts.${exhaustionClause}
 ` : "Fix the failure above, then run `headsign next` again.\n";
   return `RETRY ${n} ${o.phase}
 --- gate failed: ${o.check} (${clause(o.run, o.exitCode, o.timeoutSeconds, o.elapsedSeconds)}) ---
 ${notRun}${repeatLine}${o.outputTail}
-${closing}`;
+${diagnosticLine}${closing}`;
 }
 function notRunLine(checksRun, checksTotal, notRunChecks) {
   if (checksRun === void 0 || checksTotal === void 0 || notRunChecks === void 0 || checksRun >= checksTotal) return "";
   return `--- ${checksRun} of ${checksTotal} checks ran; ${notRunChecks.length} not run: ${notRunChecks.join(", ")} ---
 `;
 }
-function complete(name, acceptedGraphChanges2) {
+function complete(name, acceptedGraphChanges2, optimization) {
   const accepted = acceptedGraphChanges2 ?? 0;
   const changeLine = accepted > 0 ? `This run accepted ${accepted} ${accepted === 1 ? "change" : "changes"} to its own workflow rules while it was running.
 ` : "";
+  const optimizationLine = optimization === void 0 ? "" : `${optimization}
+`;
   return `COMPLETE
 Workflow '${name}' finished.
-${changeLine}`;
+${changeLine}${optimizationLine}`;
 }
-function escalate(reason) {
+function escalate(reason, optimization, diagnoseFriction = false) {
+  const optimizationLine = optimization === void 0 ? "" : `${optimization}
+`;
+  const diagnosticLine = diagnoseFriction ? "Is the work unfinished, or does this procedure need repair? Record useful evidence for the optimize skill.\n" : "";
   return `ESCALATE ${reason}
 Human judgment needed. Report the situation to the user and ask for instructions.
-`;
+${diagnosticLine}${optimizationLine}`;
 }
 function abort(reason) {
   return `ABORT ${reason || "(no reason given)"}
@@ -7883,13 +7890,13 @@ function validateOk(name, phaseCount) {
   return `OK: workflow '${name}' (${phaseCount} phases)
 `;
 }
-function validateFail(path5, errors) {
-  return `INVALID: ${path5}
+function validateFail(path6, errors) {
+  return `INVALID: ${path6}
 ${errors.map((e) => `- ${e}
 `).join("")}`;
 }
-function validateWarnings(path5, warnings) {
-  return `WARNING: ${path5}
+function validateWarnings(path6, warnings) {
+  return `WARNING: ${path6}
 ${warnings.map((w) => `- ${w}
 `).join("")}`;
 }
@@ -7916,13 +7923,15 @@ ${o.lastFailure.outputTail}
   const enteredLine = o.phaseEnteredAt ? `entered: ${o.phaseEnteredAt} \u2014 when this run last entered the phase above
 ` : "";
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
+  const optimizationLine = o.optimizationPath ? `optimization: ${o.optimizationAssessed ? "assessed" : "unassessed"} \u2014 ${o.optimizationPath}
+` : "";
   const phaseBlock = o.description !== void 0 ? `--- phase: ${o.phase} ---
 ${o.description}
 ` : "";
   return `RUNNING ${o.phase} (attempt ${n})
 workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
-${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${phaseBlock}`;
+${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -7941,12 +7950,14 @@ function lastStopWording(o) {
   if (o.disposition === "unheld") return UNHELD_WORDING[o.cause ?? "stop_hook_active"];
   return LAST_STOP_WORDING[o.disposition];
 }
-function statusTerminal(status2, workflowName, endReason) {
+function statusTerminal(status2, workflowName, endReason, optimizationPath, optimizationAssessed = false) {
   const reasonLine = endReason !== null && endReason.length > 0 ? `reason: ${endReason}
 ` : "";
+  const optimizationLine = optimizationPath === void 0 || optimizationPath === null ? "" : `optimization: ${optimizationAssessed ? "assessed" : "unassessed"} \u2014 ${optimizationPath}
+`;
   return `${status2.toUpperCase()}
 workflow: ${workflowName}
-${reasonLine}`;
+${reasonLine}${optimizationLine}`;
 }
 function logLine(ts, event, state, prevPhase) {
   const phase = state.phase;
@@ -8041,8 +8052,8 @@ function logDetail(event, prevPhase) {
 }
 
 // src/stophook.ts
-import fs4 from "node:fs";
-import path3 from "node:path";
+import fs5 from "node:fs";
+import path4 from "node:path";
 
 // src/runfinder.ts
 import fs3 from "node:fs";
@@ -8058,8 +8069,75 @@ function findRunDir(startDir) {
   }
 }
 
+// src/optimization.ts
+import fs4 from "node:fs";
+import path3 from "node:path";
+var DISPOSITIONS = ["NO_CHANGE", "APPLIED", "PROPOSED", "DEFERRED"];
+var ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function metadata(record) {
+  const value = record.optimization;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const candidate = value;
+  if (typeof candidate.id !== "string" || !ID_PATTERN.test(candidate.id)) return null;
+  if (typeof candidate.stop_requested !== "boolean" || typeof candidate.friction_noticed !== "boolean") return null;
+  return { id: candidate.id, stop_requested: candidate.stop_requested, friction_noticed: candidate.friction_noticed };
+}
+function assessmentPath(cwd, record) {
+  const value = metadata(record);
+  return value === null ? null : path3.join(cwd, ".headsign", "optimization", value.id, "assessment.md");
+}
+function assessmentState(cwd, record) {
+  const file = assessmentPath(cwd, record);
+  if (file === null) return "unassessed";
+  try {
+    const details = fs4.statSync(file);
+    if (!details.isFile() || details.size > 65536) return "unassessed";
+    const normalized = fs4.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+    const newline = normalized.indexOf("\n");
+    if (newline < 0) return "unassessed";
+    const first = normalized.slice(0, newline);
+    const rest = normalized.slice(newline + 1).trim();
+    return DISPOSITIONS.includes(first) && rest.length > 0 ? "assessed" : "unassessed";
+  } catch (error) {
+    return error.code === "ENOENT" ? "unassessed" : "unavailable";
+  }
+}
+function hasAssessment(cwd, record) {
+  return assessmentState(cwd, record) === "assessed";
+}
+function guidance(cwd, record) {
+  const file = assessmentPath(cwd, record);
+  if (file === null || hasAssessment(cwd, record)) return null;
+  return `Use the bundled \`optimize\` skill, then record its disposition at ${file}.`;
+}
+
 // src/stophook.ts
 var MAX_STOP_NUDGES = 5;
+var OPTIMIZATION_MESSAGE = (assessmentPath2) => `Use the bundled \`optimize\` skill for this finished run. Record NO_CHANGE, APPLIED, PROPOSED, or DEFERRED at ${assessmentPath2}.`;
+function requestTerminalOptimization(runDir, seen, owns) {
+  const seenMetadata = metadata(seen);
+  if (seenMetadata === null || seenMetadata.stop_requested || assessmentState(runDir, seen) !== "unassessed") return { block: false };
+  const lock = acquireLock(runDir);
+  if (!lock.ok) return { block: false };
+  try {
+    const fresh = readState(runDir);
+    if (!fresh || fresh.status !== "complete" && fresh.status !== "escalated") return { block: false };
+    const freshMetadata = metadata(fresh);
+    if (freshMetadata === null || freshMetadata.id !== seenMetadata.id || freshMetadata.stop_requested) return { block: false };
+    if (!owns(fresh) || assessmentState(runDir, fresh) !== "unassessed") return { block: false };
+    try {
+      const note = fs5.readFileSync(path4.join(runDir, ".headsign", "tmp", "stop-note"), "utf8");
+      if (note.trim().length > 0) return { block: false };
+    } catch (error) {
+      if (error.code !== "ENOENT") return { block: false };
+    }
+    writeState(runDir, { ...fresh, optimization: { ...freshMetadata, stop_requested: true } });
+    const assessmentPath2 = assessmentPath(runDir, fresh);
+    return assessmentPath2 === null ? { block: false } : { block: true, message: OPTIMIZATION_MESSAGE(assessmentPath2) };
+  } finally {
+    releaseLock(runDir);
+  }
+}
 function isObserver(env) {
   const raw = env["HEADSIGN_OBSERVER"];
   return typeof raw === "string" && raw.length > 0;
@@ -8128,15 +8206,15 @@ function withRunLock(runDir, apply) {
 var stamped = (nowIso, event) => ({ ...event, __nowIso: nowIso });
 var nowIsoOf = (event) => event.__nowIso;
 function noteGateThenNudge(runDir, startDir, state, nowIso) {
-  const notePath = path3.join(runDir, ".headsign", "tmp", "stop-note");
-  if (fs4.existsSync(notePath)) {
-    const noteRaw = fs4.readFileSync(notePath, "utf8");
+  const notePath = path4.join(runDir, ".headsign", "tmp", "stop-note");
+  if (fs5.existsSync(notePath)) {
+    const noteRaw = fs5.readFileSync(notePath, "utf8");
     const trimmedNote = noteRaw.trim();
     if (trimmedNote.length > 0) {
       const firstLine = trimmedNote.split(/\r?\n/)[0].trim().slice(0, 120);
       const recordedNote = firstLine === trimmedNote ? firstLine : `${firstLine}\u2026`;
       const paused = withRunLock(runDir, (fresh) => {
-        fs4.rmSync(notePath, { force: true });
+        fs5.rmSync(notePath, { force: true });
         const pausedState = withLastStop({ ...fresh, stop_nudges: 0 }, "paused", nowIso, void 0, recordedNote);
         return { state: pausedState, log: stamped(nowIso, { kind: "PAUSED", note: recordedNote }) };
       });
@@ -8175,7 +8253,11 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     }
     const state = readState(runDir);
     if (!state) return { block: false };
-    if (state.status !== "running") return { block: false };
+    if (state.status !== "running") {
+      if (input.stop_hook_active || state.status === "aborted") return { block: false };
+      const sessionId = resolveSessionId(input.session_id);
+      return requestTerminalOptimization(runDir, state, (fresh) => recordedDriver(fresh) === null && sessionId !== null && recordedDriveSession(fresh) === sessionId);
+    }
     if (recordedDriver(state) !== null) return { block: false };
     const drove = recordedDriveSession(state);
     if (drove !== null && drove !== resolveSessionId(input.session_id)) return { block: false };
@@ -8200,17 +8282,21 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     }
     const state = readState(runDir);
     if (!state) return { block: false };
-    if (state.status !== "running") return { block: false };
+    if (state.status !== "running") {
+      if (input.stop_hook_active || state.status === "aborted") return { block: false };
+      const agentId2 = resolveAgentId(input.agent_id);
+      return requestTerminalOptimization(runDir, state, (fresh) => agentId2 !== null && recordedDriver(fresh) === agentId2);
+    }
     if (input.stop_hook_active) {
       const flaggedAgentId = resolveAgentId(input.agent_id);
       if (flaggedAgentId !== null && recordedDriver(state) === flaggedAgentId) return recordUnheld(runDir, nowIso, "stop_hook_active");
       return { block: false };
     }
     const agentId = resolveAgentId(input.agent_id);
-    const claimPath = path3.join(runDir, ".headsign", "tmp", "claim");
-    if (fs4.existsSync(claimPath) && agentId !== null) {
+    const claimPath = path4.join(runDir, ".headsign", "tmp", "claim");
+    if (fs5.existsSync(claimPath) && agentId !== null) {
       const seated = withRunLock(runDir, (fresh) => {
-        fs4.rmSync(claimPath, { force: true });
+        fs5.rmSync(claimPath, { force: true });
         const adoptedState = { ...fresh, driver_agent: agentId, stop_nudges: 0 };
         return { state: adoptedState, log: stamped(nowIso, { kind: "CLAIMED" }) };
       });
@@ -8340,13 +8426,16 @@ function step(workflow, state, gateResult, route) {
     ...notRunChecks !== void 0 && { notRunChecks }
   };
   const repeats = sameFailureStreak(state.last_failure, phaseName, failure);
+  const optimizationMetadata = metadata(state);
+  const diagnoseFriction = repeats >= 2 && optimizationMetadata !== null && !optimizationMetadata.friction_noticed;
+  if (diagnoseFriction) next2.optimization = { ...optimizationMetadata, friction_noticed: true };
   const maxAttempts = phase.max_attempts;
   if (maxAttempts !== void 0 && next2.attempts[phaseName] >= maxAttempts) {
     const reason = repeats >= 2 && repeats >= maxAttempts ? `${phaseName}: max_attempts (${maxAttempts}) exhausted \u2014 ${repeats} attempts in a row failed the same check with the same output` : `${phaseName}: max_attempts (${maxAttempts}) exhausted`;
     next2.last_failure = null;
     next2.end_reason = reason;
     next2.status = "escalated";
-    return { state: next2, outcome: { kind: "ESCALATE", reason } };
+    return { state: next2, outcome: { kind: "ESCALATE", reason, ...diagnoseFriction && { diagnoseFriction: true } } };
   }
   const onFail = phase.on_fail ?? "retry";
   if (onFail === "retry") {
@@ -8360,7 +8449,7 @@ function step(workflow, state, gateResult, route) {
       ...failure.elapsedSeconds !== void 0 && { elapsed_seconds: failure.elapsedSeconds },
       repeats
     };
-    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], ...maxAttempts !== void 0 && { maxAttempts }, failure, repeats } };
+    return { state: next2, outcome: { kind: "RETRY", phase: phaseName, attempt: next2.attempts[phaseName], ...maxAttempts !== void 0 && { maxAttempts }, failure, repeats, ...diagnoseFriction && { diagnoseFriction: true } } };
   }
   next2.last_failure = null;
   if (onFail === "$end") {
@@ -8381,28 +8470,28 @@ function step(workflow, state, gateResult, route) {
 var NO_RUN_HERE_MESSAGE = "no run in progress here. headsign uses the .headsign/ directory in the current directory and does not search parent directories \u2014 run it from the directory that owns the workflow (usually the repo or git-worktree root). To begin one here, run `headsign start`.";
 function readFileOrEmpty(p) {
   try {
-    return fs5.readFileSync(p, "utf8");
+    return fs6.readFileSync(p, "utf8");
   } catch {
     return "";
   }
 }
 function ensureHeadsignGitignored(cwd) {
-  const gitignorePath = path4.join(cwd, ".headsign", ".gitignore");
+  const gitignorePath = path5.join(cwd, ".headsign", ".gitignore");
   const original = readFileOrEmpty(gitignorePath);
   let content = original;
-  for (const entry of ["state.json", "lock", "log", "tmp/"]) {
+  for (const entry of ["state.json", "lock", "log", "tmp/", "optimization/"]) {
     if (content.split("\n").some((l) => l.trim() === entry)) continue;
     const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
     content = `${content}${sep}${entry}
 `;
   }
-  if (content !== original) fs5.writeFileSync(gitignorePath, content);
+  if (content !== original) fs6.writeFileSync(gitignorePath, content);
 }
 function resolvesInsideRun(cwd, rel) {
   try {
-    const parent = fs5.realpathSync(path4.dirname(path4.join(cwd, rel)));
-    const root = fs5.realpathSync(cwd);
-    return parent === root || parent.startsWith(root + path4.sep);
+    const parent = fs6.realpathSync(path5.dirname(path5.join(cwd, rel)));
+    const root = fs6.realpathSync(cwd);
+    return parent === root || parent.startsWith(root + path5.sep);
   } catch {
     return true;
   }
@@ -8411,7 +8500,7 @@ function clearPhaseArtifacts(cwd, phase) {
   const cleared = [];
   const notCleared = [];
   for (const rel of phase.clear ?? []) {
-    const full = path4.join(cwd, rel);
+    const full = path5.join(cwd, rel);
     if (!resolvesInsideRun(cwd, rel)) {
       notCleared.push({ path: rel, reason: "outside" });
       continue;
@@ -8419,16 +8508,16 @@ function clearPhaseArtifacts(cwd, phase) {
     let heldNonEmptyFile = false;
     let rmWillRefuse = false;
     try {
-      const resolved = fs5.statSync(full);
+      const resolved = fs6.statSync(full);
       heldNonEmptyFile = resolved.isFile() && resolved.size > 0;
     } catch {
     }
     try {
-      rmWillRefuse = fs5.lstatSync(full).isDirectory();
+      rmWillRefuse = fs6.lstatSync(full).isDirectory();
     } catch {
     }
     try {
-      fs5.rmSync(full, { force: true });
+      fs6.rmSync(full, { force: true });
     } catch {
     }
     if (heldNonEmptyFile) cleared.push(rel);
@@ -8440,67 +8529,79 @@ function driveStamp(env, nowIso) {
   const session = resolveDriveSession(env);
   return session === null ? null : { session, at: nowIso };
 }
-function start2(cwd, workflowPath, nowIso, env) {
+function start2(cwd, workflowPath, nowIso, env, optimize = true) {
   const loaded = load(workflowPath);
   const wf = loaded.workflow;
   if (!wf) return { warnings: null, result: { kind: "WORKFLOW_INVALID", workflowPath, errors: loaded.errors } };
   const warnings = loaded.warnings.length > 0 ? { workflowPath, warnings: loaded.warnings } : null;
-  const existing = readState(cwd);
-  if (existing && existing.status === "running") {
-    return {
-      warnings,
-      result: {
-        kind: "REFUSED",
-        message: `a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign next\` to continue, or \`headsign abort\` to stop it.`
-      }
+  const lock = acquireLock(cwd);
+  if (!lock.ok) return { warnings, result: { kind: "REFUSED", message: `another headsign operation is running in this repo (pid ${lock.pid}); wait for it to finish.` } };
+  try {
+    const existing = readState(cwd);
+    if (existing && existing.status === "running") {
+      return {
+        warnings,
+        result: {
+          kind: "REFUSED",
+          message: `a headsign run is already in progress (phase: ${existing.phase}). Run \`headsign status\` to inspect it. If authorized, complete or delegate the phase work before \`headsign next\`. Use \`headsign abort\` to stop the run.`
+        }
+      };
+    }
+    const freshState = {
+      workflow: wf.name,
+      workflow_path: workflowPath,
+      status: "running",
+      phase: wf.entry,
+      attempts: {},
+      total_iterations: 0,
+      last_failure: null,
+      end_reason: null,
+      stop_nudges: 0,
+      driver_agent: null,
+      // No stop has been processed yet, and `start` must not invent one: the field is written only
+      // by the stop-boundary hooks, at a stop they actually saw.
+      last_stop: null,
+      // Beside `last_stop`, never inside it (state.ts's `last_drive` doc): this answers who
+      // DROVE the run — ran the command — a different question from what happened at a turn
+      // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
+      // run started outside Claude Code, not damage.
+      last_drive: driveStamp(env, nowIso),
+      // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
+      // so — the two belong to the same moment (ADR-0031).
+      phase_entered_at: nowIso,
+      // The pin is taken here and nowhere else at run start: from the entry phase, because that
+      // is where the run is about to stand and the fingerprint covers what is reachable from
+      // where it stands. Nothing is outstanding and nothing has been accepted yet.
+      graph_fingerprint: graphFingerprint(wf, wf.entry),
+      graph_change_reported: null,
+      accepted_graph_changes: 0,
+      optimization: optimize ? { id: randomUUID(), stop_requested: false, friction_noticed: false } : null
     };
+    writeState(cwd, freshState);
+    ensureHeadsignGitignored(cwd);
+    appendLog(cwd, logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
+    const tmpDir = path5.join(cwd, ".headsign", "tmp");
+    fs6.rmSync(tmpDir, { recursive: true, force: true });
+    fs6.mkdirSync(tmpDir, { recursive: true });
+    const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
+    return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
+  } finally {
+    releaseLock(cwd);
   }
-  const freshState = {
-    workflow: wf.name,
-    workflow_path: workflowPath,
-    status: "running",
-    phase: wf.entry,
-    attempts: {},
-    total_iterations: 0,
-    last_failure: null,
-    end_reason: null,
-    stop_nudges: 0,
-    driver_agent: null,
-    // No stop has been processed yet, and `start` must not invent one: the field is written only
-    // by the stop-boundary hooks, at a stop they actually saw.
-    last_stop: null,
-    // Beside `last_stop`, never inside it (state.ts's `last_drive` doc): this answers who
-    // DROVE the run — ran the command — a different question from what happened at a turn
-    // end, and answered every time regardless (ADR-0027 §5). null is the ordinary value for a
-    // run started outside Claude Code, not damage.
-    last_drive: driveStamp(env, nowIso),
-    // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
-    // so — the two belong to the same moment (ADR-0031).
-    phase_entered_at: nowIso,
-    // The pin is taken here and nowhere else at run start: from the entry phase, because that
-    // is where the run is about to stand and the fingerprint covers what is reachable from
-    // where it stands. Nothing is outstanding and nothing has been accepted yet.
-    graph_fingerprint: graphFingerprint(wf, wf.entry),
-    graph_change_reported: null,
-    accepted_graph_changes: 0
-  };
-  writeState(cwd, freshState);
-  ensureHeadsignGitignored(cwd);
-  appendLog(cwd, logLine(nowIso, { kind: "START", workflow: wf.name }, freshState));
-  const tmpDir = path4.join(cwd, ".headsign", "tmp");
-  fs5.rmSync(tmpDir, { recursive: true, force: true });
-  fs5.mkdirSync(tmpDir, { recursive: true });
-  const { cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[wf.entry]);
-  return { warnings, result: { kind: "STARTED", phase: wf.entry, description: wf.phases[wf.entry].description, cleared, notCleared } };
 }
-function terminalAnswer(current, acceptGraphChange) {
+function terminalAnswerWithOptimization(cwd, current, acceptGraphChange) {
   if (acceptGraphChange) return { kind: "REFUSED", message: NOTHING_TO_ACCEPT_MESSAGE };
-  return { kind: "ANSWERED", outcome: terminalOutcome(current), workflowName: current.workflow };
+  const outcome = terminalOutcome(current);
+  if (outcome.kind === "ABORT") return { kind: "ANSWERED", outcome, workflowName: current.workflow };
+  const guidance2 = guidance(cwd, current);
+  if (guidance2 === null) return { kind: "ANSWERED", outcome, workflowName: current.workflow };
+  if (outcome.kind === "COMPLETE") return { kind: "ANSWERED", outcome: { ...outcome, optimization: guidance2 }, workflowName: current.workflow };
+  return { kind: "ANSWERED", outcome: { ...outcome, optimization: guidance2 }, workflowName: current.workflow };
 }
 function next(cwd, nowIso, env, acceptGraphChange = false, onProgress) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
-  if (current.status !== "running") return terminalAnswer(current, acceptGraphChange);
+  if (current.status !== "running") return terminalAnswerWithOptimization(cwd, current, acceptGraphChange);
   const loaded = load(current.workflow_path);
   if (!loaded.workflow) return { kind: "WORKFLOW_INVALID", workflowPath: current.workflow_path, errors: loaded.errors };
   const wf = loaded.workflow;
@@ -8511,7 +8612,7 @@ function next(cwd, nowIso, env, acceptGraphChange = false, onProgress) {
   try {
     const fresh = readState(cwd);
     if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
-    if (fresh.status !== "running") return terminalAnswer(fresh, acceptGraphChange);
+    if (fresh.status !== "running") return terminalAnswerWithOptimization(cwd, fresh, acceptGraphChange);
     const drive = driveStamp(env, nowIso);
     const diskDrive = fresh.last_drive ?? null;
     const stamped2 = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
@@ -8619,7 +8720,12 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange, onProgress) 
   }
   writeState(cwd, nextState);
   appendLog(cwd, logLine(nowIso, outcome, nextState, current.phase));
-  return { kind: "ANSWERED", outcome, workflowName: wf.name, wf, ...cleared !== void 0 && { cleared }, ...notCleared !== void 0 && { notCleared } };
+  let reportedOutcome = outcome;
+  if (outcome.kind === "COMPLETE" || outcome.kind === "ESCALATE" && nextState.status === "escalated") {
+    const guidance2 = guidance(cwd, nextState);
+    if (guidance2 !== null) reportedOutcome = { ...outcome, optimization: guidance2 };
+  }
+  return { kind: "ANSWERED", outcome: reportedOutcome, workflowName: wf.name, wf, ...cleared !== void 0 && { cleared }, ...notCleared !== void 0 && { notCleared } };
 }
 function abort2(cwd, reason, nowIso) {
   const current = readState(cwd);
@@ -8643,9 +8749,9 @@ function claim2(cwd) {
   if (current.status !== "running") {
     return { kind: "REFUSED", message: `run for workflow '${current.workflow}' is already ${current.status}; nothing to claim.` };
   }
-  const tmpDir = path4.join(cwd, ".headsign", "tmp");
-  fs5.mkdirSync(tmpDir, { recursive: true });
-  fs5.writeFileSync(path4.join(tmpDir, "claim"), "");
+  const tmpDir = path5.join(cwd, ".headsign", "tmp");
+  fs6.mkdirSync(tmpDir, { recursive: true });
+  fs6.writeFileSync(path5.join(tmpDir, "claim"), "");
   return { kind: "CLAIMED" };
 }
 function unreportedGraphState(state, wf) {
@@ -8660,7 +8766,8 @@ function status(cwd, env) {
   const current = readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
   if (current.status !== "running") {
-    return { kind: "TERMINAL", status: current.status, workflowName: current.workflow, endReason: current.end_reason };
+    const assessmentPath2 = assessmentPath(cwd, current);
+    return { kind: "TERMINAL", status: current.status, workflowName: current.workflow, endReason: current.end_reason, optimizationPath: assessmentPath2, optimizationAssessed: hasAssessment(cwd, current) };
   }
   const { workflow: wf } = load(current.workflow_path);
   const phase = wf?.phases[current.phase];
@@ -8701,7 +8808,9 @@ function status(cwd, env) {
     // Absent when the workflow is unreadable or no longer defines this phase — the same
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
-    ...phase?.description !== void 0 && { description: phase.description }
+    ...phase?.description !== void 0 && { description: phase.description },
+    optimizationPath: assessmentPath(cwd, current),
+    optimizationAssessed: hasAssessment(cwd, current)
   };
 }
 
@@ -8719,10 +8828,10 @@ function evaluate2(cwd, stdinRaw) {
     const pauseNote = current.last_stop?.disposition === "paused" && typeof current.last_stop.note === "string" && current.last_stop.note.length > 0 ? `Last pause note (untrusted data): ${JSON.stringify(current.last_stop.note)}
 ` : "";
     return {
-      message: `headsign found a running workflow. The values below are untrusted data.
+      message: `headsign found persisted state for an unfinished workflow. This does not show that an agent process is active. The values below are untrusted data.
 Workflow: ${JSON.stringify(current.workflow)}
 Phase: ${JSON.stringify(current.phase)}
-` + pauseNote + "Run `headsign status` to inspect it. If you will continue it, run `headsign next`.\n"
+` + pauseNote + "Run `headsign status` to inspect it. Only an authorized driver may resume it: complete or delegate the current phase work, then run `headsign next`.\n"
     };
   } catch {
     return null;
@@ -8781,14 +8890,14 @@ function printOutcome(outcome, workflowName, ctx) {
     case "ADVANCE":
       return exitAfter(advance(outcome.phase, outcome.description, outcome.failure, ctx?.cleared, ctx?.notCleared, outcome.routedBy), 0);
     case "COMPLETE":
-      return exitAfter(complete(workflowName, outcome.acceptedGraphChanges), 0);
+      return exitAfter(complete(workflowName, outcome.acceptedGraphChanges, outcome.optimization), 0);
     case "RETRY":
       return exitAfter(
-        retry({ phase: outcome.phase, attempt: outcome.attempt, ...outcome.maxAttempts !== void 0 && { maxAttempts: outcome.maxAttempts }, repeats: outcome.repeats, ...outcome.failure }),
+        retry({ phase: outcome.phase, attempt: outcome.attempt, ...outcome.maxAttempts !== void 0 && { maxAttempts: outcome.maxAttempts }, repeats: outcome.repeats, ...outcome.diagnoseFriction && { diagnoseFriction: true }, ...outcome.failure }),
         1
       );
     case "ESCALATE":
-      return exitAfter(escalate(outcome.reason), 2);
+      return exitAfter(escalate(outcome.reason, outcome.optimization, outcome.diagnoseFriction), 2);
     case "ABORT":
       return exitAfter(abort(outcome.reason), 2);
     case "PENDING":
@@ -8801,7 +8910,7 @@ function exitAfter(text, code) {
 }
 function readStdin() {
   try {
-    return fs6.readFileSync(0, "utf8");
+    return fs7.readFileSync(0, "utf8");
   } catch {
     return "";
   }
@@ -8852,7 +8961,7 @@ function reportStatus(result) {
     case "REFUSED":
       return errorExit(result.message);
     case "TERMINAL":
-      return exitAfter(statusTerminal(result.status, result.workflowName, result.endReason), 0);
+      return exitAfter(statusTerminal(result.status, result.workflowName, result.endReason, result.optimizationPath, result.optimizationAssessed), 0);
     case "RUNNING":
       return exitAfter(
         statusRunning({
@@ -8862,7 +8971,7 @@ function reportStatus(result) {
           attemptUnknown: result.attemptUnknown,
           workflowName: result.workflowName,
           lastFailure: result.lastFailure,
-          driver: result.delegated ? "a delegated agent" : "not delegated yet \u2014 no agent has claimed this run",
+          driver: result.delegated ? "a delegated agent has claimed this persisted unfinished run; RUNNING does not report process activity. Only the authorized driver may complete or delegate phase work, then run headsign next" : "no delegated-agent claim is recorded; RUNNING does not identify a main-session driver or report process activity. Only the authorized driver may complete or delegate phase work, then run headsign next",
           // All three conditional, and all genuinely ABSENT rather than present-and-empty
           // when there is nothing to say — which is what makes a run on which none of them has
           // happened print exactly what `status` printed before any of these lines existed.
@@ -8882,14 +8991,19 @@ function reportStatus(result) {
           // file says something the record does not, so a run whose file agrees prints exactly
           // what it printed before this line existed.
           ...result.graphUnreported !== void 0 && { graphUnreported: result.graphUnreported },
-          ...result.description !== void 0 && { description: result.description }
+          ...result.description !== void 0 && { description: result.description },
+          ...result.optimizationPath !== null && { optimizationPath: result.optimizationPath },
+          optimizationAssessed: result.optimizationAssessed
         }),
         0
       );
   }
 }
 function cmdStart(args) {
-  return reportStart(start2(process.cwd(), resolveWorkflowPath(args), localIso(/* @__PURE__ */ new Date()), process.env));
+  const occurrences = args.filter((arg) => arg === "--no-optimize").length;
+  if (occurrences > 1) errorExit("--no-optimize may be given only once");
+  const workflowArgs = args.filter((arg) => arg !== "--no-optimize");
+  return reportStart(start2(process.cwd(), resolveWorkflowPath(workflowArgs), localIso(/* @__PURE__ */ new Date()), process.env, occurrences === 0));
 }
 function resolveAcceptGraphChange(args) {
   return args.indexOf("--accept-graph-change") !== -1;
@@ -8945,7 +9059,7 @@ function cmdVersion() {
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents
 
 Usage:
-  headsign start [name] [--workflow <path>]     start a run (name \u2192 .headsign/<name>.yaml) \u2014 writes state.json, log, .gitignore; wipes and recreates tmp/; deletes the entry phase's clear: paths
+  headsign start [name] [--workflow <path>] [--no-optimize]  start a run; optimization is enabled unless opted out \u2014 writes state.json, log, .gitignore; wipes and recreates tmp/; deletes the entry phase's clear: paths
   headsign next [--accept-graph-change]         run the current gate and answer with a verdict \u2014 writes state.json, log, lock; on advancing, deletes the next phase's clear: paths
   headsign abort [reason]                       end the run for good (records why) \u2014 writes state.json, log
   headsign status                               read-only view of the current run (never judges)

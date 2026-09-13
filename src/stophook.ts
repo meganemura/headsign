@@ -23,6 +23,7 @@ import type { State, UnheldCause } from "./state.ts";
 import { logLine } from "./render.ts";
 import type { LogEvent } from "./render.ts";
 import { findRunDir } from "./runfinder.ts";
+import * as optimization from "./optimization.ts";
 
 interface HookDecision {
   block: boolean;
@@ -30,6 +31,33 @@ interface HookDecision {
 }
 
 const MAX_STOP_NUDGES = 5;
+const OPTIMIZATION_MESSAGE = (assessmentPath: string): string =>
+  `Use the bundled \`optimize\` skill for this finished run. Record NO_CHANGE, APPLIED, PROPOSED, or DEFERRED at ${assessmentPath}.`;
+
+function requestTerminalOptimization(runDir: string, seen: State, owns: (fresh: State) => boolean): HookDecision {
+  const seenMetadata = optimization.metadata(seen);
+  if (seenMetadata === null || seenMetadata.stop_requested || optimization.assessmentState(runDir, seen) !== "unassessed") return { block: false };
+  const lock = acquireLock(runDir);
+  if (!lock.ok) return { block: false };
+  try {
+    const fresh = readState(runDir);
+    if (!fresh || (fresh.status !== "complete" && fresh.status !== "escalated")) return { block: false };
+    const freshMetadata = optimization.metadata(fresh);
+    if (freshMetadata === null || freshMetadata.id !== seenMetadata.id || freshMetadata.stop_requested) return { block: false };
+    if (!owns(fresh) || optimization.assessmentState(runDir, fresh) !== "unassessed") return { block: false };
+    try {
+      const note = fs.readFileSync(path.join(runDir, ".headsign", "tmp", "stop-note"), "utf8");
+      if (note.trim().length > 0) return { block: false };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { block: false };
+    }
+    writeState(runDir, { ...fresh, optimization: { ...freshMetadata, stop_requested: true } });
+    const assessmentPath = optimization.assessmentPath(runDir, fresh);
+    return assessmentPath === null ? { block: false } : { block: true, message: OPTIMIZATION_MESSAGE(assessmentPath) };
+  } finally {
+    releaseLock(runDir);
+  }
+}
 
 // Manual opt-out (ADR-0008) for a session or agent that is not driving this run — or simply
 // wants to be unconditionally exempt. Any non-empty value passes both stop-boundary hooks —
@@ -332,7 +360,11 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
 
     const state = readState(runDir);
     if (!state) return { block: false }; // race: vanished between findRunDir and here
-    if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
+    if (state.status !== "running") {
+      if (input.stop_hook_active || state.status === "aborted") return { block: false };
+      const sessionId = resolveSessionId(input.session_id);
+      return requestTerminalOptimization(runDir, state, (fresh) => recordedDriver(fresh) === null && sessionId !== null && recordedDriveSession(fresh) === sessionId);
+    }
 
     // Claim marker deliberately NOT read here: ADR-0010 Decision 1; the ADR-0009 handoff this
     // corrected.
@@ -382,7 +414,11 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
 
     const state = readState(runDir);
     if (!state) return { block: false }; // race: vanished between findRunDir and here
-    if (state.status !== "running") return { block: false }; // complete/escalated/aborted are correct endings
+    if (state.status !== "running") {
+      if (input.stop_hook_active || state.status === "aborted") return { block: false };
+      const agentId = resolveAgentId(input.agent_id);
+      return requestTerminalOptimization(runDir, state, (fresh) => agentId !== null && recordedDriver(fresh) === agentId);
+    }
 
     // Why this branch returns before the adoption gate, rather than merely sitting above it:
     // ADR-0025 §5.

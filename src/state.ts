@@ -189,6 +189,8 @@ export interface State {
   graph_fingerprint: Record<string, string>;
   graph_change_reported: string | null;
   accepted_graph_changes: number;
+  // Separate from work progress. Legacy or malformed values disable optimization prompts.
+  optimization?: { id: string; stop_requested: boolean; friction_noticed: boolean } | null;
 }
 
 export function statePath(cwd: string): string {

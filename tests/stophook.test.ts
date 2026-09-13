@@ -1397,3 +1397,74 @@ test("isObserver: unset -> false", () => {
 test("isObserver: empty string -> false", () => {
   assert.equal(stophook.isObserver({ HEADSIGN_OBSERVER: "" }), false);
 });
+
+const OPTIMIZATION_ID = "123e4567-e89b-42d3-a456-426614174000";
+
+test("terminal Stop requests one optimization pass from the recorded main session", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ status: "complete", last_drive: { session: "main", at: NOW }, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }));
+  const first = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "main" }), NOW, NO_ENV);
+  assert.equal(first.block, true);
+  assert.match(first.message!, /optimize.*assessment\.md/);
+  assert.equal(state.readState(dir)?.optimization?.stop_requested, true);
+  assert.deepEqual(stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "main" }), NOW, NO_ENV), { block: false });
+});
+
+test("terminal fallback requires positive ownership and a usable assessment gap", () => {
+  const cases: Array<[string, Partial<state.State>, object]> = [
+    ["unknown session", { status: "complete", last_drive: null, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }, { cwd: "", session_id: "main" }],
+    ["different session", { status: "complete", last_drive: { session: "other", at: NOW }, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }, { cwd: "", session_id: "main" }],
+    ["legacy run", { status: "complete" }, { cwd: "", session_id: "main" }],
+    ["aborted run", { status: "aborted", last_drive: { session: "main", at: NOW }, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }, { cwd: "", session_id: "main" }],
+  ];
+  for (const [name, overrides, payload] of cases) {
+    const dir = tmpdir();
+    state.writeState(dir, runningState(overrides));
+    assert.deepEqual(stophook.evaluate(dir, JSON.stringify({ ...payload, cwd: dir }), NOW, NO_ENV), { block: false }, name);
+  }
+});
+
+test("terminal SubagentStop requests optimization only from the recorded delegated driver", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ status: "escalated", driver_agent: "agent-a", optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }));
+  assert.deepEqual(stophook.evaluateSubagent(dir, JSON.stringify({ cwd: dir, agent_id: "agent-b" }), NOW, NO_ENV), { block: false });
+  assert.equal(stophook.evaluateSubagent(dir, JSON.stringify({ cwd: dir, agent_id: "agent-a" }), NOW, NO_ENV).block, true);
+});
+
+test("valid assessment, active continuation, and nonempty stop note suppress terminal fallback", () => {
+  for (const mode of ["assessment", "active", "note"] as const) {
+    const dir = tmpdir();
+    const terminal = runningState({ status: "complete", last_drive: { session: "main", at: NOW }, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } });
+    state.writeState(dir, terminal);
+    if (mode === "assessment") {
+      const file = path.join(dir, ".headsign", "optimization", OPTIMIZATION_ID, "assessment.md");
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "NO_CHANGE\nThe procedure worked.\n");
+    }
+    if (mode === "note") writeNote(dir, "Stop now");
+    const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "main", stop_hook_active: mode === "active" }), NOW, NO_ENV);
+    assert.deepEqual(decision, { block: false }, mode);
+    assert.equal(state.readState(dir)?.optimization?.stop_requested, false);
+  }
+});
+
+test("an empty terminal stop note does not suppress the optimization request", () => {
+  const dir = tmpdir();
+  state.writeState(dir, runningState({ status: "complete", last_drive: { session: "main", at: NOW }, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }));
+  writeNote(dir, " \n");
+  assert.equal(stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "main" }), NOW, NO_ENV).block, true);
+});
+
+test("terminal fallback fails open when the assessment or stop note cannot be read", () => {
+  for (const target of ["assessment", "note"] as const) {
+    const dir = tmpdir();
+    state.writeState(dir, runningState({ status: "complete", last_drive: { session: "main", at: NOW }, optimization: { id: OPTIMIZATION_ID, stop_requested: false, friction_noticed: false } }));
+    const file = target === "assessment"
+      ? path.join(dir, ".headsign", "optimization", OPTIMIZATION_ID, "assessment.md")
+      : path.join(dir, ".headsign", "tmp", "stop-note");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.symlinkSync(file, file);
+    assert.deepEqual(stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "main" }), NOW, NO_ENV), { block: false }, target);
+    assert.equal(state.readState(dir)?.optimization?.stop_requested, false);
+  }
+});
