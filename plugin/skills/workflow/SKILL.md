@@ -123,8 +123,9 @@ produced useful findings, use them instead of repeating the investigation.
    `HEADSIGN_OBSERVER`, a directory the walk-up resolved only via
    `CLAUDE_PROJECT_DIR`, or a run this session simply never touched while
    someone else was last recorded moving it, all end turns quietly), and a
-   session gets nudged on any run nobody has claimed and nobody has yet
-   moved, whether or not it is driving — once a session's `start` or `next` has recorded it, only that session is.
+   session gets nudged on any run nobody has claimed and no session has yet
+   been recorded moving, whether or not it is driving — once a session's
+   `start` or `next` has recorded it, only that session is.
    A Stop nudge that says headsign cannot tell who drives the run does not
    confirm that you drive it. If you neither started the run nor were asked to
    continue it, do not run `next` or `abort`; end your turn.

@@ -226,8 +226,9 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
 // to that party — so it is told where to send the word, not told to act on it directly.
 // One clause, appended to the NUDGE only, never to the adoption message: `Claim confirmed …`
 // tells an agent it just became this run's driver, the opposite of what this clause is for.
-// A Stop nudge without a session stamp uses a different last clause: a session that may
-// not drive the run needs an action it can take now (ADR-0028 §4).
+// Without a session stamp, the first sentence lets a possible non-driver end the turn without `next` or `abort`.
+// The last clause only names `HEADSIGN_OBSERVER` for the environment that starts such a session later:
+// a running session cannot change that environment (ADR-0028 §4).
 const NOT_DRIVING_HINT =
   " If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead.";
 
