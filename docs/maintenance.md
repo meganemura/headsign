@@ -138,6 +138,14 @@ comments written with `--actor tool:headsign`. **`judged` is a status the
 hub adds** — bd does not ship it — and a hub that lost that setting makes
 the gates fail rather than report an empty queue, which is the behaviour
 those gates need from it.
+A recurrence arrives as a reporter comment, even on a closed ticket.
+Triage reopens a closed ticket when a non-ack reporter comment follows
+the last judgment from the tool. If the tool has never commented, all
+non-ack reporter comments count. An `ack <marker>` comment only marks
+what the reporter read. The reopened ticket joins the open queue's
+severity and age ordering.
+A ticket counts as judged when the tool's last comment follows every
+reporter note other than an ack.
 
 **Running the loop.** `headsign start triage` (that's
 `.headsign/triage.yaml`, one of this repository's own workflows — it reads a

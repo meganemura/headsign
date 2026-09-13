@@ -9,7 +9,8 @@
 # `tool:headsign`. That hub holds several tools' queues side by side and
 # tells them apart by label, so every command below names this one — an
 # issue labelled for a sibling tool is not this run's work and must not trip
-# its gate.
+# its gate. A recurrence can arrive as a reporter comment on a closed ticket.
+# Triage reopens it when a non-ack reporter comment follows the last tool comment.
 #
 # `judged` is not one of bd's built-in statuses. The hub configures it
 # (`status.custom`), and a hub that lost that setting makes every query
@@ -37,7 +38,14 @@ phases:
   triage:
     description: >
       Let HQ="$(git config --global headquarters.issuesDir)". Pull first:
-      `bd -C "$HQ" dolt pull`. If an issue labelled tool:headsign already
+      `bd -C "$HQ" dolt pull`. To find closed tickets with an unjudged reporter
+      comment, run `.headsign/bin/triage-queue.sh closed-unjudged`.
+      For each id, run `bd -C "$HQ" reopen <id>
+      --reason "A reporter comment after the last judgment needs review"
+      --actor tool:headsign`. Reopened tickets join the open queue with the
+      same severity and age ordering. If the selected ticket was reopened,
+      judge the comments added after the last tool comment.
+      If an issue labelled tool:headsign already
       sits at status judged, that is your work item from an earlier run —
       touch .headsign/tmp/triage-done and run `headsign next` to proceed.
       Otherwise take exactly ONE issue from
@@ -89,21 +97,32 @@ phases:
           run: >
             bd -C "$(git config --global headquarters.issuesDir)" list
             --label tool:headsign --status open --json | jq -e 'type == "array"' >/dev/null
+        # This asserts an absence: every closed ticket must be checked before an
+        # empty result can mean that intake is complete. The shared script requires
+        # export to succeed before jq reads it, so a failed bd cannot masquerade as
+        # an empty queue.
+        # A reporter's ack only marks what they read; it needs no new judgment.
+        - name: no closed ticket holds an unjudged comment
+          run: |
+            ids=$(.headsign/bin/triage-queue.sh closed-unjudged) || exit 1
+            if [ -n "$ids" ]; then
+              printf '%s\n' "$ids"
+              exit 1
+            fi
         # The mistake this catches is the one the two writes make possible:
         # the judgment comment landed and the status never moved, so a
         # judged ticket still sits in the open queue and the next run picks
-        # it up as unjudged. `author` is the mark, not the comment's text —
-        # a comment is written by whoever wrote it, and only this tool
-        # writes as `tool:headsign`.
+        # it up as unjudged. A tool comment must follow every reporter note:
+        # a reopened ticket keeps its earlier judgment, which cannot settle a
+        # later recurrence. Ack comments only mark what the reporter read.
+        # Only this tool writes as `tool:headsign`.
         - name: no judged ticket left at status open
           run: |
-            HQ="$(git config --global headquarters.issuesDir)"
-            ! bd -C "$HQ" list --label tool:headsign --status open --json |
-              jq -r '.[].id' |
-              while read -r id; do
-                bd -C "$HQ" comments "$id" --json |
-                  jq -e 'any(.[]; .author == "tool:headsign")' >/dev/null && echo "$id"
-              done | grep -q .
+            ids=$(.headsign/bin/triage-queue.sh open-judged) || exit 1
+            if [ -n "$ids" ]; then
+              printf '%s\n' "$ids"
+              exit 1
+            fi
     # The marker is read FIRST, and that order is load-bearing now: accept
     # and defer both leave the ticket at status judged, so the queue alone
     # can no longer tell them apart — it could when accept and defer wrote
