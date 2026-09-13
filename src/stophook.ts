@@ -226,6 +226,8 @@ function pauseAndAbortHint(runDir: string, startDir: string): string {
 // to that party — so it is told where to send the word, not told to act on it directly.
 // One clause, appended to the NUDGE only, never to the adoption message: `Claim confirmed …`
 // tells an agent it just became this run's driver, the opposite of what this clause is for.
+// A Stop nudge without a session stamp uses a different last clause: a session that may
+// not drive the run needs an action it can take now (ADR-0028 §4).
 const NOT_DRIVING_HINT =
   " If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead.";
 
@@ -261,7 +263,7 @@ type StampedLogEvent = LogEvent & { __nowIso: string };
 const stamped = (nowIso: string, event: LogEvent): StampedLogEvent => ({ ...event, __nowIso: nowIso }) as StampedLogEvent;
 const nowIsoOf = (event: LogEvent): string => (event as StampedLogEvent).__nowIso;
 
-function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIso: string): HookDecision {
+function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIso: string, driverKnown: boolean): HookDecision {
   // Exit-note gate: ADR-0006's Decision section (the exit-note gate as primary mechanism).
   const notePath = path.join(runDir, ".headsign", "tmp", "stop-note");
   if (fs.existsSync(notePath)) {
@@ -318,14 +320,26 @@ function noteGateThenNudge(runDir: string, startDir: string, state: State, nowIs
 
   // cd guidance when runDir !== startDir: ADR-0006's "Bounded walk-up"; ADR-0004's cwd-only
   // rule.
-  const verdictSentence =
+  // Unknown recipients need task authority before acting on `next` (ADR-0028 §4).
+  const verdictSentence = driverKnown ? (
     runDir === startDir
       ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.`
-      : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
+      : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`
+  ) : (
+    `headsign workflow '${state.workflow}' is still running (phase: ${state.phase})` +
+    (runDir === startDir ? "" : ` in ${runDir}`) +
+    ", and headsign cannot tell whether this session is driving it. If this session started the run or was asked to continue it, " +
+    (runDir === startDir
+      ? "run `headsign next` and follow its verdict."
+      : "cd there and run `headsign next`, then follow its verdict.") +
+    " Otherwise, do not run `headsign next` or `headsign abort`; end your turn."
+  );
+  const observerHint = driverKnown ? NOT_DRIVING_HINT :
+    " To keep a session that does not drive runs out of these reminders, set `HEADSIGN_OBSERVER` in the environment that starts it.";
   // The final-reminder phrase rides only on the nudge that trips the cap: earlier nudges
   // must keep pushing `headsign next`, not dilute it with "this is your last chance".
   const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) + NOT_DRIVING_HINT };
+  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) + observerHint };
 }
 
 export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: NodeJS.ProcessEnv): HookDecision {
@@ -384,7 +398,7 @@ export function evaluate(cwd: string, stdinRaw: string, nowIso: string, env: Nod
     // Why the check sits here, immediately above the nudge flow, in `evaluate`: ADR-0025 §5.
     if (input.stop_hook_active) return recordUnheld(runDir, nowIso, "stop_hook_active");
 
-    return noteGateThenNudge(runDir, startDir, state, nowIso);
+    return noteGateThenNudge(runDir, startDir, state, nowIso, recordedDriveSession(state) !== null);
   } catch {
     // Fail open: ADR-0006's Decision step 7.
     return { block: false };
@@ -469,7 +483,7 @@ export function evaluateSubagent(cwd: string, stdinRaw: string, nowIso: string, 
     // §3.
     if (agentId === null || driver !== agentId) return { block: false };
 
-    return noteGateThenNudge(runDir, startDir, state, nowIso);
+    return noteGateThenNudge(runDir, startDir, state, nowIso, true);
   } catch {
     // Fail open: ADR-0006's Decision step 7.
     return { block: false };

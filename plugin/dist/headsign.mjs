@@ -8205,7 +8205,7 @@ function withRunLock(runDir, apply) {
 }
 var stamped = (nowIso, event) => ({ ...event, __nowIso: nowIso });
 var nowIsoOf = (event) => event.__nowIso;
-function noteGateThenNudge(runDir, startDir, state, nowIso) {
+function noteGateThenNudge(runDir, startDir, state, nowIso, driverKnown) {
   const notePath = path4.join(runDir, ".headsign", "tmp", "stop-note");
   if (fs5.existsSync(notePath)) {
     const noteRaw = fs5.readFileSync(notePath, "utf8");
@@ -8233,9 +8233,10 @@ function noteGateThenNudge(runDir, startDir, state, nowIso) {
     return { state: nudgedState, log: stamped(nowIso, event) };
   });
   if (!counted) return { block: false };
-  const verdictSentence = runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.`;
+  const verdictSentence = driverKnown ? runDir === startDir ? `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}). Run \`headsign next\` and follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase}) in ${runDir}. cd there and run \`headsign next\`, then follow its verdict.` : `headsign workflow '${state.workflow}' is still running (phase: ${state.phase})` + (runDir === startDir ? "" : ` in ${runDir}`) + ", and headsign cannot tell whether this session is driving it. If this session started the run or was asked to continue it, " + (runDir === startDir ? "run `headsign next` and follow its verdict." : "cd there and run `headsign next`, then follow its verdict.") + " Otherwise, do not run `headsign next` or `headsign abort`; end your turn.";
+  const observerHint = driverKnown ? NOT_DRIVING_HINT : " To keep a session that does not drive runs out of these reminders, set `HEADSIGN_OBSERVER` in the environment that starts it.";
   const finalNotice = nextNudges === MAX_STOP_NUDGES ? " This is the final automatic reminder." : "";
-  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) + NOT_DRIVING_HINT };
+  return { block: true, message: verdictSentence + finalNotice + pauseAndAbortHint(runDir, startDir) + observerHint };
 }
 function evaluate(cwd, stdinRaw, nowIso, env) {
   if (isObserver(env)) return { block: false };
@@ -8262,7 +8263,7 @@ function evaluate(cwd, stdinRaw, nowIso, env) {
     const drove = recordedDriveSession(state);
     if (drove !== null && drove !== resolveSessionId(input.session_id)) return { block: false };
     if (input.stop_hook_active) return recordUnheld(runDir, nowIso, "stop_hook_active");
-    return noteGateThenNudge(runDir, startDir, state, nowIso);
+    return noteGateThenNudge(runDir, startDir, state, nowIso, recordedDriveSession(state) !== null);
   } catch {
     return { block: false };
   }
@@ -8307,7 +8308,7 @@ function evaluateSubagent(cwd, stdinRaw, nowIso, env) {
     const driver = recordedDriver(state);
     if (driver === null) return { block: false };
     if (agentId === null || driver !== agentId) return { block: false };
-    return noteGateThenNudge(runDir, startDir, state, nowIso);
+    return noteGateThenNudge(runDir, startDir, state, nowIso, true);
   } catch {
     return { block: false };
   }

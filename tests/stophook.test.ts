@@ -133,7 +133,8 @@ test("walk-up: finds a run at a .git-bounded root from a deep subdirectory with 
   const decision = stophook.evaluate("anything", JSON.stringify({ cwd: deepSubdir }), NOW, NO_ENV);
   assert.equal(decision.block, true);
   assert.ok(decision.message?.includes(root));
-  assert.ok(decision.message?.includes("cd there"));
+  assert.ok(decision.message?.startsWith(`headsign workflow 'demo' is still running (phase: build) in ${root}, and headsign cannot tell whether this session is driving it. If this session started the run or was asked to continue it, cd there and run \`headsign next\`, then follow its verdict. Otherwise, do not run \`headsign next\` or \`headsign abort\`; end your turn.`));
+  assert.ok(!decision.message?.includes(". cd there and run"));
 });
 
 test("walk-up boundary: a .git FILE stops the walk before reaching a running state further up", () => {
@@ -287,16 +288,19 @@ test("Stop: the nudge asks what the agent is waiting for, and says what it means
   assert.ok(!decision.message.includes("explaining why"), "must not ask for a reason a self-description satisfies");
 });
 
-test("Stop: the nudge names the way out for a reader who is not driving this run, last, after the pause/abort hint", () => {
+// ADR-0028 §4: a bystander needs authority guidance before the driver actions.
+test("Stop: an unknown driver gets conditional authority guidance before pause and abort hints", () => {
   const dir = tmpdir();
   state.writeState(dir, runningState({ workflow: "demo", phase: "build" }));
 
   const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir }), NOW, NO_ENV);
   assert.equal(decision.block, true);
   assert.ok(decision.message);
+  assert.ok(decision.message.startsWith("headsign workflow 'demo' is still running (phase: build), and headsign cannot tell whether this session is driving it. If this session started the run or was asked to continue it, run `headsign next` and follow its verdict. Otherwise, do not run `headsign next` or `headsign abort`; end your turn."));
+  assert.ok(!decision.message.includes("Run `headsign next` and follow its verdict."));
   assert.match(
     decision.message,
-    /headsign abort <reason>`\. If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead\.$/,
+    /headsign abort <reason>`\. To keep a session that does not drive runs out of these reminders, set `HEADSIGN_OBSERVER` in the environment that starts it\.$/,
   );
 });
 
@@ -1241,6 +1245,8 @@ test("Stop: a matching session_id nudges exactly as today — block=true, stop_n
   state.writeState(dir, runningState({ last_drive: { session: "session-alpha", at: NOW }, stop_nudges: 2 }));
   const decision = stophook.evaluate(dir, JSON.stringify({ cwd: dir, session_id: "session-alpha" }), NOW, NO_ENV);
   assert.equal(decision.block, true);
+  assert.ok(decision.message?.startsWith("headsign workflow 'demo' is still running (phase: build). Run `headsign next` and follow its verdict."));
+  assert.ok(decision.message?.endsWith(" If you are not driving this run, none of the above is yours to do — set `HEADSIGN_OBSERVER` in the environment of whatever started this session instead."));
   assert.equal(state.readState(dir)?.stop_nudges, 3);
   assert.deepEqual(readLog(dir), [`${NOW} held build a=0 i=0 nudges=3`]);
 });
@@ -1248,8 +1254,9 @@ test("Stop: a matching session_id nudges exactly as today — block=true, stop_n
 // The load-bearing half of ADR-0027 §3's new step: "no stamp" must read as UNKNOWN, never as a
 // mismatch, or every run in flight at upgrade time would silently lose its backstop. Both
 // shapes "no stamp" can take — an explicit null, and the field missing entirely (a run started
-// before this field existed) — must land on the identical, ordinary nudge.
-test("Stop: a run with no last_drive at all — null, or the field missing entirely — nudges exactly as today", () => {
+// before this field existed) — must both keep the backstop and explain the unknown driver
+// (ADR-0028 §4).
+test("Stop: a null or missing last_drive still blocks and explains unknown driver authority", () => {
   const withNull = tmpdir();
   state.writeState(withNull, runningState({ last_drive: null }));
   const onNull = stophook.evaluate(withNull, JSON.stringify({ cwd: withNull, session_id: "whoever-stopped" }), NOW, NO_ENV);
@@ -1264,6 +1271,8 @@ test("Stop: a run with no last_drive at all — null, or the field missing entir
   const onMissing = stophook.evaluate(missing, JSON.stringify({ cwd: missing, session_id: "whoever-stopped" }), NOW, NO_ENV);
   assert.equal(onMissing.block, true, "a state.json predating this field must still nudge, not silently lose its backstop");
   assert.equal(state.readState(missing)?.stop_nudges, 1);
+  assert.equal(onMissing.message, onNull.message);
+  assert.ok(onNull.message?.includes("headsign cannot tell whether this session is driving it"));
 });
 
 test("Stop: a mismatched session_id passes silently — no nudge, stop_nudges unchanged, no log line, last_stop unchanged", () => {
