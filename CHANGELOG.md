@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Stop reminders now state when the driver is unknown.** A run without a
+  session stamp still receives the backstop. Its reminder directs `next` only
+  to a session that started the run or was asked to continue it. Other sessions
+  are told to avoid `next` and `abort` and end their turn. The observer advice
+  names the environment that starts the session. Matched session stamps and
+  `SubagentStop` reminders keep their previous wording; hook decisions remain
+  unchanged.
+
 ## [0.11.0] - 2026-09-13
 
 ### Added

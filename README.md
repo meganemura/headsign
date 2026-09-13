@@ -148,7 +148,9 @@ contract, so the backstop runs on both hosts. The research did not confirm a
 stable public session variable for ordinary Codex CLI commands. Thus, headsign
 cannot stamp `last_drive.session` during Codex `start` or `next` calls. On an unclaimed
 Codex run with no existing stamp, every matching session can receive the
-running-run backstop. The terminal optimization fallback requires positive
+running-run backstop. That nudge states that the driver is unknown and tells a
+session that does not drive the run to avoid `next`. The terminal optimization
+fallback requires positive
 attribution and passes when that stamp is unknown. `HEADSIGN_OBSERVER=1` remains the explicit read-only opt-out.
 
 A repository can enable it for everyone who opens it. Team members then do not

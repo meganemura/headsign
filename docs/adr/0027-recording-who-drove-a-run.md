@@ -23,6 +23,7 @@
   uses the same positive session attribution for the terminal optimization
   fallback. Delegated attribution still uses the separate agent identifier.
   Unknown identity passes.)
+- Revised: 2026-09-13 (ADR-0028 §4 changes the unknown-session nudge wording; §3 step 6 still nudges).
 
 ## Context
 

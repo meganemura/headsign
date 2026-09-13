@@ -1092,6 +1092,14 @@ both halves). `SubagentStop` passes because most nearby delegated agents
 are reviewers and workers with no role in the run. Holding one of them is
 worse than a missed reminder.
 
+An unknown-session Stop nudge says headsign cannot tell whether the recipient
+drives the run. It directs `next` only to a session that started the run or
+was asked to continue it. It tells other sessions to avoid `next` and `abort`
+and end their turn, before the pause and abort guidance. Its final observer
+clause names `HEADSIGN_OBSERVER` in the environment that starts the session.
+A matched session stamp and every `SubagentStop` nudge keep their existing
+wording. The unknown-session case still consumes a nudge.
+
 After `headsign claim` seats a run's driver, headsign records an agent
 identifier. `Stop` then passes every session because no session can be that
 agent. `SubagentStop` holds only that agent. Before a run is claimed, `Stop`
@@ -1304,10 +1312,11 @@ moved the run from a session that never moved it. Some runs have no session
 in `last_drive`. This group includes every run that predates this release.
 It also includes runs driven outside Claude Code, where nothing identifies a
 session for `start` or `next` to record. A state that a person edited by
-hand also belongs to this group. For these runs, headsign uses its original
-behavior. It nudges any session that stops in the run's directory. After a
-session runs `start` or `next`, headsign holds only that session's turn
-ends. Every other session stops without a message, and headsign never holds
+hand also belongs to this group. For these runs, headsign keeps its original
+nudge decision and uses the unknown-session wording. It nudges any session
+that stops in the run's directory. After `start` or `next` records a session
+stamp, headsign holds only that session's turn ends. Every other session stops
+without a message, and headsign never holds
 a delegated agent in either case. After a claim, headsign holds only that
 agent's turn ends. Every session can stop, and headsign does not read
 `last_drive` for a claimed run.
@@ -1548,11 +1557,13 @@ hook sends you back to `headsign next`, this run is yours to drive.**
 it
 holds an agent only to seal a claim. Read the opening words to identify the
 message. Both messages name the workflow and phase. Both tell you to run
-`headsign next`. Both end with the same pause and abort advice. Only the
-opening always distinguishes them. A message that opens with
-`headsign workflow '…' is still running` is the ordinary nudge. It
-confirms
-that you already drive the run. A message that opens with `Claim confirmed:`
+`headsign next` and include pause and abort advice. The ordinary nudge also
+ends with observer advice. A message that opens with
+`headsign workflow '…' is still running` from `SubagentStop` confirms that
+you already drive the run. A Stop message that says the driver is unknown
+provides no such confirmation. If you neither started the run nor were asked
+to continue it, avoid `next` and `abort` and end your turn.
+A message that opens with `Claim confirmed:`
 means an armed marker just seated *you*. Another agent might have armed that
 marker for itself. If you receive that message without running
 `headsign claim`, you took another agent's requested seat. Report this event

@@ -12,6 +12,7 @@
 - Amends [ADR-0027](0027-recording-who-drove-a-run.md): this research did not
   confirm a stable public session environment variable for ordinary Codex CLI
   commands, so Codex commands do not stamp `last_drive.session`.
+- Revised: 2026-09-13 (§4 distinguishes unknown-session nudge wording while preserving hook decisions).
 
 ## Context
 
@@ -133,7 +134,21 @@ those earlier commands.
 On a Codex run with no `last_drive.session`, the Stop evaluator follows its
 existing unknown-session rule and nudges. This keeps the backstop active. It
 also means another Codex session in the same worktree can receive that nudge.
-`HEADSIGN_OBSERVER=1` remains the explicit observer boundary.
+The unknown-session nudge states that headsign cannot tell whether the recipient
+drives the run. It permits `next` only if that session started the run or was
+asked to continue it. Otherwise, it tells the session to avoid `next` and
+`abort` and end its turn. The final-reminder notice follows when the nudge
+reaches the cap, then the pause/abort guidance follows.
+The observer clause then names `HEADSIGN_OBSERVER` in the environment
+that starts a session that does not drive runs.
+
+An unconditional `next` instruction can cause a bystander to move the run.
+A running session also cannot change its parent's launch environment.
+The unknown-case wording therefore separates the immediate action from the
+configuration for future sessions.
+A matched session stamp and every `SubagentStop` nudge retain their previous
+wording. Hook decisions, counters, and the unknown-session fallback remain
+unchanged. `HEADSIGN_OBSERVER=1` remains the explicit observer boundary.
 
 If OpenAI later documents a stable session variable for ordinary commands, a
 new ADR can decide whether it is equivalent at both write and compare points.

@@ -112,8 +112,8 @@ produced useful findings, use them instead of repeating the investigation.
    you are the driver, don't read it off `headsign status` — it reports
    whether some delegated agent holds the run, never whether that agent is
    you. As a delegated agent, the reliable signal is the hook itself: if
-   your turn ends are being pushed back to `headsign next`, this run is
-   yours to drive. Read which message you got: an ordinary nudge fires only
+   `SubagentStop` sends your turn ends back to `headsign next`, this run is
+   yours to drive. Read which message you got: a `SubagentStop` nudge fires only
    on a positive match, but `Claim confirmed …` means an armed marker just
    seated you — if you did not run `headsign claim`, you have taken a seat
    another agent was asking for, so say so and let it claim again. The test
@@ -124,8 +124,11 @@ produced useful findings, use them instead of repeating the investigation.
    `CLAUDE_PROJECT_DIR`, or a run this session simply never touched while
    someone else was last recorded moving it, all end turns quietly), and a
    session gets nudged on any run nobody has claimed and nobody has yet
-   moved, whether or not it is driving — once someone has moved it, only
-   that session is. A nudge
+   moved, whether or not it is driving — once a session's `start` or `next` has recorded it, only that session is.
+   A Stop nudge that says headsign cannot tell who drives the run does not
+   confirm that you drive it. If you neither started the run nor were asked to
+   continue it, do not run `next` or `abort`; end your turn.
+   A nudge
    arrives roughly **once per exchange**, not once per turn end. When the
    hook holds a turn, the host flags the continuation, so the ending of
    *that* turn passes quietly — recorded as an `unheld` line in

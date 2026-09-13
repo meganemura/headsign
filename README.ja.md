@@ -148,6 +148,7 @@ Codex の hook 契約には、`cwd`、`session_id`、`Stop`、`SubagentStop` が
 Codex の通常の CLI コマンドで使える公開セッション環境変数は、公式資料で確認できませんでした。
 そのため、Codex で `start` または `next` を実行しても、headsign は `last_drive.session` を記録できません。
 既存の記録が無い未 claim の Codex run では、一致する各セッションに実行中の run のバックストップが働くことがあります。
+その催促は駆動者が不明であることを伝え、run を駆動していないセッションに `next` を実行しないよう案内します。
 終端の改善フォールバックには担当者の特定が必要で、記録が不明な場合は停止を妨げません。
 読み取り専用の明示的な解除には、従来どおり `HEADSIGN_OBSERVER=1` を使います。
 
