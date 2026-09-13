@@ -1,5 +1,6 @@
 ---
 name: optimize
+license: MIT
 description: Assess a finished headsign run for consequential improvements to its workflow, skills, checks, host integration, or headsign itself, then apply authorized local changes or record a concrete disposition.
 ---
 

@@ -9,6 +9,8 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-13
+
 ### Added
 
 - **New runs now prompt an assessment of how their procedure can improve.**
