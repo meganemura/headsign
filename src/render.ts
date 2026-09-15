@@ -315,7 +315,8 @@ export function statusRunning(o: {
   // The picture (ADR-0042): the phase before this one, this one in a box, and every phase a
   // pass or a failure can send the run to next. Handed in flat, already resolved by engine.ts
   // (a string `on_pass` arrives as a one-route list; the `on_fail` default is applied), so this
-  // module draws and never reads the schema. Absent under the same condition as `description`,
+  // module draws and never reads the schema. Absent when the phase cannot be resolved (the
+  // condition `attemptUnknown` reports),
   // and then the picture and the blank line that frames it are absent too, so a run headsign
   // cannot describe prints what it always printed.
   neighbourhood?: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number };

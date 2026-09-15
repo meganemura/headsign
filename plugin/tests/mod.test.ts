@@ -22,7 +22,7 @@ const PANE: RenderInput<'Pane'> = {
 
 const HEADSIGN: CommandRunInput = { command: 'headsign', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }
 
-const RUNNING = 'RUNNING implement (attempt 0/5)\nworkflow: beads-loop\nlast stop: paused by a note\n'
+const RUNNING = 'RUNNING implement (attempt 0/5)\n\n  pick\n      │\n  ╔═══════════╗\n  ║ implement ║\n  ╚═══════════╝\n      ├─ pass ─▶ review\n      └─ fail ─▶ implement   (5 attempts left)\n\nworkflow: beads-loop\nlast stop: paused by a note\n'
 
 // The world beneath the module: a session in /work whose `.headsign/` is where `hasRun`
 // says, a `headsign status` that answers from `status`, and a terminal that keeps what was
@@ -62,18 +62,30 @@ function world(
   return { runs, opened, closed, logged }
 }
 
-// The strings of a drawn tree, one per Text, with the color the Text carries.
-function linesOf(tree: unknown): { text: string; color?: string; dim?: boolean }[] {
+// The strings of a drawn tree, one per outer Text, with the color the Text carries and, when
+// the line opens with a nested bold Text, that bold prefix on its own.
+type Line = { text: string; color?: string; dim?: boolean; bold?: string }
+
+function textOf(node: unknown): string {
+  if (typeof node === 'string') return node
+  if (Array.isArray(node)) return node.map(textOf).join('')
+  if (typeof node !== 'object' || node === null) return ''
+  return textOf(Reflect.get(node, 'children'))
+}
+
+function linesOf(tree: unknown): Line[] {
   if (Array.isArray(tree)) return tree.flatMap(linesOf)
   if (typeof tree !== 'object' || tree === null) return []
   const type: unknown = Reflect.get(tree, 'type')
   const props: unknown = Reflect.get(tree, 'props')
   const children: unknown = Reflect.get(tree, 'children')
   if (type === 'Text') {
-    const text = (Array.isArray(children) ? children : []).filter((c): c is string => typeof c === 'string').join('')
+    const first: unknown = Array.isArray(children) ? children[0] : undefined
+    const firstProps: unknown = typeof first === 'object' && first ? Reflect.get(first, 'props') : undefined
+    const bold = typeof firstProps === 'object' && firstProps && Reflect.get(firstProps, 'bold') === true ? textOf(first) : undefined
     const color = typeof props === 'object' && props ? Reflect.get(props, 'color') : undefined
     const dim = typeof props === 'object' && props ? Reflect.get(props, 'dimColor') : undefined
-    return [{ text, ...(typeof color === 'string' ? { color } : {}), ...(dim === true ? { dim } : {}) }]
+    return [{ text: textOf(children), ...(typeof color === 'string' ? { color } : {}), ...(dim === true ? { dim } : {}), ...(bold === undefined ? {} : { bold }) }]
   }
   return linesOf(children)
 }
@@ -134,9 +146,27 @@ describe('the pane', () => {
 
     const lines = linesOf(await $.ui.render(PANE))
     expect(lines[0]).toEqual({ text: 'RUNNING implement (attempt 0/5)', color: 'yellow' })
-    expect(lines[1]).toEqual({ text: 'workflow: beads-loop' })
-    expect(lines[2]).toEqual({ text: 'last stop: paused by a note' })
+    expect(lines[2]).toEqual({ text: '  pick' })
+    expect(lines[4]).toEqual({ text: '  ╔═══════════╗' })
+    expect(lines[8]).toEqual({ text: '      └─ fail ─▶ implement   (5 attempts left)' })
+    expect(lines[10]).toEqual({ text: 'workflow: beads-loop', bold: 'workflow:' })
+    expect(lines[11]).toEqual({ text: 'last stop: paused by a note', bold: 'last stop:' })
     expect(lines[lines.length - 1]?.text).toContain('/headsign closes this pane')
+  })
+
+  // The split is by shape alone: a lowercase label, a colon, a space. Anything else, the
+  // picture's rows included, is drawn whole.
+  test('only a line shaped `label: rest` gets a bold label', async ($, on) => {
+    world(on, { status: { exitCode: 0, stdout: 'RUNNING x (attempt 0)\n\n  ╔═══════╗\n\nnote: Waiting: for x\nURL: http://a\n--- phase: x ---\nDo it.\n', stderr: '' } })
+    await $.session.start(SESSION)
+    await $.command.run(HEADSIGN)
+
+    const lines = linesOf(await $.ui.render(PANE))
+    expect(lines[2]).toEqual({ text: '  ╔═══════╗' })
+    expect(lines[4]).toEqual({ text: 'note: Waiting: for x', bold: 'note:' })
+    expect(lines[5]).toEqual({ text: 'URL: http://a' })
+    expect(lines[6]).toEqual({ text: '--- phase: x ---' })
+    expect(lines[7]).toEqual({ text: 'Do it.' })
   })
 
   test('with no .headsign between the directory and the git root the pane says so and runs nothing', async ($, on) => {

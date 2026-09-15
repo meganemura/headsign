@@ -13,7 +13,8 @@
 //
 // Must NOT know about: the shape of `.headsign/state.json` (it never reads the file), the
 // wording of any `status` line past the first (ADR-0030: the token line and the exit code
-// are the contract; every other line is shown as text, never parsed), and the stop hooks,
+// are the contract; every other line is shown as text, split for emphasis by shape only and
+// never read for meaning), and the stop hooks,
 // which stay command hooks in hooks.json so that Codex and a managed Claude Code both keep
 // them (ADR-0040). A command that does not name `headsign` passes through untouched, so a
 // build or a test suite the session runs inherits nothing from here.
@@ -23,7 +24,7 @@
 // `$.noun.event(...)` and `$` is handed only to the function declarations at the top of
 // this file.
 
-import type { Elements, On, RenderElement } from 'claude-code'
+import type { Elements, On, RenderElement, RenderNode } from 'claude-code'
 
 const PANE_ID = 'headsign'
 const PANE_TITLE = 'headsign'
@@ -179,9 +180,24 @@ function bodyOf(ui: Ui, state: State): RenderElement[] {
   const color = tokenColorOf(head)
   return [
     Text({ bold: true, ...(color === undefined ? {} : { color }), children: head }),
-    ...rest.map((line) => Text({ wrap: 'wrap', children: line })),
+    ...rest.map((line) => Text({ wrap: 'wrap', children: labelled(ui, line) })),
     ...(report.exitCode === 0 ? [] : [Text({ color: 'red', children: `exit ${report.exitCode}${report.stderr ? `: ${report.stderr.trim()}` : ''}` })]),
   ]
+}
+
+// A `label: rest` line is drawn with its label bold, by shape alone: a run of lowercase words
+// and spaces, a colon, a space. Which label it is never matters here (ADR-0040 §3 as amended:
+// the module splits a line for emphasis and reads no meaning from it), so a line of the
+// phase's own instructions that happens to have the shape gets a bold prefix too, and a line
+// without the shape is drawn whole. The picture's lines begin with a space or a box character
+// and never match.
+const LABEL = /^([a-z][a-z ]*): /
+
+function labelled(ui: Ui, line: string): RenderNode[] | string {
+  const match = LABEL.exec(line)
+  if (match === null) return line
+  const label = match[1] ?? ''
+  return [ui.Text({ bold: true, children: `${label}:` }), line.slice(label.length + 1)]
 }
 
 function paneOf(ui: Ui, state: State): RenderElement {

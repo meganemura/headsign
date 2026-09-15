@@ -508,7 +508,7 @@ export type StatusResult =
       phaseEnteredAt: string | null;
       // The phase's neighbourhood, flattened for the picture `status` draws (ADR-0042):
       // where the run came from, where a pass can send it, where a failure sends it. Absent
-      // under the same condition as `description` — the workflow unreadable or the phase gone
+      // under the same condition as `attemptUnknown` — the workflow unreadable or the phase gone
       // from it — so a run headsign cannot describe prints what it always printed.
       neighbourhood?: Neighbourhood;
       // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with — ADR-0025

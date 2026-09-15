@@ -12,6 +12,9 @@
   per plugin, so [ADR-0041](0041-a-command-that-names-its-caller.md)'s hook
   shares this file; and that the module now has tests under `plugin/tests/`,
   run by `claude plugin test`).
+- Revised: 2026-09-16 (Decision 3 admits one split by shape: a `label: rest`
+  line is drawn with its label bold. Meaning is still never read from a line
+  past the first.)
 
 ## Context
 
@@ -67,8 +70,17 @@ one, and the classic hooks in the default file still fire.
 3. **The module reads the run through the CLI, under ADR-0030.** It runs
    `headsign status` in the run's directory, colors the first line by its
    token, treats exit 3 as "nothing to report", and draws every other line as
-   text. It never opens `state.json`, never parses a line past the first, and
-   never runs `next`, `abort`, or `claim`.
+   text. It never opens `state.json`, never reads meaning from a line past the
+   first, and never runs `next`, `abort`, or `claim`.
+
+   One split for emphasis is allowed (revised 2026-09-16): a line of the shape
+   `label: rest`, a run of lowercase words and spaces before a colon and a
+   space, is drawn with the label bold and the rest plain. The rule is the
+   shape, never which label. A line of a phase's own instructions that has the
+   shape gets a bold prefix too, and that is accepted: the module still decides
+   nothing from the text. The picture `status` draws under its first line
+   ([ADR-0042](0042-status-draws-the-neighbourhood.md)) begins each line with a
+   space or a box character and is drawn whole.
 4. **`/headsign` is the command.** Registered command names are not
    namespaced by plugin: a command named `status` would shadow the built-in
    `/status`, and `/headsign:status` does not exist. The command toggles the

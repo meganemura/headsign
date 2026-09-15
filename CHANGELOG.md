@@ -18,6 +18,9 @@ changes), and a patch bump means fixes only.
   name with the attempts left when a limit is declared. `state.json` gains
   `phase_entered_from`, stamped where `phase_entered_at` is. The `workflow:`
   line is therefore no longer line 2 (ADR-0042).
+- **The run pane draws `label:` lines with the label bold.** By shape alone,
+  a lowercase label before a colon; the module still reads no meaning from any
+  line past the first (ADR-0040, Decision 3 as revised).
 
 ## [0.12.0] - 2026-09-15
 

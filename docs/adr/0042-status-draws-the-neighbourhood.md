@@ -78,8 +78,9 @@ as a word, the attempts left when there is a limit. A string `on_pass` arrives
 as a one-route list. The renderer never reads the schema.
 
 **5. Absent means byte-identical.** The picture and both blank lines print only
-when the workflow is readable and still defines the phase, the same condition
-that gates `description` and `attemptUnknown`. A run headsign cannot describe
+when the workflow is readable and still defines the phase, the condition
+`attemptUnknown` reports. (`description` is optional per phase, so a phase
+without one still gets its picture.) A run headsign cannot describe
 prints what it always printed.
 
 ## What is deliberately not being done
