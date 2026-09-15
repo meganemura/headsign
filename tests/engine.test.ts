@@ -1584,7 +1584,7 @@ test("next: a named agent takes the seat, and its nudge count starts fresh", () 
 });
 
 // The lead running `next` on a delegated driver's behalf is ordinary; unseating that driver
-// on every such lap would reopen the hole ADR-0009's sticky rule closed.
+// on every such lap would hand the seat to a command that never named an agent (ADR-0041 §3).
 test("next: a session's own loop re-stamps last_drive but leaves a seated driver_agent alone", () => {
   const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
   engine.start(dir, workflowPath, START_TIME, { HEADSIGN_ACTOR: "session-alpha/agent-one" });

@@ -9,7 +9,7 @@
   decision does not reopen that path.
 - Amends [ADR-0010](0010-subagent-stop-identity.md) Decision 1 in the same
   way; the seal itself is unchanged.
-- Amends [ADR-0027](0027-recording-who-drove-a-run.md) §2.1: `last_drive.session`
+- Amends [ADR-0027](0027-recording-who-drove-a-run.md) §5: `last_drive.session`
   has a second source, read ahead of `CLAUDE_CODE_SESSION_ID` in the same
   function.
 - Amends [ADR-0028](0028-codex-as-a-second-principal.md) §4: the
@@ -94,8 +94,11 @@ it cannot stamp a partial name.
   most recent driver is the one the hooks should hold.
 - **No agent half** (the session's own loop) leaves `driver_agent` as it is.
   A lead that runs `next` on a delegated driver's behalf is ordinary, and
-  unseating the driver on every such lap would reopen the hole ADR-0009's
-  sticky rule closed.
+  unseating the driver on every such lap would let an unrelated command from
+  the shared environment take a seat a delegated agent was given. ADR-0013
+  §5 deleted the rule that guarded against this with the writer it guarded
+  against; this decision adds a writer that names its loop, so the seat needs
+  no rule: a command with no agent half writes nothing to the seat.
 
 ### 4. Why this is not the environment stamp ADR-0013 retired
 

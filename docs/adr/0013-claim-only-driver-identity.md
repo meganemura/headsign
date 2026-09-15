@@ -16,7 +16,9 @@
   adds a second writer of `driver_agent`: an agent id that a function-hooks
   module attributes to one command and writes as `HEADSIGN_ACTOR`. The
   process-scoped environment stays retired; §1's "only writer" clause no
-  longer holds on Claude Code with function hooks.)
+  longer holds on Claude Code with function hooks. §5 stands: the new writer
+  names its own loop, and a command with no agent half never writes the
+  seat, so no guard rule returns.)
 - Revised: 2026-08-01 (Decision 1's second clause — that an `agent_id` is
   "the only identifier headsign records anywhere" — and Decision 2 in full
   are retracted by [ADR-0027](0027-recording-who-drove-a-run.md), which

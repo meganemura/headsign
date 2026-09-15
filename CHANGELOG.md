@@ -24,8 +24,9 @@ changes), and a patch bump means fixes only.
   `start` and `next` read it: the session half stamps `last_drive` ahead of
   `CLAUDE_CODE_SESSION_ID`, and an agent half seats that agent as
   `driver_agent` at once, so its own turn ends are the ones held. The claim
-  ceremony is unchanged and remains the path on Codex, without the flag, and
-  on managed machines (ADR-0041).
+  ceremony is unchanged and remains the path on Codex, without the flag, on
+  managed machines, and for teammates, whose loop is not yet measured
+  (ADR-0041).
 
 ### Changed
 

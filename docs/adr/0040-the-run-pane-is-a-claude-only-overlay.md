@@ -8,6 +8,9 @@
   the pane reads `status` under that contract and nothing more.
 - Relates to [ADR-0039](0039-design-for-the-model-that-improves-the-method.md):
   this is an explicit future bet, stated in its four fields below.
+- Revised: 2026-09-15 (Consequences note that the validator admits one module
+  per plugin, so [ADR-0041](0041-a-command-that-names-its-caller.md)'s hook
+  shares this file).
 
 ## Context
 

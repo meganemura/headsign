@@ -764,7 +764,7 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, accept
     // command by a function-hooks module that knows which loop issued it, so an agent id it
     // carries is positive evidence and is stamped below beside `last_drive`. A command it
     // marks as the session's own loop leaves `driver_agent` as it is: a lead running `next`
-    // for a delegated driver must not unseat that driver. Otherwise ownership changes only
+    // for a delegated driver must not unseat that driver (ADR-0041 §3). Otherwise ownership changes only
     // via the SubagentStop adoption gate. The stamp just below is last_drive, answering a
     // different question (ADR-0027 §4).
 
