@@ -1551,6 +1551,59 @@ test("next: a stamped run, called with an env carrying no session id, has last_d
   assert.equal(runState(dir).last_drive, null);
 });
 
+// HEADSIGN_ACTOR (ADR-0041): written per command by a function-hooks module, `<session>` for
+// the session's own loop and `<session>/<agent>` for a subagent's. The session half stamps
+// `last_drive` ahead of the process-scoped variable; the agent half is the one env-carried
+// value allowed to write `driver_agent`, because the module that wrote it knew which loop
+// issued the command.
+test("start: HEADSIGN_ACTOR's session half stamps last_drive and wins over CLAUDE_CODE_SESSION_ID", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  const result = engine.start(dir, workflowPath, START_TIME, { CLAUDE_CODE_SESSION_ID: "session-alpha", HEADSIGN_ACTOR: "session-beta" });
+  assert.equal(result.result.kind, "STARTED");
+  assert.deepEqual(runState(dir).last_drive, { session: "session-beta", at: START_TIME });
+  assert.equal(runState(dir).driver_agent, null, "a session's own loop names no agent");
+});
+
+test("start: HEADSIGN_ACTOR with an agent half seats that agent as driver_agent at once", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  engine.start(dir, workflowPath, START_TIME, { HEADSIGN_ACTOR: "session-alpha/agent-one" });
+  assert.deepEqual(runState(dir).last_drive, { session: "session-alpha", at: START_TIME });
+  assert.equal(runState(dir).driver_agent, "agent-one");
+});
+
+test("next: a named agent takes the seat, and its nudge count starts fresh", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  engine.start(dir, workflowPath, START_TIME, { HEADSIGN_ACTOR: "session-alpha" });
+  assert.equal(runState(dir).driver_agent, null);
+
+  const result = engine.next(dir, LAP_TIME, { HEADSIGN_ACTOR: "session-alpha/agent-one" });
+  assert.equal(result.kind, "ANSWERED");
+  assert.equal(runState(dir).driver_agent, "agent-one");
+  assert.equal(runState(dir).stop_nudges, 0);
+  assert.deepEqual(runState(dir).last_drive, { session: "session-alpha", at: LAP_TIME });
+});
+
+// The lead running `next` on a delegated driver's behalf is ordinary; unseating that driver
+// on every such lap would reopen the hole ADR-0009's sticky rule closed.
+test("next: a session's own loop re-stamps last_drive but leaves a seated driver_agent alone", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  engine.start(dir, workflowPath, START_TIME, { HEADSIGN_ACTOR: "session-alpha/agent-one" });
+
+  const result = engine.next(dir, LAP_TIME, { HEADSIGN_ACTOR: "session-alpha" });
+  assert.equal(result.kind, "ANSWERED");
+  assert.equal(runState(dir).driver_agent, "agent-one");
+  assert.deepEqual(runState(dir).last_drive, { session: "session-alpha", at: LAP_TIME });
+});
+
+// A value outside the module's alphabet (a hand-set variable, a damaged one) reads as absent
+// rather than as a partial name, so the process-scoped path is what remains.
+test("start: a malformed HEADSIGN_ACTOR is ignored whole and CLAUDE_CODE_SESSION_ID stamps instead", () => {
+  const { dir, workflowPath } = freshWorkflowDir(SOLO_WORKFLOW);
+  engine.start(dir, workflowPath, START_TIME, { CLAUDE_CODE_SESSION_ID: "session-alpha", HEADSIGN_ACTOR: "session beta/agent one" });
+  assert.deepEqual(runState(dir).last_drive, { session: "session-alpha", at: START_TIME });
+  assert.equal(runState(dir).driver_agent, null);
+});
+
 // `run:` is in the streak comparison because the line it feeds says "same check". A command
 // edited mid-run is a changed rule the graph pin reports on its own, and calling the failure it
 // produces a repeat of the previous one would say something false in the RETRY block.

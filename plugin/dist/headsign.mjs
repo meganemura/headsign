@@ -8143,8 +8143,22 @@ function isObserver(env) {
   return typeof raw === "string" && raw.length > 0;
 }
 function resolveDriveSession(env) {
+  const actor = resolveActor(env);
+  if (actor !== null) return actor.session;
   const raw = env["CLAUDE_CODE_SESSION_ID"];
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+function resolveDriveAgent(env) {
+  return resolveActor(env)?.agent ?? null;
+}
+var ACTOR_TOKEN = /^[A-Za-z0-9_-]+$/;
+function resolveActor(env) {
+  const raw = env["HEADSIGN_ACTOR"];
+  if (typeof raw !== "string") return null;
+  const [session, agent, ...rest] = raw.trim().split("/");
+  if (rest.length > 0 || !ACTOR_TOKEN.test(session)) return null;
+  if (agent === void 0) return { session, agent: null };
+  return ACTOR_TOKEN.test(agent) ? { session, agent } : null;
 }
 function recordedDriver(state) {
   return typeof state.driver_agent === "string" && state.driver_agent.length > 0 ? state.driver_agent : null;
@@ -8558,7 +8572,7 @@ function start2(cwd, workflowPath, nowIso, env, optimize = true) {
       last_failure: null,
       end_reason: null,
       stop_nudges: 0,
-      driver_agent: null,
+      driver_agent: resolveDriveAgent(env),
       // No stop has been processed yet, and `start` must not invent one: the field is written only
       // by the stop-boundary hooks, at a stop they actually saw.
       last_stop: null,
@@ -8616,7 +8630,9 @@ function next(cwd, nowIso, env, acceptGraphChange = false, onProgress) {
     if (fresh.status !== "running") return terminalAnswerWithOptimization(cwd, fresh, acceptGraphChange);
     const drive = driveStamp(env, nowIso);
     const diskDrive = fresh.last_drive ?? null;
-    const stamped2 = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
+    const driveAgent = resolveDriveAgent(env);
+    const restamped = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
+    const stamped2 = driveAgent !== null && driveAgent !== fresh.driver_agent ? { ...restamped, driver_agent: driveAgent, stop_nudges: 0 } : restamped;
     if (stamped2 !== fresh) writeState(cwd, stamped2);
     return evaluateNext(cwd, wf, stamped2, nowIso, acceptGraphChange, onProgress);
   } finally {

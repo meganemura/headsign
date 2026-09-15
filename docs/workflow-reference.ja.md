@@ -982,6 +982,7 @@ claim されていない run について、2 つの hook は意図的に逆の�
 記録が不明な場合も、催促のカウントは消費します。
 
 `headsign claim` によって駆動者が*着席した*あとは、記録されているのはエージェントの識別子です。
+function hook を有効にした Claude Code では、subagent 自身の `headsign next` が claim なしで同じように着席させます。plugin のモジュールが各 `headsign` コマンドの呼び出し元を `HEADSIGN_ACTOR` で伝えるからです(ADR-0041)。
 そのため `Stop` はすべてのセッションを無条件に通します。
 どのセッションも、そのエージェントではありえないからです。
 `SubagentStop` はそのエージェント 1 つだけを引き留め、他は引き留めません。

@@ -45,7 +45,7 @@ plugin/                          # what gets distributed (Claude Code and Codex 
   skills/optimize/SKILL.md       # terminal procedure assessment
   hooks/hooks.json               # run discovery plus the two stop-boundary hooks (both hosts)
   hooks/mods.json                # names the function-hooks module below (Claude Code only, ADR-0040)
-  hooks/status-pane.ts           # /headsign and the run pane it draws from `headsign status`
+  hooks/mod.ts                   # /headsign, the run pane it draws from `headsign status`, and the HEADSIGN_ACTOR stamp (ADR-0041)
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
 docs/                            # this file + ADRs
@@ -90,7 +90,7 @@ thin harness need this?
 | `src/render.ts` | outcome → text. The ONLY place the output contract is written | how outcomes were computed |
 | `src/runfinder.ts` | find the nearest run from a hook directory, bounded by the first Git root | run state, hooks, workflows |
 | `src/sessionhook.ts` | SessionStart input + existing run state → optional discovery notice; read-only | gate execution, routing, driver ownership |
-| `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, and the module where every environment value headsign reads is read — `CLAUDE_CODE_SESSION_ID` for `last_drive` (ADR-0027) and `CLAUDE_PROJECT_DIR` for the second walk (ADR-0026), each out of an argument cli.ts passed | workflow.yaml, gates |
+| `src/stophook.ts` | Stop and SubagentStop hooks: stdin JSON → allow/block; the `HEADSIGN_OBSERVER` opt-out, and the module where every environment value headsign reads is read — `HEADSIGN_ACTOR` and `CLAUDE_CODE_SESSION_ID` for `last_drive` and, from the first, `driver_agent` (ADR-0041, ADR-0027) and `CLAUDE_PROJECT_DIR` for the second walk (ADR-0026), each out of an argument cli.ts passed | workflow.yaml, gates |
 
 `render.ts` owns the entire outcome contract (the START/ADVANCE/RETRY/COMPLETE/ESCALATE/ABORT
 strings and `validate`'s output); the `ERROR:` messages (exit code 3, for usage/config
@@ -152,7 +152,11 @@ outside it:
   the transcript; the module runs `headsign status` in the run's directory
   and draws what it prints, reading only the first line's token and the exit
   code (ADR-0030). It never opens `state.json` and never runs `next`,
-  `abort`, or `claim` (ADR-0040).
+  `abort`, or `claim` (ADR-0040). The same module exports `HEADSIGN_ACTOR`
+  in front of each `headsign` shell command, naming the session and, in a
+  subagent, the agent; the CLI reads it to stamp `last_drive` and
+  `driver_agent`, so a delegated agent on this host is seated by its own
+  `next` and needs no claim (ADR-0041).
 - **Stop-boundary hooks** are the backstop: skills are instructions, not
   guarantees. If the run's driver tries to stop while a run is `running`,
   the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events

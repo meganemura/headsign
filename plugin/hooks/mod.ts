@@ -1,18 +1,27 @@
-// Responsibility: draw the current run beside the transcript, in a Claude Code pane, from
-// the text `headsign status` prints. `/headsign` opens and closes the pane; a `headsign`
-// shell command or a finished turn refreshes it. Nothing here judges, advances, or
-// records anything about the run.
+// The plugin's one function-hooks module (a "Claude Mod"; the validator admits one per
+// plugin). It has two responsibilities, kept in two sections below:
+//
+// 1. Draw the current run beside the transcript, in a Claude Code pane, from the text
+//    `headsign status` prints. `/headsign` opens and closes the pane; a `headsign` shell
+//    command or a finished turn refreshes it. This section judges, advances, and records
+//    nothing about the run.
+// 2. Tell the CLI who is running it. A `headsign` shell command that the session or one of
+//    its subagents runs gets `HEADSIGN_ACTOR` exported in front of it, carrying the session
+//    id and, for a subagent, the agent id. The CLI reads that variable when `start` and
+//    `next` record who drove the run (ADR-0041). This section names the caller and decides
+//    nothing about what the CLI records.
 //
 // Must NOT know about: the shape of `.headsign/state.json` (it never reads the file), the
 // wording of any `status` line past the first (ADR-0030: the token line and the exit code
 // are the contract; every other line is shown as text, never parsed), and the stop hooks,
 // which stay command hooks in hooks.json so that Codex and a managed Claude Code both keep
-// them (ADR-0040).
+// them (ADR-0040). A command that does not name `headsign` passes through untouched, so a
+// build or a test suite the session runs inherits nothing from here.
 //
-// This is a function-hooks module (a "Claude Mod"). It loads only where Claude Code has
-// function hooks enabled; everywhere else the file is inert. The engine's validator reads
-// it statically, so every call on `$` is spelled `$.noun.event(...)` and `$` is handed only
-// to the function declarations at the top of this file.
+// It loads only where Claude Code has function hooks enabled; everywhere else the file is
+// inert. The engine's validator reads it statically, so every call on `$` is spelled
+// `$.noun.event(...)` and `$` is handed only to the function declarations at the top of
+// this file.
 
 import type { Elements, On, RenderElement } from 'claude-code'
 
@@ -20,7 +29,7 @@ const PANE_ID = 'headsign'
 const PANE_TITLE = 'headsign'
 const COMMAND = 'headsign'
 
-// The CLI ships beside this module: `<plugin>/hooks/status-pane.ts` and `<plugin>/dist/`.
+// The CLI ships beside this module: `<plugin>/hooks/mod.ts` and `<plugin>/dist/`.
 // `import.meta.url` is the one thing a hooks module knows about its own location (measured:
 // `$.env.get('CLAUDE_PLUGIN_ROOT')` answers nothing inside the module's environment).
 const CLI = new URL('../dist/headsign.mjs', (import.meta as { url: string }).url).pathname
@@ -195,8 +204,54 @@ function isHeadsignStart(command: unknown): boolean {
   return typeof command === 'string' && /\bheadsign(\.mjs)?\s+start\b/.test(command)
 }
 
+// ---- 2. The actor stamp -------------------------------------------------------------------
+//
+// Why a rewrite of the command and not an environment for the tool: `tool.call` for Bash
+// carries the command text and nothing else a hook may set for the shell. Measured on
+// 2026-09-15: a rewritten `e.command` is what the shell runs; `export NAME=…; <command>`
+// survives `cd … &&` and a pipeline inside the command; and the Bash tool's shell state does
+// not carry the variable into the next call. The ids are checked against a narrow alphabet
+// before they are written into a shell string, because they come from the engine, not from
+// this file.
+//
+// Where the claim ceremony stays: `headsign claim` and the SubagentStop seal are still the
+// path on Codex, on a Claude Code without function hooks, and on a managed Claude Code, and
+// they stay correct here too. This is the shorter path where the module loads.
+
+const ACTOR_VARIABLE = 'HEADSIGN_ACTOR'
+
+// Session ids and agent ids are UUID-shaped or short word tokens. Anything else is refused
+// rather than escaped: the command is a shell string and the ids are not this file's to trust.
+function isSafeId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 128 && /^[A-Za-z0-9_-]+$/.test(value)
+}
+
+async function sessionIdOf($: any): Promise<unknown> {
+  return $.session.id()
+}
+
+// `<session>` for the session's own loop, `<session>/<agentId>` for a subagent's. The CLI
+// splits on the one slash.
+function actorOf(sessionId: unknown, agentId: unknown): string | null {
+  if (!isSafeId(sessionId)) return null
+  if (agentId === undefined || agentId === null) return sessionId
+  return isSafeId(agentId) ? `${sessionId}/${agentId}` : null
+}
+
 export function register(on: On) {
   const state: State = { host: null, isOpen: false, report: null, refreshedAt: null, isRefreshing: false, isQueued: false }
+
+  // Registered ahead of the pane's own `tool.call` hook so that the rewrite is what that
+  // hook's `next(e)` runs; the pane's matcher reads the command text after the prefix, and
+  // `\b` matches there just as it did.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (!isHeadsignCommand(e.command)) return next(e)
+    const actor = actorOf(await sessionIdOf($), e.agentId)
+    if (actor === null) return next(e)
+    return next({ ...e, command: `export ${ACTOR_VARIABLE}='${actor}'; ${e.command}` })
+  })
+
+  // ---- 1. The pane ------------------------------------------------------------------------
 
   on('session.start', async ($, e, next) => {
     state.host = hostOf($)

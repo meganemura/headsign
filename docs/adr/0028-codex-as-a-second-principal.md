@@ -17,6 +17,11 @@
   [ADR-0040](0040-the-run-pane-is-a-claude-only-overlay.md) names a
   function-hooks module from the Claude manifest alone; `hooks/hooks.json`
   and the session-attribution boundary are unchanged).
+- Revised: 2026-09-15 (§4's boundary now differs by host:
+  [ADR-0041](0041-a-command-that-names-its-caller.md) lets a Claude Code
+  with function hooks stamp `last_drive.session` and `driver_agent` from
+  `HEADSIGN_ACTOR`, which its module writes per command. Codex sets no such
+  variable, so §4 holds there as written).
 
 ## Context
 

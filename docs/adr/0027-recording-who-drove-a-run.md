@@ -24,6 +24,11 @@
   fallback. Delegated attribution still uses the separate agent identifier.
   Unknown identity passes.)
 - Revised: 2026-09-13 (ADR-0028 §4 changes the unknown-session nudge wording; §3 step 6 still nudges).
+- Revised: 2026-09-15 ([ADR-0041](0041-a-command-that-names-its-caller.md):
+  `last_drive.session` has a second source, `HEADSIGN_ACTOR`, read ahead of
+  `CLAUDE_CODE_SESSION_ID` in the same function. Its session half was
+  measured equal to the Stop payload's `session_id`, so the §3 comparison
+  keeps its meaning.)
 
 ## Context
 

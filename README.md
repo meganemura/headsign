@@ -150,6 +150,10 @@ hooks. `/headsign` opens a pane beside the transcript that shows what
 `headsign` shell command and after each turn, and `headsign start` opens it.
 The stop hooks stay shell hooks on both hosts
 ([ADR-0040](docs/adr/0040-the-run-pane-is-a-claude-only-overlay.md)).
+The same module names the caller of each `headsign` shell command: a subagent
+that runs `headsign next` is recorded as the run's driver at once, and it does
+not need `headsign claim`
+([ADR-0041](docs/adr/0041-a-command-that-names-its-caller.md)).
 
 Codex documents `cwd`, `session_id`, `Stop`, and `SubagentStop` in its hook
 contract, so the backstop runs on both hosts. The research did not confirm

@@ -82,7 +82,11 @@ produced useful findings, use them instead of repeating the investigation.
    you are a teammate (Claude Code's agent-teams feature) or a subagent:
    you share the spawning session's process and environment, so no command
    you run can say who you are, and `headsign next` records no driver at
-   all. Instead: run `headsign claim`, then end your turn. The seal happens
+   all. (One exception: in a Claude Code session with function hooks
+   enabled, the plugin's module names the caller of each `headsign` command,
+   and a subagent's own `next` seats it as driver — the claim below is then
+   redundant, and still correct.) Instead: run `headsign claim`, then end
+   your turn. The seal happens
    at your own turn end — that is the only moment headsign can learn which
    delegated agent you are — and the hook confirms it in its message,
    naming the workflow and phase. **Do not run `headsign next` before you

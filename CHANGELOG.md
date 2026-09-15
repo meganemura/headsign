@@ -18,6 +18,14 @@ changes), and a patch bump means fixes only.
   shell command and after each turn, and `headsign start` opens it. Codex and
   a Claude Code without the flag see no change; the stop hooks stay command
   hooks (ADR-0040).
+- **A delegated agent on Claude Code drives a run without `headsign claim`.**
+  Under the same flag, the module exports `HEADSIGN_ACTOR` in front of each
+  `headsign` shell command, naming the session and, in a subagent, the agent.
+  `start` and `next` read it: the session half stamps `last_drive` ahead of
+  `CLAUDE_CODE_SESSION_ID`, and an agent half seats that agent as
+  `driver_agent` at once, so its own turn ends are the ones held. The claim
+  ceremony is unchanged and remains the path on Codex, without the flag, and
+  on managed machines (ADR-0041).
 
 ### Changed
 

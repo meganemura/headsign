@@ -16,13 +16,15 @@ if (!fs.existsSync(BUNDLE)) {
 }
 
 // This suite spawns with no explicit `env`, inheriting `process.env` — including, if this test
-// runner itself happens to be running inside a Claude Code session, CLAUDE_CODE_SESSION_ID.
-// Stripped here (ADR-0027) so `start`/`next` below never stamp `last_drive` on an ambient
-// session none of these tests asked for; a run's shape here must not depend on whether the
-// suite happens to run inside such a session.
+// runner itself happens to be running inside a Claude Code session, CLAUDE_CODE_SESSION_ID,
+// and, if that session's function-hooks module marked the command that ran the suite,
+// HEADSIGN_ACTOR. Both stripped here (ADR-0027, ADR-0041) so `start`/`next` below never stamp
+// `last_drive` or `driver_agent` on an ambient session none of these tests asked for; a run's
+// shape here must not depend on whether the suite happens to run inside such a session.
 function runEnv(): NodeJS.ProcessEnv {
   const e = { ...process.env };
   delete e["CLAUDE_CODE_SESSION_ID"];
+  delete e["HEADSIGN_ACTOR"];
   return e;
 }
 

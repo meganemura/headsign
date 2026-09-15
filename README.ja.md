@@ -148,6 +148,8 @@ Claude Code には run pane も届きます。
 `/headsign` は transcript の横に pane を開き、`headsign status` の出力を表示します。もう一度実行すると閉じます。
 pane は `headsign` のシェルコマンドの後と各 turn の後に更新され、`headsign start` は pane を開きます。
 停止 hook はどちらのホストでもシェル hook のままです([ADR-0040](docs/adr/0040-the-run-pane-is-a-claude-only-overlay.md))。
+同じモジュールは、各 `headsign` シェルコマンドの呼び出し元を CLI に伝えます。
+`headsign next` を実行した subagent はその場で run の駆動者として記録され、`headsign claim` は不要です([ADR-0041](docs/adr/0041-a-command-that-names-its-caller.md))。
 
 Codex の hook 契約には、`cwd`、`session_id`、`Stop`、`SubagentStop` が明記されています。
 そのため、バックストップは両方のホストで動きます。

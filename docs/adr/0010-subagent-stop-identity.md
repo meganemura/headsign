@@ -11,6 +11,11 @@
   test which mechanism had stamped it — steps 7 and 8, and Decision 4's
   early return — are restated in terms of that one field. Decisions 1 and
   3, the measurements they rest on, and the named race are unchanged.)
+- Revised: 2026-09-15 ([ADR-0041](0041-a-command-that-names-its-caller.md):
+  the adoption gate is one of two writers of `driver_agent`. A subagent's
+  `next` carrying `HEADSIGN_ACTOR` seats it directly, with the same
+  identifier this gate seals. The gate and the claim are unchanged and stay
+  the path where no module loads.)
 
 ## Context
 

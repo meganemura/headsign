@@ -1101,7 +1101,9 @@ A matched session stamp and every `SubagentStop` nudge keep their existing
 wording. The unknown-session case still consumes a nudge.
 
 After `headsign claim` seats a run's driver, headsign records an agent
-identifier. `Stop` then passes every session because no session can be that
+identifier. On Claude Code with function hooks enabled, a subagent's own
+`headsign next` seats it the same way, without a claim: the plugin's module
+names the caller of each `headsign` command in `HEADSIGN_ACTOR` (ADR-0041). `Stop` then passes every session because no session can be that
 agent. `SubagentStop` holds only that agent. Before a run is claimed, `Stop`
 makes one session-identifier comparison. If `last_drive` names a session,
 it compares the payload's identifier and passes on a mismatch. See

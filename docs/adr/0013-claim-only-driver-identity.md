@@ -12,6 +12,11 @@
   observer opt-out, its read-only `status` command, and its
   non-drivers-call-`status` discipline; ADR-0010's two-beat claim, its
   `SubagentStop` adoption gate, and its positive-match rule.
+- Revised: 2026-09-15 ([ADR-0041](0041-a-command-that-names-its-caller.md)
+  adds a second writer of `driver_agent`: an agent id that a function-hooks
+  module attributes to one command and writes as `HEADSIGN_ACTOR`. The
+  process-scoped environment stays retired; §1's "only writer" clause no
+  longer holds on Claude Code with function hooks.)
 - Revised: 2026-08-01 (Decision 1's second clause — that an `agent_id` is
   "the only identifier headsign records anywhere" — and Decision 2 in full
   are retracted by [ADR-0027](0027-recording-who-drove-a-run.md), which

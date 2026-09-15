@@ -86,9 +86,39 @@ export function isObserver(env: NodeJS.ProcessEnv): boolean {
 // ADR-0013's "trap" was two mechanisms resolving this name in a different order each; `src/`
 // reads `CLAUDE_CODE_SESSION_ID` in exactly this one place (grep the tree to check) — one
 // reader of the env var is how this round avoids repeating that.
+//
+// `HEADSIGN_ACTOR` is read in the same place, for the same reason (ADR-0041). A function-hooks
+// module exports it in front of each `headsign` shell command a Claude Code session runs, as
+// `<session>` or `<session>/<agentId>`; its session half is `$.session.id()`, measured on
+// 2026-09-15 to be the same string as the Stop payload's `session_id`, and the same string the
+// process-scoped variable above carries in the main loop. Where both are present the actor
+// wins: it was written for this one command, the other describes the process.
 export function resolveDriveSession(env: NodeJS.ProcessEnv): string | null {
+  const actor = resolveActor(env);
+  if (actor !== null) return actor.session;
   const raw = env["CLAUDE_CODE_SESSION_ID"];
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+// The agent half of `HEADSIGN_ACTOR`, or null in the main loop and everywhere the variable is
+// absent. It is the second writer of `driver_agent` after the SubagentStop seal (ADR-0041 §2),
+// and it carries the same identifier that seal would: a subagent's `tool.call` `agentId` and
+// its `SubagentStop` `agent_id` were measured equal on 2026-09-15.
+export function resolveDriveAgent(env: NodeJS.ProcessEnv): string | null {
+  return resolveActor(env)?.agent ?? null;
+}
+
+// `<session>` or `<session>/<agent>`; both halves are tokens of the alphabet the module
+// writes (letters, digits, `_`, `-`). Anything else reads as absent, so a hand-set or damaged
+// value can only fall back to the process-scoped path, never stamp a partial name.
+const ACTOR_TOKEN = /^[A-Za-z0-9_-]+$/;
+function resolveActor(env: NodeJS.ProcessEnv): { session: string; agent: string | null } | null {
+  const raw = env["HEADSIGN_ACTOR"];
+  if (typeof raw !== "string") return null;
+  const [session, agent, ...rest] = raw.trim().split("/");
+  if (rest.length > 0 || !ACTOR_TOKEN.test(session)) return null;
+  if (agent === undefined) return { session, agent: null };
+  return ACTOR_TOKEN.test(agent) ? { session, agent } : null;
 }
 
 // The recorded driver, read the tolerant way state.ts's `driver_agent` doc requires

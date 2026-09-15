@@ -105,7 +105,9 @@ one, and the classic hooks in the default file still fire.
 ## Consequences
 
 - The plugin gains one `.ts` file that Claude Code compiles itself; no build
-  step and no new dependency.
+  step and no new dependency. The validator admits one module per plugin, so
+  a later hook ([ADR-0041](0041-a-command-that-names-its-caller.md)) lives
+  in the same file.
 - The plugin manifest now names its hook files explicitly. Anyone adding a
   third file adds it to that list.
 - `docs/architecture.md` lists the module beside the hooks and states the

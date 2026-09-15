@@ -663,13 +663,15 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
       };
     }
 
-    // A new run always begins undelegated — ADR-0013: the CLI cannot learn who is running it at
-    // agent granularity. Until claimed, both hooks nudge whoever stopped — ADR-0008's
-    // Consequences, "behaves exactly as it did before this ADR."
+    // A new run begins undelegated unless the command itself names a delegated agent — ADR-0013:
+    // the CLI cannot learn who is running it at agent granularity from its process, and
+    // ADR-0041: a function-hooks module can name the agent in front of the command. Until
+    // claimed or so named, both hooks nudge whoever stopped — ADR-0008's Consequences, "behaves
+    // exactly as it did before this ADR."
     const freshState: State = {
       workflow: wf.name, workflow_path: workflowPath, status: "running", phase: wf.entry,
       attempts: {}, total_iterations: 0, last_failure: null, end_reason: null, stop_nudges: 0,
-      driver_agent: null,
+      driver_agent: stophook.resolveDriveAgent(env),
     // No stop has been processed yet, and `start` must not invent one: the field is written only
     // by the stop-boundary hooks, at a stop they actually saw.
       last_stop: null,
@@ -756,10 +758,15 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, accept
     const fresh = state.readState(cwd);
     if (!fresh) return { kind: "REFUSED", message: "the run ended while acquiring the lock; re-run `headsign next`." };
 
-    // No DRIVER stamping here — ADR-0013: next's old env-based stamp named the wrong party
-    // whenever a delegated agent called it. Ownership changes only via the SubagentStop
-    // adoption gate. The stamp just below is last_drive, answering a different question
-    // (ADR-0027 §4).
+    // No process-derived DRIVER stamping here — ADR-0013: next's old env-based stamp named the
+    // wrong party whenever a delegated agent called it, because every process variable
+    // describes the enclosing session. One exception, ADR-0041: `HEADSIGN_ACTOR` is written per
+    // command by a function-hooks module that knows which loop issued it, so an agent id it
+    // carries is positive evidence and is stamped below beside `last_drive`. A command it
+    // marks as the session's own loop leaves `driver_agent` as it is: a lead running `next`
+    // for a delegated driver must not unseat that driver. Otherwise ownership changes only
+    // via the SubagentStop adoption gate. The stamp just below is last_drive, answering a
+    // different question (ADR-0027 §4).
 
     if (fresh.status !== "running") return terminalAnswerWithOptimization(cwd, fresh, acceptGraphChange);
 
@@ -789,7 +796,12 @@ export function next(cwd: string, nowIso: string, env: NodeJS.ProcessEnv, accept
     // run driven entirely outside Claude Code never gets an unexplained state.json write.
     const drive = driveStamp(env, nowIso);
     const diskDrive = fresh.last_drive ?? null;
-    const stamped: State = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
+    const driveAgent = stophook.resolveDriveAgent(env);
+    const restamped: State = drive !== null || diskDrive !== null ? { ...fresh, last_drive: drive } : fresh;
+    // A named agent takes the seat the way a claim would, counter reset included (ADR-0010's
+    // seal does the same), so a stale nudge count from before the handover is not charged to
+    // the agent that now holds the run.
+    const stamped: State = driveAgent !== null && driveAgent !== fresh.driver_agent ? { ...restamped, driver_agent: driveAgent, stop_nudges: 0 } : restamped;
     if (stamped !== fresh) state.writeState(cwd, stamped);
 
     return evaluateNext(cwd, wf, stamped, nowIso, acceptGraphChange, onProgress);
