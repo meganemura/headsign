@@ -143,6 +143,14 @@ Both hosts receive five parts: the bundled CLI (no npm install or build), the
 `workflow` skill, the `design-workflow` skill, the `optimize` skill, and one hook set. The hook set
 contains SessionStart discovery and two stop-boundary hooks.
 
+Claude Code also receives a run pane. It loads only where the session sets
+`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, the early-access flag for function
+hooks. `/headsign` opens a pane beside the transcript that shows what
+`headsign status` prints, and closes it again. The pane refreshes after a
+`headsign` shell command and after each turn, and `headsign start` opens it.
+The stop hooks stay shell hooks on both hosts
+([ADR-0040](docs/adr/0040-the-run-pane-is-a-claude-only-overlay.md)).
+
 Codex documents `cwd`, `session_id`, `Stop`, and `SubagentStop` in its hook
 contract, so the backstop runs on both hosts. The research did not confirm
 a stable public session variable for ordinary Codex CLI commands. Thus,

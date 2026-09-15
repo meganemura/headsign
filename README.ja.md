@@ -143,6 +143,12 @@ Claude Code では、プラグインとして:
 バンドル済み CLI(npm install もビルドも不要)、`workflow` スキル、`design-workflow` スキル、`optimize` スキル、hook set です。
 hook set は、run を発見する SessionStart hook と二つの停止境界 hook を含みます。
 
+Claude Code には run pane も届きます。
+これはセッションが `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` を設定しているときだけ読み込まれます。function hook の早期アクセス用フラグです。
+`/headsign` は transcript の横に pane を開き、`headsign status` の出力を表示します。もう一度実行すると閉じます。
+pane は `headsign` のシェルコマンドの後と各 turn の後に更新され、`headsign start` は pane を開きます。
+停止 hook はどちらのホストでもシェル hook のままです([ADR-0040](docs/adr/0040-the-run-pane-is-a-claude-only-overlay.md))。
+
 Codex の hook 契約には、`cwd`、`session_id`、`Stop`、`SubagentStop` が明記されています。
 そのため、バックストップは両方のホストで動きます。
 Codex の通常の CLI コマンドで使える公開セッション環境変数は、公式資料で確認できませんでした。

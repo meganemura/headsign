@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **A run pane for Claude Code, behind its function-hooks flag.** With
+  `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, `/headsign` opens a pane beside the
+  transcript that shows what `headsign status` prints: the state token, the
+  last stop, and the phase's instructions. It refreshes after a `headsign`
+  shell command and after each turn, and `headsign start` opens it. Codex and
+  a Claude Code without the flag see no change; the stop hooks stay command
+  hooks (ADR-0040).
+
 ### Changed
 
 - **Stop reminders now state when the driver is unknown.** A run without a
