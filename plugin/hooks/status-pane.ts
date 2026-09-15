@@ -14,7 +14,7 @@
 // it statically, so every call on `$` is spelled `$.noun.event(...)` and `$` is handed only
 // to the function declarations at the top of this file.
 
-import type { On, RenderElement } from 'claude-code'
+import type { Elements, On, RenderElement } from 'claude-code'
 
 const PANE_ID = 'headsign'
 const PANE_TITLE = 'headsign'
@@ -148,7 +148,8 @@ function linesOf(text: string): string[] {
   return lines
 }
 
-type Ui = { Box: (props: any) => RenderElement; Text: (props: any) => RenderElement }
+// The real element types, so the typecheck refuses a prop the engine would refuse.
+type Ui = Pick<Elements['terminal'], 'Box' | 'Text'>
 
 function bodyOf(ui: Ui, state: State): RenderElement[] {
   const { Text } = ui
@@ -158,7 +159,7 @@ function bodyOf(ui: Ui, state: State): RenderElement[] {
   if (report.kind === 'failed') return [Text({ color: 'red', children: `headsign status could not run: ${report.reason}` })]
   // Exit 3 is "nothing to report here" — a checkout with `.headsign/` and no run yet, or a
   // state file the CLI could not read. Both are ordinary and neither is an error to color.
-  if (report.exitCode === 3) return [Text({ dimColor: true, children: linesOf(report.stdout + report.stderr).join('\n') || 'headsign has nothing to report here' })]
+  if (report.exitCode === 3) return [Text({ dimColor: true, children: linesOf(`${report.stdout}\n${report.stderr}`).join('\n') || 'headsign has nothing to report here' })]
   const lines = linesOf(report.stdout)
   const head = lines[0] ?? ''
   const rest = lines.slice(1)
@@ -167,7 +168,7 @@ function bodyOf(ui: Ui, state: State): RenderElement[] {
   const color = tokenColorOf(head)
   return [
     Text({ bold: true, ...(color === undefined ? {} : { color }), children: head }),
-    ...rest.map((line, index) => Text({ key: `l${index}`, dimColor: line.startsWith('--- '), wrap: 'wrap', children: line })),
+    ...rest.map((line) => Text({ wrap: 'wrap', children: line })),
     ...(report.exitCode === 0 ? [] : [Text({ color: 'red', children: `exit ${report.exitCode}${report.stderr ? `: ${report.stderr.trim()}` : ''}` })]),
   ]
 }
@@ -232,8 +233,9 @@ export function register(on: On) {
     return result
   })
 
-  // A `headsign` command changes the run; a `headsign start` begins one, and the pane
-  // opens itself for it. Refresh after the tool ran, whichever loop ran it.
+  // A `headsign` command may have changed the run (a `status` did not, and costs one
+  // spawn more; the coalescer above bounds that); a `headsign start` begins one, and the
+  // pane opens itself for it. Refresh after the tool ran, whichever loop ran it.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     try {
       return await next(e)

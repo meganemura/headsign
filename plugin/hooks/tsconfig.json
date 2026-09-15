@@ -13,10 +13,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
-    "skipLibCheck": true,
-    "jsx": "react",
-    "jsxFactory": "h",
-    "jsxFragmentFactory": "Fragment"
+    "skipLibCheck": true
   },
   "include": ["../../.claude/types", "."]
 }
