@@ -1,0 +1,247 @@
+# beads.yaml — a development loop driven by a LOCAL beads database. One lap =
+# one ticket.
+#
+# The tickets live in this checkout's own `bd` database, initialised in
+# stealth mode: `.git/info/exclude` keeps the database out of git, so nothing
+# about the tickets reaches a commit unless a person writes it there. That is
+# the one rule this file adds to the repository's usual checks: a ticket id
+# must not appear in a commit message or in the tree. The tickets carry
+# context a public reader cannot follow, so a reference to one is a broken
+# link for anyone who clones.
+#
+# The shape:
+#
+#   pick ──> implement ──> review ─┬─ APPROVED ──> close ─┬─ ready ticket left ──> pick
+#     │          ↑                 └─ REJECTED ────┘       └─ none ──────────────> $end
+#     └─ nothing to take ──> $end
+#
+# Every check below is composed for this file unless it names an npm script;
+# the four checks under `implement` that do are the ones this repository's
+# other workflows already run.
+#
+# Where each gate stands:
+#   pick      — anchored on the ticket the lap claimed and the commit it
+#               started from; both are guarded by their own checks first.
+#   implement — the npm checks are unfakeable; the ticket-id check is anchored
+#               on `.headsign/tmp/base`, which `pick` wrote and guarded.
+#   review    — fakeable: it reads a verdict this run wrote. Its strength is
+#               who holds the pen (see the phase).
+#   close     — unfakeable as far as the database goes: it asks bd, not the
+#               agent, whether a ticket is still in progress.
+#
+# Conventions under .headsign/tmp/ (emptied by the next `headsign start`):
+#   ticket   — the id of the ONE ticket this lap claimed, written by `pick`.
+#   base     — the commit the lap started from, written by `pick`. The
+#              ticket-id check in `implement` measures the range from here.
+#   verdict  — APPROVED / REJECTED for the current review round.
+#   pick-done — `pick`'s own declaration that it looked at the queue, so an
+#              empty queue can end the run cleanly instead of PENDING forever.
+
+version: 0.1
+name: beads-loop
+entry: pick
+
+phases:
+  # ── pick ─────────────────────────────────────────────────────────────────
+  # `clear:` runs on every entry, and every entry is a real transition (from
+  # `start`, or from `close`'s loop-back), so the anchor is fresh per lap: the
+  # base commit is the one THIS ticket's work starts from, and the ticket-id
+  # check measures only this ticket's range.
+  pick:
+    description: >
+      Take exactly ONE ticket from `bd ready --json`, skipping any whose type
+      is `epic` (an epic is a container, not work): the lowest priority
+      number first, and the oldest first within a priority. Read it with
+      `bd show <id>`. Claim it with `bd update <id> --claim`, write its id
+      alone to `.headsign/tmp/ticket`, and write the commit the work starts
+      from with `git rev-parse HEAD > .headsign/tmp/base`. If nothing is
+      ready, write nothing. Either way, touch `.headsign/tmp/pick-done` and
+      run `headsign next`. Do not start the ticket's work in this phase.
+    clear:
+      - .headsign/tmp/ticket
+      - .headsign/tmp/base
+      - .headsign/tmp/pick-done
+    # The declaration, not a probe of the queue: the queue cannot tell "I
+    # looked and it was empty" from "I have not looked yet", and only the
+    # first of those may end the run.
+    ready: "test -f .headsign/tmp/pick-done"
+    gate:
+      checks:
+        # Reachability first, because the checks under it lean on bd's
+        # answer: a bd that is not installed or a database that moved would
+        # otherwise look like an empty queue. Asking for an array, and
+        # requiring it to BE one, separates "bd answered" from "bd never
+        # answered".
+        - name: bd answers
+          run: "bd list --status in_progress --json | jq -e 'type == \"array\"' >/dev/null"
+        # One ticket at a time is what "one lap = one ticket" means. Zero is
+        # allowed here: it is the empty-queue lap, and the route below sends
+        # it to $end.
+        - name: at most one ticket in progress
+          run: >-
+            bd list --status in_progress --json
+            | jq -e '[.[] | select(.issue_type != "epic")] | length <= 1' >/dev/null
+        # The anchor's guard: a claimed lap must have a base that is a real
+        # commit, or the ticket-id check in `implement` would measure an
+        # empty range and pass on anything. Vacuously true on an empty lap.
+        - name: a claimed lap has a real base commit
+          run: >-
+            test ! -s .headsign/tmp/ticket
+            || git cat-file -e "$(cat .headsign/tmp/base)^{commit}"
+        # The ticket file must agree with the database, or the lap would work
+        # one ticket and close another.
+        - name: the recorded ticket is the one in progress
+          run: >-
+            test ! -s .headsign/tmp/ticket
+            || bd list --status in_progress --json
+            | jq -e --arg id "$(cat .headsign/tmp/ticket)" 'any(.[]; .id == $id)' >/dev/null
+    # Branching on the pass path (ADR-0011): an empty queue is an ordinary
+    # ending, and it must not cost an attempt.
+    on_pass:
+      - when: "test -s .headsign/tmp/ticket"
+        to: implement
+      - to: "$end"
+    max_attempts: 3
+
+  # ── implement ────────────────────────────────────────────────────────────
+  implement:
+    description: >
+      Do the ticket in `.headsign/tmp/ticket` (`bd show <id>` for the text,
+      `bd comments <id>` for what earlier laps left). Before you change
+      runtime behaviour, a skill, or product guidance, read
+      docs/adr/0039-design-for-the-model-that-improves-the-method.md and the
+      ADR that owns the behaviour (find it in docs/adr/README.md); if the
+      change conflicts with an accepted decision, amend that ADR in the same
+      change. Work test-first where practical, keep engine.ts pure, respect
+      docs/architecture.md, keep README.md and README.ja.md in parity, and
+      rebuild the bundle before you ask for the verdict. Commit in meaningful
+      units. Two rules about what reaches git: a commit message, a comment,
+      a doc or a test must not name a ticket id, and must not refer to
+      `.claude-team/` or any other internal note — write the substance in
+      place instead. Keep motives that belong to the project's positioning
+      out of code and docs; the code says what it does and why the design
+      holds. A ticket whose result is a measurement or a note leaves no
+      commit; that is fine, and the gate allows it. Record what you found
+      as a comment on the ticket (`bd comment <id> "..."`) so the next lap
+      and the reviewer can read it.
+    gate:
+      checks:
+        - name: typecheck
+          run: "npm run typecheck"
+        # Measured 2026-09-15: 94 s on this machine. 300 leaves room for a
+        # slow day without hiding a hang.
+        - name: tests
+          run: "npm test"
+          timeout: 300
+        - name: bundle matches src
+          run: "npm run build && git diff --quiet -- plugin/dist"
+        - name: versions in lockstep
+          run: >
+            node -e "const p=require('./package.json').version,
+            q=require('./plugin/.claude-plugin/plugin.json').version;
+            if(p!==q){console.error('version mismatch: '+p+' vs '+q);process.exit(1)}"
+        # Anchored on `.headsign/tmp/base` (guarded in `pick`). The ids come
+        # from bd itself rather than from a pattern: a pattern wide enough
+        # for every id shape also matches `headsign-view`, and a fixed-string
+        # list of the real ids does not (measured: `headsign-view` passes,
+        # a real id is caught). The list is held in a variable because the
+        # gate runs under /bin/sh, which has no process substitution; grep -F
+        # reads a newline-separated string as one pattern per line. Commit
+        # messages and the diff are checked separately so a red names which
+        # one leaked.
+        - name: no ticket id in a commit message since base
+          run: >-
+            ids=$(bd list --json | jq -r '.[].id');
+            ! git log --format=%B "$(cat .headsign/tmp/base)..HEAD" | grep -qF "$ids"
+        - name: no ticket id in the tree since base
+          run: >-
+            ids=$(bd list --json | jq -r '.[].id');
+            ! git diff "$(cat .headsign/tmp/base)..HEAD" | grep '^+' | grep -qF "$ids"
+        # The same shape for the internal-notes rule from the repository's
+        # own conventions: a path under .claude-team/ is a broken link for
+        # anyone who clones.
+        - name: no reference to internal notes since base
+          run: >-
+            ! { git log --format=%B "$(cat .headsign/tmp/base)..HEAD";
+            git diff "$(cat .headsign/tmp/base)..HEAD" | grep '^+'; }
+            | grep -q 'claude-team/'
+    on_pass: review
+    max_attempts: 5
+
+  # ── review ───────────────────────────────────────────────────────────────
+  # Fakeable by construction: the gate reads a file this run wrote. What
+  # makes it worth having is authorship (docs/adr/0007-verdict-authorship.md):
+  # the reader that judges did not write the change.
+  review:
+    description: >
+      The review comes from a reader that can read and search but writes
+      nothing — arrange it as you see fit. Give it the ticket's text, the
+      range `$(cat .headsign/tmp/base)..HEAD`, and the ticket's comments.
+      Have it check behaviour and policy alignment: the diff against
+      docs/architecture.md's boundaries and README EN/JA parity; every
+      changed runtime behaviour against the ADR that owns it and against
+      docs/adr/0039; that no sentence in the range names a ticket, an
+      internal note, or a motive outside the code's own reasons; and that
+      what the ticket asked for is what the range delivers, or that the
+      ticket's comment says plainly what was left out and why. For a ticket
+      that produced a note rather than code, have it check the note against
+      the tree the same way: every claim about a file, a symbol or an ADR
+      verified where it lives. Have it REPORT exactly APPROVED or REJECTED
+      with reasons, then write that verdict verbatim to
+      `.headsign/tmp/verdict` yourself.
+    # Re-entered on rejection (`on_fail: implement`, then back here), so the
+    # stale verdict goes on every entry.
+    clear: [.headsign/tmp/verdict]
+    ready: "test -f .headsign/tmp/verdict"
+    gate:
+      checks:
+        - name: review approved
+          run: "grep -qx APPROVED .headsign/tmp/verdict"
+    on_pass: close
+    on_fail: implement
+    # Counts REJECTED verdicts across the whole lap, not per visit. 8 is what
+    # this repository's triage loop settled on after 3 and 5 both ran out on
+    # changes that state one rule in many places, each round reaching the
+    # next place only once the one before was fixed. Rounds that name a NEW
+    # place are progress; rounds that keep naming the same place are the
+    # loop this budget stops.
+    max_attempts: 8
+
+  # ── close ────────────────────────────────────────────────────────────────
+  close:
+    description: >
+      Close the loop in the database: add a comment on the ticket saying
+      what was done and, where there are commits, their hashes
+      (`bd comment <id> "..."`), then `bd close <id> --reason "..."`. When
+      the closed ticket was the last open child of its epic, close the epic
+      too. A ticket that turned out to be blocked or wrong is not closed as
+      done: add a comment saying why, then `bd update <id> --status
+      deferred`. A deferred ticket leaves `bd ready` (measured before this
+      file was written), so the next lap does not take it again; a person
+      reopens it with `bd update <id> --status open` when the blocker is
+      gone. An open ticket would be taken again on the very next lap.
+    gate:
+      checks:
+        # bd answers "none in progress" only when it ran and read the
+        # database, so a missing bd is red here rather than a clean lap.
+        - name: no ticket left in progress
+          run: >-
+            bd list --status in_progress --json
+            | jq -e '[.[] | select(.issue_type != "epic")] | length == 0' >/dev/null
+    # `bd ready` already excludes blocked tickets, so "one is ready" is the
+    # same as "pick can take one" — the predicate tests the destination's own
+    # entry condition, not merely that work appears to exist.
+    on_pass:
+      - when: >-
+          bd ready --json
+          | jq -e '[.[] | select(.issue_type != "epic")] | length > 0' >/dev/null
+        to: pick
+      - to: "$end"
+    max_attempts: 3
+
+limits:
+  # One lap costs four evaluations when nothing is retried (pick, implement,
+  # review, close). The epic behind this file holds eight tickets: 32 laps
+  # clean, more with review rounds. 80 is a runaway backstop above that, not
+  # a budget; reaching it stops the run until a person raises it (ADR-0017).
+  max_total_iterations: 80
