@@ -1235,6 +1235,12 @@ teammate と、その run を任されていないサブエージェントが該
 headsign status は読み取り専用で、gate を実行せず、state を書き込まず、lock を取得しません。
 どのセッションからでも、いつでも、何度でも安全に実行できます。
 
+run が `RUNNING` のあいだは、1 行目の下に絵が付きます。
+run が来たフェーズ、箱に入った現フェーズ、pass と fail が次に送りうるフェーズの 3 段です。
+route の列は 1 route 1 行で、`when:` を矢印の横に出し、既定の route には `default` と付きます。
+fail の行は、その lap が使う `on_fail` を書きます。`retry` はフェーズ自身の名前で描かれ、上限があれば残り試行数が付きます。
+ワークフローファイルが読めないときは絵は出ません([ADR-0042](adr/0042-status-draws-the-neighbourhood.md))。
+
 run が `RUNNING` のあいだは、最後に現フェーズの指示が付きます。
 `start` や `next` が出すのと同じ `--- phase: <name> ---` のブロックです。
 このブロックをそのまま渡します。
@@ -1248,6 +1254,15 @@ headsign を一度も呼ばないエージェントには、ゲートの要求�
 ```
 $ headsign status
 RUNNING implement (attempt 2/5)
+
+  design
+      │
+  ╔═══════════╗
+  ║ implement ║
+  ╚═══════════╝
+      ├─ pass ─▶ review
+      └─ fail ─▶ implement   (3 attempts left)
+
 workflow: feature-dev
 --- last failure: unit tests (bundle exec rspec, exit 1 in 12.3s) ---
 Failures:
@@ -1271,6 +1286,13 @@ reason: review rejected 3 times
 ```
 $ headsign status
 RUNNING decide (attempt 0/5)
+
+  ╔════════╗
+  ║ decide ║
+  ╚════════╝
+      ├─ pass ─▶ record
+      └─ fail ─▶ decide   (5 attempts left)
+
 workflow: design-grilling
 driver: not delegated yet — no agent has claimed this run
 last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at 2026-07-30T23:06:51+09:00
@@ -1287,7 +1309,7 @@ status は判定を行わないためです。
 保証があってバージョンで管理されるのは 2 つだけです。
 `next` の 1 行目のトークンとその終了コード、そして `status` の 1 行目とその終了コードの規則です。
 それ以外にどのコマンドが出すものも、どのリリースでも変わりえます。
-対象は `workflow:` / `driver:` / `last stop:` / `last moved:` / `observer:` / `graph:` の各行です。
+対象は 1 行目の下の絵と、`workflow:` / `driver:` / `last stop:` / `last moved:` / `observer:` / `graph:` の各行です。
 `--- last failure: ---` と `--- phase: ---` のブロックも対象です。
 その中の文面、行の順序、条件付きの行の有無も対象です。
 パッチリリースも含みます。

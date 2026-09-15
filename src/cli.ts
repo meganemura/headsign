@@ -238,6 +238,7 @@ function reportStatus(result: engine.StatusResult): never {
           // what it printed before this line existed.
           ...(result.graphUnreported !== undefined && { graphUnreported: result.graphUnreported }),
           ...(result.description !== undefined && { description: result.description }),
+          ...(result.neighbourhood !== undefined && { neighbourhood: result.neighbourhood }),
           ...(result.optimizationPath !== null && { optimizationPath: result.optimizationPath }),
           optimizationAssessed: result.optimizationAssessed,
         }),

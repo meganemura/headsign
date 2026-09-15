@@ -1377,6 +1377,14 @@ supplies the initial notice, and `status` supplies the detailed view.
 This read-only command runs no gate, writes no state, and takes no lock. You
 can safely run it from any session, at any time, as often as you like.
 
+While a run is `RUNNING`, a picture follows the first line: the phase the run
+came from, the current phase in a box, and every phase a pass or a failure can
+send it to next. A route list prints one row per route with its `when:` beside
+the arrow and the default marked. The fail row names the `on_fail` the lap
+would use, `retry` drawn as the phase's own name with the attempts left when a
+limit is declared. The picture is absent when headsign cannot read the
+workflow file ([ADR-0042](adr/0042-status-draws-the-neighbourhood.md)).
+
 While a run is `RUNNING`, the output ends with the current phase's
 instructions in the `--- phase: <name> ---` block. `start` and `next` print
 the same block. This block provides the one way to reread the
@@ -1391,6 +1399,15 @@ these cases, the output stays exactly as it was before.
 ```
 $ headsign status
 RUNNING implement (attempt 2/5)
+
+  design
+      │
+  ╔═══════════╗
+  ║ implement ║
+  ╚═══════════╝
+      ├─ pass ─▶ review
+      └─ fail ─▶ implement   (3 attempts left)
+
 workflow: feature-dev
 --- last failure: unit tests (bundle exec rspec, exit 1 in 12.3s) ---
 Failures:
@@ -1414,6 +1431,13 @@ reason: review rejected 3 times
 ```
 $ headsign status
 RUNNING decide (attempt 0/5)
+
+  ╔════════╗
+  ║ decide ║
+  ╚════════╝
+      ├─ pass ─▶ record
+      └─ fail ─▶ decide   (5 attempts left)
+
 workflow: design-grilling
 driver: not delegated yet — no agent has claimed this run
 last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at 2026-07-30T23:06:51+09:00
@@ -1430,7 +1454,8 @@ because it never judges anything.
 contract guarantees and versions two things. One is the first-line token
 from `next` with its exit code. The other is the first line from `status`
 with its exit-code rule. Everything else that any command prints can change
-in any release, patch releases included. This output includes the `workflow:`,
+in any release, patch releases included. This output includes the picture
+under the first line and the `workflow:`,
 `driver:`, `last stop:`, `last moved:`, `observer:` and `graph:` lines.
 It also includes the `--- last failure: ---` and `--- phase: ---` blocks.
 Their wording, order, and conditional presence can also change. Only a

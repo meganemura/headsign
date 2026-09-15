@@ -99,6 +99,16 @@ export interface State {
   // like every other tolerated absence here it means "nothing to report", never "just now".
   phase_entered_at: string | null;
 
+  // Which phase the run came FROM when it last entered the one it is standing on. Stamped in
+  // the same place and under the same rule as `phase_entered_at` (ADR-0042): every ADVANCE
+  // writes the phase being left, a RETRY leaves it alone, and `start` writes null because the
+  // entry phase was entered from nowhere. A self-route (`on_fail: <this same phase>`) writes
+  // the phase's own name, which is what the picture `status` draws wants to say.
+  //
+  // null for a run that predates this field, read the same tolerant way. It exists for one
+  // reader, the neighbourhood `status` draws, and is never compared with anything.
+  phase_entered_from: string | null;
+
   // What headsign DID with the most recent turn end it both processed and could attribute to
   // this run — the current-value companion to the stop-boundary lines in `.headsign/log`; see
   // ADR-0025 §4 for why both exist.

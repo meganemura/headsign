@@ -39,7 +39,7 @@ import * as render from "./render.ts";
 // here could drift into reporting an opt-out that the hooks do not act on.
 import * as stophook from "./stophook.ts";
 import * as optimization from "./optimization.ts";
-import type { Workflow, Route } from "./workflow.ts";
+import type { Workflow, Route, Phase } from "./workflow.ts";
 import type { State, UnheldCause, LastFailure } from "./state.ts";
 import type { GateVerdict, CheckFailure, RouteResolution, GateProgress } from "./gate.ts";
 
@@ -459,6 +459,18 @@ export type ClaimResult = Refused | { kind: "CLAIMED" };
 // fresh, so a record predating that field restores as one with no `elapsedSeconds`.
 export interface StatusFailure { check: string; run: string; exitCode: number | "timeout"; timeoutSeconds?: number; elapsedSeconds?: number; outputTail: string }
 
+// The three rows of the picture, resolved here from the workflow and the record so that
+// render.ts never learns the schema's shapes (a string `on_pass` and a one-route list draw the
+// same). `fail` is the `on_fail` the lap would use, default included (`step()`'s own
+// `?? "retry"`); `attemptsLeft` rides only when `max_attempts` is declared, because an
+// undeclared limit is unlimited and a number invented for it would be false.
+export interface Neighbourhood {
+  from: string | null;
+  pass: { to: string; when?: string; isDefault?: true }[];
+  fail: string;
+  attemptsLeft?: number;
+}
+
 export type StatusResult =
   | Refused
   | { kind: "TERMINAL"; status: Exclude<State["status"], "running">; workflowName: string; endReason: string | null; optimizationPath: string | null; optimizationAssessed: boolean }
@@ -494,6 +506,11 @@ export type StatusResult =
       // (a retry moves that and not this). null for a run predating the field, which cli.ts
       // prints no line for, the same treatment `lastMoved` gets above.
       phaseEnteredAt: string | null;
+      // The phase's neighbourhood, flattened for the picture `status` draws (ADR-0042):
+      // where the run came from, where a pass can send it, where a failure sends it. Absent
+      // under the same condition as `description` — the workflow unreadable or the phase gone
+      // from it — so a run headsign cannot describe prints what it always printed.
+      neighbourhood?: Neighbourhood;
       // Whether HEADSIGN_OBSERVER is set in the environment `status` was called with — ADR-0025
       // §6: the one quiet-ending cause a caller can answer about itself.
       observer: boolean;
@@ -683,6 +700,8 @@ export function start(cwd: string, workflowPath: string, nowIso: string, env: No
     // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
     // so — the two belong to the same moment (ADR-0031).
       phase_entered_at: nowIso,
+    // The entry phase is entered from nowhere (ADR-0042).
+      phase_entered_from: null,
     // The pin is taken here and nowhere else at run start: from the entry phase, because that
     // is where the run is about to stand and the fingerprint covers what is reachable from
     // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -1049,6 +1068,9 @@ function evaluateNext(cwd: string, wf: Workflow, incoming: State, nowIso: string
     // is the only outcome that does. A RETRY leaves this alone because it never left the
     // phase (ADR-0031).
     nextState.phase_entered_at = nowIso;
+    // The same boundary, one fact more: where the run came from (ADR-0042). `current.phase`
+    // rather than `phaseName` so a self-route records the phase's own name.
+    nextState.phase_entered_from = current.phase;
   }
   state.writeState(cwd, nextState);
   state.appendLog(cwd, render.logLine(nowIso, outcome, nextState, current.phase));
@@ -1139,6 +1161,25 @@ function unreportedGraphState(state: State, wf: Workflow | null): "changed" | "r
   return reported ? "restored" : null;
 }
 
+// A route list keeps its order and its `when:` text, because the first match decides and the
+// reader wants to see the conditions in the order they are asked; the trailing default is
+// marked rather than left bare so the picture can say so. `phase_entered_from` is read with
+// the tolerant idiom every field of the record gets (state.ts).
+function neighbourhoodOf(current: State, phase: Phase, attempt: number): Neighbourhood {
+  const from = typeof current.phase_entered_from === "string" && current.phase_entered_from.length > 0 ? current.phase_entered_from : null;
+  const pass =
+    typeof phase.on_pass === "string"
+      ? [{ to: phase.on_pass }]
+      : phase.on_pass.map((route) => (route.when === undefined ? { to: route.to, isDefault: true as const } : { to: route.to, when: route.when }));
+  const fail = phase.on_fail ?? "retry";
+  return {
+    from,
+    pass,
+    fail,
+    ...(phase.max_attempts !== undefined && { attemptsLeft: Math.max(0, phase.max_attempts - attempt) }),
+  };
+}
+
 export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
   const current = state.readState(cwd);
   if (!current) return { kind: "REFUSED", message: NO_RUN_HERE_MESSAGE };
@@ -1211,6 +1252,7 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
     ...(phase?.description !== undefined && { description: phase.description }),
+    ...(phase !== undefined && { neighbourhood: neighbourhoodOf(current, phase, attempt) }),
     optimizationPath: optimization.assessmentPath(cwd, current),
     optimizationAssessed: optimization.hasAssessment(cwd, current),
   };

@@ -736,6 +736,80 @@ test("statusRunning: a run with no recorded entry time prints no entered line", 
   assert.doesNotMatch(render.statusRunning(base), /entered:/);
 });
 
+// --- the picture (ADR-0042): the phase before, this one boxed, and every phase next ---
+
+test("statusRunning: the picture sits under the token line, framed by one blank line each side", () => {
+  const actual = render.statusRunning({
+    phase: "review", attempt: 1, maxAttempts: 8, attemptUnknown: false, workflowName: "demo", driver: "d",
+    neighbourhood: { from: "implement", pass: [{ to: "close" }], fail: "implement", attemptsLeft: 7 },
+  });
+  const expected =
+    "RUNNING review (attempt 1/8)\n" +
+    "\n" +
+    "  implement\n" +
+    "      │\n" +
+    "  ╔════════╗\n" +
+    "  ║ review ║\n" +
+    "  ╚════════╝\n" +
+    "      ├─ pass ─▶ close\n" +
+    "      └─ fail ─▶ implement\n" +
+    "\n" +
+    "workflow: demo\ndriver: d\n";
+  assert.equal(actual, expected);
+});
+
+test("neighbourhood: a fresh start has no phase above the box", () => {
+  const actual = render.neighbourhood("build", { from: null, pass: [{ to: "ship" }], fail: "retry" });
+  assert.equal(actual, "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ ship\n      └─ fail ─▶ build\n");
+});
+
+test("neighbourhood: a route list prints each when: beside its arrow, and marks the default", () => {
+  const actual = render.neighbourhood("close", {
+    from: "review",
+    pass: [{ to: "pick", when: "bd ready --json | jq -e 'length > 0'" }, { to: "$end", isDefault: true }],
+    fail: "escalate",
+  });
+  assert.equal(
+    actual,
+    "  review\n      │\n  ╔═══════╗\n  ║ close ║\n  ╚═══════╝\n" +
+      "      ├─ pass ─▶ pick   when: bd ready --json | jq -e 'length > 0'\n" +
+      "      ├─ pass ─▶ $end   default\n" +
+      "      └─ fail ─▶ escalate\n",
+  );
+});
+
+// The retry row names the phase itself, the loop drawn as one more box to fall into, and the
+// attempts left ride only when a limit was declared: undeclared is unlimited.
+test("neighbourhood: on_fail retry names the phase, with attempts left only under a declared limit", () => {
+  assert.equal(
+    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "retry", attemptsLeft: 1 }),
+    "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (1 attempt left)\n",
+  );
+  assert.equal(
+    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "build", attemptsLeft: 4 }),
+    "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (4 attempts left)\n",
+    "an explicit self-route draws the same as the default",
+  );
+  assert.equal(
+    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "$end", attemptsLeft: 4 }),
+    "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ $end\n",
+    "attempts left are about retrying, so a failure that leaves prints none",
+  );
+});
+
+// A one-letter phase still gets a box wide enough to hold the connector column beneath it.
+test("neighbourhood: a short phase name keeps the connector column in place", () => {
+  assert.equal(
+    render.neighbourhood("a", { from: "z", pass: [{ to: "b" }], fail: "retry" }),
+    "  z\n      │\n  ╔═══════╗\n  ║ a     ║\n  ╚═══════╝\n      ├─ pass ─▶ b\n      └─ fail ─▶ a\n",
+  );
+});
+
+test("statusRunning: no neighbourhood -> no picture and no blank lines, byte-identical to before", () => {
+  const actual = render.statusRunning({ phase: "build", attempt: 1, attemptUnknown: true, workflowName: "demo", driver: "d" });
+  assert.equal(actual, "RUNNING build (attempt 1/?)\nworkflow: demo\ndriver: d\n");
+});
+
 // The third graph line, the one about the FILE rather than the record. It has to sit under the
 // standing question rather than above it: `restored` is an answer to that line, and an answer
 // printed first reads as a contradiction.
@@ -1005,6 +1079,7 @@ function baseState(overrides: Partial<State> = {}): State {
     stop_nudges: 0,
     driver_agent: null,
     phase_entered_at: null,
+    phase_entered_from: null,
     last_stop: null,
     last_drive: null,
     graph_fingerprint: {},

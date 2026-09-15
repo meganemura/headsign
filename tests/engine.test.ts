@@ -31,6 +31,7 @@ function st(phase: string, overrides: Partial<State> = {}): State {
     stop_nudges: 0,
     driver_agent: null,
     phase_entered_at: null,
+    phase_entered_from: null,
     last_stop: null,
     last_drive: null,
     // The graph pin as a run that has just started carries it: empty rather than absent, since
@@ -832,6 +833,43 @@ test("an ADVANCE stamps the phase it moves into, at the lap's time", () => {
   assert.equal(result.kind, "ANSWERED");
   if (result.kind === "ANSWERED") assert.equal(result.outcome.kind, "ADVANCE");
   assert.equal(readStateFile(dir).phase_entered_at, LAP_TIME);
+});
+
+// --- phase_entered_from: the same boundary, one fact more (ADR-0042) ---
+
+test("start(): the entry phase was entered from nowhere", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  assert.equal(readStateFile(dir).phase_entered_from, null);
+});
+
+test("a RETRY leaves phase_entered_from alone, and an ADVANCE records the phase it left", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(readStateFile(dir).phase_entered_from, null, "a retry never left build");
+  fs.writeFileSync(path.join(dir, "pass-marker"), "");
+  engine.next(dir, LAP_TIME, NO_ENV);
+  assert.equal(readStateFile(dir).phase_entered_from, "build");
+});
+
+test("status: the neighbourhood names where the run came from, where a pass goes, and the on_fail default", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  const before = engine.status(dir, NO_ENV);
+  assert.equal(before.kind, "RUNNING");
+  if (before.kind === "RUNNING") assert.deepEqual(before.neighbourhood, { from: null, pass: [{ to: "ship" }], fail: "retry", attemptsLeft: 5 });
+  fs.writeFileSync(path.join(dir, "pass-marker"), "");
+  engine.next(dir, LAP_TIME, NO_ENV);
+  const after = engine.status(dir, NO_ENV);
+  if (after.kind === "RUNNING") assert.deepEqual(after.neighbourhood, { from: "build", pass: [{ to: "$end" }], fail: "retry" }, "ship declares no max_attempts, so no attempts-left number is invented");
+});
+
+test("status: a state file written before phase_entered_from existed reads as entered from nowhere", () => {
+  const dir = startedRun(ENTRY_WORKFLOW);
+  const statePath = path.join(dir, ".headsign", "state.json");
+  const raw = JSON.parse(fs.readFileSync(statePath, "utf8")) as Record<string, unknown>;
+  delete raw["phase_entered_from"];
+  fs.writeFileSync(statePath, JSON.stringify(raw));
+  const result = engine.status(dir, NO_ENV);
+  if (result.kind === "RUNNING") assert.equal(result.neighbourhood?.from, null);
 });
 
 test("status() reports the stamp, and reports none for a run that predates the field", () => {

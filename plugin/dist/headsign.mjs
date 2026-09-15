@@ -7906,6 +7906,9 @@ function clause(run, exitCode, timeoutSeconds, elapsedSeconds) {
 }
 function statusRunning(o) {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== void 0 ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  const picture = o.neighbourhood ? `
+${neighbourhood(o.phase, o.neighbourhood)}
+` : "";
   const lastFailureBlock = o.lastFailure ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds, o.lastFailure.elapsedSeconds)}) ---
 ${o.lastFailure.outputTail}
 ` : "";
@@ -7929,9 +7932,33 @@ ${o.lastFailure.outputTail}
 ${o.description}
 ` : "";
   return `RUNNING ${o.phase} (attempt ${n})
-workflow: ${o.workflowName}
+${picture}workflow: ${o.workflowName}
 ${lastFailureBlock}driver: ${o.driver}
 ${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
+}
+function neighbourhood(phase, n) {
+  const inner = Math.max(phase.length, 5);
+  const name = phase.padEnd(inner);
+  const bar = "\u2550".repeat(inner + 2);
+  const above = n.from === null ? "" : `  ${n.from}
+      \u2502
+`;
+  const box = `  \u2554${bar}\u2557
+  \u2551 ${name} \u2551
+  \u255A${bar}\u255D
+`;
+  const rows = [];
+  for (const route of n.pass) {
+    const tail = route.when !== void 0 ? `   when: ${route.when}` : route.isDefault ? "   default" : "";
+    rows.push(`pass \u2500\u25B6 ${route.to}${tail}`);
+  }
+  const failTarget = n.fail === "retry" ? phase : n.fail;
+  const left = n.attemptsLeft === void 0 ? "" : `   (${n.attemptsLeft} ${n.attemptsLeft === 1 ? "attempt" : "attempts"} left)`;
+  const retrying = n.fail === "retry" || n.fail === phase;
+  rows.push(`fail \u2500\u25B6 ${failTarget}${retrying ? left : ""}`);
+  const below = rows.map((row, i) => `      ${i === rows.length - 1 ? "\u2514" : "\u251C"}\u2500 ${row}`).join("\n");
+  return `${above}${box}${below}
+`;
 }
 var LAST_STOP_WORDING = {
   nudged: "held, and pointed back to headsign next",
@@ -8584,6 +8611,8 @@ function start2(cwd, workflowPath, nowIso, env, optimize = true) {
       // The entry phase is entered here, and `clearPhaseArtifacts` below is the call that says
       // so — the two belong to the same moment (ADR-0031).
       phase_entered_at: nowIso,
+      // The entry phase is entered from nowhere (ADR-0042).
+      phase_entered_from: null,
       // The pin is taken here and nowhere else at run start: from the entry phase, because that
       // is where the run is about to stand and the fingerprint covers what is reachable from
       // where it stands. Nothing is outstanding and nothing has been accepted yet.
@@ -8734,6 +8763,7 @@ function evaluateNext(cwd, wf, incoming, nowIso, acceptGraphChange, onProgress) 
   if (outcome.kind === "ADVANCE") {
     ({ cleared, notCleared } = clearPhaseArtifacts(cwd, wf.phases[outcome.phase]));
     nextState.phase_entered_at = nowIso;
+    nextState.phase_entered_from = current.phase;
   }
   writeState(cwd, nextState);
   appendLog(cwd, logLine(nowIso, outcome, nextState, current.phase));
@@ -8778,6 +8808,17 @@ function unreportedGraphState(state, wf) {
   const reported = recordedGraphMarker(state) !== null;
   if (differs) return reported ? null : "changed";
   return reported ? "restored" : null;
+}
+function neighbourhoodOf(current, phase, attempt) {
+  const from = typeof current.phase_entered_from === "string" && current.phase_entered_from.length > 0 ? current.phase_entered_from : null;
+  const pass = typeof phase.on_pass === "string" ? [{ to: phase.on_pass }] : phase.on_pass.map((route) => route.when === void 0 ? { to: route.to, isDefault: true } : { to: route.to, when: route.when });
+  const fail = phase.on_fail ?? "retry";
+  return {
+    from,
+    pass,
+    fail,
+    ...phase.max_attempts !== void 0 && { attemptsLeft: Math.max(0, phase.max_attempts - attempt) }
+  };
 }
 function status(cwd, env) {
   const current = readState(cwd);
@@ -8826,6 +8867,7 @@ function status(cwd, env) {
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
     ...phase?.description !== void 0 && { description: phase.description },
+    ...phase !== void 0 && { neighbourhood: neighbourhoodOf(current, phase, attempt) },
     optimizationPath: assessmentPath(cwd, current),
     optimizationAssessed: hasAssessment(cwd, current)
   };
@@ -9009,6 +9051,7 @@ function reportStatus(result) {
           // what it printed before this line existed.
           ...result.graphUnreported !== void 0 && { graphUnreported: result.graphUnreported },
           ...result.description !== void 0 && { description: result.description },
+          ...result.neighbourhood !== void 0 && { neighbourhood: result.neighbourhood },
           ...result.optimizationPath !== null && { optimizationPath: result.optimizationPath },
           optimizationAssessed: result.optimizationAssessed
         }),

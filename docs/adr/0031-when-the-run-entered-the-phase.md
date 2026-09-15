@@ -6,6 +6,9 @@
   refusal of wall-clock time is a refusal to *count* it. Reporting one
   timestamp is a different act, and this says which side of that line `status`
   now stands on.
+- Revised: 2026-09-16 ([ADR-0042](0042-status-draws-the-neighbourhood.md)
+  stamps a sibling field, `phase_entered_from`, in the same branch and under
+  the same rule, and `status` draws it above the current phase.)
 
 ## Context
 

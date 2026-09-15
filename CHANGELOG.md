@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **`headsign status` draws the run's neighbourhood.** Under the first line,
+  framed by blank lines: the phase the run came from, the current phase in a
+  box, and every phase a pass or a failure can send it to next, one row per
+  route with its `when:` beside the arrow. `retry` is drawn as the phase's own
+  name with the attempts left when a limit is declared. `state.json` gains
+  `phase_entered_from`, stamped where `phase_entered_at` is. The `workflow:`
+  line is therefore no longer line 2 (ADR-0042).
+
 ## [0.12.0] - 2026-09-15
 
 ### Added

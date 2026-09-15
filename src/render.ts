@@ -312,10 +312,20 @@ export function statusRunning(o: {
   // line, because a description can run to several lines and must not sit in the middle of
   // the single-line lines above it.
   description?: string;
+  // The picture (ADR-0042): the phase before this one, this one in a box, and every phase a
+  // pass or a failure can send the run to next. Handed in flat, already resolved by engine.ts
+  // (a string `on_pass` arrives as a one-route list; the `on_fail` default is applied), so this
+  // module draws and never reads the schema. Absent under the same condition as `description`,
+  // and then the picture and the blank line that frames it are absent too, so a run headsign
+  // cannot describe prints what it always printed.
+  neighbourhood?: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number };
   optimizationPath?: string;
   optimizationAssessed?: boolean;
 }): string {
   const n = o.attemptUnknown ? `${o.attempt}/?` : o.maxAttempts !== undefined ? `${o.attempt}/${o.maxAttempts}` : `${o.attempt}`;
+  // Directly under the token line, framed by one blank line on each side, ahead of every
+  // `label:` line: it is the one thing here a reader takes in at a glance rather than reads.
+  const picture = o.neighbourhood ? `\n${neighbourhood(o.phase, o.neighbourhood)}\n` : "";
   const lastFailureBlock = o.lastFailure
     ? `--- last failure: ${o.lastFailure.check} (${clause(o.lastFailure.run, o.lastFailure.exitCode, o.lastFailure.timeoutSeconds, o.lastFailure.elapsedSeconds)}) ---\n${o.lastFailure.outputTail}\n`
     : "";
@@ -368,7 +378,46 @@ export function statusRunning(o: {
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
   const optimizationLine = o.optimizationPath ? `optimization: ${o.optimizationAssessed ? "assessed" : "unassessed"} — ${o.optimizationPath}\n` : "";
   const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
-  return `RUNNING ${o.phase} (attempt ${n})\nworkflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
+  return `RUNNING ${o.phase} (attempt ${n})\n${picture}workflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
+}
+
+// The picture `status` draws (ADR-0042): the run's neighbourhood, top to bottom, so that each
+// row stands on its own line and a `when:` of any length sits beside its arrow without moving
+// anything else. Vertical rather than left to right on purpose: three columns would need
+// their widths agreed, and the first long condition would break the alignment.
+//
+//   implement
+//       │
+//   ╔════════╗
+//   ║ review ║
+//   ╚════════╝
+//       ├─ pass ─▶ close
+//       └─ fail ─▶ implement
+//
+// Two spaces of indent, the box drawn to the name's width, and the connector column fixed at
+// column 6 whatever the name's length — a one-letter phase still gets a box wide enough to
+// hold the connector under it, so the picture keeps one shape for every workflow. A self-route
+// (`on_fail` naming this phase, or the `retry` default) draws the phase's own name below,
+// exactly as any other destination: the reader sees the loop as another box to fall into.
+// `attemptsLeft` is printed only when handed in; an undeclared `max_attempts` is unlimited,
+// and a number invented for it would be a lie.
+export function neighbourhood(phase: string, n: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number }): string {
+  const inner = Math.max(phase.length, 5);
+  const name = phase.padEnd(inner);
+  const bar = "═".repeat(inner + 2);
+  const above = n.from === null ? "" : `  ${n.from}\n      │\n`;
+  const box = `  ╔${bar}╗\n  ║ ${name} ║\n  ╚${bar}╝\n`;
+  const rows: string[] = [];
+  for (const route of n.pass) {
+    const tail = route.when !== undefined ? `   when: ${route.when}` : route.isDefault ? "   default" : "";
+    rows.push(`pass ─▶ ${route.to}${tail}`);
+  }
+  const failTarget = n.fail === "retry" ? phase : n.fail;
+  const left = n.attemptsLeft === undefined ? "" : `   (${n.attemptsLeft} ${n.attemptsLeft === 1 ? "attempt" : "attempts"} left)`;
+  const retrying = n.fail === "retry" || n.fail === phase;
+  rows.push(`fail ─▶ ${failTarget}${retrying ? left : ""}`);
+  const below = rows.map((row, i) => `      ${i === rows.length - 1 ? "└" : "├"}─ ${row}`).join("\n");
+  return `${above}${box}${below}\n`;
 }
 
 // One phrase per disposition, and each one is about what headsign did to the turn: "held" for
