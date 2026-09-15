@@ -523,10 +523,12 @@ it.
   `gh repo view --json description,repositoryTopics` rather than trusting this
   page — the list below is what was set on 2026-08-22, not a promise about now.
 
-  Topics, 17 of a possible 20: `claude-code`, `claude-code-plugin`, `codex`,
-  `codex-cli`, `codex-plugin`, `coding-agent`, `ai-agents`, `agentic-coding`,
-  `agent-skills`, `phase-gate`, `workflow`, `state-machine`, `graph-engineering`,
-  `loop-engineering`, `cli`, `developer-tools`, `typescript`.
+  Topics, 18 of a possible 20 (the 18th added 2026-09-16): `claude-code`,
+  `claude-code-plugin`, `claude-mods`, `codex`, `codex-cli`, `codex-plugin`,
+  `coding-agent`, `ai-agents`, `agentic-coding`, `agent-skills`, `phase-gate`,
+  `workflow`, `state-machine`, `graph-engineering`, `loop-engineering`, `cli`,
+  `developer-tools`, `typescript`. `claude-mods` is the product name of the
+  function-hooks surface the plugin's module uses (ADR-0040).
 
   The per-host pairs are deliberate: a bare host name reaches people browsing
   the ecosystem, and the `-plugin` form reaches the ones looking for something
