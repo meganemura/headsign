@@ -9110,10 +9110,10 @@ function cmdSessionStartHook() {
   return exitAfter(notice?.message ?? "", 0);
 }
 function cmdVersion() {
-  if ("0.12.0".length === 0) {
+  if ("0.13.0".length === 0) {
     return errorExit("this build carries no version \u2014 it was not produced by `npm run build`, which is what substitutes it");
   }
-  return exitAfter(`${"0.12.0"}
+  return exitAfter(`${"0.13.0"}
 `, 0);
 }
 var HELP_TEXT = `headsign \u2014 a tiny phase gate for coding agents

@@ -862,6 +862,37 @@ test("status: the neighbourhood names where the run came from, where a pass goes
   if (after.kind === "RUNNING") assert.deepEqual(after.neighbourhood, { from: "build", pass: [{ to: "$end" }], fail: "retry" }, "ship declares no max_attempts, so no attempts-left number is invented");
 });
 
+test("status: a route list keeps its order and its when: text, and the default is marked", () => {
+  const { dir, workflowPath } = freshWorkflowDir(`
+version: 0.1
+name: demo
+entry: close
+phases:
+  close:
+    description: "Close."
+    gate:
+      checks:
+        - run: "true"
+    on_pass:
+      - when: "test -f more"
+        to: pick
+      - to: "$end"
+    on_fail: escalate
+  pick:
+    description: "Pick."
+    gate:
+      checks:
+        - run: "true"
+    on_pass: close
+`);
+  engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  const result = engine.status(dir, NO_ENV);
+  assert.equal(result.kind, "RUNNING");
+  if (result.kind === "RUNNING") {
+    assert.deepEqual(result.neighbourhood, { from: null, pass: [{ to: "pick", when: "test -f more" }, { to: "$end", isDefault: true }], fail: "escalate" });
+  }
+});
+
 test("status: a state file written before phase_entered_from existed reads as entered from nowhere", () => {
   const dir = startedRun(ENTRY_WORKFLOW);
   const statePath = path.join(dir, ".headsign", "state.json");
