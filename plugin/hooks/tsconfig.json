@@ -3,7 +3,8 @@
   // types against the declarations `/plugin-types` writes to .claude/types/ at the
   // repository root. The root tsconfig is Node-shaped (nodenext, @types/node) and includes
   // only src/ and tests/, so this file is the one that checks the module. From the
-  // repository root, after `/plugin-types`: `npx tsc -p plugin/hooks`.
+  // repository root, after `/plugin-types`: `npx tsc -p plugin/hooks`. The module's tests under
+  // plugin/tests/ are checked by the same command, since they import the same kit.
   "compilerOptions": {
     "target": "es2023",
     "lib": ["es2023"],
@@ -15,5 +16,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["../../.claude/types", "."]
+  "include": ["../../.claude/types", ".", "../tests"]
 }

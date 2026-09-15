@@ -168,7 +168,9 @@ function bodyOf(ui: Ui, state: State): RenderElement[] {
   if (report.kind === 'failed') return [Text({ color: 'red', children: `headsign status could not run: ${report.reason}` })]
   // Exit 3 is "nothing to report here" — a checkout with `.headsign/` and no run yet, or a
   // state file the CLI could not read. Both are ordinary and neither is an error to color.
-  if (report.exitCode === 3) return [Text({ dimColor: true, children: linesOf(`${report.stdout}\n${report.stderr}`).join('\n') || 'headsign has nothing to report here' })]
+  // stdout is usually empty here and stderr carries the one line; joined without a
+  // separator of their own, so an empty half leaves no blank line at the top of the pane.
+  if (report.exitCode === 3) return [Text({ dimColor: true, children: [...linesOf(report.stdout), ...linesOf(report.stderr)].join('\n') || 'headsign has nothing to report here' })]
   const lines = linesOf(report.stdout)
   const head = lines[0] ?? ''
   const rest = lines.slice(1)

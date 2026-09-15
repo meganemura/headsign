@@ -46,6 +46,7 @@ plugin/                          # what gets distributed (Claude Code and Codex 
   hooks/hooks.json               # run discovery plus the two stop-boundary hooks (both hosts)
   hooks/mods.json                # names the function-hooks module below (Claude Code only, ADR-0040)
   hooks/mod.ts                   # /headsign, the run pane it draws from `headsign status`, and the HEADSIGN_ACTOR stamp (ADR-0041)
+  tests/mod.test.ts              # the module's tests, run by `claude plugin test plugin` (not by CI)
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
 docs/                            # this file + ADRs

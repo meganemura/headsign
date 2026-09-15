@@ -10,7 +10,8 @@
   this is an explicit future bet, stated in its four fields below.
 - Revised: 2026-09-15 (Consequences note that the validator admits one module
   per plugin, so [ADR-0041](0041-a-command-that-names-its-caller.md)'s hook
-  shares this file).
+  shares this file; and that the module now has tests under `plugin/tests/`,
+  run by `claude plugin test`).
 
 ## Context
 
@@ -117,6 +118,9 @@ one, and the classic hooks in the default file still fire.
   boundary the module keeps.
 - ADR-0028's description of the shared tree gains one exception: a file the
   Codex host does not read. Its session-attribution boundary is unchanged.
-- Verifying the pane needs a real terminal session with the flag set; the
-  test suite does not cover the drawing. A test kit for hooks modules exists
-  (`claude plugin test`) and is a separate piece of work.
+- The module's tests live in `plugin/tests/` and run with
+  `claude plugin test plugin` under the flag. They load the module as the
+  engine does, answer `process.run`, `fs.exists`, `session.*` and `ui.*`
+  from the test, and check what the module asks for and what it draws. CI
+  does not run them (`docs/maintenance.md`). Seeing the pane on a screen
+  still needs a real terminal session with the flag set.

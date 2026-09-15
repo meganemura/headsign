@@ -27,6 +27,13 @@ without its rebuilt bundle.
 - `npm run typecheck && npm test && npm run build` — and commit
   `plugin/dist/headsign.mjs` together with the src change. CI fails
   otherwise (`dist matches src`).
+- For a change to `plugin/hooks/mod.ts` or `plugin/tests/`: run `/plugin-types`
+  once in a Claude Code session at the repository root (it writes the
+  ignored `.claude/types/`), then `npx tsc -p plugin/hooks` and
+  `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test plugin`. The kit
+  loads the module as the engine does and answers the shell, the file system
+  and the terminal from the test's own hooks; it spawns no real CLI. CI does
+  not run it: it needs the `claude` binary and the early-access flag.
 - `npm run coverage` before you push. CI runs it in place of `npm test`, so a
   line nothing exercises turns red *after* the push — and a push to `main` is
   the distribution moment for plugin users. `npm test` stays the fast loop
