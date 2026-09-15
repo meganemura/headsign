@@ -1022,7 +1022,7 @@ test("statusRunning: description present -> the phase block lands last, same sha
     phase: "build", attempt: 1, maxAttempts: 3, attemptUnknown: false,
     workflowName: "demo", driver: "a delegated agent", description: "Build the thing.",
   });
-  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n--- phase: build ---\nBuild the thing.\n`;
+  const expected = `RUNNING build (attempt 1/3)\nworkflow: demo\ndriver: a delegated agent\n\n--- phase: build ---\nBuild the thing.\n`;
   assert.equal(actual, expected);
 });
 
@@ -1041,7 +1041,7 @@ test("statusRunning: the phase block lands after every other conditional line, n
     lastStop: { disposition: "nudged", at: "T" }, acceptedGraphChanges: 1, observer: true,
     description: "Build the thing.",
   });
-  assert.match(actual, /observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n--- phase: build ---\nBuild the thing\.\n$/);
+  assert.match(actual, /observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n\n--- phase: build ---\nBuild the thing\.\n$/);
 });
 
 test("statusTerminal: complete has no reason line", () => {

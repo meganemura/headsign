@@ -378,7 +378,9 @@ export function statusRunning(o: {
   // conditional lines above the phase block, which comes after everything else in turn.
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here — turn ends from this environment are never held\n" : "";
   const optimizationLine = o.optimizationPath ? `optimization: ${o.optimizationAssessed ? "assessed" : "unassessed"} — ${o.optimizationPath}\n` : "";
-  const phaseBlock = o.description !== undefined ? `--- phase: ${o.phase} ---\n${o.description}\n` : "";
+  // One blank line above the block: it is the one part of the output that is several lines of
+  // somebody else's text, and a reader wants the seam.
+  const phaseBlock = o.description !== undefined ? `\n--- phase: ${o.phase} ---\n${o.description}\n` : "";
   return `RUNNING ${o.phase} (attempt ${n})\n${picture}workflow: ${o.workflowName}\n${lastFailureBlock}driver: ${o.driver}\n${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
 }
 

@@ -7928,7 +7928,8 @@ ${o.lastFailure.outputTail}
   const observerLine = o.observer ? "observer: HEADSIGN_OBSERVER is set here \u2014 turn ends from this environment are never held\n" : "";
   const optimizationLine = o.optimizationPath ? `optimization: ${o.optimizationAssessed ? "assessed" : "unassessed"} \u2014 ${o.optimizationPath}
 ` : "";
-  const phaseBlock = o.description !== void 0 ? `--- phase: ${o.phase} ---
+  const phaseBlock = o.description !== void 0 ? `
+--- phase: ${o.phase} ---
 ${o.description}
 ` : "";
   return `RUNNING ${o.phase} (attempt ${n})

@@ -180,7 +180,9 @@ function bodyOf(ui: Ui, state: State): RenderElement[] {
   const color = tokenColorOf(head)
   return [
     Text({ bold: true, ...(color === undefined ? {} : { color }), children: head }),
-    ...rest.map((line) => Text({ wrap: 'wrap', children: labelled(ui, line) })),
+    // An empty Text draws no row, so a blank line is drawn as one space: the blank lines that
+    // frame the picture and the phase block are what keep the pane readable.
+    ...rest.map((line) => Text({ wrap: 'wrap', children: line === '' ? ' ' : labelled(ui, line) })),
     ...(report.exitCode === 0 ? [] : [Text({ color: 'red', children: `exit ${report.exitCode}${report.stderr ? `: ${report.stderr.trim()}` : ''}` })]),
   ]
 }

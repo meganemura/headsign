@@ -9,6 +9,12 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **`headsign status` sets the phase block off with a blank line**, and the
+  run pane keeps blank lines as rows, so the picture and the block read as the
+  separate things they are.
+
 ## [0.13.0] - 2026-09-16
 
 ### Added

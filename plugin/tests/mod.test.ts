@@ -146,6 +146,7 @@ describe('the pane', () => {
 
     const lines = linesOf(await $.ui.render(PANE))
     expect(lines[0]).toEqual({ text: 'RUNNING implement (attempt 0/5)', color: 'yellow' })
+    expect(lines[1]).toEqual({ text: ' ' })
     expect(lines[2]).toEqual({ text: '  pick' })
     expect(lines[4]).toEqual({ text: '  ╔═══════════╗' })
     expect(lines[8]).toEqual({ text: '      └─ fail ─▶ implement   (5 attempts left)' })

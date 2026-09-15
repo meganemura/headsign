@@ -2681,7 +2681,7 @@ phases:
   assert.equal(before.status, 0);
   assert.equal(
     before.stdout,
-    `RUNNING build (attempt 0/3)\n${BUILD_END_PICTURE}workflow: demo\n${UNCLAIMED_DRIVER_LINE}entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n--- phase: build ---\nBuild.\n`,
+    `RUNNING build (attempt 0/3)\n${BUILD_END_PICTURE}workflow: demo\n${UNCLAIMED_DRIVER_LINE}entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n\n--- phase: build ---\nBuild.\n`,
   );
 
   run(["next"], { cwd: dir, env: NO_OBSERVER_ENV }); // real RETRY -> attempts.build = 1
@@ -2838,7 +2838,7 @@ test("status: a turn end that Claude Code had already resumed leaves both an unh
     `RUNNING build (attempt 0)\n${BUILD_VERIFY_PICTURE}workflow: demo\n${UNCLAIMED_DRIVER_LINE}` +
       `last stop: not held — Claude Code had already resumed the turn (stop_hook_active) — at ${at}\n` +
       `entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n` +
-      `--- phase: build ---\nBuild the thing.\n`,
+      `\n--- phase: build ---\nBuild the thing.\n`,
   );
 });
 
@@ -3018,7 +3018,7 @@ test("status: a run with no last_drive prints byte-identical output to before th
   assert.equal(result.status, 0);
   assert.equal(
     result.stdout,
-    `RUNNING build (attempt 0)\n${BUILD_VERIFY_PICTURE}workflow: demo\n${UNCLAIMED_DRIVER_LINE}entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n--- phase: build ---\nBuild the thing.\n`,
+    `RUNNING build (attempt 0)\n${BUILD_VERIFY_PICTURE}workflow: demo\n${UNCLAIMED_DRIVER_LINE}entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n\n--- phase: build ---\nBuild the thing.\n`,
   );
   assert.doesNotMatch(result.stdout, /last moved:/);
 });
@@ -3039,7 +3039,7 @@ test("status: a run with a last_drive stamp prints the exact 'last moved:' line,
       `last stop: held, and pointed back to headsign next — at ${(readState(dir).last_stop as { at: string }).at}\n` +
       `last moved: ${at.at} — turn ends from any other session pass without a nudge\n` +
       `entered: ${readState(dir).phase_entered_at as string} — when this run last entered the phase above\n` +
-      `--- phase: build ---\nBuild the thing.\n`,
+      `\n--- phase: build ---\nBuild the thing.\n`,
   );
 });
 

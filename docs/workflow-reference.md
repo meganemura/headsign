@@ -1386,7 +1386,7 @@ limit is declared. The picture is absent when headsign cannot read the
 workflow file ([ADR-0042](adr/0042-status-draws-the-neighbourhood.md)).
 
 While a run is `RUNNING`, the output ends with the current phase's
-instructions in the `--- phase: <name> ---` block. `start` and `next` print
+instructions in the `--- phase: <name> ---` block, set off by one blank line. `start` and `next` print
 the same block. This block provides the one way to reread the
 phase instructions without a judgement. `next` would run the gate and can
 spend an attempt. This block matters most for delegated work. An agent that
