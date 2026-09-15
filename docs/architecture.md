@@ -43,7 +43,9 @@ plugin/                          # what gets distributed (Claude Code and Codex 
   skills/workflow/SKILL.md       # the discipline taught to the agent
   skills/design-workflow/SKILL.md # workflow design and revision
   skills/optimize/SKILL.md       # terminal procedure assessment
-  hooks/hooks.json               # run discovery plus the two stop-boundary hooks
+  hooks/hooks.json               # run discovery plus the two stop-boundary hooks (both hosts)
+  hooks/mods.json                # names the function-hooks module below (Claude Code only, ADR-0040)
+  hooks/status-pane.ts           # /headsign and the run pane it draws from `headsign status`
   dist/headsign.mjs              # single-file bundle (committed; see ADR-0005)
 src/                             # TypeScript sources (bundled into dist/)
 docs/                            # this file + ADRs
@@ -145,6 +147,12 @@ outside it:
   for a reviewer's verdict file. headsign only reads their exit codes.
 - **The session-start hook** reports a nearby running run before work begins.
   It reads state and prints guidance without changing the run (ADR-0037).
+- **The run pane** is a function-hooks module that Claude Code alone loads,
+  and only with its early-access flag set. `/headsign` opens a pane beside
+  the transcript; the module runs `headsign status` in the run's directory
+  and draws what it prints, reading only the first line's token and the exit
+  code (ADR-0030). It never opens `state.json` and never runs `next`,
+  `abort`, or `claim` (ADR-0040).
 - **Stop-boundary hooks** are the backstop: skills are instructions, not
   guarantees. If the run's driver tries to stop while a run is `running`,
   the hook (exit 2) sends it back to `headsign next` (ADR-0006). Two events

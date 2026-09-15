@@ -1,0 +1,4 @@
+{
+  "description": "The function-hooks half of the plugin: /headsign and the run pane it draws beside the transcript, refreshed after headsign shell commands and finished turns. Loads only where Claude Code enables function hooks; the stop hooks stay in hooks.json.",
+  "modules": ["./status-pane.ts"]
+}

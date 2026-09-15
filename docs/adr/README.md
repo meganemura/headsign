@@ -50,6 +50,7 @@ reading part of the development instructions, including delegated work.
 | [0037](0037-session-start-discovers-a-run.md) | A running run introduces itself at session start — read-only discovery restores the handover signal without restoring bystander nudges *(amends 0027 §6)* |
 | [0038](0038-a-run-assesses-its-procedure.md) | A run assesses its procedure at completion or terminal escalation — default activation, durable dispositions, one attributed Stop continuation, and authority-bounded repairs *(amends 0001, 0006, 0023, 0027, 0030)* |
 | [0039](0039-design-for-the-model-that-improves-the-method.md) | Design for a model that improves its method — future capabilities, optimization by default, consequential outcomes, explicit bets, task authority, and smallness across code and skills *(amends 0001; governs changes to 0038)* |
+| [0040](0040-the-run-pane-is-a-claude-only-overlay.md) | The run pane is a Claude-only overlay on the shared plugin — a function-hooks module named by the Claude manifest alone, reading the run through `headsign status` under ADR-0030, with the stop hooks left as command hooks for both hosts and for managed machines; stated as an explicit future bet *(amends 0028)* |
 
 Each file states its context, the decision, and the consequences. When a
 decision changes, amend the relevant ADR rather than adding a new one, unless

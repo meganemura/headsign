@@ -9,6 +9,7 @@
   "homepage": "https://github.com/meganemura/headsign",
   "repository": "https://github.com/meganemura/headsign",
   "license": "MIT",
+  "hooks": ["./hooks/hooks.json", "./hooks/mods.json"],
   "keywords": [
     "claude-code",
     "claude-code-plugin",

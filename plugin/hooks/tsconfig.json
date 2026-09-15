@@ -1,0 +1,22 @@
+{
+  // The function-hooks module runs in Claude Code's own environment (no Node, no DOM) and
+  // types against the declarations `/plugin-types` writes to .claude/types/ at the
+  // repository root. The root tsconfig is Node-shaped (nodenext, @types/node) and includes
+  // only src/ and tests/, so this file is the one that checks the module. From the
+  // repository root, after `/plugin-types`: `npx tsc -p plugin/hooks`.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "types": [],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "jsx": "react",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment"
+  },
+  "include": ["../../.claude/types", "."]
+}

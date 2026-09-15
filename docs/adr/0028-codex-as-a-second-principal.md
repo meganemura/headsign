@@ -13,6 +13,10 @@
   confirm a stable public session environment variable for ordinary Codex CLI
   commands, so Codex commands do not stamp `last_drive.session`.
 - Revised: 2026-09-13 (§4 distinguishes unknown-session nudge wording while preserving hook decisions).
+- Revised: 2026-09-15 (the shared tree gains one file Codex does not read:
+  [ADR-0040](0040-the-run-pane-is-a-claude-only-overlay.md) names a
+  function-hooks module from the Claude manifest alone; `hooks/hooks.json`
+  and the session-attribution boundary are unchanged).
 
 ## Context
 
