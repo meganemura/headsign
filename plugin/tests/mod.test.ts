@@ -93,6 +93,12 @@ describe('the actor stamp', () => {
     expect(result).toEqual("export HEADSIGN_ACTOR='the-session'; cd /work && node plugin/dist/headsign.mjs next")
   })
 
+  test("a headsign command in a subagent's loop carries the agent id after the session's", async ($, on) => {
+    world(on)
+    const { result } = await $.tool.call({ tool: 'Bash', command: 'headsign next', agentId: 'agent-one' } as Parameters<typeof $.tool.call>[0])
+    expect(result).toEqual("export HEADSIGN_ACTOR='the-session/agent-one'; headsign next")
+  })
+
   test('a command that does not name headsign passes through untouched', async ($, on) => {
     world(on)
     const { result } = await $.tool.call({ tool: 'Bash', command: 'npm test' })
