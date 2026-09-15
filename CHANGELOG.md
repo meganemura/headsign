@@ -9,6 +9,8 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-15
+
 ### Added
 
 - **A run pane for Claude Code, behind its function-hooks flag.** With
