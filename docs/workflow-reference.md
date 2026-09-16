@@ -419,7 +419,9 @@ where to store data.
 **Folded away when `start` runs.** `.headsign/tmp/` is run-scoped scratch:
 `start` deletes all of it and creates an empty directory. This run cannot
 read anything that a previous run left there. A phase's `clear:` removes its
-listed files on every entry. Nothing else resets either location. Use `tmp/`
+listed files on every entry. The stop hooks consume their own two markers,
+`tmp/stop-note` and `tmp/claim`, and touch nothing else there. Nothing else
+resets either location. Use `tmp/`
 for anything that must be new in each run. For example, the entry phase can
 create an identifier. The workflow does not need to make that identifier new
 for each run.
