@@ -1238,6 +1238,7 @@ headsign status は読み取り専用で、gate を実行せず、state を書�
 
 run が `RUNNING` のあいだは、1 行目の下に絵が付きます。
 run が来たフェーズ、箱に入った現フェーズ、pass と fail が次に送りうるフェーズの 3 段です。
+箱には run の進みも出ます。ここまでの lap 数(この run が判定した gate の数)を `limits.max_total_iterations` に対して `7/20` と書き、上限が無いワークフローでは `lap 7` と書きます。
 route の列は 1 route 1 行で、`when:` を矢印の横に出し、既定の route には `default` と付きます。
 fail の行は、その lap が使う `on_fail` を書きます。`retry` はフェーズ自身の名前で描かれ、上限があれば残り試行数が付きます。
 ワークフローファイルが読めないときは絵は出ません([ADR-0042](adr/0042-status-draws-the-neighbourhood.md))。
@@ -1258,9 +1259,9 @@ RUNNING implement (attempt 2/5)
 
   design
       │
-  ╔═══════════╗
-  ║ implement ║
-  ╚═══════════╝
+  ╔══════════════════╗
+  ║ implement   7/20 ║
+  ╚══════════════════╝
       ├─ pass ─▶ review
       └─ fail ─▶ implement   (3 attempts left)
 
@@ -1288,9 +1289,9 @@ reason: review rejected 3 times
 $ headsign status
 RUNNING decide (attempt 0/5)
 
-  ╔════════╗
-  ║ decide ║
-  ╚════════╝
+  ╔════════════════╗
+  ║ decide   lap 3 ║
+  ╚════════════════╝
       ├─ pass ─▶ record
       └─ fail ─▶ decide   (5 attempts left)
 

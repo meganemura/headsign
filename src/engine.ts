@@ -469,6 +469,12 @@ export interface Neighbourhood {
   pass: { to: string; when?: string; isDefault?: true }[];
   fail: string;
   attemptsLeft?: number;
+  // How many laps the run has taken so far (`total_iterations`: every gate the run judged),
+  // and the ceiling when the workflow declares one. Drawn inside the box, because the box is
+  // where the run stands and this is how far along it is. `maxLaps` rides only when
+  // `limits.max_total_iterations` is set; an undeclared ceiling is unlimited.
+  laps: number;
+  maxLaps?: number;
 }
 
 export type StatusResult =
@@ -1165,7 +1171,7 @@ function unreportedGraphState(state: State, wf: Workflow | null): "changed" | "r
 // reader wants to see the conditions in the order they are asked; the trailing default is
 // marked rather than left bare so the picture can say so. `phase_entered_from` is read with
 // the tolerant idiom every field of the record gets (state.ts).
-function neighbourhoodOf(current: State, phase: Phase, attempt: number): Neighbourhood {
+function neighbourhoodOf(current: State, phase: Phase, attempt: number, maxLaps: number | undefined): Neighbourhood {
   const from = typeof current.phase_entered_from === "string" && current.phase_entered_from.length > 0 ? current.phase_entered_from : null;
   const pass =
     typeof phase.on_pass === "string"
@@ -1177,6 +1183,8 @@ function neighbourhoodOf(current: State, phase: Phase, attempt: number): Neighbo
     pass,
     fail,
     ...(phase.max_attempts !== undefined && { attemptsLeft: Math.max(0, phase.max_attempts - attempt) }),
+    laps: current.total_iterations,
+    ...(maxLaps !== undefined && { maxLaps }),
   };
 }
 
@@ -1252,7 +1260,7 @@ export function status(cwd: string, env: NodeJS.ProcessEnv): StatusResult {
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
     ...(phase?.description !== undefined && { description: phase.description }),
-    ...(phase !== undefined && { neighbourhood: neighbourhoodOf(current, phase, attempt) }),
+    ...(phase !== undefined && { neighbourhood: neighbourhoodOf(current, phase, attempt, wf?.limits?.max_total_iterations) }),
     optimizationPath: optimization.assessmentPath(cwd, current),
     optimizationAssessed: optimization.hasAssessment(cwd, current),
   };

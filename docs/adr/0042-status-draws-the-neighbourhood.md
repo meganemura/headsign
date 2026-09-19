@@ -13,6 +13,11 @@
 - Relates to [ADR-0040](0040-the-run-pane-is-a-claude-only-overlay.md): the
   pane shows the picture as text, and this is why the picture is the CLI's and
   not the pane's.
+- Relates to [ADR-0017](0017-three-budgets-and-the-recoverable-ceiling.md):
+  the lap count in the box is the number that ceiling counts.
+- Revised: 2026-09-19 (Decision 2: the box also carries the run's lap count,
+  `laps/ceiling` or `lap N`. The first line keeps the phase's attempts; the
+  two numbers answer different questions.)
 
 ## Context
 
@@ -49,9 +54,9 @@ RUNNING review (attempt 1/8)
 
   implement
       │
-  ╔════════╗
-  ║ review ║
-  ╚════════╝
+  ╔════════════════╗
+  ║ review   45/80 ║
+  ╚════════════════╝
       ├─ pass ─▶ close
       └─ fail ─▶ implement
 
@@ -59,7 +64,13 @@ workflow: beads-loop
 ```
 
 The phase above is `phase_entered_from`, omitted when null. The box is the
-current phase. Each pass route is one row; a `when:` is printed beside its
+current phase and, at its right, how far along the run is (revised
+2026-09-19): `total_iterations` against `limits.max_total_iterations` as
+`45/80` when the workflow declares the ceiling, and `lap 45` when it does
+not, so a bare number never has to be guessed at. The count is the run's
+laps, every gate the run has judged, which is what the ceiling counts too; it
+is not the phase's attempts, which the first line carries. Each pass route is
+one row; a `when:` is printed beside its
 arrow in full, and the trailing default is marked `default`. The fail row
 names the `on_fail` the lap would use, default included: `retry` and a
 self-route both draw the phase's own name, so a loop reads as one more box to

@@ -9,8 +9,8 @@ const CLI = path.join(import.meta.dirname, "..", "src", "cli.ts");
 // The picture `status` draws under its token line (ADR-0042), for the two fixtures below: a
 // fresh `build` with a pass to `$end` under a limit of 3, and TWO_PHASE_WORKFLOW's fresh
 // `build` with a pass to `verify` and no limit.
-const BUILD_END_PICTURE = "\n  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (3 attempts left)\n\n";
-const BUILD_VERIFY_PICTURE = "\n  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ verify\n      └─ fail ─▶ build\n\n";
+const BUILD_END_PICTURE = "\n  ╔═══════════════╗\n  ║ build   lap 0 ║\n  ╚═══════════════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (3 attempts left)\n\n";
+const BUILD_VERIFY_PICTURE = "\n  ╔═══════════════╗\n  ║ build   lap 0 ║\n  ╚═══════════════╝\n      ├─ pass ─▶ verify\n      └─ fail ─▶ build\n\n";
 const UNCLAIMED_DRIVER_LINE = "driver: no delegated-agent claim is recorded; RUNNING does not identify a main-session driver or report process activity. Only the authorized driver may complete or delegate phase work, then run headsign next\n";
 const CLAIMED_DRIVER_LINE = "driver: a delegated agent has claimed this persisted unfinished run; RUNNING does not report process activity. Only the authorized driver may complete or delegate phase work, then run headsign next\n";
 

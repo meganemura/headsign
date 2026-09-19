@@ -22,7 +22,7 @@ const PANE: RenderInput<'Pane'> = {
 
 const HEADSIGN: CommandRunInput = { command: 'headsign', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } }
 
-const RUNNING = 'RUNNING implement (attempt 0/5)\n\n  pick\n      │\n  ╔═══════════╗\n  ║ implement ║\n  ╚═══════════╝\n      ├─ pass ─▶ review\n      └─ fail ─▶ implement   (5 attempts left)\n\nworkflow: beads-loop\nlast stop: paused by a note\n'
+const RUNNING = 'RUNNING implement (attempt 0/5)\n\n  pick\n      │\n  ╔══════════════════╗\n  ║ implement   0/80 ║\n  ╚══════════════════╝\n      ├─ pass ─▶ review\n      └─ fail ─▶ implement   (5 attempts left)\n\nworkflow: beads-loop\nlast stop: paused by a note\n'
 
 // The world beneath the module: a session in /work whose `.headsign/` is where `hasRun`
 // says, a `headsign status` that answers from `status`, and a terminal that keeps what was
@@ -148,7 +148,7 @@ describe('the pane', () => {
     expect(lines[0]).toEqual({ text: 'RUNNING implement (attempt 0/5)', color: 'yellow' })
     expect(lines[1]).toEqual({ text: ' ' })
     expect(lines[2]).toEqual({ text: '  pick' })
-    expect(lines[4]).toEqual({ text: '  ╔═══════════╗' })
+    expect(lines[4]).toEqual({ text: '  ╔══════════════════╗' })
     expect(lines[8]).toEqual({ text: '      └─ fail ─▶ implement   (5 attempts left)' })
     expect(lines[10]).toEqual({ text: 'workflow: beads-loop', bold: 'workflow:' })
     expect(lines[11]).toEqual({ text: 'last stop: paused by a note', bold: 'last stop:' })

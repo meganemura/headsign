@@ -741,16 +741,16 @@ test("statusRunning: a run with no recorded entry time prints no entered line", 
 test("statusRunning: the picture sits under the token line, framed by one blank line each side", () => {
   const actual = render.statusRunning({
     phase: "review", attempt: 1, maxAttempts: 8, attemptUnknown: false, workflowName: "demo", driver: "d",
-    neighbourhood: { from: "implement", pass: [{ to: "close" }], fail: "implement", attemptsLeft: 7 },
+    neighbourhood: { from: "implement", pass: [{ to: "close" }], fail: "implement", attemptsLeft: 7, laps: 45, maxLaps: 80 },
   });
   const expected =
     "RUNNING review (attempt 1/8)\n" +
     "\n" +
     "  implement\n" +
     "      │\n" +
-    "  ╔════════╗\n" +
-    "  ║ review ║\n" +
-    "  ╚════════╝\n" +
+    "  ╔════════════════╗\n" +
+    "  ║ review   45/80 ║\n" +
+    "  ╚════════════════╝\n" +
     "      ├─ pass ─▶ close\n" +
     "      └─ fail ─▶ implement\n" +
     "\n" +
@@ -759,8 +759,8 @@ test("statusRunning: the picture sits under the token line, framed by one blank 
 });
 
 test("neighbourhood: a fresh start has no phase above the box", () => {
-  const actual = render.neighbourhood("build", { from: null, pass: [{ to: "ship" }], fail: "retry" });
-  assert.equal(actual, "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ ship\n      └─ fail ─▶ build\n");
+  const actual = render.neighbourhood("build", { from: null, pass: [{ to: "ship" }], fail: "retry", laps: 0 });
+  assert.equal(actual, "  ╔═══════════════╗\n  ║ build   lap 0 ║\n  ╚═══════════════╝\n      ├─ pass ─▶ ship\n      └─ fail ─▶ build\n");
 });
 
 test("neighbourhood: a route list prints each when: beside its arrow, and marks the default", () => {
@@ -768,10 +768,11 @@ test("neighbourhood: a route list prints each when: beside its arrow, and marks 
     from: "review",
     pass: [{ to: "pick", when: "bd ready --json | jq -e 'length > 0'" }, { to: "$end", isDefault: true }],
     fail: "escalate",
+    laps: 0,
   });
   assert.equal(
     actual,
-    "  review\n      │\n  ╔═══════╗\n  ║ close ║\n  ╚═══════╝\n" +
+    "  review\n      │\n  ╔═══════════════╗\n  ║ close   lap 0 ║\n  ╚═══════════════╝\n" +
       "      ├─ pass ─▶ pick   when: bd ready --json | jq -e 'length > 0'\n" +
       "      ├─ pass ─▶ $end   default\n" +
       "      └─ fail ─▶ escalate\n",
@@ -782,17 +783,17 @@ test("neighbourhood: a route list prints each when: beside its arrow, and marks 
 // attempts left ride only when a limit was declared: undeclared is unlimited.
 test("neighbourhood: on_fail retry names the phase, with attempts left only under a declared limit", () => {
   assert.equal(
-    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "retry", attemptsLeft: 1 }),
-    "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (1 attempt left)\n",
+    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "retry", attemptsLeft: 1, laps: 0 }),
+    "  ╔═══════════════╗\n  ║ build   lap 0 ║\n  ╚═══════════════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (1 attempt left)\n",
   );
   assert.equal(
-    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "build", attemptsLeft: 4 }),
-    "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (4 attempts left)\n",
+    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "build", attemptsLeft: 4, laps: 0 }),
+    "  ╔═══════════════╗\n  ║ build   lap 0 ║\n  ╚═══════════════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ build   (4 attempts left)\n",
     "an explicit self-route draws the same as the default",
   );
   assert.equal(
-    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "$end", attemptsLeft: 4 }),
-    "  ╔═══════╗\n  ║ build ║\n  ╚═══════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ $end\n",
+    render.neighbourhood("build", { from: null, pass: [{ to: "$end" }], fail: "$end", attemptsLeft: 4, laps: 0 }),
+    "  ╔═══════════════╗\n  ║ build   lap 0 ║\n  ╚═══════════════╝\n      ├─ pass ─▶ $end\n      └─ fail ─▶ $end\n",
     "attempts left are about retrying, so a failure that leaves prints none",
   );
 });
@@ -800,8 +801,8 @@ test("neighbourhood: on_fail retry names the phase, with attempts left only unde
 // A one-letter phase still gets a box wide enough to hold the connector column beneath it.
 test("neighbourhood: a short phase name keeps the connector column in place", () => {
   assert.equal(
-    render.neighbourhood("a", { from: "z", pass: [{ to: "b" }], fail: "retry" }),
-    "  z\n      │\n  ╔═══════╗\n  ║ a     ║\n  ╚═══════╝\n      ├─ pass ─▶ b\n      └─ fail ─▶ a\n",
+    render.neighbourhood("a", { from: "z", pass: [{ to: "b" }], fail: "retry", laps: 0 }),
+    "  z\n      │\n  ╔═══════════╗\n  ║ a   lap 0 ║\n  ╚═══════════╝\n      ├─ pass ─▶ b\n      └─ fail ─▶ a\n",
   );
 });
 

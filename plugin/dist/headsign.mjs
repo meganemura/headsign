@@ -7938,8 +7938,10 @@ ${lastFailureBlock}driver: ${o.driver}
 ${lastStopLine}${noteLine}${lastMovedLine}${enteredLine}${acceptedLine}${reportedLine}${unreportedLine}${observerLine}${optimizationLine}${phaseBlock}`;
 }
 function neighbourhood(phase, n) {
-  const inner = Math.max(phase.length, 5);
-  const name = phase.padEnd(inner);
+  const progress = n.maxLaps === void 0 ? `lap ${n.laps}` : `${n.laps}/${n.maxLaps}`;
+  const label = `${phase}   ${progress}`;
+  const inner = Math.max(label.length, 5);
+  const name = label.padEnd(inner);
   const bar = "\u2550".repeat(inner + 2);
   const above = n.from === null ? "" : `  ${n.from}
       \u2502
@@ -8810,7 +8812,7 @@ function unreportedGraphState(state, wf) {
   if (differs) return reported ? null : "changed";
   return reported ? "restored" : null;
 }
-function neighbourhoodOf(current, phase, attempt) {
+function neighbourhoodOf(current, phase, attempt, maxLaps) {
   const from = typeof current.phase_entered_from === "string" && current.phase_entered_from.length > 0 ? current.phase_entered_from : null;
   const pass = typeof phase.on_pass === "string" ? [{ to: phase.on_pass }] : phase.on_pass.map((route) => route.when === void 0 ? { to: route.to, isDefault: true } : { to: route.to, when: route.when });
   const fail = phase.on_fail ?? "retry";
@@ -8818,7 +8820,9 @@ function neighbourhoodOf(current, phase, attempt) {
     from,
     pass,
     fail,
-    ...phase.max_attempts !== void 0 && { attemptsLeft: Math.max(0, phase.max_attempts - attempt) }
+    ...phase.max_attempts !== void 0 && { attemptsLeft: Math.max(0, phase.max_attempts - attempt) },
+    laps: current.total_iterations,
+    ...maxLaps !== void 0 && { maxLaps }
   };
 }
 function status(cwd, env) {
@@ -8868,7 +8872,7 @@ function status(cwd, env) {
     // condition `attemptUnknown` reports above, and the reason `status` can print a run it
     // cannot fully describe.
     ...phase?.description !== void 0 && { description: phase.description },
-    ...phase !== void 0 && { neighbourhood: neighbourhoodOf(current, phase, attempt) },
+    ...phase !== void 0 && { neighbourhood: neighbourhoodOf(current, phase, attempt, wf?.limits?.max_total_iterations) },
     optimizationPath: assessmentPath(cwd, current),
     optimizationAssessed: hasAssessment(cwd, current)
   };

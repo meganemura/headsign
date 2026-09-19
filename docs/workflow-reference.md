@@ -1381,7 +1381,9 @@ can safely run it from any session, at any time, as often as you like.
 
 While a run is `RUNNING`, a picture follows the first line: the phase the run
 came from, the current phase in a box, and every phase a pass or a failure can
-send it to next. A route list prints one row per route with its `when:` beside
+send it to next. The box also shows how far along the run is: the laps taken
+so far (every gate the run has judged) against `limits.max_total_iterations`
+as `7/20`, or `lap 7` when the workflow declares no ceiling. A route list prints one row per route with its `when:` beside
 the arrow and the default marked. The fail row names the `on_fail` the lap
 would use, `retry` drawn as the phase's own name with the attempts left when a
 limit is declared. The picture is absent when headsign cannot read the
@@ -1404,9 +1406,9 @@ RUNNING implement (attempt 2/5)
 
   design
       │
-  ╔═══════════╗
-  ║ implement ║
-  ╚═══════════╝
+  ╔══════════════════╗
+  ║ implement   7/20 ║
+  ╚══════════════════╝
       ├─ pass ─▶ review
       └─ fail ─▶ implement   (3 attempts left)
 
@@ -1434,9 +1436,9 @@ reason: review rejected 3 times
 $ headsign status
 RUNNING decide (attempt 0/5)
 
-  ╔════════╗
-  ║ decide ║
-  ╚════════╝
+  ╔════════════════╗
+  ║ decide   lap 3 ║
+  ╚════════════════╝
       ├─ pass ─▶ record
       └─ fail ─▶ decide   (5 attempts left)
 

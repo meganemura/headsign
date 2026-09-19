@@ -9,6 +9,20 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Added
+
+- **The box in `headsign status`'s picture shows how far along the run is.**
+  `implement   7/20` is the run's lap count against
+  `limits.max_total_iterations`; `implement   lap 7` when the workflow
+  declares no ceiling. The first line keeps the phase's attempts (ADR-0042,
+  Decision 2 as revised).
+
+### Fixed
+
+- **The reference names the two markers the stop hooks consume under
+  `.headsign/tmp/`**, the pause note and the claim, beside `start` and
+  `clear:` as the things that remove files there.
+
 ## [0.13.1] - 2026-09-16
 
 ### Fixed

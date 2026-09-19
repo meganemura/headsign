@@ -319,7 +319,7 @@ export function statusRunning(o: {
   // condition `attemptUnknown` reports),
   // and then the picture and the blank line that frames it are absent too, so a run headsign
   // cannot describe prints what it always printed.
-  neighbourhood?: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number };
+  neighbourhood?: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number; laps: number; maxLaps?: number };
   optimizationPath?: string;
   optimizationAssessed?: boolean;
 }): string {
@@ -404,9 +404,14 @@ export function statusRunning(o: {
 // exactly as any other destination: the reader sees the loop as another box to fall into.
 // `attemptsLeft` is printed only when handed in; an undeclared `max_attempts` is unlimited,
 // and a number invented for it would be a lie.
-export function neighbourhood(phase: string, n: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number }): string {
-  const inner = Math.max(phase.length, 5);
-  const name = phase.padEnd(inner);
+export function neighbourhood(phase: string, n: { from: string | null; pass: { to: string; when?: string; isDefault?: true }[]; fail: string; attemptsLeft?: number; laps: number; maxLaps?: number }): string {
+  // The box holds the phase and, at its right, how far along the run is: `46/80` against a
+  // declared ceiling, `lap 46` without one, so a bare number never has to be guessed at.
+  // Three spaces between the two, so they never read as one word.
+  const progress = n.maxLaps === undefined ? `lap ${n.laps}` : `${n.laps}/${n.maxLaps}`;
+  const label = `${phase}   ${progress}`;
+  const inner = Math.max(label.length, 5);
+  const name = label.padEnd(inner);
   const bar = "═".repeat(inner + 2);
   const above = n.from === null ? "" : `  ${n.from}\n      │\n`;
   const box = `  ╔${bar}╗\n  ║ ${name} ║\n  ╚${bar}╝\n`;

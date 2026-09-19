@@ -855,11 +855,11 @@ test("status: the neighbourhood names where the run came from, where a pass goes
   const dir = startedRun(ENTRY_WORKFLOW);
   const before = engine.status(dir, NO_ENV);
   assert.equal(before.kind, "RUNNING");
-  if (before.kind === "RUNNING") assert.deepEqual(before.neighbourhood, { from: null, pass: [{ to: "ship" }], fail: "retry", attemptsLeft: 5 });
+  if (before.kind === "RUNNING") assert.deepEqual(before.neighbourhood, { from: null, pass: [{ to: "ship" }], fail: "retry", attemptsLeft: 5, laps: 0 });
   fs.writeFileSync(path.join(dir, "pass-marker"), "");
   engine.next(dir, LAP_TIME, NO_ENV);
   const after = engine.status(dir, NO_ENV);
-  if (after.kind === "RUNNING") assert.deepEqual(after.neighbourhood, { from: "build", pass: [{ to: "$end" }], fail: "retry" }, "ship declares no max_attempts, so no attempts-left number is invented");
+  if (after.kind === "RUNNING") assert.deepEqual(after.neighbourhood, { from: "build", pass: [{ to: "$end" }], fail: "retry", laps: 1 }, "ship declares no max_attempts, so no attempts-left number is invented; one gate was judged");
 });
 
 test("status: a route list keeps its order and its when: text, and the default is marked", () => {
@@ -889,8 +889,33 @@ phases:
   const result = engine.status(dir, NO_ENV);
   assert.equal(result.kind, "RUNNING");
   if (result.kind === "RUNNING") {
-    assert.deepEqual(result.neighbourhood, { from: null, pass: [{ to: "pick", when: "test -f more" }, { to: "$end", isDefault: true }], fail: "escalate" });
+    assert.deepEqual(result.neighbourhood, { from: null, pass: [{ to: "pick", when: "test -f more" }, { to: "$end", isDefault: true }], fail: "escalate", laps: 0 });
   }
+});
+
+// The lap count is `total_iterations`, so a RETRY moves it as much as an ADVANCE does, and the
+// ceiling rides only when the workflow declares one.
+test("status: the neighbourhood carries the lap count, and the ceiling only when declared", () => {
+  const { dir, workflowPath } = freshWorkflowDir(`
+version: 0.1
+name: demo
+entry: build
+phases:
+  build:
+    description: "Build."
+    gate:
+      checks:
+        - run: "false"
+    on_pass: "$end"
+limits:
+  max_total_iterations: 9
+`);
+  engine.start(dir, workflowPath, START_TIME, NO_ENV);
+  const fresh = engine.status(dir, NO_ENV);
+  if (fresh.kind === "RUNNING") assert.deepEqual([fresh.neighbourhood?.laps, fresh.neighbourhood?.maxLaps], [0, 9]);
+  engine.next(dir, LAP_TIME, NO_ENV);
+  const afterRetry = engine.status(dir, NO_ENV);
+  if (afterRetry.kind === "RUNNING") assert.deepEqual([afterRetry.neighbourhood?.laps, afterRetry.neighbourhood?.maxLaps], [1, 9], "a RETRY is a lap");
 });
 
 test("status: a state file written before phase_entered_from existed reads as entered from nowhere", () => {
