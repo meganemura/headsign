@@ -270,6 +270,13 @@ produced useful findings, use them instead of repeating the investigation.
    `headsign next` — the reviewer stays unable to touch code or the
    verdict, so the judgment and the work stay separated.
 
+   Write the verdict only after `headsign status` shows the review phase as
+   the current phase. A phase's `clear:` runs when the run enters that phase,
+   so a verdict written before entry is deleted on entry, and `next` reports
+   it as `--- cleared: <path> ---`. When the gate of the previous phase is
+   still unconsumed, run `headsign next` first, confirm `ADVANCE <review
+   phase>` in its output, and then write the verdict.
+
    Check that the gate actually requires the current review's final decision
    and the artifact it reviewed. File existence, size, or a historical
    `APPROVED` line does not establish acceptance of the current revision.
