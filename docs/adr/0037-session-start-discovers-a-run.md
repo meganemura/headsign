@@ -1,5 +1,11 @@
 # ADR-0037: A running run introduces itself at session start
 
+- Revised: 2026-09-22 (the hooks guide embedded in agy 1.2.7 lists five
+  events: `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, and
+  `Stop`. Its `PreInvocation` hook calls the same discovery on the first
+  invocation and returns the notice as an ephemeral message. ADR-0028 §3
+  records the adapter).
+
 ## Context
 
 ADR-0027 protects bystanders by withholding another session's Stop nudge,

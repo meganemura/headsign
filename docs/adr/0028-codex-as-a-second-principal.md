@@ -22,6 +22,9 @@
   with function hooks stamp `last_drive.session` and `driver_agent` from
   `HEADSIGN_ACTOR`, which its module writes per command. Codex sets no such
   variable, so §4 holds there as written).
+- Revised: 2026-09-22 (a third host, Antigravity CLI, joins the shared tree:
+  §2 gains a third manifest at the tree root and §3 gains one adapter, both
+  recorded below).
 
 ## Context
 
@@ -87,7 +90,7 @@ Replace ADR-0001's host-specific principal with a coding-agent principal.
 Claude Code and Codex each retain their conversation and context. headsign
 remains a short-lived CLI that answers the agent's one question.
 
-### 2. One plugin tree serves both hosts
+### 2. One plugin tree serves every host
 
 Keep the Claude manifest at `.claude-plugin/plugin.json`. Add the Codex
 manifest at `.codex-plugin/plugin.json`. Share `skills/`, `hooks/hooks.json`,
@@ -124,6 +127,18 @@ Codex discovers `hooks/hooks.json` by its default plugin path, so the Codex
 manifest does not repeat a hook path. The two manifests stay independent at
 the host-specific edge.
 
+**Antigravity CLI (2026-09-22).** Antigravity reads a manifest at the tree
+root, `plugin.json`, and a hook file beside it, `hooks.json`. Its hook file has
+its own shape: one named hook at the top level, and a flat list of handlers
+under each event. Two measurements on agy 1.2.7 (this machine) fixed the
+layout: `agy plugin validate ./plugin` counted one hook file, and
+`agy -p "/hooks"` listed the two entries of the root file. So the tree carries
+a third manifest and a second hook file. The hooks guide embedded in agy 1.2.7
+states that a hook command runs with the directory of `hooks.json` as the
+working directory, so the command names the bundle by the relative path
+`./dist/headsign.mjs`. The three manifests share `skills/` and
+`dist/headsign.mjs`, and each stays independent at its host-specific edge.
+
 ### 3. Keep the existing stop-hook process contract
 
 Do not add a Codex command or a second evaluator. Codex and Claude Code both
@@ -132,6 +147,15 @@ stderr reason as a request to continue.
 
 The Codex `turn_id`, `model`, `permission_mode`, and transcript fields do not
 change a headsign decision, so the evaluator ignores them.
+
+**Antigravity CLI (2026-09-22).** Antigravity's `Stop` hook reads JSON on
+stdin and answers with JSON on stdout: `{"decision": "continue", "reason":
+...}` blocks the stop. Its `PreInvocation` hook answers with `injectSteps`. So
+`src/antigravityhook.ts` is an adapter: it maps the Antigravity payload
+(`workspacePaths[0]`, `conversationId`) onto the payload the existing
+evaluators read, and maps their decision back. When the payload names no
+workspace, the adapter fails open, because Antigravity runs the hook from the
+plugin directory and the working directory cannot stand in for the workspace.
 
 ### 4. Preserve the session-attribution boundary
 

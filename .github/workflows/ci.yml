@@ -65,14 +65,16 @@ jobs:
       # Every manifest that carries a version, not just the first one written. A host whose
       # manifest lags is not a broken install — it is a silent no-op update, because a plugin
       # update is decided by comparing that string.
+      # Antigravity reads plugin/plugin.json at the plugin root, so the check includes it.
       - name: every plugin manifest matches the package version
         run: |
           node -e "
           const fs=require('fs');
           const want=JSON.parse(fs.readFileSync('./package.json','utf8')).version;
           const manifests=fs.readdirSync('./plugin',{withFileTypes:true})
-            .filter(e=>e.isDirectory()&&e.name.endsWith('-plugin'))
-            .map(e=>'./plugin/'+e.name+'/plugin.json')
+            .flatMap(e=>e.isFile()&&e.name==='plugin.json'
+              ? ['./plugin/plugin.json']
+              : e.isDirectory()?['./plugin/'+e.name+'/plugin.json']:[])
             .filter(fs.existsSync);
           if(manifests.length===0){console.error('no plugin manifest found under plugin/');process.exit(1)}
           let bad=0;

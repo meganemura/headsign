@@ -252,9 +252,9 @@ On every PR and push to `main`, ubuntu + Node 24:
    processes against a lock
 4. `npm run build` then `git diff --exit-code plugin/dist` — the committed
    bundle everyone's hook executes must be exactly what src builds to
-5. `package.json` version == the version in **every** `plugin/*-plugin/plugin.json`
-   — guards the silent-no-op update trap above, and the count comes from the
-   tree rather than from a list written here
+5. `package.json` version == the version in every manifest that
+   `find plugin -maxdepth 2 -name plugin.json` lists — guards the silent-no-op
+   update trap above, and the count comes from the tree
 
 ### How the workflow is written, and why
 
@@ -330,14 +330,13 @@ machine and can be undone here, and everything reserved either leaves the
 machine or is protected against being undone once it has.
 
 1. **[agent]** Bump `version` in `package.json` and in **every** plugin
-   manifest — `plugin/.claude-plugin/plugin.json` and
-   `plugin/.codex-plugin/plugin.json` today, and whatever else
-   `find plugin -maxdepth 2 -name plugin.json` lists, which is the list to
-   take rather than this sentence. CI enforces equality across all of them,
-   and a manifest left behind is the failure this step exists to prevent:
-   without its bump, that host's marketplace users never receive the release,
-   because a plugin update is decided by comparing that string. The command
-   reports success and the version does not move.
+   manifest — `plugin/.claude-plugin/plugin.json`,
+   `plugin/.codex-plugin/plugin.json`, and `plugin/plugin.json` (Antigravity)
+   today. Use every manifest that
+   `find plugin -maxdepth 2 -name plugin.json` lists. CI enforces equality
+   across all of them. A missing bump prevents updates for that host because
+   the marketplace compares the version string. The update command reports
+   success and the version does not move.
 
    **This step named one manifest until v0.8.1, and a release walked into
    exactly that.** The second manifest arrived with the second host in v0.7.0,
