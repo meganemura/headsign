@@ -17,6 +17,16 @@ function tmpdir(): string {
   return dir;
 }
 
+function fromDirectory<T>(dir: string, evaluate: () => T): T {
+  const previous = process.cwd();
+  process.chdir(dir);
+  try {
+    return evaluate();
+  } finally {
+    process.chdir(previous);
+  }
+}
+
 function writeRunningWorkflow(dir: string): void {
   const headsignDir = path.join(dir, ".headsign");
   fs.mkdirSync(headsignDir, { recursive: true });
@@ -107,14 +117,16 @@ test("evaluateStop: running workflow blocks stop with decision continue and reas
 test("evaluateStop: missing or empty workspacePaths allows stop", () => {
   const dir = tmpdir();
   writeRunningWorkflow(dir);
-  const missing = antigravityhook.evaluateStop(JSON.stringify({ conversationId: "conv-1" }), NOW, NO_ENV);
-  const empty = antigravityhook.evaluateStop(
-    JSON.stringify({ workspacePaths: [""], conversationId: "conv-1" }),
-    NOW,
-    NO_ENV,
-  );
-  assert.deepEqual(missing, { decision: "allow" });
-  assert.deepEqual(empty, { decision: "allow" });
+  fromDirectory(dir, () => {
+    const missing = antigravityhook.evaluateStop(JSON.stringify({ conversationId: "conv-1" }), NOW, NO_ENV);
+    const empty = antigravityhook.evaluateStop(
+      JSON.stringify({ workspacePaths: [""], conversationId: "conv-1" }),
+      NOW,
+      NO_ENV,
+    );
+    assert.deepEqual(missing, { decision: "allow" });
+    assert.deepEqual(empty, { decision: "allow" });
+  });
 });
 
 test("evaluateStop: pause note consumption allows stop", () => {
@@ -176,14 +188,16 @@ test("evaluatePreInvocation: invocationNum 1 with running workflow injects ephem
 test("evaluatePreInvocation: missing or empty workspacePaths returns empty injectSteps", () => {
   const dir = tmpdir();
   writeRunningWorkflow(dir);
-  const missing = antigravityhook.evaluatePreInvocation(
-    JSON.stringify({ invocationNum: 1 }),
-  );
-  const empty = antigravityhook.evaluatePreInvocation(
-    JSON.stringify({ workspacePaths: [""], invocationNum: 1 }),
-  );
-  assert.deepEqual(missing, { injectSteps: [] });
-  assert.deepEqual(empty, { injectSteps: [] });
+  fromDirectory(dir, () => {
+    const missing = antigravityhook.evaluatePreInvocation(
+      JSON.stringify({ invocationNum: 1 }),
+    );
+    const empty = antigravityhook.evaluatePreInvocation(
+      JSON.stringify({ workspacePaths: [""], invocationNum: 1 }),
+    );
+    assert.deepEqual(missing, { injectSteps: [] });
+    assert.deepEqual(empty, { injectSteps: [] });
+  });
 });
 
 test("evaluatePreInvocation: invocationNum 1 with no run returns empty injectSteps", () => {
