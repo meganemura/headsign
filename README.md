@@ -142,8 +142,10 @@ In Claude Code, as a plugin:
 In Antigravity CLI (`agy`), as a plugin:
 
 ```sh
-agy plugin install ./plugin
+agy plugin install https://github.com/meganemura/headsign
 ```
+
+(Or from within a cloned repository: `agy plugin install ./plugin`)
 
 All three hosts receive the bundled CLI (no npm install or build), the
 `workflow` skill, the `design-workflow` skill, the `optimize` skill, and lifecycle hooks.

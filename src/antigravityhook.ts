@@ -1,6 +1,7 @@
 // Responsibility: Antigravity lifecycle hooks — stdin JSON -> stdout JSON.
 // Stop: prevents premature agent termination when workflow is still running.
 // PreInvocation: surfaces running/paused workflow notice at session start (invocationNum === 1).
+// Antigravity uses the installed plugin directory as the hook cwd, so cwd cannot identify a workspace.
 // Must NOT know about: workflow.yaml, gate execution.
 
 import * as stophook from "./stophook.ts";
@@ -32,7 +33,6 @@ export interface AntigravityPreInvocationOutput {
 }
 
 export function evaluateStop(
-  cwd: string,
   stdinRaw: string,
   nowIso: string,
   env: NodeJS.ProcessEnv,
@@ -46,10 +46,10 @@ export function evaluateStop(
       return { decision: "allow" };
     }
 
-    const startDir =
-      Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === "string" && input.workspacePaths[0].length > 0
-        ? input.workspacePaths[0]
-        : cwd;
+    if (!Array.isArray(input.workspacePaths) || typeof input.workspacePaths[0] !== "string" || input.workspacePaths[0].length === 0) {
+      return { decision: "allow" };
+    }
+    const startDir = input.workspacePaths[0];
 
     const synthesizedPayload = JSON.stringify({
       cwd: startDir,
@@ -67,7 +67,6 @@ export function evaluateStop(
 }
 
 export function evaluatePreInvocation(
-  cwd: string,
   stdinRaw: string,
 ): AntigravityPreInvocationOutput {
   try {
@@ -79,10 +78,10 @@ export function evaluatePreInvocation(
       return { injectSteps: [] };
     }
 
-    const startDir =
-      Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === "string" && input.workspacePaths[0].length > 0
-        ? input.workspacePaths[0]
-        : cwd;
+    if (!Array.isArray(input.workspacePaths) || typeof input.workspacePaths[0] !== "string" || input.workspacePaths[0].length === 0) {
+      return { injectSteps: [] };
+    }
+    const startDir = input.workspacePaths[0];
 
     const notice = sessionhook.evaluate(startDir, JSON.stringify({ cwd: startDir }));
     if (notice !== null && typeof notice.message === "string" && notice.message.length > 0) {

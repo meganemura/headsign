@@ -347,13 +347,13 @@ function cmdSessionStartHook(): never {
 
 function cmdAgyStopHook(): never {
   const raw = readStdin();
-  const output = antigravityhook.evaluateStop(process.cwd(), raw, localIso(new Date()), process.env);
+  const output = antigravityhook.evaluateStop(raw, localIso(new Date()), process.env);
   return exitAfter(`${JSON.stringify(output)}\n`, 0);
 }
 
 function cmdAgyPreInvocationHook(): never {
   const raw = readStdin();
-  const output = antigravityhook.evaluatePreInvocation(process.cwd(), raw);
+  const output = antigravityhook.evaluatePreInvocation(raw);
   return exitAfter(`${JSON.stringify(output)}\n`, 0);
 }
 

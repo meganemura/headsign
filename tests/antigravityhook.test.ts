@@ -59,16 +59,15 @@ phases:
 
 test("evaluateStop: unparseable or non-object JSON allows stop", () => {
   const dir = tmpdir();
-  assert.deepEqual(antigravityhook.evaluateStop(dir, "{invalid", NOW, NO_ENV), { decision: "allow" });
-  assert.deepEqual(antigravityhook.evaluateStop(dir, "null", NOW, NO_ENV), { decision: "allow" });
-  assert.deepEqual(antigravityhook.evaluateStop(dir, "123", NOW, NO_ENV), { decision: "allow" });
+  assert.deepEqual(antigravityhook.evaluateStop("{invalid", NOW, NO_ENV), { decision: "allow" });
+  assert.deepEqual(antigravityhook.evaluateStop("null", NOW, NO_ENV), { decision: "allow" });
+  assert.deepEqual(antigravityhook.evaluateStop("123", NOW, NO_ENV), { decision: "allow" });
 });
 
 test("evaluateStop: error termination or present error fails open and allows stop", () => {
   const dir = tmpdir();
   writeRunningWorkflow(dir);
   const byReason = antigravityhook.evaluateStop(
-    dir,
     JSON.stringify({ workspacePaths: [dir], terminationReason: "error" }),
     NOW,
     NO_ENV,
@@ -76,7 +75,6 @@ test("evaluateStop: error termination or present error fails open and allows sto
   assert.deepEqual(byReason, { decision: "allow" });
 
   const byError = antigravityhook.evaluateStop(
-    dir,
     JSON.stringify({ workspacePaths: [dir], error: "fatal command timeout" }),
     NOW,
     NO_ENV,
@@ -87,7 +85,6 @@ test("evaluateStop: error termination or present error fails open and allows sto
 test("evaluateStop: no run in workspace allows stop", () => {
   const dir = tmpdir();
   const res = antigravityhook.evaluateStop(
-    dir,
     JSON.stringify({ workspacePaths: [dir], conversationId: "conv-1", executionNum: 1 }),
     NOW,
     NO_ENV,
@@ -99,7 +96,6 @@ test("evaluateStop: running workflow blocks stop with decision continue and reas
   const dir = tmpdir();
   writeRunningWorkflow(dir);
   const res = antigravityhook.evaluateStop(
-    dir,
     JSON.stringify({ workspacePaths: [dir], conversationId: "conv-1", executionNum: 1 }),
     NOW,
     NO_ENV,
@@ -108,17 +104,17 @@ test("evaluateStop: running workflow blocks stop with decision continue and reas
   assert.match(res.reason ?? "", /headsign workflow 'testflow' is still running/);
 });
 
-test("evaluateStop: fallback to cwd when workspacePaths is missing or empty", () => {
+test("evaluateStop: missing or empty workspacePaths allows stop", () => {
   const dir = tmpdir();
   writeRunningWorkflow(dir);
-  const res = antigravityhook.evaluateStop(
-    dir,
-    JSON.stringify({ conversationId: "conv-1" }),
+  const missing = antigravityhook.evaluateStop(JSON.stringify({ conversationId: "conv-1" }), NOW, NO_ENV);
+  const empty = antigravityhook.evaluateStop(
+    JSON.stringify({ workspacePaths: [""], conversationId: "conv-1" }),
     NOW,
     NO_ENV,
   );
-  assert.equal(res.decision, "continue");
-  assert.match(res.reason ?? "", /headsign workflow 'testflow' is still running/);
+  assert.deepEqual(missing, { decision: "allow" });
+  assert.deepEqual(empty, { decision: "allow" });
 });
 
 test("evaluateStop: pause note consumption allows stop", () => {
@@ -129,7 +125,6 @@ test("evaluateStop: pause note consumption allows stop", () => {
   fs.writeFileSync(path.join(tmpSub, "stop-note"), "waiting on reviewer\n");
 
   const res = antigravityhook.evaluateStop(
-    dir,
     JSON.stringify({ workspacePaths: [dir] }),
     NOW,
     NO_ENV,
@@ -146,24 +141,22 @@ test("evaluateStop: internal exception fails open", () => {
       throw new Error("simulated env failure");
     },
   }) as NodeJS.ProcessEnv;
-  const res = antigravityhook.evaluateStop(dir, JSON.stringify({ workspacePaths: [dir] }), NOW, badEnv);
+  const res = antigravityhook.evaluateStop(JSON.stringify({ workspacePaths: [dir] }), NOW, badEnv);
   assert.deepEqual(res, { decision: "allow" });
 });
 
 // --- evaluatePreInvocation tests ---
 
 test("evaluatePreInvocation: unparseable or non-object JSON returns empty injectSteps", () => {
-  const dir = tmpdir();
-  assert.deepEqual(antigravityhook.evaluatePreInvocation(dir, "invalid"), { injectSteps: [] });
-  assert.deepEqual(antigravityhook.evaluatePreInvocation(dir, "null"), { injectSteps: [] });
-  assert.deepEqual(antigravityhook.evaluatePreInvocation(dir, "42"), { injectSteps: [] });
+  assert.deepEqual(antigravityhook.evaluatePreInvocation("invalid"), { injectSteps: [] });
+  assert.deepEqual(antigravityhook.evaluatePreInvocation("null"), { injectSteps: [] });
+  assert.deepEqual(antigravityhook.evaluatePreInvocation("42"), { injectSteps: [] });
 });
 
 test("evaluatePreInvocation: invocationNum > 1 returns empty injectSteps", () => {
   const dir = tmpdir();
   writeRunningWorkflow(dir);
   const res = antigravityhook.evaluatePreInvocation(
-    dir,
     JSON.stringify({ workspacePaths: [dir], invocationNum: 2 }),
   );
   assert.deepEqual(res, { injectSteps: [] });
@@ -173,7 +166,6 @@ test("evaluatePreInvocation: invocationNum 1 with running workflow injects ephem
   const dir = tmpdir();
   writeRunningWorkflow(dir);
   const res = antigravityhook.evaluatePreInvocation(
-    dir,
     JSON.stringify({ workspacePaths: [dir], invocationNum: 1 }),
   );
   assert.equal(res.injectSteps.length, 1);
@@ -181,21 +173,22 @@ test("evaluatePreInvocation: invocationNum 1 with running workflow injects ephem
   assert.match(res.injectSteps[0].ephemeralMessage, /testflow/);
 });
 
-test("evaluatePreInvocation: fallback to cwd when workspacePaths is missing", () => {
+test("evaluatePreInvocation: missing or empty workspacePaths returns empty injectSteps", () => {
   const dir = tmpdir();
   writeRunningWorkflow(dir);
-  const res = antigravityhook.evaluatePreInvocation(
-    dir,
+  const missing = antigravityhook.evaluatePreInvocation(
     JSON.stringify({ invocationNum: 1 }),
   );
-  assert.equal(res.injectSteps.length, 1);
-  assert.match(res.injectSteps[0].ephemeralMessage, /testflow/);
+  const empty = antigravityhook.evaluatePreInvocation(
+    JSON.stringify({ workspacePaths: [""], invocationNum: 1 }),
+  );
+  assert.deepEqual(missing, { injectSteps: [] });
+  assert.deepEqual(empty, { injectSteps: [] });
 });
 
 test("evaluatePreInvocation: invocationNum 1 with no run returns empty injectSteps", () => {
   const dir = tmpdir();
   const res = antigravityhook.evaluatePreInvocation(
-    dir,
     JSON.stringify({ workspacePaths: [dir], invocationNum: 1 }),
   );
   assert.deepEqual(res, { injectSteps: [] });
@@ -203,7 +196,7 @@ test("evaluatePreInvocation: invocationNum 1 with no run returns empty injectSte
 
 test("evaluatePreInvocation: exception returns empty injectSteps", () => {
   // Pass an invalid path that triggers an error
-  const res = antigravityhook.evaluatePreInvocation("\0invalid", JSON.stringify({ invocationNum: 1 }));
+  const res = antigravityhook.evaluatePreInvocation(JSON.stringify({ workspacePaths: ["\0invalid"], invocationNum: 1 }));
   assert.deepEqual(res, { injectSteps: [] });
 });
 

@@ -142,8 +142,10 @@ Claude Code では、プラグインとして:
 Antigravity CLI (`agy`) では、プラグインとして:
 
 ```sh
-agy plugin install ./plugin
+agy plugin install https://github.com/meganemura/headsign
 ```
+
+(クローン済みのローカルリポジトリ内からであれば、`agy plugin install ./plugin` でもインストールできます)
 
 どのホストにもバンドル済み CLI(npm install もビルドも不要)、`workflow` スキル、`design-workflow` スキル、`optimize` スキル、ライフサイクルフックが届きます。
 Antigravity では、ワークフロー実行中にエージェントが途中で停止するのを `Stop` フックが防ぎ、セッション開始時には `PreInvocation` フックが未完了のワークフローを発見します。

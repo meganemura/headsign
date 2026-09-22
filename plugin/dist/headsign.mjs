@@ -8903,14 +8903,17 @@ Phase: ${JSON.stringify(current.phase)}
 }
 
 // src/antigravityhook.ts
-function evaluateStop(cwd, stdinRaw, nowIso, env) {
+function evaluateStop(stdinRaw, nowIso, env) {
   try {
     const input = JSON.parse(stdinRaw);
     if (typeof input !== "object" || input === null) return { decision: "allow" };
     if (input.terminationReason === "error" || typeof input.error === "string" && input.error.length > 0) {
       return { decision: "allow" };
     }
-    const startDir = Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === "string" && input.workspacePaths[0].length > 0 ? input.workspacePaths[0] : cwd;
+    if (!Array.isArray(input.workspacePaths) || typeof input.workspacePaths[0] !== "string" || input.workspacePaths[0].length === 0) {
+      return { decision: "allow" };
+    }
+    const startDir = input.workspacePaths[0];
     const synthesizedPayload = JSON.stringify({
       cwd: startDir,
       session_id: typeof input.conversationId === "string" && input.conversationId.length > 0 ? input.conversationId : void 0
@@ -8924,14 +8927,17 @@ function evaluateStop(cwd, stdinRaw, nowIso, env) {
     return { decision: "allow" };
   }
 }
-function evaluatePreInvocation(cwd, stdinRaw) {
+function evaluatePreInvocation(stdinRaw) {
   try {
     const input = JSON.parse(stdinRaw);
     if (typeof input !== "object" || input === null) return { injectSteps: [] };
     if (typeof input.invocationNum === "number" && input.invocationNum > 1) {
       return { injectSteps: [] };
     }
-    const startDir = Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === "string" && input.workspacePaths[0].length > 0 ? input.workspacePaths[0] : cwd;
+    if (!Array.isArray(input.workspacePaths) || typeof input.workspacePaths[0] !== "string" || input.workspacePaths[0].length === 0) {
+      return { injectSteps: [] };
+    }
+    const startDir = input.workspacePaths[0];
     const notice = evaluate2(startDir, JSON.stringify({ cwd: startDir }));
     if (notice !== null && typeof notice.message === "string" && notice.message.length > 0) {
       return { injectSteps: [{ ephemeralMessage: notice.message }] };
@@ -9156,13 +9162,13 @@ function cmdSessionStartHook() {
 }
 function cmdAgyStopHook() {
   const raw = readStdin();
-  const output = evaluateStop(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()), process.env);
+  const output = evaluateStop(raw, localIso(/* @__PURE__ */ new Date()), process.env);
   return exitAfter(`${JSON.stringify(output)}
 `, 0);
 }
 function cmdAgyPreInvocationHook() {
   const raw = readStdin();
-  const output = evaluatePreInvocation(process.cwd(), raw);
+  const output = evaluatePreInvocation(raw);
   return exitAfter(`${JSON.stringify(output)}
 `, 0);
 }
