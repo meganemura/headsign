@@ -139,9 +139,16 @@ In Claude Code, as a plugin:
 /plugin install headsign@headsign
 ```
 
-Both hosts receive five parts: the bundled CLI (no npm install or build), the
-`workflow` skill, the `design-workflow` skill, the `optimize` skill, and one hook set. The hook set
-contains SessionStart discovery and two stop-boundary hooks.
+In Antigravity CLI (`agy`), as a plugin:
+
+```sh
+agy plugin install ./plugin
+```
+
+All three hosts receive the bundled CLI (no npm install or build), the
+`workflow` skill, the `design-workflow` skill, the `optimize` skill, and lifecycle hooks.
+On Antigravity, the `Stop` hook prevents premature agent termination while a workflow is running, and `PreInvocation` discovers unfinished workflows at session start.
+Claude Code and Codex use SessionStart discovery and two stop-boundary hooks.
 
 Claude Code also receives a run pane. It loads only where the session sets
 `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, the early-access flag for function

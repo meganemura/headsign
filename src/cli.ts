@@ -17,6 +17,7 @@ import * as engine from "./engine.ts";
 import * as render from "./render.ts";
 import * as stophook from "./stophook.ts";
 import * as sessionhook from "./sessionhook.ts";
+import * as antigravityhook from "./antigravityhook.ts";
 
 // Local-time ISO 8601, numeric UTC offset, second precision — the format and why it is
 // shaped this way is ADR-0004's, "`.headsign/log` (the transition log)" section, "Line
@@ -344,6 +345,18 @@ function cmdSessionStartHook(): never {
   return exitAfter(notice?.message ?? "", 0);
 }
 
+function cmdAgyStopHook(): never {
+  const raw = readStdin();
+  const output = antigravityhook.evaluateStop(process.cwd(), raw, localIso(new Date()), process.env);
+  return exitAfter(`${JSON.stringify(output)}\n`, 0);
+}
+
+function cmdAgyPreInvocationHook(): never {
+  const raw = readStdin();
+  const output = antigravityhook.evaluatePreInvocation(process.cwd(), raw);
+  return exitAfter(`${JSON.stringify(output)}\n`, 0);
+}
+
 // The version the CLI reports, substituted by esbuild at build time (the `--define` in
 // package.json's `build` script) rather than read from package.json at runtime. Read at
 // runtime it would be unreliable: this bundle ships through two channels and package.json is
@@ -444,6 +457,8 @@ function main(): void {
     case "stop-hook": return cmdStopHook();
     case "subagent-stop-hook": return cmdSubagentStopHook();
     case "session-start-hook": return cmdSessionStartHook();
+    case "agy-stop-hook": return cmdAgyStopHook();
+    case "agy-pre-invocation-hook": return cmdAgyPreInvocationHook();
     default: errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }
 }

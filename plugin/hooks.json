@@ -1,0 +1,18 @@
+{
+  "headsign": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "command -v node >/dev/null 2>&1 && { [ -f \"./dist/headsign.mjs\" ] && exec node \"./dist/headsign.mjs\" agy-pre-invocation-hook || exec headsign agy-pre-invocation-hook; } || exit 0",
+        "timeout": 30
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "command -v node >/dev/null 2>&1 && { [ -f \"./dist/headsign.mjs\" ] && exec node \"./dist/headsign.mjs\" agy-stop-hook || exec headsign agy-stop-hook; } || exit 0",
+        "timeout": 30
+      }
+    ]
+  }
+}

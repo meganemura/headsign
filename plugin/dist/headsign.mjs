@@ -8902,6 +8902,46 @@ Phase: ${JSON.stringify(current.phase)}
   }
 }
 
+// src/antigravityhook.ts
+function evaluateStop(cwd, stdinRaw, nowIso, env) {
+  try {
+    const input = JSON.parse(stdinRaw);
+    if (typeof input !== "object" || input === null) return { decision: "allow" };
+    if (input.terminationReason === "error" || typeof input.error === "string" && input.error.length > 0) {
+      return { decision: "allow" };
+    }
+    const startDir = Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === "string" && input.workspacePaths[0].length > 0 ? input.workspacePaths[0] : cwd;
+    const synthesizedPayload = JSON.stringify({
+      cwd: startDir,
+      session_id: typeof input.conversationId === "string" && input.conversationId.length > 0 ? input.conversationId : void 0
+    });
+    const decision = evaluate(startDir, synthesizedPayload, nowIso, env);
+    if (decision.block && typeof decision.message === "string" && decision.message.length > 0) {
+      return { decision: "continue", reason: decision.message };
+    }
+    return { decision: "allow" };
+  } catch {
+    return { decision: "allow" };
+  }
+}
+function evaluatePreInvocation(cwd, stdinRaw) {
+  try {
+    const input = JSON.parse(stdinRaw);
+    if (typeof input !== "object" || input === null) return { injectSteps: [] };
+    if (typeof input.invocationNum === "number" && input.invocationNum > 1) {
+      return { injectSteps: [] };
+    }
+    const startDir = Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === "string" && input.workspacePaths[0].length > 0 ? input.workspacePaths[0] : cwd;
+    const notice = evaluate2(startDir, JSON.stringify({ cwd: startDir }));
+    if (notice !== null && typeof notice.message === "string" && notice.message.length > 0) {
+      return { injectSteps: [{ ephemeralMessage: notice.message }] };
+    }
+    return { injectSteps: [] };
+  } catch {
+    return { injectSteps: [] };
+  }
+}
+
 // src/cli.ts
 function localIso(d) {
   const pad = (n, width = 2) => String(n).padStart(width, "0");
@@ -9114,6 +9154,18 @@ function cmdSessionStartHook() {
   const notice = evaluate2(process.cwd(), readStdin());
   return exitAfter(notice?.message ?? "", 0);
 }
+function cmdAgyStopHook() {
+  const raw = readStdin();
+  const output = evaluateStop(process.cwd(), raw, localIso(/* @__PURE__ */ new Date()), process.env);
+  return exitAfter(`${JSON.stringify(output)}
+`, 0);
+}
+function cmdAgyPreInvocationHook() {
+  const raw = readStdin();
+  const output = evaluatePreInvocation(process.cwd(), raw);
+  return exitAfter(`${JSON.stringify(output)}
+`, 0);
+}
 function cmdVersion() {
   if ("0.13.1".length === 0) {
     return errorExit("this build carries no version \u2014 it was not produced by `npm run build`, which is what substitutes it");
@@ -9171,6 +9223,10 @@ function main() {
       return cmdSubagentStopHook();
     case "session-start-hook":
       return cmdSessionStartHook();
+    case "agy-stop-hook":
+      return cmdAgyStopHook();
+    case "agy-pre-invocation-hook":
+      return cmdAgyPreInvocationHook();
     default:
       errorExit(`unknown command '${command}'. Run \`headsign --help\` for usage.`);
   }

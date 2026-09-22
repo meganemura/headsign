@@ -139,9 +139,15 @@ Claude Code では、プラグインとして:
 /plugin install headsign@headsign
 ```
 
-どちらのホストにも五つの要素が同梱されます。
-バンドル済み CLI(npm install もビルドも不要)、`workflow` スキル、`design-workflow` スキル、`optimize` スキル、hook set です。
-hook set は、run を発見する SessionStart hook と二つの停止境界 hook を含みます。
+Antigravity CLI (`agy`) では、プラグインとして:
+
+```sh
+agy plugin install ./plugin
+```
+
+どのホストにもバンドル済み CLI(npm install もビルドも不要)、`workflow` スキル、`design-workflow` スキル、`optimize` スキル、ライフサイクルフックが届きます。
+Antigravity では、ワークフロー実行中にエージェントが途中で停止するのを `Stop` フックが防ぎ、セッション開始時には `PreInvocation` フックが未完了のワークフローを発見します。
+Claude Code と Codex は SessionStart による発見と二つの停止境界 hook を使います。
 
 Claude Code には run pane も届きます。
 これはセッションが `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` を設定しているときだけ読み込まれます。function hook の早期アクセス用フラグです。

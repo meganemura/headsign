@@ -1,0 +1,23 @@
+{
+  "name": "headsign",
+  "version": "0.13.1",
+  "description": "A tiny phase gate for coding agents: deterministic checks route each agent-driven workflow while headsign holds the state.",
+  "author": {
+    "name": "meganemura",
+    "url": "https://github.com/meganemura"
+  },
+  "homepage": "https://github.com/meganemura/headsign",
+  "repository": "https://github.com/meganemura/headsign",
+  "license": "MIT",
+  "keywords": [
+    "antigravity",
+    "agy",
+    "codex",
+    "claude-code",
+    "coding-agent",
+    "phase-gate",
+    "workflow",
+    "state-machine",
+    "cli"
+  ]
+}
