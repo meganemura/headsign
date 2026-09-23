@@ -191,7 +191,8 @@ phases:
       `bd -C "$HQ" show <id>` and `bd -C "$HQ" comments <id>`.
       Work test-first where
       practical, keep engine.ts pure, respect docs/architecture.md module
-      boundaries, keep README.md / README.ja.md in parity, and rebuild the
+      boundaries, keep the English page and the ## Japanese section of
+      README.md in parity, and rebuild the
       bundle before asking for the verdict. PUBLIC-REPO RULE: every
       sentence you commit — in code, tests, docs and commit messages —
       must be written from scratch in our own words. Never paste the
@@ -221,7 +222,8 @@ phases:
       The review comes from a reader that can read and search but writes
       nothing — arrange it as you see fit — checking the
       diff against docs/architecture.md's module boundaries,
-      .headsign/notes/what-headsign-protects.md, README EN/JA parity — and
+      .headsign/notes/what-headsign-protects.md, README English / Japanese
+      section parity — and
       the public-repo rule above: check authorship sentence by sentence —
       the diff and its commit messages must contain no text that arrived
       from the ticket, quoted or lightly edited with its wording or

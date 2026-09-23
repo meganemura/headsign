@@ -204,11 +204,13 @@ cheap.
   whether a proposed README edit belongs there.
 - **The most load-bearing block in the README is executable.** The prompt is
   the only part whose wording changes what readers get back, so it is kept in
-  English in both `README.md` and `README.ja.md` — one block, with a single
-  appended line telling the agent to answer in the user's language. Two
-  translations would drift, and the drift would silently change the output
-  for one set of readers. (The Japanese README is re-cut in a follow-up
-  change.)
+  English in the page and again in the trailing Japanese section of the same
+  `README.md` — one block, with a single appended line telling the agent to
+  answer in the user's language. Two translations would drift, and the drift
+  would silently change the output for one set of readers.
+
+  (Amended 2026-09-23, when the Japanese text moved out of `README.ja.md`
+  into that section. The prompt stays one English block in both languages.)
 - **Part of this is mechanically checkable and part is not.** That the README
   contains no YAML block, no `curl`, and no dead relative link can be
   asserted by a command. Whether a first-time reader gets their bearings

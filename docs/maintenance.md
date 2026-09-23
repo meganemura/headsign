@@ -38,8 +38,9 @@ without its rebuilt bundle.
   line nothing exercises turns red *after* the push — and a push to `main` is
   the distribution moment for plugin users. `npm test` stays the fast loop
   while you work; this is the one to run before it leaves the machine.
-- READMEs stay in parity: `README.md` and `README.ja.md` say the same
-  things; the Japanese one is one-sentence-per-line, polite form
+- The README stays in parity across languages. English is the page.
+  Japanese follows a `---` under `## Japanese` in the same file, and says
+  the same things. That section is one-sentence-per-line, polite form
   (です・ます) for body prose, no interpuncts for enumerations.
 - If a behavioral guarantee changed, amend the ADR that owns it (index:
   [docs/adr/README.md](adr/README.md)) in the same change. Docs that state
@@ -389,7 +390,7 @@ machine or is protected against being undone once it has.
    (step 2). Then two dry-runs, both
    free and both read-only:
    `npm pack --dry-run` — read the *list* rather than the count, and check it
-   against the `files` whitelist (`plugin/`, the READMEs, the CHANGELOG); the
+   against the `files` whitelist (`plugin/`, the README, the CHANGELOG); the
    number changes whenever `plugin/` gains a file, and a count written down
    here goes stale silently while a wrong list does not. And
    `gh skill publish --dry-run`, which validates the skill layout and nothing
