@@ -128,15 +128,24 @@ Two checks bind the reported number to `package.json`, and the useful difference
 between them is *when* they fire rather than what they prove. An acceptance test
 drives the built bundle on disk — the committed one in a clean checkout — and compares
 its baked version against `package.json`; it runs under `npm test`, so a bump without a rebuild fails on any
-laptop and inside `prepublishOnly` — before anything leaves the machine. CI's
+laptop before the tag exists. CI's
 `npm run build` then `git diff --exit-code plugin/dist` catches the same mistake,
 because the rebuild bakes the current version and so differs from a stale committed
 bundle byte for byte. But CI runs *after* a push, and pushing to `main` is itself a
 distribution moment for plugin users: that check is the second net, not the one that
-prevents the mistake. npm is on the other side of that line — `prepublishOnly` runs
-typecheck, test and build before publishing — so the two channels can disagree at
-one commit, with npm correct and `main` reporting the previous number to anyone who
-updates in the window.
+prevents the mistake. The publish workflow is a third firing of the same
+comparison, on the tag: it builds and refuses to `npm publish` if that build
+changed the tagged tree. `.npmrc` sets `ignore-scripts=true`, so `prepublishOnly`
+does not run inside `npm publish` and does not get to pack a rebuilt bundle the
+tag does not contain. A stale bundle fails the release. It is not published as a
+corrected tarball beside a `main` that still reports the previous number.
+
+(Amended 2026-09-23, when npm publish moved to
+[`.github/workflows/publish.yml`](../../.github/workflows/publish.yml). The
+previous text said `prepublishOnly` rebuilds before publishing, so npm could be
+correct while `main` still reported the previous number. `ignore-scripts`
+already skipped that hook. The workflow refuses the stale bundle instead of
+packing a rebuild.)
 
 Two ways to get a version that is wrong rather than absent, both closed: an
 identifier that was never substituted, and one substituted with the empty string.

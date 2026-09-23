@@ -115,11 +115,13 @@ phases:
   # The release is out only once the tag exists AT the commit we verified.
   ship:
     description: >
-      Ship it: tag the release commit (`git tag vX.Y.Z`), `git push --tags`,
-      create the GitHub Release from the CHANGELOG section, and `npm publish`
-      from the CI-green checkout (docs/maintenance.md has the full order and the
-      `npm pack --dry-run` sanity check). The gate below anchors only on the tag
-      existing at HEAD; the rest is procedure the description choreographs.
+      Ship it: tag the release commit (`git tag vX.Y.Z`), `git push && git push --tags`,
+      and create the GitHub Release from the CHANGELOG section. The tag push starts
+      `.github/workflows/publish.yml`; a reviewer approves the `publish` environment
+      and that workflow runs `npm publish`. Do not publish from the checkout.
+      docs/maintenance.md has the full order, docs/releasing.md the Trusted Publisher
+      setup, and the `npm pack --dry-run` sanity check. The gate below anchors only
+      on the tag existing at HEAD; the rest is procedure the description choreographs.
     gate:
       checks:
         # A tag named v<version> must point at the exact commit we verified — not

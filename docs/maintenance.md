@@ -11,7 +11,7 @@ that exist outside the tree. Design rationale lives in
 |---|---|---|
 | Claude Code plugin (marketplace) | a commit lands on `main` | **only if `plugin.json`'s `version` changed** — plugin updates are compared by that string, so an unbumped version makes `marketplace update` a silent no-op. Third-party marketplaces also have auto-update off by default; users run the update themselves |
 | `gh skill` | a GitHub Release tag exists (plus the `agent-skills` topic) | `gh skill update` follows release tags |
-| npm | `npm publish` | normal npm semantics |
+| npm | `publish.yml` on a `v*` tag, after the `publish` environment is approved | normal npm semantics |
 | git directly (`npm i -D github:…`, clone) | always | whatever ref they point at |
 
 The consequence to internalize: **merging to `main` is the distribution
@@ -296,6 +296,12 @@ secrets and a read-only token are what make an injected workflow come up empty.
 Pinning and an allowlist narrow which actions can run; neither stops a `run:`
 line.**
 
+`publish.yml` follows the same pinning. Its job permissions add
+`id-token: write` and nothing else. That is the OIDC token npm uses for
+Trusted Publisher. The file does not read `NPM_TOKEN`. The claim npm checks
+includes the workflow filename, so the same permission on a different workflow
+is not a publish credential, and it does not belong on `ci.yml`.
+
 ### `.npmrc`, and the hole it opens
 
 The repository carries an `.npmrc` so that a clone and CI both get it rather
@@ -310,9 +316,11 @@ than only whoever set up their home directory:
 included.** Nothing announces that it was skipped, so a step that lives only in
 a lifecycle hook silently stops running. `prepublishOnly` is the one hook that
 cannot move into a script body — `npm publish` is its only caller — so the
-release procedure below carries it instead: step 5 runs typecheck and the tests,
-and step 2 runs the build. Those are not a convenience. They are the whole of
-what `prepublishOnly` used to guarantee.
+commands have to be steps. The release procedure below runs them before the tag
+leaves the machine (step 2 builds, step 5 typechecks and runs coverage), and
+[`.github/workflows/publish.yml`](../.github/workflows/publish.yml) runs them
+again on the tag. Those are not a convenience. They are the whole of what
+`prepublishOnly` used to guarantee.
 
 Measured on 2026-08-22: `ignore-scripts=true` does not break this toolchain.
 `npm ci --ignore-scripts` from this lockfile leaves esbuild and tsc both
@@ -323,6 +331,11 @@ rather than through an install hook.
 
 Semver, currently 0.x: minor = features (breaking changes possible),
 patch = fixes only.
+
+npm publish is the `v*` tag plus an approval on the GitHub Environment
+`publish`. The one-time registry setup, and what the workflow runs, is
+[Releasing](releasing.md). The steps below are the checklist. Step 9 is the
+approval, not an `npm publish` from the checkout.
 
 Every step is marked **[agent]** or **[you]**. The line between them is not
 trust, it is reversibility: an agent may do anything that changes only this
@@ -369,8 +382,9 @@ machine or is protected against being undone once it has.
    next one: the commit is local and amendable, and everything between here
    and the push — the pre-flight, the tag — is still undoable on this machine.
 5. **[agent]** Pre-flight. First `npm run typecheck && npm run coverage`, which
-   is what CI will run: this is the last point before anything leaves the
-   machine, and the tests are what tie the reported version to the packaged one
+   is what CI will run and what `publish.yml` runs again on the tag: this is
+   the last point before anything leaves the machine, and the tests are what
+   tie the reported version to the packaged one
    (step 2). Then two dry-runs, both
    free and both read-only:
    `npm pack --dry-run` — read the *list* rather than the count, and check it
@@ -423,22 +437,28 @@ machine or is protected against being undone once it has.
    made out of order. A backfilled page also carries today's date with no way
    to set the real one, so say the real date in its first line rather than
    leaving the two records disagreeing.
-9. **[you]** `npm login && npm publish` from the tagged, CI-green checkout.
-   Both halves prompt — for credentials and a 2FA OTP — which is the mechanical
-   reason this one cannot be delegated.
+9. **[you]** Approve the `publish` environment on the Actions run the tag
+   push started. That approval is what lets
+   [`.github/workflows/publish.yml`](../.github/workflows/publish.yml) run
+   `npm publish`. It cannot be delegated: it is the publish.
+
+   The workflow checks the tag, without the leading `v`, against
+   `package.json`. It then runs `npm ci --ignore-scripts`, `npm run typecheck`,
+   `npm run coverage`, and `npm run build`, and stops if that build changed
+   the tagged tree. npm authenticates with the environment's OIDC token.
+   Provenance is attached because the repository and the package are public.
+   The workflow stores no `NPM_TOKEN`. The field list for the trusted
+   publisher, and the requirement that the environment already have
+   reviewers, are [Releasing](releasing.md). A missing environment is not
+   this step. GitHub creates one with no reviewers, and the job publishes.
 
    **`prepublishOnly` does not run.** The repository's `.npmrc` sets
    `ignore-scripts=true`, which stops npm's own lifecycle hooks along with every
    dependency's. `package.json` still declares one, and it is still correct
    about what a release needs; it simply is not what runs it. Steps 2 and 5
-   above are. Do not treat publish as a second chance to catch a bad build.
-
-   **`npm login` first, and not only when you know you are logged out.** npm
-   sessions expire, and the registry check happens late. Logging in first turns
-   a late failure into an immediate one, and costs nothing when the session was
-   live.
-
-   Consider `--provenance` once publishing moves into CI instead of a laptop.
+   above are, and so are the workflow's own steps. Do not treat publish as a
+   second chance to catch a bad build, and do not `npm publish` from the
+   checkout as well. The tag is the publish.
 10. **[agent]** Receive the release on this machine, on **every host that has
     it installed**. Each changes only this machine and is undone by installing
     the previous version, which is why both sit on the agent's side of the line.
@@ -481,7 +501,7 @@ machine or is protected against being undone once it has.
     until the host restarts.
 
 11. **[you]** Restart each host you updated. Not a command to paste, which is
-    why the list below still has two: it is the only part of step 10 an agent
+    why the list below does not include it: it is the part of step 10 an agent
     cannot perform, and until it happens the copy fetched above sits unused —
     `headsign version` keeps answering with the old one.
 
@@ -497,16 +517,20 @@ Everything above that leaves this machine, in order, ready to paste:
 
 ```sh
 git push && git push --tags  # lands on main; v* is protected once pushed
-npm login && npm publish     # both prompt; login first so auth fails fast
 ```
 
-That is the whole list — two commands, plus one thing that is not a command:
-restarting each host you updated, so the release you just cut is the one this
-machine runs (step 11). The GitHub Release is *not* yours: it can be deleted, which by
-this page's own rule puts it on the agent's side. It was listed here once, and
-the release it was listed for is the one that never got a page — a step an
-agent could do but a person is marked for is a step with nobody actually
-holding it.
+That is the whole command list — one command, plus two things that are not
+commands: approving the `publish` environment, so the tag you just pushed is
+the one npm serves (step 9), and restarting each host you updated, so the
+release you just cut is the one this machine runs (step 11). The GitHub
+Release is *not* yours: it can be deleted, which by this page's own rule puts
+it on the agent's side. It was listed here once, and the release it was listed
+for is the one that never got a page — a step an agent could do but a person
+is marked for is a step with nobody actually holding it.
+
+The one-time Environment and Trusted Publisher setup is also yours. It is not
+part of this list. It is [Releasing](releasing.md), and it has to be done
+before the first tag that should publish.
 
 If an agent hands you a longer list than this, it either has not done its half
 or is asking permission for something reversible — check which before running
@@ -565,5 +589,9 @@ it.
   default. `pull_request_target` removes that protection; this repository does
   not use it, and a workflow that starts to should say in a comment that it is
   doing so.
+- **npm Trusted Publisher.** `publish.yml` publishes on a `v*` tag after the
+  GitHub Environment `publish` is approved. The npmjs.com fields, and the
+  requirement that the environment have reviewers before the first tag, are
+  in [releasing.md](releasing.md). There is still no `NPM_TOKEN`.
 - No branch protections beyond CI at the moment (single-maintainer); add a
   required-check rule on `main` when a second maintainer joins.

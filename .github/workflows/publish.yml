@@ -1,0 +1,100 @@
+# Publishes the npm package for a v* tag.
+# headsign is already on npm. This file is the publish path: no token
+# bootstrap, and it never reads NPM_TOKEN.
+# Boundary: checkout the tag, run the release checks, and npm publish.
+# The GitHub Environment `publish` approves the run. npm authenticates
+# with that environment's OIDC token. Provenance is attached because
+# the repository and the package are public.
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Declared here even though the repository default is `read`, because a recipe
+# copied out of this file travels to a repository whose default may not be.
+# The job below replaces this set rather than extending it, so it repeats
+# `contents: read` and adds `id-token: write`.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: publish
+    # The suite spawns a shell per gate check; a wedged one would otherwise
+    # burn the default six hours after a reviewer has already approved.
+    timeout-minutes: 15
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      # Actions are pinned by commit, with the version in a comment, same as
+      # ci.yml. A tag is a pointer. These are checkout v7.0.1 and setup-node
+      # v7.0.0.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          # A release build installs from the lockfile only. The setup-node
+          # package cache is a write path from other workflows.
+          package-manager-cache: false
+
+      - name: Require Node 24 and npm 11.5.1
+        run: |
+          node --version
+          npm --version
+          node <<'EOF'
+          const [nodeMajor] = process.versions.node.split(".").map(Number);
+          if (nodeMajor !== 24) {
+            console.error(`Node ${process.versions.node} is not Node 24`);
+            process.exit(1);
+          }
+          const {execSync} = require("node:child_process");
+          const [major, minor, patch] = execSync("npm --version", {encoding: "utf8"})
+            .trim()
+            .split(".")
+            .map(Number);
+          if (!(major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))))) {
+            console.error(`npm ${major}.${minor}.${patch} is older than 11.5.1`);
+            process.exit(1);
+          }
+          EOF
+
+      - name: Match the tag to package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}" >&2
+            exit 1
+          fi
+
+      # `--ignore-scripts` on the line, not only in .npmrc, because whoever copies
+      # this step takes the line and leaves the file behind. The same setting
+      # skips `prepublishOnly`, so the steps below are what actually runs.
+      - run: npm ci --ignore-scripts
+
+      - run: npm run typecheck
+
+      # Coverage, not `npm test`: same files, same runner, plus the thresholds
+      # CI holds. Running both would race real processes against a lock twice.
+      - run: npm run coverage
+
+      - run: npm run build
+
+      - name: Refuse a build that changes the tagged tree
+        run: |
+          # plugin/dist/headsign.mjs is committed. The build must reproduce
+          # it. A rewritten bundle is not an untracked dist/ this step should
+          # ignore — dist is in the tree — so any porcelain, tracked or not,
+          # fails the publish.
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            exit 1
+          fi
+
+      - run: npm publish

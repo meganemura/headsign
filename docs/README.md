@@ -1,6 +1,6 @@
 # Documentation
 
-The one entry point into headsign's docs. Four pages, by what you came for:
+The one entry point into headsign's docs. Five pages, by what you came for:
 
 To change headsign itself, start with [AGENTS.md](../AGENTS.md) and its required
 [design policy](adr/0039-design-for-the-model-that-improves-the-method.md).
@@ -10,7 +10,8 @@ To change headsign itself, start with [AGENTS.md](../AGENTS.md) and its required
 | [Workflow reference](workflow-reference.md) | Writing a `.headsign/workflow.yaml`, and what each CLI command answers |
 | [Architecture](architecture.md) | How the tool is put together — the loop, the module map, the invariants |
 | [Architecture Decision Records](adr/README.md) | The *why* behind each decision, one per file |
-| [Maintenance](maintenance.md) | Releases, distribution channels, and repository settings that live outside the tree |
+| [Maintenance](maintenance.md) | Release checklist, distribution channels, and repository settings that live outside the tree |
+| [Releasing](releasing.md) | npm Trusted Publisher: the one-time registry setup, and what a `v*` tag publishes |
 
 The plugin ships three skills:
 
