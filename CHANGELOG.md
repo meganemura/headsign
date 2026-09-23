@@ -9,17 +9,34 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
-### Changed
-
-- **The `workflow` and `design-workflow` skills keep a short entry and put the long procedures in `references/`.** Load `SKILL.md` to decide which reference to open. The skill names are unchanged. The CLI, verdicts, and gates are unchanged.
+## [0.14.0] - 2026-09-23
 
 ### Added
 
+- **Antigravity CLI (`agy`) is a third host.** It installs from a manifest
+  and a hook file at the plugin root, `plugin/plugin.json` and
+  `plugin/hooks.json`. Install with
+  `agy plugin install https://github.com/meganemura/headsign`, or
+  `agy plugin install ./plugin` from a clone. The bundled CLI and the skills
+  are the ones the other hosts already ship. `Stop` keeps the agent at work
+  while a workflow is still running. `PreInvocation` reports an unfinished
+  workflow when a session starts. A stop that arrives with an error is
+  allowed, so a broken agent is not held
+  ([ADR-0028](docs/adr/0028-codex-as-a-second-principal.md)).
+- **The agy hooks read the workspace from `workspacePaths` only.** The first
+  entry is the workspace. When that entry is missing or empty, `Stop` allows
+  the turn to end and `PreInvocation` injects nothing. Antigravity runs the
+  hook with the plugin directory as its working directory, so the working
+  directory is not used as a workspace.
 - **The box in `headsign status`'s picture shows how far along the run is.**
   `implement   7/20` is the run's lap count against
   `limits.max_total_iterations`; `implement   lap 7` when the workflow
   declares no ceiling. The first line keeps the phase's attempts (ADR-0042,
   Decision 2 as revised).
+
+### Changed
+
+- **The `workflow` and `design-workflow` skills keep a short entry and put the long procedures in `references/`.** Load `SKILL.md` to decide which reference to open. The skill names are unchanged. The CLI, verdicts, and gates are unchanged.
 
 ### Fixed
 
