@@ -4,7 +4,7 @@
 
 `.headsign/workflow.yaml` の書き方と、CLI による処理を説明します。
 
-[README](../README.md#japanese) は headsign を採用する前に読むページで、こちらはワークフローを書きながら読むページです。
+[README](../README.ja.md) は headsign を採用する前に読むページで、こちらはワークフローを書きながら読むページです。
 run の*最中*にエージェントが従う規律は、プラグインに同梱されています。
 規律の入口は [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md) にあり、詳しい手順は [references/](../plugin/skills/workflow/references/) にあります。
 内部構造は [architecture.md](architecture.md) に、各判断の背景は [ADR](adr/README.md) にあります。
@@ -65,7 +65,7 @@ hook がユーザーの停止意図を入力から推測することはできま
 
 ## リポジトリ全体でプラグインを有効にする
 
-[README](../README.md#インストール) の二つのコマンドは、一人ぶんのプラグインをインストールします。
+[README](../README.ja.md#インストール) の二つのコマンドは、一人ぶんのプラグインをインストールします。
 そのリポジトリを開く全員にプラグインを宣言することもできます。
 この宣言は、コードと一緒にコミットする `.claude/settings.json` に書きます:
 
@@ -136,7 +136,7 @@ pin と自動更新は、同じ問いに対する逆向きの答えです。
 これは個人用のファイルなので、コミットしません。
 解除は手元だけに作用し、リポジトリの宣言は残ります。
 プロジェクトはプラグインを宣言できますが、各人に使用の継続を強制できません。
-これは [headsign が使うことを誰にも強制しない](../README.md#headsign-がやらないこと)のと同じ境界を、一段下でなぞったものです。
+これは [headsign が使うことを誰にも強制しない](../README.ja.md#headsign-がやらないこと)のと同じ境界を、一段下でなぞったものです。
 
 **更新。** バージョンの宣言と、そのバージョンを手元に置く操作は別です。
 配布側の情報は [maintenance.md](maintenance.md) の distribution map にあります。
@@ -1751,7 +1751,7 @@ flowchart TD
 - **人間の承認ゲート:あります。** `ESCALATE` は判断を人間に戻しますし、人間しか書かない決定ファイルをゲートが読むフェーズは、その人が書くまで run を止めておきます([example.headsign/](../example.headsign/) のリリース用ワークフローがまさにそれです)。
 - **並列の分岐:ありません。意図的にです。**
   1 run につきアクティブなフェーズは一つで、k-way 分岐は行き先を一つ選ぶだけで、枝分かれしません。
-  run の外側で並列を組み立てる話は、[README](../README.md#japanese) の「headsign がやらないこと」にあります。
+  run の外側で並列を組み立てる話は、[README](../README.ja.md) の「headsign がやらないこと」にあります。
 
 仕事が一本道なら分岐は要りませんし、足しても何も得られません。
 フェーズを鎖のようにつないだだけのものも、完全なワークフローです。

@@ -113,8 +113,7 @@ phases:
       ADR that owns the behaviour (find it in docs/adr/README.md); if the
       change conflicts with an accepted decision, amend that ADR in the same
       change. Work test-first where practical, keep engine.ts pure, respect
-      docs/architecture.md, keep the English page and the ## Japanese
-      section of README.md in parity, and
+      docs/architecture.md, keep README.md and README.ja.md in parity, and
       rebuild the bundle before you ask for the verdict. Commit in meaningful
       units. Two rules about what reaches git: a commit message, a comment,
       a doc or a test must not name a ticket id, and must not refer to
@@ -179,8 +178,7 @@ phases:
       nothing — arrange it as you see fit. Give it the ticket's text, the
       range `$(cat .headsign/tmp/base)..HEAD`, and the ticket's comments.
       Have it check behaviour and policy alignment: the diff against
-      docs/architecture.md's boundaries and README English / Japanese
-      section parity; every
+      docs/architecture.md's boundaries and README EN/JA parity; every
       changed runtime behaviour against the ADR that owns it and against
       docs/adr/0039; that no sentence in the range names a ticket, an
       internal note, or a motive outside the code's own reasons; and that

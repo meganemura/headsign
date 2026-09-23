@@ -30,6 +30,7 @@
   "files": [
     "plugin/",
     "README.md",
+    "README.ja.md",
     "CHANGELOG.md",
     "llms.txt"
   ],
