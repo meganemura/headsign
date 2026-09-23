@@ -6,6 +6,12 @@ It is not a general workflow engine, not a chatbot, and not a substitute for the
 
 Agent skills (shipped under `plugin/skills/`): `workflow`, `design-workflow`, `optimize`.
 
+Load a skill's `SKILL.md` first. It says when the skill applies and which file under that skill's `references/` to open. Open a reference only for the path the entry names.
+
+- `plugin/skills/workflow/SKILL.md` — drive a run. References: `driving.md`, `verdicts.md`, `stopping.md`, `review.md`, `notes.md`.
+- `plugin/skills/design-workflow/SKILL.md` — write or revise a workflow file. References: `procedure.md`, `asking.md`, `vocabulary.md`, `schema.md`, `pitfalls.md`, `checks.md`, `comments.md`.
+- `plugin/skills/optimize/SKILL.md` — assess a finished run. No `references/` directory; the entry is the whole skill.
+
 Installed package: the npm `files` list includes `plugin/` and this `llms.txt`.
 
 ## Commands

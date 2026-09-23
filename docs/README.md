@@ -20,6 +20,8 @@ The plugin ships three skills:
 | [workflow](../plugin/skills/workflow/SKILL.md) | Drive a run and collect observations |
 | [optimize](../plugin/skills/optimize/SKILL.md) | Assess the procedure and apply or propose improvements |
 
+`workflow` and `design-workflow` keep the long procedure in `references/` next to the entry. Read the entry first, then open the reference it names. `optimize` is the whole skill.
+
 [Optimization by default](workflow-reference.md#optimization-at-the-boundary)
 explains the runtime behavior and its limits.
 [Local plugin development](maintenance.md#local-plugin-development) explains

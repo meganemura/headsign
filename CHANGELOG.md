@@ -9,6 +9,10 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **The `workflow` and `design-workflow` skills keep a short entry and put the long procedures in `references/`.** Load `SKILL.md` to decide which reference to open. The skill names are unchanged. The CLI, verdicts, and gates are unchanged.
+
 ### Added
 
 - **The box in `headsign status`'s picture shows how far along the run is.**

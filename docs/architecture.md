@@ -40,9 +40,11 @@ run `headsign next` and obey the first-line token.**
 plugin/                          # what gets distributed (Claude Code and Codex plugin)
   .claude-plugin/plugin.json
   .codex-plugin/plugin.json
-  skills/workflow/SKILL.md       # the discipline taught to the agent
-  skills/design-workflow/SKILL.md # workflow design and revision
-  skills/optimize/SKILL.md       # terminal procedure assessment
+  skills/workflow/SKILL.md       # entry: drive a run; long cases in references/
+  skills/workflow/references/    # claim, verdicts, stopping, review, editing
+  skills/design-workflow/SKILL.md # entry: design or revise a workflow
+  skills/design-workflow/references/ # procedure, schema, and the other how-tos
+  skills/optimize/SKILL.md       # terminal procedure assessment (the whole skill)
   hooks/hooks.json               # run discovery plus the two stop-boundary hooks (both hosts)
   hooks/mods.json                # names the function-hooks module below (Claude Code only, ADR-0040)
   hooks/mod.ts                   # /headsign, the run pane it draws from `headsign status`, and the HEADSIGN_ACTOR stamp (ADR-0041)
@@ -143,7 +145,9 @@ Thin Harness, Fat Skills. The CLI is a state machine; everything smart lives
 outside it:
 
 - **SKILL.md** teaches the agent the loop discipline (seven numbered rules; if
-  it needs an eighth, prefer sharpening one of the seven).
+  it needs an eighth, prefer sharpening one of the seven). The long cases for
+  those rules live in `references/` beside the entry, opened when the entry
+  names them.
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
 - **The session-start hook** reports a nearby running run before work begins.

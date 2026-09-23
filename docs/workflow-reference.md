@@ -7,15 +7,19 @@ does with it.
 
 Read the [README](../README.md) before you adopt headsign. Keep this page
 open while you write a workflow. The plugin includes the discipline that an
-agent follows *during* a run, in
-[plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md). The
-internals are in [architecture.md](architecture.md), with the reasoning
+agent follows *during* a run. The entry is
+[plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md); the long
+cases are in
+[plugin/skills/workflow/references/](../plugin/skills/workflow/references/).
+The internals are in [architecture.md](architecture.md), with the reasoning
 behind each decision in [the ADRs](adr/README.md).
 
 This page explains to a person how to write and run a workflow. The plugin
-does not include this page. It includes the excerpt that an agent reads when
-it writes a workflow in the
-[`design-workflow` skill](../plugin/skills/design-workflow/SKILL.md) and its
+does not include this page. It includes the excerpt an agent reads when it
+writes a workflow: the
+[`design-workflow` skill](../plugin/skills/design-workflow/SKILL.md) entry and
+the files under
+[references/](../plugin/skills/design-workflow/references/), including the
 [schema reference](../plugin/skills/design-workflow/references/schema.md)
 ([ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md)).
 
@@ -200,9 +204,13 @@ harness, or a `CLAUDE.md`:
 > `npx headsign status`. Never end the run on anything but `COMPLETE`. To stop
 > deliberately, run `npx headsign abort <reason>`.
 
-The full discipline is in
-[plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md). Copy
-the parts you need into your agent's rules. You can also install it as a
+The discipline entry is
+[plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md). The long
+cases are in
+[plugin/skills/workflow/references/](../plugin/skills/workflow/references/).
+Copy the parts you need into your agent's rules, including a `references/`
+file when the entry points at it. An entry copied without that directory no
+longer contains the long cases. You can also install it as a
 standalone skill with the GitHub CLI. This preview `gh` feature lets you
 select the agent for the installation:
 

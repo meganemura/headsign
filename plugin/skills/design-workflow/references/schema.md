@@ -1,9 +1,10 @@
 # The workflow schema, in full
 
-Read this when you need a field that `SKILL.md` does not cover, when you are
-writing a phase that branches, or when `validate` rejected something you do
-not recognize. Everything needed for a simple workflow is already in
-`SKILL.md`; nothing here repeats it except where the exact rule matters.
+Read this when you need a field that `vocabulary.md` does not cover, when you
+are writing a phase that branches, or when `validate` rejected something you
+do not recognize. A simple workflow's shape is in `vocabulary.md`. The entry
+`../SKILL.md` says when to open either file. Nothing here repeats the example
+except where the exact rule matters.
 
 ## Every field, by level
 
@@ -87,7 +88,7 @@ the run you are in the middle of.
 **And what `validate` cannot see at all:** the inside of any shell string.
 It never runs a check, so a typo'd command or a missing binary passes
 validation cleanly. The semantic traps it also cannot see are listed in
-`SKILL.md`. One trap of the shell's own lives inside that blind spot, and is
+`pitfalls.md`. One trap of the shell's own lives inside that blind spot, and is
 why the boundary is worth stating rather than merely admitting: on macOS
 `/bin/sh` is bash 3.2, where a variable immediately followed by a non-ASCII
 character loses both its value and that character's leading byte — so write

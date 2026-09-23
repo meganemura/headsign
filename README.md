@@ -222,6 +222,8 @@ The bundled skills divide the work:
 | `workflow` | Drive the current run and collect useful observations |
 | `optimize` | Assess the procedure and apply or propose consequential improvements |
 
+`workflow` and `design-workflow` are short entries. The long procedure sits in `references/` beside the entry and is opened when that entry names it. `optimize` is the whole skill.
+
 New runs enable optimization by default. Use `headsign start --no-optimize`,
 or add the option after a workflow name, to opt out for one run. At the first
 repeated gate failure, headsign asks whether the work or the procedure needs

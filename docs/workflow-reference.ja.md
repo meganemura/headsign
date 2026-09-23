@@ -6,12 +6,12 @@
 
 [README](../README.ja.md) は headsign を採用する前に読むページで、こちらはワークフローを書きながら読むページです。
 run の*最中*にエージェントが従う規律は、プラグインに同梱されています。
-規律は [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md) にあります。
+規律の入口は [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md) にあり、詳しい手順は [references/](../plugin/skills/workflow/references/) にあります。
 内部構造は [architecture.md](architecture.md) に、各判断の背景は [ADR](adr/README.md) にあります。
 
 このページは人が参照する 1 枚で、ワークフローの書き方と運転方法を説明します。
 エージェントがワークフローを書くときに読む抜粋は、プラグインと一緒に配られます。
-抜粋は [`design-workflow` スキル](../plugin/skills/design-workflow/SKILL.md) とその [スキーマリファレンス](../plugin/skills/design-workflow/references/schema.md) です。
+抜粋は [`design-workflow` スキル](../plugin/skills/design-workflow/SKILL.md) の入口と、その [references/](../plugin/skills/design-workflow/references/)（[スキーマ](../plugin/skills/design-workflow/references/schema.md) を含む）です。
 このページはどこにも同梱されません([ADR-0020](adr/0020-writing-the-workflow-as-its-own-skill.md))。
 
 ## 既定で有効な手順の改善
@@ -224,8 +224,8 @@ Cursor でも自作ハーネスでも `CLAUDE.md` でも、次のルール一つ
 > `COMPLETE` 以外で run を終えないこと。
 > 意図的に止めるときは `npx headsign abort <reason>` を実行すること。
 
-規律の全文は [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md) にあります。
-必要な部分をエージェントのルールに写せます。
+規律の入口は [plugin/skills/workflow/SKILL.md](../plugin/skills/workflow/SKILL.md) にあり、詳しい手順は [references/](../plugin/skills/workflow/references/) にあります。
+必要な部分をエージェントのルールに写せます。入口だけを写すと、詳しい手順は含まれません。
 GitHub CLI で単体スキルとしてインストールする方法もあります。
 `gh` の preview 機能で、どのエージェントに入れるかを選べます:
 

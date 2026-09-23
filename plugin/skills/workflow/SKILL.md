@@ -16,6 +16,10 @@ headsign is a phase gate: you do the work, deterministic shell checks decide
 the phase transitions. You never judge for yourself whether a phase is done —
 the gate does.
 
+This file is the entry. It says when the skill applies, the constraints that
+hold on every lap, and which reference to open. Open the one the situation
+names. Do not load `references/` up front.
+
 When this skill runs inside the headsign plugin in Claude Code or Codex, the
 CLI is bundled with it and no install is needed. In Claude Code,
 `headsign <cmd>` below means:
@@ -62,350 +66,79 @@ Legacy and opt-out runs have no assessment path; do not invent one. Keep
 mid-run observations outside `assessment.md`. If a retrospective already
 produced useful findings, use them instead of repeating the investigation.
 
-1. **First, check whether this session is the driver.** If this session did
-   not run `headsign start`, and hasn't been explicitly asked (by the user,
-   or by the session that did) to continue an existing run — do not run
-   `headsign next` or `headsign abort`. A repository can have more than one
-   coding-agent session open on it at once (a lead plus teammates, or a
-   subagent working alongside the session that spawned it), and only the
-   one driving the run should touch it: obeying a nudge you weren't meant to
-   answer can burn a retry or advance a phase nobody asked you to touch.
-   Want to know what's happening without touching anything? Run `headsign
-   status` — it's read-only, and safe to call at any time. It also prints the
-   current phase's instructions, in the same block `next` uses. **If you are
-   delegating the work to someone who does not run headsign — a subagent, a
-   teammate — that block is what you hand them.** They cannot see the gate's
-   requirements any other way, and requirements you paraphrase from memory are
-   the ones that come back as a gate failure a lap later.
-2. **If you are a delegated agent and were entrusted with driving a run,
-   claim it first — don't just start calling `next`.** This applies when
-   you are a teammate (Claude Code's agent-teams feature) or a subagent:
-   you share the spawning session's process and environment, so no command
-   you run can say who you are, and `headsign next` records no driver at
-   all. (One exception: in a Claude Code session with function hooks
-   enabled, the plugin's module names the caller of each `headsign` command,
-   and a subagent's own `next` seats it as driver — the claim below is then
-   redundant, and still correct.) Instead: run `headsign claim`, then end
-   your turn. The seal happens
-   at your own turn end — that is the only moment headsign can learn which
-   delegated agent you are — and the hook confirms it in its message,
-   naming the workflow and phase. **Do not run `headsign next` before you
-   have seen that confirmation.** If some other agent got adopted by
-   mistake (it ended a turn while your marker was armed and could name
-   itself), run `headsign claim` again from the agent that should be
-   driving: a new claim re-arms the marker, and that agent is a real
-   contender for it because its own turn end always fires the event that
-   seals. Another agent naming itself first can take this marker too, so
-   re-claim until the confirmation names the agent you meant. A session
-   driving a run on its own does not need `claim` at all: `start` stamps it
-   as the run's mover the moment the run begins, every `next` it runs
-   re-stamps it, and while nobody has claimed the run the hook nudges that
-   stamped session — exactly the backstop that session wants. A second
-   session merely standing in the same directory, once the first has run
-   `start` or `next`, is not nudged for a run it never touched — it does
-   not learn a run is there by being nudged about it; a run with no session
-   on record (one begun before this behavior shipped, one driven from a
-   terminal rather than a session, or one whose state was hand-edited)
-   still falls back to nudging whichever session stops there. Skipping the
-   claim
-   fails silently rather than loudly: the run stays unclaimed, so every
-   later nudge goes to a *session* — usually the idle one that delegated to
-   you — while nothing holds your own turns at all. (Nothing records them
-   either: `unheld` is written only for a stop headsign can attribute, so an
-   unclaimed run leaves no line for your turn ends.) And if you need to check whether
-   you are the driver, don't read it off `headsign status` — it reports
-   whether some delegated agent holds the run, never whether that agent is
-   you. As a delegated agent, the reliable signal is the hook itself: if
-   `SubagentStop` sends your turn ends back to `headsign next`, this run is
-   yours to drive. Read which message you got: a `SubagentStop` nudge fires only
-   on a positive match, but `Claim confirmed …` means an armed marker just
-   seated you — if you did not run `headsign claim`, you have taken a seat
-   another agent was asking for, so say so and let it claim again. The test
-   only works in this direction and only for delegated agents: ending
-   quietly proves nothing (not having claimed, the host's
-   already-continuing flag, an exhausted nudge cap, a pause note,
-   `HEADSIGN_OBSERVER`, a directory the walk-up resolved only via
-   `CLAUDE_PROJECT_DIR`, or a run this session simply never touched while
-   someone else was last recorded moving it, all end turns quietly), and a
-   session gets nudged on any run nobody has claimed and no session has yet
-   been recorded moving, whether or not it is driving — once a session's
-   `start` or `next` has recorded it, only that session is.
-   A Stop nudge that says headsign cannot tell who drives the run does not
-   confirm that you drive it. If you neither started the run nor were asked to
-   continue it, do not run `next` or `abort`; end your turn.
-   A nudge
-   arrives roughly **once per exchange**, not once per turn end. When the
-   hook holds a turn, the host flags the continuation, so the ending of
-   *that* turn passes quietly — recorded as an `unheld` line in
-   `.headsign/log` and on `headsign status`'s `last stop:` line. The
-   window is one turn wide and closes when the turn ends.
-   A probe is not free either: one that comes back as an ordinary nudge
-   spends one from the cap, one that passes while your own pause note is
-   armed consumes the note, and one that lands under another agent's armed
-   marker consumes that marker. Probe deliberately, not by habit.
-3. To begin a workflow: `headsign start`, or `headsign start <name>` when
-   `.headsign/` holds more than one — `<name>` is the file's basename, so
-   `headsign start fitness` runs `.headsign/fitness.yaml`. Either way it
-   prints the first phase's instructions. If `start` reports it cannot read
-   `.headsign/workflow.yaml`, this repository names its workflows rather than
-   keeping a default: list `.headsign/` and start the one you were asked for.
-4. **On resume or after compaction, first run `headsign status`.** Read the
-   phase instructions and existing artifacts. `RUNNING` means the run has not
-   ended; it does not report active agent processes. An unclaimed run can still
-   have a main-session driver. If you are authorized to continue, do the phase's
-   unfinished work, including any required delegation. A status check alone
-   does not perform that work.
+- Do not run `headsign next` or `headsign abort` unless this session ran
+  `headsign start` or was explicitly asked to continue the run. `headsign
+  status` is read-only and safe at any time. Hand a delegated worker who does
+  not run headsign the current phase's instruction block from `status`. Do
+  not paraphrase it.
+- A delegated agent entrusted with the run runs `headsign claim`, ends the
+  turn, and does not run `headsign next` until the hook confirms the claim.
+  A session driving on its own does not claim. On Claude Code with function
+  hooks, a subagent's own `next` can seat it; claiming is still correct.
+- Obey the token on stdout's first line. A progress line may arrive first on
+  a merged stream; read stdout on its own. `next` judges and can spend an
+  attempt. To look, use `status`.
+- Never end the run on your own judgment unless the token is `COMPLETE`. To
+  stop mid-run, run `headsign abort <reason>`. To pause, write one line to
+  `.headsign/tmp/stop-note` naming what you are waiting for. If you cannot
+  name it, you are not blocked.
+- `next` exit codes are verdicts, not tool failures: 0 advance/complete, 1
+  retry/pending, 2 escalate/abort, 3 usage/config. `PENDING` means the gate
+  cannot be evaluated yet. Exit 3 spends no attempt. Repair the invocation
+  or the command, and do not loop-retry. `status` uses a different exit
+  code; the vocabulary is in `references/verdicts.md`.
+- A phase instruction that names a skill or a subagent is an instruction.
+  Follow it.
+- Lock contention from parallel subagents is normal. Wait briefly and retry
+  once. The error message carries the recovery.
 
-   **When the phase's work is ready for its gate, run `headsign next` and obey
-   the token on stdout's first line** — merged
-   with stderr, a progress line from the running gate may arrive first, so
-   read stdout on its own. That one habit is the whole protocol. `next` is
-   a judgment, not a peek: it runs the phase's gate, and a failure spends
-   one of that phase's attempts. When you only want to look, run
-   `headsign status` (rule 1) — it judges nothing and
-   costs nothing. And when you want to know how your last turn end was
-   handled, `headsign status` is the **first** command to run on resuming,
-   before `headsign next`: `next` resets the nudge counter, and the record
-   holds only the most recent stop.
-5. `RETRY` → the output shows exactly which check failed and its last output.
-   Fix that, then run `headsign next` again. `ADVANCE` → follow the printed
-   instructions of the new phase. If `ADVANCE <phase>` is followed by a line
-   like `--- gate failed: ... → routed to <phase> ---`, the *previous*
-   phase's gate rejected the work and routed you here — read that line, it's
-   why you're back. A line like `--- routed: when "<command>" → <phase> ---`
-   (or `--- routed: default → <phase> ---`) means the opposite: the previous
-   phase *passed*, and its `on_pass` routes chose this phase; the quoted
-   command is the condition that matched. Either way, the phase you were
-   sent to is the one printed on stdout's first line — read the line,
-   don't infer the move.
-6. **Never end the run on your own judgment while the answer is anything
-   other than `COMPLETE`.** If you are genuinely stuck — or the user asks to
-   stop mid-run — record why with `headsign abort <reason>` and report to
-   the user; that's a legitimate exit, but it's permanent: the run cannot be
-   resumed, and a later `headsign start` rewrites `.headsign/state.json` whole.
-   What it does not end is `.headsign/log`: the reason you type outlives the
-   run, and so does everything logged before it. So ending a run deliberately
-   costs the run, not its history. **The rest of what it costs is nothing**, and
-   this is worth knowing before you have to decide in a hurry: `state.json` is
-   gitignored, so ending a run leaves every tracked file exactly as it was, and
-   the artifacts the run already wrote are untouched — committed ones by
-   definition. One place empties, and it empties at the next `start` rather than
-   at the abort: `.headsign/tmp/`, which a run begins by deleting whole, so
-   marks and notes kept there go when the replacement run starts. What you lose
-   is the position: the phase, the attempt counts, the walk back to here. So
-   the only real question is how expensive this workflow's earlier gates are to
-   pass again, which you can read off the workflow file you are holding.
-   To *pause* rather than end — stepping away
-   to resume later — write one line to `.headsign/tmp/stop-note` **naming what
-   you are waiting for**, and stop again. **If you cannot name it, you are not
-   blocked** — continue the phase's work, then call `headsign next` when ready. The stop-boundary hook passes
-   immediately, and `headsign next`
-   picks the run back up later from the same phase. The hook consumes the
-   note, so one note covers one turn end — if the wait runs over several
-   exchanges, write it again before each turn that ends still waiting. Read the
-   `ESCALATE` reason before you act. A terminal escalation stops work and goes
-   to the user. A budget change also needs the user. A reported graph repair
-   can continue under existing authority as described below. **Some kinds end the run and some do
-   not, so read which one you got before deciding anything** — `headsign status`
-   answers it directly, since a run that ended reads `ESCALATED` rather than
-   `RUNNING`. Two kinds leave it `running`, so the user can answer and have you
-   continue from the same phase. One reads
-   `max_total_iterations (<n>) reached`: the user can raise that limit. The
-   other reads `the workflow's rules changed under this run` — the workflow file was edited while the run
-   was walking it, which headsign allows but reports. If the current task
-   authorizes a reversible repair, you can make that repair when it preserves
-   the required outcome and the user's constraints. Report what changed and
-   which authority covers it. Then run `headsign next --accept-graph-change`
-   as a separate action to accept the reported graph. Otherwise, ask the user
-   to restore the file or authorize the change. The acceptance is counted and
-   named at `COMPLETE`.
-   **A bare `next` never accepts it, however many times you run it** — it
-   reports the same change again and spends nothing, so do not try to get past
-   this by asking twice. If *you* made that edit, say so plainly when you report
-   it. **Some edits are not reported,
-   and silence there means "not a pinned key", never "not noticed"** — so do
-   not read it as permission you were granted, or as a report that failed.
-   What is pinned is the rules of every phase this run can still reach, plus
-   `limits`: `gate`, `ready`, `clear`, `on_pass`, `on_fail`, `max_attempts`. A
-   phase's `description` is not — rewriting the instructions you were handed is
-   invisible to this by design, and so are comments, formatting, and any phase
-   the run can no longer reach. **Also unreported: the contents of anything a
-   check runs.** `run: "sh checks/thing.sh"` pins that string, not the script,
-   so editing that script mid-run changes what the gate decides with nothing
-   said. If you need such a change on the record, abort and start again rather
-   than editing under the run.
+## Procedure
 
-   **The kinds that DO end the run set the status to `escalated`, and no `next`
-   continues one.** Starting over re-walks from the entry phase, so they cost
-   what `abort` costs, arrived at by other means. There are two. One reads
-   `max_attempts (<n>) exhausted`: the phase spent its whole budget. The other
-   reads `gate failed (on_fail: escalate)`, which is a workflow that chose to
-   hand the first failure of that phase straight to a person — a deliberate
-   design, not a mishap, and one this repository's own workflows use.
+1. **Confirm you are the driver.** If you are not, stop at `status`. Open
+   `references/driving.md` before you claim, before you answer a nudge, or
+   when more than one session may be touching the run.
+2. **Delegated driver.** Claim, then wait for the hook's confirmation
+   (`references/driving.md`).
+3. **Start.** `headsign start`, or `headsign start <name>` when `.headsign/`
+   holds more than one file. `<name>` is the basename, so `headsign start
+   fitness` runs `.headsign/fitness.yaml`. Either way it prints the first
+   phase's instructions. If `start` cannot read `.headsign/workflow.yaml`,
+   this repository names its workflows rather than keeping a default: list
+   `.headsign/` and start the one you were asked for.
+4. **Resume or compaction.** Run `headsign status` first. `RUNNING` means the
+   run has not ended. Do the phase's unfinished work, then `headsign next`
+   when that work is ready for the gate. A status check is not the work. On
+   resume, `status` comes before `next`, because `next` resets the nudge
+   counter.
+5. **Obey the token.** `RETRY` means fix the check the output names, then
+   `next`. `ADVANCE` means follow the new phase's instructions. A line
+   `--- gate failed: ... → routed to <phase> ---` means the previous gate
+   rejected the work. A line `--- routed: when "..." → <phase> ---` or
+   `--- routed: default → <phase> ---` means the previous phase passed and
+   its `on_pass` routes chose this one. The destination is stdout's first
+   line. The full token, exit-code, and `status` vocabulary is in
+   `references/verdicts.md`.
+6. **Do not end the run yourself** except on `COMPLETE`, or by `abort` when
+   you are stuck or the user asks to stop. Read an `ESCALATE` before acting.
+   Some kinds leave the run `RUNNING`. Some set `ESCALATED`, and no `next`
+   continues those. A reported graph change is accepted only by a separate
+   `headsign next --accept-graph-change`. A bare `next` never accepts it.
+   Open `references/stopping.md` before you abort, pause, accept a graph
+   change, or restart.
+7. **Review phase.** If the gate reads a verdict file, a read-only reviewer
+   reports exactly `APPROVED` or `REJECTED`. You write that verdict only
+   after `status` shows the review phase as current. Open
+   `references/review.md` before you write a verdict file.
 
-   **Starting over is `headsign start` on its own.** An ended run does not
-   have to be cleared out of the way first: `headsign abort` on one is
-   refused — `already escalated; nothing to abort`, exit 3 — because there is
-   nothing left for it to end, and that refusal changes nothing, so a run
-   recovered that way was recovered by the `start`. The `start` rewrites
-   `state.json` whole, which is also what puts every phase's attempt count
-   back to zero.
+## Which reference
 
-   **If the gate cannot represent the legitimate work, diagnose the procedure.**
-   Do not spend attempts just to force an escalation, or manufacture unrelated
-   work to satisfy the gate. A rejected proposal may need a return route; a
-   validation task may need evidence rather than a code edit. Repair the
-   workflow within existing authority and accept any reported graph change
-   separately. If repair needs a new decision, report the blocker and pause.
-   Before a necessary restart, preserve useful reasons and evidence outside
-   `tmp/`; a new `start` removes that directory. For a nonterminal
-   escalation that needs a budget decision or missing authority, report it
-   and wait. Write the pause note above before stopping while the run is open.
-   An authorized graph repair follows the separate acceptance call described
-   above and can continue without that wait.
-7. If the current phase's gate reads a verdict file (a review phase), spawn
-   a reviewer subagent restricted to read-only tools (Read/Grep/Glob) and
-   have it REPORT exactly `APPROVED` or `REJECTED` (with reasons). Then
-   *you* write that reported verdict, verbatim, to the verdict file and run
-   `headsign next` — the reviewer stays unable to touch code or the
-   verdict, so the judgment and the work stay separated.
+| Situation | Open |
+|---|---|
+| Who may call `next` or `abort`, claim, nudges, hooks, worktrees, a `start` that reports an existing run | `references/driving.md` |
+| What `RETRY`, `ADVANCE`, `PENDING`, route lines, exit codes, and `status` words mean | `references/verdicts.md` |
+| Abort, pause, escalation kinds, graph change, restart, a gate that cannot represent the work | `references/stopping.md` |
+| Writing or repairing a review verdict | `references/review.md` |
+| Editing the workflow file during a run, the closed schema, `on_pass` lists, `on_fail: retry` versus re-entry | `references/notes.md` |
 
-   Write the verdict only after `headsign status` shows the review phase as
-   the current phase. A phase's `clear:` runs when the run enters that phase,
-   so a verdict written before entry is deleted on entry, and `next` reports
-   it as `--- cleared: <path> ---`. When the gate of the previous phase is
-   still unconsumed, run `headsign next` first, confirm `ADVANCE <review
-   phase>` in its output, and then write the verdict.
-
-   Check that the gate actually requires the current review's final decision
-   and the artifact it reviewed. File existence, size, or a historical
-   `APPROVED` line does not establish acceptance of the current revision.
-   If the gate passes despite an unresolved rejection, repair the check and
-   arrange the necessary rework and review. Do not treat that pass as acceptance.
-   Keep review history separate from the current verdict consumed by the gate.
-
-When delegated work takes longer than a wait call, inspect its progress and
-remaining scope before intervening. A wait timeout is not a failed task.
-Continue useful independent work or wait again when progress is sound. Narrow
-or redirect a task when its observed work warrants it; preserve its findings
-and required review coverage when you do.
-
-## Notes
-
-- A phase's printed instruction may tell you to use a specific skill or
-  spawn a subagent — do what it says.
-- `headsign start`/`next`/`abort`/`status`/`claim` operate on the current
-  directory's `.headsign/` only — run them from the directory that owns the
-  workflow (the repo or git-worktree root), not a subdirectory. Each git
-  worktree is therefore its own independent run: its state lives in that
-  worktree's `.headsign/`, and a run in another worktree of the same
-  repository neither shares it nor sees it. The stop-boundary hooks are the
-  exception, but a bounded one: they find the run from any subdirectory of it,
-  so drift *inside* the repository is harmless. Drift *out* of it is narrower
-  than it used to be. The walk up from the session's own directory still stops
-  at the first enclosing `.git`; if that finds no run, the hook tries once
-  more from Claude Code's `CLAUDE_PROJECT_DIR` — the project root, independent
-  of where the session has wandered. Find a run there and the hook writes one
-  line (`unheld`, detail `by=CLAUDE_PROJECT_DIR`) and `headsign status`'s
-  `last stop:` line says so — the turn is never held on this path, only
-  recorded. Find nothing there either — `CLAUDE_PROJECT_DIR` unset, or naming
-  somewhere with no run — and the hook still writes nothing anywhere, exactly
-  as before: on that turn's own evidence it looks like a backstop that is not
-  installed. One case stays exactly as it was, and is worth naming because it
-  is easy to mistake for the one this just fixed: if the checkout the session
-  drifted into has its *own* run, the first walk finds that one and nudges
-  about it — a real nudge, about the wrong run.
-  Reaching another checkout takes more than a stray `cd`: Claude Code refuses to
-  `cd` outside the session's allowed working directories. So this needs a session
-  that has more than one — a second directory added when it started, or added
-  later — and it is only a risk if yours does. If a turn ends unheld and you
-  cannot say why, check `last stop:` for which of the two it names, and if
-  this session works across more than one directory, check which one it was
-  standing in.
-- Exit codes are verdicts, not errors: 1 = RETRY/PENDING, 2 = ESCALATE/ABORT.
-  Read the text, don't treat non-zero as a tool failure. PENDING = the gate
-  can't be evaluated yet — not a failure. Produce the artifact it's waiting
-  on (e.g. the reviewer's verdict file), then run `headsign next` again;
-  don't retry-loop on it. Exit 3 is different — a real usage/config error
-  (unknown command, wrong directory, a workflow that no longer defines the
-  current phase, another `next` already running, or a check or `ready:` probe
-  that could not be run at all). Fix the invocation, the directory, or the
-  workflow file; don't loop-retry on it. A check that could not be run is not
-  a failing check: headsign got no exit code, so the lap moved nothing and
-  spent no attempt — repair the command rather than the work.
-- **You can write the workflow too, not just run it.** A workflow is one
-  YAML file; `headsign validate --workflow <path>` checks it statically —
-  no gate runs, no state is touched — so drafting or editing one is safe at
-  any time. **A run pins the rules and not the words**, which decides what
-  you hear when you edit the file a run is walking: change `gate`, `ready`,
-  `clear`, `on_pass`, `on_fail`, `max_attempts` or `limits` and the next
-  `next` reports it once before it runs the gate; change a `description`, a
-  comment, or the formatting and the run says nothing, because those sit
-  outside the pin by design. So silence after an edit tells you which half
-  you edited, and rule 6 above has what to do with the report when there is
-  one. Errors (exit 3) must be fixed; warnings print to stderr and
-  still exit 0, so a phase nothing routes to yet won't stop the run you are
-  in. Two things a phase cannot declare: an environment (a check that needs
-  a variable writes it into its own `run:` string, e.g. `run: "FOO=bar npm
-  test"` — there is no `env:` field), and "end the run here" on failure
-  (`on_fail` goes as far as `escalate`, which stops and asks a person, and
-  exhausting `max_attempts` always escalates too). On macOS, `/bin/sh`
-  (bash 3.2) can mangle a `run:` string where a variable is immediately
-  followed by a non-ASCII character — not just Japanese text, any
-  non-ASCII (accents, arrows, emoji) — by eating that character's leading
-  byte and passing a corrupted string on. Brace the variable (`${var}`,
-  not `$var`) whenever non-ASCII text directly follows it; text earlier
-  in the string is unaffected, and so are `zsh`, `dash`, and `LC_ALL=C`.
-- **The schema is closed: a key it doesn't define is an error.** `validate`
-  rejects any unknown key at any level and prints what that level allows —
-  `phase 'implement': unknown key 'max_atempts' (allowed: description,
-  clear, ready, gate, on_pass, on_fail, max_attempts)` — so a misspelled
-  field stops the file instead of quietly doing nothing. Fix the key against
-  the list in the message; there is no did-you-mean guess to lean on.
-  `version:` must be exactly `0.1`, and a file written for an older schema
-  needs its fields checked, not just its version line renumbered.
-- **No gate can abort a run — only a person can.** `ABORT` is what
-  `headsign abort <reason>` produces, so a run that reads `ABORTED` was
-  ended deliberately, by you on the user's instruction or by the user. A
-  run headsign itself stopped always reads `ESCALATED`.
-- **A phase can branch to one of several phases.** Its `on_pass` is then a
-  list instead of a phase name: each entry has a `when:` shell command and a
-  `to:`, the first `when:` that exits 0 decides where the run goes, and the
-  last entry — the one with no `when:` — is the default. Routes are read
-  only after the gate passes. If you are the one writing such a phase, keep
-  every `when:` a cheap, side-effect-free predicate (typically a `grep` of a
-  file the gate already checked): they run on the success path and several
-  may run before one matches, so put the real work in the gate. A `when:`
-  that cannot run at all — bad command, timeout — stops the run with exit 3
-  rather than guessing a destination; fix the command.
-- **`on_fail: retry` and `on_fail: <this same phase>` are not the same
-  thing.** `retry` stays in the phase: you keep working on the same failure,
-  with the files that phase produced left where they are. Naming the phase
-  itself leaves and re-enters it, which prints `ADVANCE` and runs that
-  phase's `clear:` (deleting the files it lists). Re-entering is right when
-  starting the phase fresh is the point — a stale review verdict has to go
-  — and wrong when the work should simply continue. **What re-entry does not
-  reset is `max_attempts`.** That count is failures of the phase since it
-  last *passed*, so a phase you leave on a failure and come back to — by
-  naming itself, or through another phase, or around a longer route — resumes
-  the count where it stopped, and `headsign status` shows it as `attempt
-  n/max` while the run is in that phase. A budget of 2 is spent by two
-  rejections however many phases sat between them.
-- `headsign status` is a different kind of command, on purpose: it never
-  judges, so its first-line vocabulary is separate from `next`'s tokens —
-  `RUNNING` / `COMPLETE` / `ESCALATED` / `ABORTED`, capitalized like a
-  report, not `ADVANCE`/`RETRY`/`PENDING`/`ESCALATE`/`ABORT`. Its exit code
-  doesn't follow the 1=RETRY/PENDING, 2=ESCALATE/ABORT rule above either:
-  it's 0 whenever state could be read at all (even `ESCALATED`/`ABORTED`),
-  and 3 only when there's no run to read. Use it whenever you want to look
-  without the risk of touching anything — see the discipline's first rule,
-  above, for when that's required rather than optional.
-- **When `start` reports an existing run, inspect it before continuing.**
-  Run `headsign status`, read the phase instructions, and inspect its artifacts
-  and any existing delegated work. If authorized, finish the missing work and
-  call `next` when it is ready for judgment. The gate can be expensive, and
-  failure spends an attempt and an iteration. Do not use it merely to discover
-  whether anyone started working. Ending the run loses its position; the next
-  `start` also removes everything under `.headsign/tmp/`.
-- Lock contention from parallel subagents is normal — wait briefly and
-  retry once; the error message itself carries the recovery.
+Authoring or reshaping a workflow file is the `design-workflow` skill.
+Assessing a finished run is the `optimize` skill.
