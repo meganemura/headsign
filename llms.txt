@@ -1,0 +1,21 @@
+# headsign
+
+A small phase gate for coding-agent loops. The agent does the work; headsign holds run state and runs shell checks that answer ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT. Optimization prompts are built in; headsign does not call a model itself.
+
+It is not a general workflow engine, not a chatbot, and not a substitute for the agent's judgment about method.
+
+Agent skills (shipped under `plugin/skills/`): `workflow`, `design-workflow`, `optimize`.
+
+Installed package: the npm `files` list includes `plugin/` and this `llms.txt`.
+
+## Commands
+
+- `headsign start [name] [--workflow <path>] [--no-optimize]` — start a run
+- `headsign next [--accept-graph-change]` — run the current gate; line 1 is the verdict
+- `headsign status` — read-only view of the run (never judges)
+- `headsign abort [reason]` — end the run
+- `headsign validate [name] [--workflow <path>]` — validate a workflow document
+- `headsign claim` — claim driver ownership for a delegated agent
+- `headsign version` / `headsign help`
+
+`next` exit codes: 0 advance/complete, 1 retry/pending, 2 escalate/abort, 3 usage/config. Prefer those verdicts over inventing control flow outside the harness.
