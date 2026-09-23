@@ -333,9 +333,10 @@ Semver, currently 0.x: minor = features (breaking changes possible),
 patch = fixes only.
 
 npm publish is the `v*` tag plus an approval on the GitHub Environment
-`publish`. The one-time registry setup, and what the workflow runs, is
-[Releasing](releasing.md). The steps below are the checklist. Step 9 is the
-approval, not an `npm publish` from the checkout.
+`publish`. The trusted publisher and that Environment are already
+configured (2026-09-23). Field values, when the approval appears, and what
+the workflow runs are [Releasing](releasing.md). The steps below are the
+checklist. Step 9 is the approval, not an `npm publish` from the checkout.
 
 Every step is marked **[agent]** or **[you]**. The line between them is not
 trust, it is reversibility: an agent may do anything that changes only this
@@ -447,10 +448,10 @@ machine or is protected against being undone once it has.
    `npm run coverage`, and `npm run build`, and stops if that build changed
    the tagged tree. npm authenticates with the environment's OIDC token.
    Provenance is attached because the repository and the package are public.
-   The workflow stores no `NPM_TOKEN`. The field list for the trusted
-   publisher, and the requirement that the environment already have
-   reviewers, are [Releasing](releasing.md). A missing environment is not
-   this step. GitHub creates one with no reviewers, and the job publishes.
+   The workflow stores no `NPM_TOKEN`. The trusted publisher and the
+   Environment are already configured (2026-09-23). Field values and the
+   approval timing are [Releasing](releasing.md). A missing environment is
+   not this step: GitHub creates one with no reviewers, and the job publishes.
 
    **`prepublishOnly` does not run.** The repository's `.npmrc` sets
    `ignore-scripts=true`, which stops npm's own lifecycle hooks along with every
@@ -528,9 +529,9 @@ it on the agent's side. It was listed here once, and the release it was listed
 for is the one that never got a page — a step an agent could do but a person
 is marked for is a step with nobody actually holding it.
 
-The one-time Environment and Trusted Publisher setup is also yours. It is not
-part of this list. It is [Releasing](releasing.md), and it has to be done
-before the first tag that should publish.
+The Environment `publish` and the npm trusted publisher are already
+configured (2026-09-23). They are not part of this list. Recreate one only
+if it is missing; the fields are [Releasing](releasing.md).
 
 If an agent hands you a longer list than this, it either has not done its half
 or is asking permission for something reversible — check which before running
@@ -576,6 +577,11 @@ it.
   | `sha_pinning_required` | on — the workflow's pins become enforced rather than merely intended | off |
   | Actions enabled | on, restricted to this owner plus actions created by GitHub | **off — no workflow has run since 2026-08-01** |
 
+  `sha_pinning_required` is enabled, recorded 2026-09-23. The table above is
+  the 2026-08-22 measurement, when that setting was off. With it on, every
+  `uses:` line is `action@<40-hex> # vX.Y.Z`
+  ([Releasing](releasing.md#actions-pinned-by-commit)).
+
   The first two rows carry the weight. With no secrets and a read-only token,
   a workflow injected into `.github/` finds nothing to steal and cannot push.
   Required SHA pinning and an allowlist narrow which actions may run; neither
@@ -589,9 +595,10 @@ it.
   default. `pull_request_target` removes that protection; this repository does
   not use it, and a workflow that starts to should say in a comment that it is
   doing so.
-- **npm Trusted Publisher.** `publish.yml` publishes on a `v*` tag after the
-  GitHub Environment `publish` is approved. The npmjs.com fields, and the
-  requirement that the environment have reviewers before the first tag, are
-  in [releasing.md](releasing.md). There is still no `NPM_TOKEN`.
+- **npm Trusted Publisher.** Registered 2026-09-23 for `meganemura` /
+  `headsign` / `publish.yml` / Environment `publish`, allowing `npm publish`.
+  `publish.yml` publishes on a `v*` tag after that environment is approved.
+  Recovery fields are in [releasing.md](releasing.md). The repository stores
+  no `NPM_TOKEN`.
 - No branch protections beyond CI at the moment (single-maintainer); add a
   required-check rule on `main` when a second maintainer joins.
