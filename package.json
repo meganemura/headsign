@@ -52,6 +52,7 @@
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "archstrict": "file:../archstrict"
   }
 }
