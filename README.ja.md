@@ -2,7 +2,7 @@
 
 [English](README.md) · [npm](https://www.npmjs.com/package/headsign)
 
-[![npm version](https://img.shields.io/npm/v/headsign)](https://www.npmjs.com/package/headsign)
+[![npm version](https://img.shields.io/npm/v/headsign?logo=npm)](https://www.npmjs.com/package/headsign)
 [![CI](https://github.com/meganemura/headsign/actions/workflows/ci.yml/badge.svg)](https://github.com/meganemura/headsign/actions/workflows/ci.yml)
 
 > 方向幕(ヘッドサイン)は、列車の前面に掲げる行先表示である。

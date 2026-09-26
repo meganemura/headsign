@@ -1,6 +1,6 @@
 # headsign
 
-[![npm version](https://img.shields.io/npm/v/headsign)](https://www.npmjs.com/package/headsign)
+[![npm version](https://img.shields.io/npm/v/headsign?logo=npm)](https://www.npmjs.com/package/headsign)
 
 > A headsign is the destination display on the front of a train. This one is
 > for agent loops. In each iteration, the agent asks where it may go. headsign
