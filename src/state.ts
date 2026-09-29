@@ -24,7 +24,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-type Status = "running" | "complete" | "escalated" | "aborted";
+// Named on the record's own surface. `engine.step` takes `State`, so a caller
+// meets this union through the verb; the word still belongs here, with the
+// record, where a new status would have to be added.
+export type Status = "running" | "complete" | "escalated" | "aborted";
 
 // Named for what it actually holds and not for a `current_failure` it can't honestly claim
 // to be — see ADR-0012 §3 for the naming rationale.

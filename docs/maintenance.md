@@ -27,9 +27,12 @@ without its rebuilt bundle.
 - `npm run typecheck && npm test && npm run build` — and commit
   `plugin/dist/headsign.mjs` together with the src change. CI fails
   otherwise (`dist matches src`).
-- `npm run archstrict` before you push. CI runs it after typecheck. A new
-  module-boundary violation fails the step. Debt frozen in
-  `archstrict.todo.json` does not: that file only shrinks.
+- `npm run archstrict` before you push. CI runs it after typecheck. The
+  seams are `archstrict.config.ts`: the run record, workflow loading, the
+  gate, optimization, wording, verbs, each host hook, the CLI, and the
+  Claude overlay. A new module-boundary violation fails the step. Debt
+  frozen in `archstrict.todo.json` does not: that file only shrinks, and a
+  module listed in `strict` cannot take a new frozen entry.
 - For a change to `plugin/hooks/mod.ts` or `plugin/tests/`: run `/plugin-types`
   once in a Claude Code session at the repository root (it writes the
   ignored `.claude/types/`), then `npx tsc -p plugin/hooks` and

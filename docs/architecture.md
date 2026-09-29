@@ -82,6 +82,13 @@ explain, by name — so a failure points at a place instead of at a total. The
 question every feature proposal still has to answer is ADR-0001's: does a
 thin harness need this?
 
+`archstrict.config.ts` checks the direction of the rows below. Each file is
+one seam. A new verb stays in `engine.ts`, a new gate kind in `gate.ts`,
+workflow loading in `workflow.ts`, optimization in `optimization.ts`, and
+command wiring in `cli.ts`. The verb, the wording, and the CLI stay three
+seams: history shows them changing together, and one module would put every
+such change in the same place.
+
 | Module | Responsibility | Must NOT know about |
 |---|---|---|
 | `src/cli.ts` | argv parsing, command dispatch, printing, process exit code — one typed command becomes one `engine.ts` call, and the value it answers with becomes text and a status. Also the only place the **wall clock** (`localIso(new Date())`) is read, and the place `process.env` is reached for so that nothing below has to — both passed down as arguments. (`gate.ts` reaches for it too, but only to copy it wholesale into the commands it spawns, ADR-0033, inspecting nothing in it; the values inside are read in `stophook.ts`, always out of an argument.) | routing rules — *including the order `next` asks its questions in* (ADR-0018) — the YAML schema, what any operation does to a run |
