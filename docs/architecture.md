@@ -45,9 +45,9 @@ plugin/                          # what gets distributed (Claude Code and Codex 
   skills/design-workflow/SKILL.md # entry: design or revise a workflow
   skills/design-workflow/references/ # procedure, schema, and the other how-tos
   skills/optimize/SKILL.md       # terminal procedure assessment (the whole skill)
-  skills/project-skill/SKILL.md  # entry: copy workflow gates into a local skill
-  skills/project-skill/references/ # section order and how a gate is copied
-  skills/create-skill-workflow/SKILL.md # entry: invent a local skill without headsign
+  skills/project-skill/SKILL.md  # entry: write a local skill from named shell commands
+  skills/project-skill/references/ # section order; a gate is a shell command, exit 0 advances
+  skills/create-skill-workflow/SKILL.md # entry: invent a local skill from the repository's commands
   skills/create-skill-workflow/references/ # survey through the written file
   skills/optimize-skill-workflow/SKILL.md # entry: revise an existing skill
   skills/optimize-skill-workflow/references/ # diagnosis and the agreed diff
@@ -161,8 +161,8 @@ outside it:
   it needs an eighth, prefer sharpening one of the seven). The long cases for
   those rules live in `references/` beside the entry, opened when the entry
   names them. The other entries under `plugin/skills/` are separate skills:
-  designing a workflow, assessing a finished run, copying gates into a
-  project-local skill, inventing that skill, and revising an existing one.
+  designing a workflow, assessing a finished run, writing a project-local
+  skill from shell commands, inventing that skill, and revising an existing one.
 - **Gate checks** are user-authored shell commands — tests, linters, grep
   for a reviewer's verdict file. headsign only reads their exit codes.
 - **The session-start hook** reports a nearby running run before work begins.

@@ -177,6 +177,6 @@ step that needs them.
 | Writing the file's comments | `references/comments.md` |
 
 Driving a run is the `workflow` skill. Assessing a finished run is the
-`optimize` skill. Copying the file's gates into a project-local skill is
-`project-skill`. Inventing that skill from the repository, so the team can
-follow it without headsign, is `create-skill-workflow`.
+`optimize` skill. Putting shell commands into a project-local skill is
+`project-skill`. Inventing that skill from the repository is
+`create-skill-workflow`.

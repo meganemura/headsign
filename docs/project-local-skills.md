@@ -2,15 +2,17 @@
 
 [日本語](project-local-skills.ja.md)
 
-**Gates live in the skill's `SKILL.md`, as product commands the checkout can
-run.** Advance is exit 0 of a fenced shell command in that file. The people
-who follow the skill use the repository's own tools. Following the file does
-not require the headsign program.
+**Gates live in the skill's `SKILL.md`, as product shell commands the checkout
+can run. Exit 0 advances. Ownership and the queue are tools the repository
+already has.**
+
+Advance is exit 0 of a fenced shell command in that file. Anything else does
+not. The people who follow the skill use the repository's own tools.
 
 Three skills write or revise that file and stop. They do not keep driving
 the job the file describes. [`optimize`](../plugin/skills/optimize/SKILL.md)
-is a different skill. It assesses a finished headsign run. It does not edit
-a skill file.
+is a different skill. It assesses a finished run. It does not edit a skill
+file.
 
 The file they write defaults to `.agents/skills/<name>/SKILL.md`. When the
 repository already documents another directory for contributor skills, the
@@ -27,24 +29,27 @@ open. This page is the account for a person.
 
 | Skill | When to choose it | What you get |
 |---|---|---|
-| [`create-skill-workflow`](../plugin/skills/create-skill-workflow/SKILL.md) | You are setting a repository up for agent work, or repeated CI failures should land in a local skill, and there is no workflow whose checks you are copying | A new local skill, invented from a survey of commands this checkout can run |
-| [`project-skill`](../plugin/skills/project-skill/SKILL.md) | A workflow file you name already has check `run` strings, or you have named the exact commands to copy | That same kind of file, with those `run` strings as the gates |
-| [`optimize-skill-workflow`](../plugin/skills/optimize-skill-workflow/SKILL.md) | A skill already has a name, and something in it is wrong: a runtime it claims not to need, an acceptance command the checkout cannot run, or a review that is only two roles in one session | A small diff to that skill |
+| [`create-skill-workflow`](../plugin/skills/create-skill-workflow/SKILL.md) | You are setting a repository up for agent work, or repeated failures should land in a local skill | A new local skill, invented from a survey of commands this checkout can run |
+| [`project-skill`](../plugin/skills/project-skill/SKILL.md) | You have named the commands, or pointed at scripts, that should decide the work. A file you name that already holds those command strings is the same job | That skill, with those shell commands as the gates |
+| [`optimize-skill-workflow`](../plugin/skills/optimize-skill-workflow/SKILL.md) | A skill already has a name, and something in it is wrong: a gate no command can judge, an acceptance command the checkout cannot run, or a review that is only two roles in one session | A small diff to that skill |
 
-`create-skill-workflow` invents. `project-skill` copies.
-`optimize-skill-workflow` revises a skill you name. Asking an agent to edit
-a skill file is `optimize-skill-workflow`. Asking it to assess a run that
-already finished is `optimize`.
+`create-skill-workflow` invents. `project-skill` copies commands that
+already exist. `optimize-skill-workflow` revises a skill you name.
+`optimize` assesses a finished run. The record's first line is `NO_CHANGE`,
+`APPLIED`, `PROPOSED`, or `DEFERRED`. Asking an agent to edit a skill file
+is `optimize-skill-workflow`. Asking it to assess a run that already
+finished is `optimize`.
 
-Designing a headsign workflow is
-[`design-workflow`](../plugin/skills/design-workflow/SKILL.md). Walking that
-run is [`workflow`](../plugin/skills/workflow/SKILL.md).
+[`design-workflow`](../plugin/skills/design-workflow/SKILL.md) designs a
+checked procedure. [`workflow`](../plugin/skills/workflow/SKILL.md) walks a
+run. They are different skills. The file this page describes stands on the
+repository's own commands.
 
 ## create-skill-workflow
 
-Use this skill when the local skill has to be invented. A workflow file may
-exist in the repository. Copying its checks is the other skill's job, and
-this one stops and says so.
+Use this skill when the local skill has to be invented. Commands you have
+already named, or a file you named that holds those command strings, are
+the other skill's job, and this one stops and says so.
 
 The agent surveys before it writes. It records commands as the repository
 spells them: tests, lint, typecheck, build, an architecture check, a diff or
@@ -58,8 +63,8 @@ cannot choose. One gap at a time. It answers from the repository before it
 asks, and it skips the question when that explanation was the answer. The
 gaps it settles are what Done means, whether a structural gate exists, which
 paths the job may touch, how independent review is actually produced, when
-the skill looks back at itself, and the runtime. The runtime default is that
-the local skill runs on the repository's own commands.
+the skill looks back at itself, and the runtime. The runtime default is the
+repository's own commands. A gate does not need another program.
 
 A tool you say is absent stays in the tool menu as a purpose and a
 candidate. It is not a gate. The skill writes the file, asks before adding a
@@ -76,13 +81,18 @@ The procedure is
 Use this skill when the gates already exist as shell commands and the job is
 to put them in a skill the team can follow.
 
-When you name an existing workflow file, each `gate.checks` entry's `run`
-string is copied into one fence, one `run` per line, in file order. The
-command is copied as written. A `run` that contains `&&` or `||` stays one
-line. Every command in the fence must exit 0. `on_pass` is the heading's
-destination. `on_fail` is one line under the fence: a non-zero exit returns
-there. An `on_pass` with a `when:` probe stays one fence. The agent runs
-that line whole. A `timeout:` is a budget sentence beside the line.
+Lead with the commands you named, or the scripts you pointed at. Each
+command is copied into one fence, one command per line, in the order given.
+The command is copied as written. A command that contains `&&` or `||` stays
+one line. The agent runs that line whole. A lone failing half is not a
+failed gate. Every command in the fence must exit 0. The heading names where
+an exit 0 goes. A non-zero exit returns to the work above the fence, unless
+you named a different return. A budget stated beside a command is one
+sentence next to the line. It is not an extra command.
+
+When you name a file, the same rules apply to the shell command strings in
+that file. The skill copies those strings. It does not reconstruct the
+file's schema, and it does not add a command the file does not contain.
 
 Above the fence, one or two lines name the work that produces what the gate
 reads. That work is a description. The gate is the command. Below the fence,
@@ -91,22 +101,17 @@ repair. It reads a checker to learn a message. It does not run a command
 that writes, commits, or claims a ticket just to discover the wording, and
 it does not invent a message.
 
-When no workflow file exists, the skill uses only commands you named, or
-scripts you pointed at, and it labels them as your checks. Discovery,
-policy, and a skill that has to be invented from the repository are
-`create-skill-workflow`.
-
 The generated skill's gates stay in its `SKILL.md`. The agent that drives
-the skill has to see the shell there. After writing, every `run` string
-appears once, inside a gate fence.
+the skill has to see the shell there. After writing, every command appears
+once, inside a gate fence.
 
-When the work needs a single owner, **When to use** says: do not run two
-ownership loops at once. The thin ownership file is how that is known.
-That sentence refuses a second loop. It is not a gate, and the gates
-themselves remain the product commands.
+When the work needs a single owner, **When to use** may say: if a gitignored
+file such as `loop.json` shows the job already has an owner, do not start a
+second loop. That sentence is not a gate. The gates remain the product
+commands.
 
-This skill copies commands. It does not design phases, and it does not
-start a run. It does not install a program to discover a command.
+This skill does not invent checks, does not keep driving the job, and does
+not install a program to discover a command.
 
 The rules for a copied gate are
 [references/gates.md](../plugin/skills/project-skill/references/gates.md).
@@ -126,20 +131,18 @@ skill, steps so thick the agent cannot choose a tool, a Done that is only
 the agent's report, a command or path that disagrees with the checkout, a
 checker name that is gone and still sits in Gates or in acceptance text, and
 a runtime dependency that contradicts the purpose. The last of those is a
-skill that runs on the repository's own commands and still requires an
-orchestrator's state on a gate. It also looks for independent review that is
-only two roles in one session, ownership that depends on reading an
-orchestrator's state, a channel or a person's name baked into a shared
-skill, a missing section the local-skill shape requires, the same policy
-kept twice, and a Self-improve that proposes hook enforcement before
-look-backs have shown the gates being ignored.
+skill that claims to run on the repository's own commands and still requires
+another program's state on a gate. It also looks for independent review that
+is only two roles in one session, ownership that depends on reading another
+program's state, a channel or a person's name baked into a shared skill, a
+missing section the local-skill shape requires, and the same policy kept
+twice.
 
-The repair for a contradictory runtime takes orchestrator state off the
-required path. A thin ownership file and a real queue take that place. The
-repair for stale acceptance deletes a command that is gone, so ticket text
-and Gates name the same live commands. After either repair, every command
-that remains on a gate is smoke-tested. A missing dependency is not still
-required.
+The repair for a contradictory runtime takes that state off the required
+path. A thin ownership file and a real queue take that place. The repair for
+stale acceptance deletes a command that is gone, so ticket text and Gates
+name the same live commands. After either repair, every command that remains
+on a gate is smoke-tested. A missing dependency is not still required.
 
 An installed plugin or a managed catalog copy is read-only. The change is a
 fork into the repository, or into a skill home the host lets you write. The
@@ -153,8 +156,8 @@ The procedure is
 Both authoring skills write one `SKILL.md`. Gates stay in that file, in this
 order:
 
-1. **When to use.** A sentence that refuses a second ownership loop may live
-   here. It is not a gate. The thin ownership file is how that is known.
+1. **When to use.** A sentence that refuses a second loop may live here. It
+   is not a gate.
 2. **Goals.** Three outcomes, and no step list that restates the gates.
 3. **Gates.** One heading per advance. The fence is the gate.
 4. **Tool menu.** Commands that help produce what a gate reads, and that are
@@ -166,11 +169,11 @@ order:
 7. **Self-improve.** A look-back. It is not a shell gate.
 
 **Done** is what is true when the last gate has passed, including a local
-commit when a copied workflow's commit gate requires one. A push is part of
-Done when you asked for one. **Impossible** is acceptance that contradicts a
-preserved contract, or a gate that can pass only by weakening a check.
-**Needs human** is missing authority, missing information, or a check that
-cannot pass without inventing work.
+commit when a gate requires one. A push is part of Done when you asked for
+one. **Impossible** is acceptance that contradicts a preserved contract, or
+a gate that can pass only by weakening a check. **Needs human** is missing
+authority, missing information, or a check that cannot pass without
+inventing work.
 
 The frontmatter `description` says when to use the skill, and that exit 0 of
 a command in Gates is the only advance.
@@ -180,7 +183,7 @@ a command in Gates is the only advance.
 A gate is a command the checkout can run now. Prefer a product command: the
 test suite, the linter, the typecheck, the build, the architecture check the
 repository already spells. One fence per advance. Every line in the fence
-must exit 0.
+must exit 0. That is the whole advance model.
 
 The shape, with a stand-in command. The real file uses the repository's
 command, copied as the checkout spells it.
@@ -216,16 +219,17 @@ When none of these exists, the skill says so, and moving the work is
 ### Ownership
 
 When the work needs a single owner, a gitignored file such as `loop.json` is
-enough. The generated skill reads that file to keep a single ownership loop.
-`optimize-skill-workflow` treats a required read of an orchestrator's state,
-in a skill that can use a thin file instead, as a defect to repair.
+enough. The generated skill does not read another program's state to decide
+who owns the job. `optimize-skill-workflow` treats a required read of that
+state, in a skill that can use a thin file instead, as a defect to repair.
 
 ### Acceptance text
 
 The text of a ticket or a finding uses a command that Gates or the tool menu
-already names. A checker name the checkout cannot run is removed. After a
-revision that syncs acceptance text, the commands left on a gate are ones
-this checkout can run. Leaving a vanished command in the text and calling the
+already names. A checker name the checkout cannot run is removed, including
+one that belongs to a tool this checkout does not have. After a revision
+that syncs acceptance text, the commands left on a gate are ones this
+checkout can run. Leaving a vanished command in the text and calling the
 sync done is a failed edit.
 
 ### Independent review
@@ -240,10 +244,10 @@ require more than one. You agree which.
 - Same-session role play, when it is all that is available, is named as a
   limit under Constraints, and Self-improve watches it.
 
-When `project-skill` copies a phase that asks for an independent reviewer,
-the work line names the verdict files and says the author of the change does
-not write the approval. A rejected, stale, or empty verdict is a non-zero
-exit back to the producer, once the checker's own messages say so.
+When the work asks for an independent reviewer, the work line names the
+verdict files and says the author of the change does not write the approval.
+A rejected, stale, or empty verdict is a non-zero exit back to the producer,
+once the checker's own messages say so.
 
 ### Self-improve
 
@@ -256,34 +260,41 @@ Here they record a look at this skill, a check command, or a proposal a
 person has to accept. They do not prove the method improved.
 
 `APPLIED` is a change inside the current policy, then how it was verified.
-`PROPOSED` is a change that needs a person: AGENTS.md, a contract, or CI,
-with the next step named. When look-backs show the same gates keep being
-ignored, `PROPOSED` names hook enforcement that holds the turn until the
-gate has passed. headsign is one such host. Another host's hook is the same
-kind of proposal. `DEFERRED` is a skip, with the reason. The record goes
-where the repository already puts this kind of note: a gitignored work log,
-or a short section in the change description.
+`PROPOSED` is a change that needs a person: AGENTS.md, a contract, CI, or
+hook enforcement when look-backs show the same gate keeps being ignored.
+The hook holds the turn until the gate has passed. headsign is one example.
+Another host's hook is the same proposal. Name the next step. Do not
+propose that hook before those look-backs.
+`DEFERRED` is a skip, with the reason. The record goes where the repository
+already puts this kind of note: a gitignored work log, or a short section in
+the change description.
 
 ## When gates keep being ignored
 
-The local skill runs on its own text, the product's commands, and a queue
-that exists. The survey may list mechanical signals before the skill is
-written. The artifact of that pass is the local skill.
+The runtime of the local skill is the skill, the product's commands, and a
+queue that exists.
 
-A repeated CI failure is a reason to repair a gate or a check. Hook
-enforcement is the proposal when look-backs show the agent keeps ignoring
-those gates. Self-improve records `PROPOSED` and names a host hook that
-holds the turn until the gate has passed. headsign is one such host.
-Another host's hook is the same proposal. The record names the next step.
-These skills do not install that hook in the same pass unless you asked.
+When a look-back shows the same gate keeps being ignored, the skill's
+self-improve pass can record `PROPOSED` and name hook enforcement that
+holds the turn until the gate has passed. headsign is one example. Another
+host's hook is the same proposal. The record names the next step. Do not
+propose that hook before those look-backs.
+[`design-workflow`](../plugin/skills/design-workflow/SKILL.md) and
+[`workflow`](../plugin/skills/workflow/SKILL.md) are different skills. Ask
+for them when you want them.
+[`optimize`](../plugin/skills/optimize/SKILL.md) assesses a finished run. It
+does not edit the local skill.
 
-`optimize-skill-workflow` does not add a required orchestrator read as the
-repair for a skill that runs on the repository's own commands.
+`create-skill-workflow` does not install that hook in the same pass unless
+you asked. `optimize-skill-workflow` does not add a required outside runtime
+as the repair for a skill whose purpose is to run on the repository's own
+commands.
 
 ## Use the skills on their own
 
 **Writing the file.** The three skills are instructions. They write or
-revise the local skill and stop.
+revise the file and stop. They do not keep driving the job the file
+describes.
 
 With the plugin installed, name the skill. Without the plugin, install that
 one skill the way the [workflow
@@ -302,11 +313,8 @@ stops.
 
 **Following the file.** Later work reads the local skill. The agent does the
 work named above a gate, runs the fenced command, and treats exit 0 as the
-advance. When the work needs a single owner, When to use says not to run two
-ownership loops at once. The thin ownership file is how that is known. That
-sentence is a refusal, not a gate. Node is required only when the product's
-own commands need it.
+advance. Node is required only when the product's own commands need it.
 
-A team that never installs headsign can keep the local skill in the
-repository and point every agent at it. Hook enforcement is a later
-proposal, recorded when look-backs show the gates keep being ignored.
+A team can keep the local skill in the repository and point every agent at
+it. Hook enforcement is a later proposal, recorded when look-backs show a
+gate keeps being ignored.

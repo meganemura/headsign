@@ -212,14 +212,14 @@ CI のジョブでも、ツールチェーンが本来 Node と無縁な Ruby / 
 | `design-workflow` | workflow と検査を設計、改訂する |
 | `workflow` | 現在の run を進め、有用な観察を残す |
 | `optimize` | 終えた run を評価し、影響の大きい改善を適用、提案する |
-| `project-skill` | 既存 workflow のゲートを、headsign のインストールなしで辿れるプロジェクトローカル skill に写す |
-| `create-skill-workflow` | リポジトリを調べ、実行時に headsign を要しないローカル skill を新たに書く |
-| `optimize-skill-workflow` | 既存の skill を改訂する。目的と矛盾するランタイム依存や、消えた受け入れコマンドを含む |
+| `project-skill` | 名指ししたシェルコマンド、または名指ししたファイルのコマンド文字列を、プロジェクトローカル skill のゲートにする |
+| `create-skill-workflow` | リポジトリが既に実行できるコマンドから、そのローカル skill を新たに書く |
+| `optimize-skill-workflow` | 既存の skill を改訂する。コマンドでは決められないゲートや、消えた受け入れコマンドを含む |
 
 `workflow`、`design-workflow`、`project-skill`、`create-skill-workflow`、`optimize-skill-workflow` は短い入口です。
 長い手順はそれぞれの `references/` にあり、入口が指したファイルだけを開きます。
 `optimize` だけはファイル全体が skill です。終えた run を評価します。
-残りの三つが書くファイルと、headsign をインストールせずにそのファイルへ従う方法は、[プロジェクトローカル skill](#プロジェクトローカル-skill) にあります。
+残りの三つが書くファイルと、リポジトリ自身のコマンドでそのファイルへ従う方法は、[プロジェクトローカル skill](#プロジェクトローカル-skill) にあります。
 
 新しい run では、改善の評価が既定で有効です。
 一つの run で無効にするには、`headsign start --no-optimize` を使うか、ワークフロー名の後ろにこのオプションを付けます。
@@ -247,22 +247,20 @@ hook は、入力に含まれない停止意図を推測できません。
 
 ## プロジェクトローカル skill
 
-**ゲートは skill 自身の `SKILL.md` に、そのチェックアウトが今実行できるプロダクトのコマンドとして書きます。**
-進むかどうかは、そのコマンドの終了コードで決まります。
+**ゲートは skill 自身の `SKILL.md` に、そのチェックアウトが今実行できるプロダクトのシェルコマンドとして書きます。終了コード 0 で進みます。所有とキューは、リポジトリが既に持つ道具です。**
 この skill に従う人は、リポジトリ自身の道具を使います。
-ファイルに従うために、headsign のプログラムは要りません。
 
 三つの skill がそのファイルを書き、または直し、そこで止まります。
-日々の仕事は運転しません。
+ファイルが述べる日々の仕事を運転し続けることはありません。
 どれを使うかは、手元に何があるかで決まります。
 
 | Skill | 手元にあるもの | すること |
 |---|---|---|
-| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | 写すべき workflow の検査が無いリポジトリ | チェックアウトを調べ、足りない点をあなたと決め、ローカル skill を発明する |
-| [`project-skill`](plugin/skills/project-skill/SKILL.md) | あなたが名指しした workflow ファイル、またはあなたが名指ししたコマンド | 各検査の `run` 文字列をローカル skill に写す |
-| [`optimize-skill-workflow`](plugin/skills/optimize-skill-workflow/SKILL.md) | 既に名前のある skill | 直す。目的と矛盾するランタイム、チェックアウトが実行できない受け入れコマンド、同一セッションの二つの役だけのレビュー |
+| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | ローカル skill をまだ発明する必要があるリポジトリ | チェックアウトを調べ、足りない点をあなたと決め、ローカル skill を発明する |
+| [`project-skill`](plugin/skills/project-skill/SKILL.md) | 名指ししたコマンド、指したスクリプト、またはそのコマンド文字列を既に持つファイル | それらのシェルコマンドをローカル skill に写す |
+| [`optimize-skill-workflow`](plugin/skills/optimize-skill-workflow/SKILL.md) | 既に名前のある skill | 直す。コマンドでは決められないゲート、チェックアウトが実行できない受け入れコマンド、同一セッションの二つの役だけのレビュー |
 
-`optimize` は、終えた headsign の run を評価します。
+`optimize` は、終えた run を評価します。
 skill ファイルは編集しません。
 skill を直してほしい依頼は `optimize-skill-workflow` です。
 
@@ -272,6 +270,8 @@ skill を直してほしい依頼は `optimize-skill-workflow` です。
 従うエージェントが、シェルをそこで見るためです。
 ゲートは、このチェックアウトが今実行できるコマンドです。
 `npm test`、lint のスクリプト、アーキテクチャ検査が例です。
+終了コード 0 で進みます。
+それ以外は進みません。
 skill が発明したコマンドはゲートにしません。
 インストールされていない道具は、ツールメニューの候補に残します。
 
@@ -281,7 +281,9 @@ skill が発明したコマンドはゲートにしません。
 どれも無いときは、仕事を動かすのに人が要ります。
 仕事に単一の所有者が要るとき、git 管理外の薄いファイルで足ります。
 `loop.json` がその例です。
-skill は、誰が所有者かをオーケストレーターの状態から読みません。
+skill は、誰が所有者かを別のプログラムの状態から読みません。
+そのファイルが、仕事に既に所有者があることを示しているなら、二つ目のループは始めません。
+その文はゲートではありません。
 チケットの受け入れ文は、Gates かツールメニューが既に名指ししているコマンドを使います。
 チェックアウトが実行できないチェッカーは除きます。
 
@@ -302,15 +304,13 @@ gh skill install meganemura/headsign create-skill-workflow
 エージェントはファイルを書き、または直し、そこで止まります。
 そのあとの仕事はローカル skill に従います。
 フェンスのコマンドを実行し、終了コード 0 を進行とみなします。
-仕事に単一の所有者が要るとき、When to use は、二つの所有ループを同時に回さない、と書きます。
-判断には薄い所有ファイルを使います。
-その文は拒否であり、ゲートではありません。
 
-振り返りが、同じゲートが無視され続けていることを示しているとき、これらの skill は `PROPOSED` を記録してよいです。
-その提案は、ゲートが通るまでターンを止める hook による強制を名指しします。
-headsign はその host の一つです。
-別の host の hook も同じ種類の提案です。
+振り返りが、同じゲートが無視され続けていると示したとき、これらの skill は `PROPOSED` を記録し、ゲートが通るまでターンを止める hook による強制を名指ししてよいです。
+headsign は、その一例です。
+別の host の hook も、同じ提案です。
 頼まれない限り、同じ一回の中でその hook は入れません。
+`design-workflow` と `workflow` は別の skill です。
+それらが要るときに頼んでください。
 
 ファイルの形、三つの違い、リポジトリ自身のコマンドで辿る方法は [プロジェクトローカル skill](docs/project-local-skills.ja.md) にあります。
 

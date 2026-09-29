@@ -34,19 +34,19 @@ first:
 - Done is the agent's report, and no command can disagree.
 - A command or a path disagrees with the checkout, or a checker name that
   is gone remains in Gates or in acceptance text.
-- A runtime dependency contradicts the purpose. A skill that runs on the
-  repository's own commands still requires an orchestrator's state on a
-  gate.
+- A runtime dependency contradicts the purpose. A skill that claims to
+  run on the repository's own commands still requires another program's
+  state on a gate.
 - Independent review is only two roles in one session, and no command
   checks the verdict.
-- Ownership depends on reading an orchestrator's state, where a thin
+- Ownership depends on reading another program's state, where a thin
   gitignored file such as `loop.json` would do.
 - A channel, a repository, or a person's name that belongs to one
   assistant is baked into a shared skill.
-- A local workflow skill is missing a section `create-skill-workflow`
-  requires: Goals, Gates, Tool menu, Evidence, or Self-improve.
-- Self-improve proposes hook enforcement, or another orchestrator, before
-  look-backs have shown the gates being ignored.
+- A local skill is missing a section `create-skill-workflow` requires:
+  Goals, Gates, Tool menu, Evidence, or Self-improve.
+- Self-improve proposes hook enforcement before look-backs have shown the
+  same gate being ignored.
 - The same policy is also kept in AGENTS.md or in another skill.
 
 ## 3. Choose the change
@@ -60,12 +60,12 @@ Use a lever only when the diagnosis named it:
 |---|---|
 | Trigger | The description says when to use the skill |
 | Thin steps | Line-by-line procedure gives way to an objective and a choice of tools |
-| Gates | Done and Impossible can be decided by a product command that exists |
-| Decouple runtime | Orchestrator state leaves the required path. A thin ownership file and a real queue take its place |
+| Gates | Done and Impossible can be decided by a product command that exists. Exit 0 advances |
+| Decouple runtime | Another program's state leaves the required path. A thin ownership file and a real queue take its place |
 | Acceptance sync | Ticket and finding text matches the gates. A command that is gone is deleted |
 | Review integrity | Another session writes the verdict, or a command checks kind, revision, ticket, and base, with a nonempty human reason |
 | Evidence | The skill names the artifacts, logs, and check results it leaves |
-| Self-improve | The four words `NO_CHANGE`, `APPLIED`, `PROPOSED`, `DEFERRED` are present and mean what `optimize` means for a finished run. `PROPOSED` names hook enforcement (headsign or another host hook) only when look-backs show the same gates keep being ignored |
+| Self-improve | The four words `NO_CHANGE`, `APPLIED`, `PROPOSED`, `DEFERRED` are present and mean what `optimize` means. `PROPOSED` names hook enforcement only when look-backs show the same gate keeps being ignored. The hook holds the turn until the gate has passed. headsign is one example. Another host's hook is the same proposal |
 | De-personalize | Names that belong to one assistant move out of the shared skill |
 | Sync | Commands and paths match the checkout |
 | Split or merge | A skill that has grown too large is split, or a duplicate is folded in, only after the user agrees |
@@ -102,14 +102,15 @@ edited has Self-improve, that section is the one that runs in production.
 - Rewrite the skill before the diagnosis and the agreed scope.
 - Edit an installed plugin or a managed catalog copy.
 - Make something no command can judge into a required gate.
-- Leave a required orchestrator read in a skill that runs on the
-  repository's own commands, or add one as the repair.
+- Leave a required read of another program's state in a skill whose
+  purpose is to run on the repository's own commands, or add one as the
+  repair.
 - Say the acceptance text is synced while a vanished command is still in it.
 - Write one assistant's private operations into a shared skill.
 - Write access to secrets or production credentials into the skill.
 - Add an improvement the user did not choose.
-- Propose hook enforcement before look-backs have shown the gates being
-  ignored.
+- Propose hook enforcement before look-backs have shown the same gate
+  being ignored, or install that hook unless the user agreed.
 
 ## Against create-skill-workflow
 
@@ -118,4 +119,4 @@ edited has Self-improve, that section is the one that runs in production.
 | Input | A repository, or a need for a new skill | A skill that already has a name or a path |
 | Result | A new local skill | A diff to that skill |
 | Survey | The repository's tools | The text, how it is called, and where it contradicts itself |
-| Usual repair | A first version that runs on the repository's own commands | A required orchestrator, or a stale acceptance command, that arrived later |
+| Usual repair | A first version whose gates are shell commands | A required outside runtime, or a stale acceptance command, that arrived later |

@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **Project-local skills teach shell gates, not a headsign workflow.**
+  `create-skill-workflow`, `project-skill`, and `optimize-skill-workflow`
+  put the commands in the skill's `SKILL.md`. Exit 0 advances. Ownership
+  and the queue are tools the repository already has. `project-skill`
+  copies command strings the user named, or strings from a file they name.
+  When look-backs show a gate keeps being ignored, the escalation is hook
+  enforcement. headsign is one example.
+
 ## [0.15.0] - 2026-09-29
 
 ### Added
