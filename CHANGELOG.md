@@ -9,6 +9,20 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-29
+
+### Added
+
+- **Three skills write or revise a project-local workflow that does not need
+  headsign installed to run.** `create-skill-workflow` surveys the repository
+  and writes a skill whose gates are product commands the checkout can run,
+  whose queue is a ticket CLI that already exists, and whose ownership can be
+  a thin gitignored file. `project-skill` copies an existing workflow's gate
+  commands into `.agents/skills/`. `optimize-skill-workflow` revises a skill
+  the user names, including a required runtime that contradicts the skill and
+  an acceptance command that is no longer there. `optimize` is unchanged: it
+  assesses a finished run.
+
 ## [0.14.0] - 2026-09-23
 
 ### Added
