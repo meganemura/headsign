@@ -15,10 +15,9 @@ that skill's daily job. The paired authoring skill is
 `create-skill-workflow`, which writes a new local skill. This one starts
 from a name or a path the user gave.
 
-`optimize` assesses a finished headsign run and writes that run's
-disposition. It is a different skill. Do not use this one to fill in
-`assessment.md`, and do not use `optimize` when the user asked to edit a
-skill file.
+`optimize` assesses a finished headsign run. It is a different skill. Do
+not use this one for that assessment, and do not use `optimize` when the
+user asked to edit a skill file.
 
 This file is the entry. Open the one reference the situation names. Do not
 load `references/` up front.
@@ -48,5 +47,5 @@ what changed, name one small way to try the skill, and list what you left.
 | Finding the skill, diagnosing it, and applying the agreed edits | `references/procedure.md` |
 
 Writing a new local skill is `create-skill-workflow`. Copying a
-workflow's gates into one is `project-skill`. Assessing a finished run is
-`optimize`.
+workflow's check `run` strings into one is `project-skill`. Assessing a
+finished run is `optimize`.

@@ -247,23 +247,22 @@ hook は、入力に含まれない停止意図を推測できません。
 
 ## プロジェクトローカル skill
 
-**ゲートは skill 自身の `SKILL.md` に、そのチェックアウトが今実行できるプロダクトのコマンドとして書きます。このループは headsign をインストールせず、`.headsign/` ディレクトリもなしで回ります。**
+**ゲートは skill 自身の `SKILL.md` に、そのチェックアウトが今実行できるプロダクトのコマンドとして書きます。**
 進むかどうかは、そのコマンドの終了コードで決まります。
 この skill に従う人は、リポジトリ自身の道具を使います。
-headsign は、そのファイルの依存ではありません。
+ファイルに従うために、headsign のプログラムは要りません。
 
 三つの skill がそのファイルを書き、または直し、そこで止まります。
-日々の仕事は運転せず、headsign の run も開始しません。
+日々の仕事は運転しません。
 どれを使うかは、手元に何があるかで決まります。
 
 | Skill | 手元にあるもの | すること |
 |---|---|---|
-| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | 写すべき workflow のゲートが無いリポジトリ | チェックアウトを調べ、足りない点をあなたと決め、ローカル skill を発明する |
-| [`project-skill`](plugin/skills/project-skill/SKILL.md) | workflow ファイル、またはあなたが名指ししたコマンド | 各 `gate.checks` の `run` 文字列をローカル skill に写す |
+| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | 写すべき workflow の検査が無いリポジトリ | チェックアウトを調べ、足りない点をあなたと決め、ローカル skill を発明する |
+| [`project-skill`](plugin/skills/project-skill/SKILL.md) | あなたが名指しした workflow ファイル、またはあなたが名指ししたコマンド | 各検査の `run` 文字列をローカル skill に写す |
 | [`optimize-skill-workflow`](plugin/skills/optimize-skill-workflow/SKILL.md) | 既に名前のある skill | 直す。目的と矛盾するランタイム、チェックアウトが実行できない受け入れコマンド、同一セッションの二つの役だけのレビュー |
 
 `optimize` は、終えた headsign の run を評価します。
-記録は `.headsign/optimization/<run-id>/assessment.md` です。
 skill ファイルは編集しません。
 skill を直してほしい依頼は `optimize-skill-workflow` です。
 
@@ -285,7 +284,6 @@ skill が発明したコマンドはゲートにしません。
 skill は、誰が所有者かをオーケストレーターの状態から読みません。
 チケットの受け入れ文は、Gates かツールメニューが既に名指ししているコマンドを使います。
 チェックアウトが実行できないチェッカーは除きます。
-かつて headsign に属していた名前も同じです。
 
 独立したレビューは、別のセッションが判定を書くことです。
 あるいは、コマンドが判定ファイルを検査します。
@@ -302,21 +300,19 @@ gh skill install meganemura/headsign create-skill-workflow
 
 `project-skill` と `optimize-skill-workflow` も、名前を変えた同じコマンドです。
 エージェントはファイルを書き、または直し、そこで止まります。
-`headsign start` は実行しません。
 そのあとの仕事はローカル skill に従います。
 フェンスのコマンドを実行し、終了コード 0 を進行とみなします。
-ゲートは `headsign next` を呼ばず、`.headsign/` も読みません。
-`project-skill` が既存の workflow ファイルを写したとき、When to use は、`.headsign/state.json` がその workflow の実行中を示しているあいだ二つ目のループを始めない、と書きます。
+仕事に単一の所有者が要るとき、When to use は、二つの所有ループを同時に回さない、と書きます。
+判断には薄い所有ファイルを使います。
 その文は拒否であり、ゲートではありません。
-`create-skill-workflow` は、headsign なしで回ることが目的の skill に `.headsign/state.json` を置きません。
 
-headsign は、その次の一手になり得ます。
-同じ CI の失敗が繰り返し戻ってくるとき、これらの skill は workflow を提案してよいです。
-頼まれない限り、同じ一回の中で `.headsign/` は作りません。
-そのファイルを設計するのは `design-workflow` です。
-run を運転するのは `workflow` です。
+振り返りが、同じゲートが無視され続けていることを示しているとき、これらの skill は `PROPOSED` を記録してよいです。
+その提案は、ゲートが通るまでターンを止める hook による強制を名指しします。
+headsign はその host の一つです。
+別の host の hook も同じ種類の提案です。
+頼まれない限り、同じ一回の中でその hook は入れません。
 
-ファイルの形、三つの違い、実行時に headsign を要しない辿り方は [プロジェクトローカル skill](docs/project-local-skills.ja.md) にあります。
+ファイルの形、三つの違い、リポジトリ自身のコマンドで辿る方法は [プロジェクトローカル skill](docs/project-local-skills.ja.md) にあります。
 
 ## ループはどんな形か
 

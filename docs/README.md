@@ -8,7 +8,7 @@ To change headsign itself, start with [AGENTS.md](../AGENTS.md) and its required
 | Page | For |
 |---|---|
 | [Workflow reference](workflow-reference.md) | Writing a `.headsign/workflow.yaml`, and what each CLI command answers |
-| [Project-local skills](project-local-skills.md) | A skill under `.agents/skills/` whose gates are product commands, runnable with no headsign install and no `.headsign/` |
+| [Project-local skills](project-local-skills.md) | A skill under `.agents/skills/` whose gates are product commands the checkout can run |
 | [Architecture](architecture.md) | How the tool is put together — the loop, the module map, the invariants |
 | [Architecture Decision Records](adr/README.md) | The *why* behind each decision, one per file |
 | [Maintenance](maintenance.md) | Release checklist, distribution channels, and repository settings that live outside the tree |
@@ -22,7 +22,7 @@ The plugin ships these skills:
 | [workflow](../plugin/skills/workflow/SKILL.md) | Drive a run and collect observations |
 | [optimize](../plugin/skills/optimize/SKILL.md) | Assess a finished run and apply or propose improvements |
 | [project-skill](../plugin/skills/project-skill/SKILL.md) | Copy a workflow's gates into a project-local skill |
-| [create-skill-workflow](../plugin/skills/create-skill-workflow/SKILL.md) | Invent that local skill without headsign at runtime |
+| [create-skill-workflow](../plugin/skills/create-skill-workflow/SKILL.md) | Invent that local skill from the repository's own commands |
 | [optimize-skill-workflow](../plugin/skills/optimize-skill-workflow/SKILL.md) | Revise an existing skill, including a contradictory runtime or a stale command |
 
 `workflow`, `design-workflow`, `project-skill`, `create-skill-workflow`, and
@@ -30,7 +30,7 @@ The plugin ships these skills:
 the entry. Read the entry first, then open the reference it names.
 `optimize` is the whole skill. What `create-skill-workflow`,
 `project-skill`, and `optimize-skill-workflow` each write, and how to follow
-the file without headsign, is [Project-local
+the file with the repository's own commands, is [Project-local
 skills](project-local-skills.md).
 
 [Optimization by default](workflow-reference.md#optimization-at-the-boundary)

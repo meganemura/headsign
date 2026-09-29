@@ -7,7 +7,7 @@ repository already documents another directory for contributor skills. Do
 not write it into a directory the package publishes for downstream users
 unless the user says that directory is the contributor skill home.
 
-If the job is only to copy an existing workflow's gates, stop and use
+If the job is only to copy an existing workflow's checks, stop and use
 `project-skill`.
 
 ## 1. Survey
@@ -25,8 +25,7 @@ and treat the queue as a Needs human candidate.
 
 Note prose rules (AGENTS.md, CONTRIBUTING, comments) that could become one
 command. Note how big a recent change tends to be. Note what agents already
-have: AGENTS.md, skills, required CI checks, and whether `.headsign/` is
-present. A `.headsign/` directory is a fact. It is not a required gate.
+have: AGENTS.md, skills, and required CI checks.
 
 Show the user a short inventory, then go on.
 
@@ -48,11 +47,12 @@ Settle at least these:
   its own.
 - **Self-improve.** When the local skill looks back: at completion, after
   the same gate fails twice, or both.
-- **Runtime.** The default is that the local skill does not need headsign
-  or another orchestrator. Promotion is a later proposal.
+- **Runtime.** The default is that the local skill runs on the repository's
+  own commands. Hook enforcement is outside this pass.
 
 A tool the user says is absent stays in the tool menu as a purpose and a
-candidate. It is not a gate. A later self-improve pass can promote it.
+candidate. It is not a gate. A later self-improve pass can put it on a gate
+once this checkout can run it.
 
 ## 3. What the local skill owes the agent
 
@@ -69,7 +69,8 @@ subcommand that belonged to a different tool, and a dependency nobody has
 installed yet do not appear in Gates or in acceptance text.
 
 When the work needs a single owner, a gitignored file such as `loop.json`
-is enough. Do not send the generated skill to read an orchestrator's state.
+is enough. The generated skill reads that file. It does not read an
+orchestrator's state.
 
 A queue is the CLI that exists. `bd` is the usual example when that CLI is
 installed. Where it is not, the outcome is Needs human.
@@ -79,10 +80,9 @@ installed. Where it is not, the outcome is Needs human.
 Use this order. Gates stay in `SKILL.md`, not in a reference the driver
 might skip.
 
-1. **When to use.** A sentence that refuses a second loop may live here.
-   It is not a gate. Do not require `.headsign/state.json` for a skill
-   whose purpose is to run without headsign. A thin ownership file is the
-   default when ownership matters.
+1. **When to use.** A sentence that refuses a second ownership loop may
+   live here. It is not a gate. The thin ownership file is how that is
+   known when ownership matters.
 2. **Goals.** Done, Impossible, and Needs human. No step list that
    restates the gates. Impossible covers acceptance that contradicts a
    preserved contract, or a gate that can pass only by weakening a check.
@@ -100,14 +100,13 @@ might skip.
 7. **Self-improve.** Below.
 
 Optional: the CI gate list, a pointer at a risk table, and the condition
-for proposing headsign ("the same CI failure keeps coming back; revisit
-the design then").
+for proposing hook enforcement (look-backs show the same gates keep being
+ignored).
 
 Acceptance text for a ticket or a finding uses a command that Gates or the
-tool menu already names. Remove a checker name the checkout cannot run,
-including one that used to belong to headsign or to another tool. Keep
-mutation and other heavy checks off the product gate unless the user made
-them one, and say when they run.
+tool menu already names. Remove a checker name the checkout cannot run.
+Keep mutation and other heavy checks off the product gate unless the user
+made them one, and say when they run.
 
 ## 5. Independent review
 
@@ -141,14 +140,16 @@ candidate. Nothing in this table is mandatory.
 
 The local skill ends with a look-back at completion or at a terminal stop.
 The record's first line is exactly one of `NO_CHANGE`, `APPLIED`,
-`PROPOSED`, `DEFERRED`, the same four words the `optimize` skill uses.
-A nonempty explanation follows. One pass.
+`PROPOSED`, `DEFERRED`, the same four words the `optimize` skill uses for
+a finished run. A nonempty explanation follows. One pass.
 
 - `NO_CHANGE` — leave it, and say why.
 - `APPLIED` — a change inside the current policy: this skill, a check
   command, or a thin helper, then how it was verified.
-- `PROPOSED` — a change that needs a person: AGENTS.md, a contract, CI,
-  or promoting the loop to a headsign workflow. Name the next step.
+- `PROPOSED` — a change that needs a person: AGENTS.md, a contract, or CI.
+  Name the next step. When look-backs show the same gates keep being
+  ignored, name hook enforcement (headsign or another host hook) and the
+  next step.
 - `DEFERRED` — skipped, and why.
 
 Prefer a change that makes a later job's completion, its failure signal,
@@ -172,20 +173,22 @@ gitignored work log, or a short section in the change description.
 
 ## Do not
 
-- Require the people who will use the local skill to install headsign.
-- Put `.headsign/` or an orchestrator's state on a gate in the file you
-  write.
+- Require the people who will use the local skill to install headsign or
+  another orchestrator.
+- Put an orchestrator's state on a gate in the file you write.
 - Choose a large workflow before the survey.
 - Fix the agent's steps line by line.
 - Make something no command can judge into a required gate.
 - Leave a vanished command in Gates or in acceptance text.
 - Write access to secrets or production credentials into the skill.
+- Propose hook enforcement before look-backs have shown the gates being
+  ignored.
 
-## headsign, later
+## When gates keep being ignored
 
-The survey may reuse the `design-workflow` habit of listing mechanical
-signals before proposing phases. The artifact of this skill is still the
-local skill, unless the user also asked for a workflow file. The runtime
-is the skill, the product's commands, and a queue that exists. When the
-same CI failure keeps recurring, propose a headsign workflow then. Do not
-build it in this pass unless the user asked.
+The survey may list mechanical signals before the skill is written. The
+artifact of this skill is still the local skill. The runtime is the skill,
+the product's commands, and a queue that exists. When look-backs show the
+same gates keep being ignored, the local skill's Self-improve records
+`PROPOSED` and names hook enforcement (headsign or another host hook), with
+the next step. Do not add that hook in this pass unless the user asked.

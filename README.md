@@ -258,23 +258,21 @@ request for that stop. The hook cannot infer other stop intent from its input.
 ## Project-local skills
 
 **Gates live in the skill's `SKILL.md`, as product commands the checkout can
-already run. That loop does not need headsign installed, and it does not
-need a `.headsign/` directory.** Advance is the exit code of one of those
-commands. The people who follow the skill use the repository's own tools.
-headsign is not a dependency of the file.
+already run.** Advance is the exit code of one of those commands. The people
+who follow the skill use the repository's own tools. Following the file does
+not require the headsign program.
 
 Three skills write or revise that file and then stop. They do not drive the
-job, and they do not start a headsign run. Pick by what you already have:
+job. Pick by what you already have:
 
 | Skill | You have | The skill does |
 |---|---|---|
-| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | A repository, and no workflow whose gates you are copying | Surveys the checkout, settles the gaps with you, and invents the local skill |
-| [`project-skill`](plugin/skills/project-skill/SKILL.md) | A workflow file, or exact commands you named | Copies each `gate.checks` `run` string into the local skill |
+| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | A repository, and no workflow whose checks you are copying | Surveys the checkout, settles the gaps with you, and invents the local skill |
+| [`project-skill`](plugin/skills/project-skill/SKILL.md) | A workflow file you name, or exact commands you named | Copies each check `run` string into the local skill |
 | [`optimize-skill-workflow`](plugin/skills/optimize-skill-workflow/SKILL.md) | A skill that already has a name | Revises it: a runtime the skill claims not to need, an acceptance command the checkout cannot run, or a review that is only two roles in one session |
 
-`optimize` assesses a finished headsign run. It writes
-`.headsign/optimization/<run-id>/assessment.md`. It leaves skill files
-alone. A request to edit a skill is `optimize-skill-workflow`.
+`optimize` assesses a finished headsign run. It leaves skill files alone.
+A request to edit a skill is `optimize-skill-workflow`.
 
 The written skill defaults to `.agents/skills/<name>/SKILL.md`, unless the
 repository already documents another home for contributor skills. Gates stay
@@ -290,8 +288,7 @@ exists, moving the work needs a person. When the work needs a single owner,
 a gitignored file such as `loop.json` is enough. The skill does not read an
 orchestrator's state to decide who owns the job. Acceptance text for a
 ticket names a command that Gates or the tool menu already names. A checker
-the checkout cannot run is removed, including one that used to belong to
-headsign.
+the checkout cannot run is removed.
 
 Independent review is another session writing the verdict, or a command that
 checks the verdict file: kind, revision, ticket, base, and a nonempty human
@@ -308,22 +305,20 @@ gh skill install meganemura/headsign create-skill-workflow
 ```
 
 `project-skill` and `optimize-skill-workflow` use the same command with that
-name. The agent writes or revises the file and stops. It does not run
-`headsign start`. Later work follows the local skill: run the fenced
-command, and treat exit 0 as the advance. The gates do not call
-`headsign next`, and they do not read `.headsign/`. When `project-skill`
-copies an existing workflow file, When to use says not to start a second
-loop while `.headsign/state.json` shows that workflow running. That sentence
-is a refusal, not a gate. `create-skill-workflow` does not put
-`.headsign/state.json` on a skill whose purpose is to run without headsign.
+name. The agent writes or revises the file and stops. Later work follows the
+local skill: run the fenced command, and treat exit 0 as the advance. When
+the work needs a single owner, When to use says not to run two ownership
+loops at once. The thin ownership file is how that is known. That sentence
+is a refusal, not a gate.
 
-headsign can still be the next step. When the same CI failure keeps coming
-back, these skills may propose a workflow. They do not build `.headsign/` in
-the same pass unless you asked. Designing that file is `design-workflow`.
-Walking a run is `workflow`.
+When look-backs show the same gates keep being ignored, these skills may
+record `PROPOSED` and name hook enforcement that holds the turn until the
+gate has passed. headsign is one such host. Another host's hook is the same
+kind of proposal. They do not install that hook in the same pass unless you
+asked.
 
 The shape of the file, how the three skills differ, and how to follow one
-without headsign at runtime:
+with the repository's own commands:
 [Project-local skills](docs/project-local-skills.md).
 
 ## What a loop looks like

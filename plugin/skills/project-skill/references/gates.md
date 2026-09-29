@@ -43,5 +43,5 @@ once the checker's own messages say so.
 ## No workflow file
 
 Use only commands the user named, or scripts they pointed at. Label the result
-as the user's checks, not as a headsign gate. Do not add a command because a
-similar repository has one.
+as the user's checks. Do not add a command because a similar repository has
+one.
