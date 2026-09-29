@@ -27,6 +27,9 @@ without its rebuilt bundle.
 - `npm run typecheck && npm test && npm run build` — and commit
   `plugin/dist/headsign.mjs` together with the src change. CI fails
   otherwise (`dist matches src`).
+- `npm run archstrict` before you push. CI runs it after typecheck. A new
+  module-boundary violation fails the step. Debt frozen in
+  `archstrict.todo.json` does not: that file only shrinks.
 - For a change to `plugin/hooks/mod.ts` or `plugin/tests/`: run `/plugin-types`
   once in a Claude Code session at the repository root (it writes the
   ignored `.claude/types/`), then `npx tsc -p plugin/hooks` and
@@ -424,10 +427,12 @@ machine or is protected against being undone once it has.
    shipped and the shared reference point for every other channel does not yet
    exist. `&&` and not `;` — a rejected push must not be followed by a tag
    push that succeeds.
-8. **[agent]** Create the GitHub Release for the tag; its body is the
-   transcription of the `CHANGELOG.md` section. Reversible — a release can be
-   deleted, and the protected thing it hangs on is the tag, which already
-   exists by now.
+8. **[agent]** The workflow's `release` job creates the GitHub Release
+   after step 9's `npm publish` succeeds, from that version's
+   `CHANGELOG.md` section. A release that already exists is left in place.
+   The job is separate from `publish` so `contents: write` never sits on
+   the job that holds the npm OIDC token. If the job fails, the fallback
+   commands are [Releasing](releasing.md).
 
    **Backfilling an older version needs `--latest=false`.** GitHub picks the
    "Latest" release by publication *time*, not by version, so creating a page
@@ -524,10 +529,9 @@ That is the whole command list — one command, plus two things that are not
 commands: approving the `publish` environment, so the tag you just pushed is
 the one npm serves (step 9), and restarting each host you updated, so the
 release you just cut is the one this machine runs (step 11). The GitHub
-Release is *not* yours: it can be deleted, which by this page's own rule puts
-it on the agent's side. It was listed here once, and the release it was listed
-for is the one that never got a page — a step an agent could do but a person
-is marked for is a step with nobody actually holding it.
+Release is not yours, and it is not a separate agent step. The workflow
+creates it after `npm publish` succeeds (step 8). A backfill of an older
+tag is the manual case in that step.
 
 The Environment `publish` and the npm trusted publisher are already
 configured (2026-09-23). They are not part of this list. Recreate one only

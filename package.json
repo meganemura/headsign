@@ -39,6 +39,7 @@
     "test": "node --test --test-reporter=@meganemura/depug/node-test-reporter --test-reporter-destination=stdout --test-reporter=spec --test-reporter-destination=stderr tests/*.test.ts",
     "coverage": "node --test --test-reporter=@meganemura/depug/node-test-reporter --test-reporter-destination=stdout --test-reporter=spec --test-reporter-destination=stderr --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=97 tests/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "archstrict": "archstrict check",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "depug": {
@@ -50,6 +51,7 @@
     "@hegeldev/hegel": "0.4.5",
     "@meganemura/depug": "0.1.3",
     "@types/node": "^26.1.1",
+    "archstrict": "0.1.0",
     "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "yaml": "^2.9.0"

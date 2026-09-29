@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "modules": {
+    "engine.ts": [
+      {"rule":"type-leak","path":"src/engine.ts","evidence":"'Status', declared in 'src/state.ts', is never exported by name from module 'engine.ts' - referenced by 'step'"}
+    ]
+  }
+}

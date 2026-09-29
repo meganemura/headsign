@@ -2,6 +2,8 @@
 # headsign is already on npm. This file is the publish path: no token
 # bootstrap, and it never reads NPM_TOKEN.
 # Boundary: checkout the tag, run the release checks, and npm publish.
+# A second job then creates the GitHub Release. It is separate so
+# contents:write never sits on the job that holds the npm OIDC token.
 # The GitHub Environment `publish` approves the run. npm authenticates
 # with that environment's OIDC token. Provenance is attached because
 # the repository and the package are public.
@@ -14,8 +16,9 @@ on:
 
 # Declared here even though the repository default is `read`, because a recipe
 # copied out of this file travels to a repository whose default may not be.
-# The job below replaces this set rather than extending it, so it repeats
-# `contents: read` and adds `id-token: write`.
+# Each job below replaces this set rather than extending it. `publish`
+# repeats `contents: read` and adds `id-token: write`. `release` sets
+# `contents: write` only.
 permissions:
   contents: read
 
@@ -98,3 +101,34 @@ jobs:
           fi
 
       - run: npm publish
+
+  # Runs only after npm publish succeeds. A separate job keeps contents:write
+  # away from the job that holds the npm OIDC token.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create the GitHub release from this version's changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # --notes-file CHANGELOG.md would carry every version, so extract only this one.
+          # Headings are Keep a Changelog: "## [X.Y.Z] - date". The brackets keep
+          # a shorter version from matching a longer one. The archstrict pattern
+          # is the same awk, against headings written "## X.Y.Z ".
+          awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {in_version=1; next} /^## /{in_version=0} in_version' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for ${version}" >&2
+            exit 1
+          fi
+          # A re-run of the same tag must not fail on a release that already exists.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} already exists"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

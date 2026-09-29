@@ -5,16 +5,17 @@ bootstrap, and this repository does not store `NPM_TOKEN`.
 
 Pushing a `v*` tag runs
 [`.github/workflows/publish.yml`](../.github/workflows/publish.yml). The
-job enters the GitHub Environment `publish` and waits until a required
-reviewer approves it. That approval is what lets the job request an OIDC
-token and run `npm publish`. Provenance is attached automatically because
+`publish` job enters the GitHub Environment `publish` and waits until a
+required reviewer approves it. That approval is what lets the job request
+an OIDC token and run `npm publish`. Provenance is attached automatically because
 the repository and the package are public.
 
 The checklist that prepares the commit — versions, the committed bundle,
-the changelog, the GitHub Release, the installed hosts — stays in
+the changelog, the installed hosts — stays in
 [Maintenance](maintenance.md#releasing-vxyz). This page is the registry
 half: the trusted publisher and the Environment, and what has to be true
-each time the workflow publishes.
+each time the workflow publishes. After `npm publish` succeeds, the same
+workflow creates the GitHub Release.
 
 ## Trusted publisher and the Environment
 
@@ -97,5 +98,13 @@ enabled, so a workflow that names an action by tag is rejected.
    skips `prepublishOnly`, which is why those commands are steps. The
    package `engines` field stays `>=20`; Node 24 is the publish job, not
    a new requirement for people running the bin.
-6. Create the GitHub Release, then install the release on each host, as
-   the rest of the maintenance checklist describes.
+6. After `npm publish` succeeds, the workflow's `release` job creates the
+   GitHub release. It extracts only that version's section from
+   `CHANGELOG.md` (the whole file would carry every version), and it skips
+   a release that already exists, so re-running the tag is safe. If that
+   job fails, extract the section and create the release by hand:
+   `awk '/^## \[X.Y.Z\]/{in_version=1;next} /^## /{in_version=0} in_version' CHANGELOG.md > notes.md`,
+   then `gh release create vX.Y.Z --title vX.Y.Z --notes-file notes.md --verify-tag`.
+   Headings in this repository are `## [X.Y.Z] - date`, so the pattern
+   matches the brackets. Then install the release on each host, as the
+   rest of the maintenance checklist describes.

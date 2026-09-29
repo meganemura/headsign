@@ -44,6 +44,10 @@ jobs:
 
       - run: npm run typecheck
 
+      # Module boundaries. A new violation fails the step. Debt already frozen
+      # in archstrict.todo.json does not: that file only shrinks.
+      - run: npm run archstrict
+
       # `npm run coverage` rather than `npm test`: it runs the same files with the
       # same runner and adds three thresholds — 100% of lines and of functions in
       # `src/`, and a branch floor set below the measured number rather than at
