@@ -223,7 +223,12 @@ The bundled skills divide the work:
 | `create-skill-workflow` | Invent and write that local skill from the repository, without headsign at runtime |
 | `optimize-skill-workflow` | Revise an existing skill, including a contradictory runtime dependency or a stale acceptance command |
 
-`workflow`, `design-workflow`, `project-skill`, `create-skill-workflow`, and `optimize-skill-workflow` are short entries. The long procedure sits in `references/` beside the entry and is opened when that entry names it. `optimize` is the whole skill: it assesses a finished run. `optimize-skill-workflow` revises a skill file. `project-skill` copies gates; `create-skill-workflow` is the broader invent-and-write skill.
+`workflow`, `design-workflow`, `project-skill`, `create-skill-workflow`, and
+`optimize-skill-workflow` are short entries. The long procedure sits in
+`references/` beside the entry and is opened when that entry names it.
+`optimize` is the whole skill: it assesses a finished run. [Project-local
+skills](#project-local-skills) says what the other three write, and how a
+team follows that file without installing headsign.
 
 New runs enable optimization by default. Use `headsign start --no-optimize`,
 or add the option after a workflow name, to opt out for one run. At the first
@@ -249,6 +254,77 @@ notice remains the guidance. Aborted runs, old runs, opt-out runs, pauses, and
 observer sessions do not receive this fallback. For an explicit stop, the
 skill records `DEFERRED` when possible. A nonempty stop note suppresses the
 request for that stop. The hook cannot infer other stop intent from its input.
+
+## Project-local skills
+
+**Gates live in the skill's `SKILL.md`, as product commands the checkout can
+already run. That loop does not need headsign installed, and it does not
+need a `.headsign/` directory.** Advance is the exit code of one of those
+commands. The people who follow the skill use the repository's own tools.
+headsign is not a dependency of the file.
+
+Three skills write or revise that file and then stop. They do not drive the
+job, and they do not start a headsign run. Pick by what you already have:
+
+| Skill | You have | The skill does |
+|---|---|---|
+| [`create-skill-workflow`](plugin/skills/create-skill-workflow/SKILL.md) | A repository, and no workflow whose gates you are copying | Surveys the checkout, settles the gaps with you, and invents the local skill |
+| [`project-skill`](plugin/skills/project-skill/SKILL.md) | A workflow file, or exact commands you named | Copies each `gate.checks` `run` string into the local skill |
+| [`optimize-skill-workflow`](plugin/skills/optimize-skill-workflow/SKILL.md) | A skill that already has a name | Revises it: a runtime the skill claims not to need, an acceptance command the checkout cannot run, or a review that is only two roles in one session |
+
+`optimize` assesses a finished headsign run. It writes
+`.headsign/optimization/<run-id>/assessment.md`. It leaves skill files
+alone. A request to edit a skill is `optimize-skill-workflow`.
+
+The written skill defaults to `.agents/skills/<name>/SKILL.md`, unless the
+repository already documents another home for contributor skills. Gates stay
+in that `SKILL.md`, one fenced command per advance, so the agent that
+follows the skill sees the shell. A gate is a command this checkout can run
+now, such as `npm test`, a lint script, or an architecture check. A command
+the skill had to invent is not a gate. A tool that is not installed stays a
+candidate in the tool menu.
+
+A queue is a CLI that is already installed, such as `bd`, another
+issue-tracker CLI, or a thin manifest the repository already has. When none
+exists, moving the work needs a person. When the work needs a single owner,
+a gitignored file such as `loop.json` is enough. The skill does not read an
+orchestrator's state to decide who owns the job. Acceptance text for a
+ticket names a command that Gates or the tool menu already names. A checker
+the checkout cannot run is removed, including one that used to belong to
+headsign.
+
+Independent review is another session writing the verdict, or a command that
+checks the verdict file: kind, revision, ticket, base, and a nonempty human
+reason. Playing both roles in one session is a limit, and the skill says so.
+A sentence that says the author does not approve their own change is not, by
+itself, a review.
+
+To have an agent write the file, name the skill, or install that one skill
+the way the [workflow reference](docs/workflow-reference.md#using-without-the-plugin)
+installs `workflow`:
+
+```
+gh skill install meganemura/headsign create-skill-workflow
+```
+
+`project-skill` and `optimize-skill-workflow` use the same command with that
+name. The agent writes or revises the file and stops. It does not run
+`headsign start`. Later work follows the local skill: run the fenced
+command, and treat exit 0 as the advance. The gates do not call
+`headsign next`, and they do not read `.headsign/`. When `project-skill`
+copies an existing workflow file, When to use says not to start a second
+loop while `.headsign/state.json` shows that workflow running. That sentence
+is a refusal, not a gate. `create-skill-workflow` does not put
+`.headsign/state.json` on a skill whose purpose is to run without headsign.
+
+headsign can still be the next step. When the same CI failure keeps coming
+back, these skills may propose a workflow. They do not build `.headsign/` in
+the same pass unless you asked. Designing that file is `design-workflow`.
+Walking a run is `workflow`.
+
+The shape of the file, how the three skills differ, and how to follow one
+without headsign at runtime:
+[Project-local skills](docs/project-local-skills.md).
 
 ## What a loop looks like
 
@@ -411,7 +487,9 @@ instead of silence. A read-only
 
 **Skill packs** provide reusable instructions for agents. headsign provides the gate machinery. You provide a workflow for
 your repository or select one from
-[example.headsign/](example.headsign/).
+[example.headsign/](example.headsign/). When those gates can live in a skill
+the team already follows, [Project-local skills](#project-local-skills)
+writes that file and leaves the CLI out of the loop.
 
 ## Development
 
