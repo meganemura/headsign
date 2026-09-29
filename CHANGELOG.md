@@ -9,6 +9,8 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-30
+
 ### Changed
 
 - **Project-local skills teach shell gates, not a headsign workflow.**
