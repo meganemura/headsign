@@ -13,15 +13,18 @@ To change headsign itself, start with [AGENTS.md](../AGENTS.md) and its required
 | [Maintenance](maintenance.md) | Release checklist, distribution channels, and repository settings that live outside the tree |
 | [Releasing](releasing.md) | npm Trusted Publisher: the one-time registry setup, and what a `v*` tag publishes |
 
-The plugin ships three skills:
+The plugin ships these skills:
 
 | Skill | For |
 |---|---|
 | [design-workflow](../plugin/skills/design-workflow/SKILL.md) | Design or revise phases, checks, and routes |
 | [workflow](../plugin/skills/workflow/SKILL.md) | Drive a run and collect observations |
-| [optimize](../plugin/skills/optimize/SKILL.md) | Assess the procedure and apply or propose improvements |
+| [optimize](../plugin/skills/optimize/SKILL.md) | Assess a finished run and apply or propose improvements |
+| [project-skill](../plugin/skills/project-skill/SKILL.md) | Copy a workflow's gates into a project-local skill |
+| [create-skill-workflow](../plugin/skills/create-skill-workflow/SKILL.md) | Invent that local skill without headsign at runtime |
+| [optimize-skill-workflow](../plugin/skills/optimize-skill-workflow/SKILL.md) | Revise an existing skill, including a contradictory runtime or a stale command |
 
-`workflow` and `design-workflow` keep the long procedure in `references/` next to the entry. Read the entry first, then open the reference it names. `optimize` is the whole skill.
+`workflow`, `design-workflow`, `project-skill`, `create-skill-workflow`, and `optimize-skill-workflow` keep the long procedure in `references/` next to the entry. Read the entry first, then open the reference it names. `optimize` is the whole skill. `project-skill` copies gates; `create-skill-workflow` is the broader invent-and-write skill. `optimize-skill-workflow` is not the run assessment.
 
 [Optimization by default](workflow-reference.md#optimization-at-the-boundary)
 explains the runtime behavior and its limits.

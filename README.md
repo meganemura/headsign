@@ -145,7 +145,8 @@ agy plugin install https://github.com/meganemura/headsign
 (Or from within a cloned repository: `agy plugin install ./plugin`)
 
 All three hosts receive the bundled CLI (no npm install or build), the
-`workflow` skill, the `design-workflow` skill, the `optimize` skill, and lifecycle hooks.
+`workflow`, `design-workflow`, `optimize`, `project-skill`,
+`create-skill-workflow`, and `optimize-skill-workflow` skills, and lifecycle hooks.
 On Antigravity, the `Stop` hook prevents premature agent termination while a workflow is running, and `PreInvocation` discovers unfinished workflows at session start.
 Claude Code and Codex use SessionStart discovery and two stop-boundary hooks.
 
@@ -217,9 +218,12 @@ The bundled skills divide the work:
 |---|---|
 | `design-workflow` | Design or revise the workflow and its checks |
 | `workflow` | Drive the current run and collect useful observations |
-| `optimize` | Assess the procedure and apply or propose consequential improvements |
+| `optimize` | Assess a finished run and apply or propose consequential improvements |
+| `project-skill` | Copy a workflow's gates into a project-local skill that does not need headsign installed |
+| `create-skill-workflow` | Invent and write that local skill from the repository, without headsign at runtime |
+| `optimize-skill-workflow` | Revise an existing skill, including a contradictory runtime dependency or a stale acceptance command |
 
-`workflow` and `design-workflow` are short entries. The long procedure sits in `references/` beside the entry and is opened when that entry names it. `optimize` is the whole skill.
+`workflow`, `design-workflow`, `project-skill`, `create-skill-workflow`, and `optimize-skill-workflow` are short entries. The long procedure sits in `references/` beside the entry and is opened when that entry names it. `optimize` is the whole skill: it assesses a finished run. `optimize-skill-workflow` revises a skill file. `project-skill` copies gates; `create-skill-workflow` is the broader invent-and-write skill.
 
 New runs enable optimization by default. Use `headsign start --no-optimize`,
 or add the option after a workflow name, to opt out for one run. At the first

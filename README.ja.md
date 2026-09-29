@@ -147,7 +147,7 @@ agy plugin install https://github.com/meganemura/headsign
 
 (クローン済みのローカルリポジトリ内からであれば、`agy plugin install ./plugin` でもインストールできます)
 
-どのホストにもバンドル済み CLI(npm install もビルドも不要)、`workflow` スキル、`design-workflow` スキル、`optimize` スキル、ライフサイクルフックが届きます。
+どのホストにもバンドル済み CLI(npm install もビルドも不要)、`workflow`、`design-workflow`、`optimize`、`project-skill`、`create-skill-workflow`、`optimize-skill-workflow` の各スキル、ライフサイクルフックが届きます。
 Antigravity では、ワークフロー実行中にエージェントが途中で停止するのを `Stop` フックが防ぎ、セッション開始時には `PreInvocation` フックが未完了のワークフローを発見します。
 Claude Code と Codex は SessionStart による発見と二つの停止境界 hook を使います。
 
@@ -211,7 +211,16 @@ CI のジョブでも、ツールチェーンが本来 Node と無縁な Ruby / 
 |---|---|
 | `design-workflow` | workflow と検査を設計、改訂する |
 | `workflow` | 現在の run を進め、有用な観察を残す |
-| `optimize` | 手順を評価し、影響の大きい改善を適用、提案する |
+| `optimize` | 終えた run を評価し、影響の大きい改善を適用、提案する |
+| `project-skill` | 既存 workflow のゲートを、headsign のインストールなしで辿れるプロジェクトローカル skill に写す |
+| `create-skill-workflow` | リポジトリを調べ、実行時に headsign を要しないローカル skill を新たに書く |
+| `optimize-skill-workflow` | 既存の skill を改訂する。目的と矛盾するランタイム依存や、消えた受け入れコマンドを含む |
+
+`workflow`、`design-workflow`、`project-skill`、`create-skill-workflow`、`optimize-skill-workflow` は短い入口です。
+長い手順はそれぞれの `references/` にあり、入口が指したファイルだけを開きます。
+`optimize` だけはファイル全体が skill です。終えた run を評価します。
+`optimize-skill-workflow` は指名された skill ファイルを改訂します。
+`project-skill` はゲートを写し、`create-skill-workflow` は調査から skill を書く、より広い技能です。
 
 新しい run では、改善の評価が既定で有効です。
 一つの run で無効にするには、`headsign start --no-optimize` を使うか、ワークフロー名の後ろにこのオプションを付けます。

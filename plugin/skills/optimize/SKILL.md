@@ -44,3 +44,5 @@ path's parent directory if needed. Keep the record a regular file of at most
 - `DEFERRED` — name why assessment must wait.
 
 Add nonempty text after the first line. Write the final record only after terminal completion or escalation. An explicit user stop can use `DEFERRED` earlier when that record can be written safely.
+
+This skill assesses a finished run. Improving a skill file the user names — a gate that requires a runtime the skill claims not to need, or an acceptance command the checkout cannot run — is `optimize-skill-workflow`.

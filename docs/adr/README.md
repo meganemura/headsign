@@ -59,7 +59,7 @@ decision changes, amend the relevant ADR rather than adding a new one, unless
 the change is large enough to be its own record.
 
 **A skill may say more about a decision recorded here, and the decision
-stands unchanged.** The three skills carry the guidance that puts an ADR's decision
+stands unchanged.** The skills carry the guidance that puts an ADR's decision
 to work, and field reports keep asking them for cases the decision covers and
 the text never spelled out — how long an anchor lasts, what dates an artifact,
 what a lap costs. Answering one of those edits `plugin/skills/`, `CHANGELOG.md`

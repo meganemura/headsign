@@ -141,4 +141,6 @@ produced useful findings, use them instead of repeating the investigation.
 | Editing the workflow file during a run, the closed schema, `on_pass` lists, `on_fail: retry` versus re-entry | `references/notes.md` |
 
 Authoring or reshaping a workflow file is the `design-workflow` skill.
-Assessing a finished run is the `optimize` skill.
+Assessing a finished run is the `optimize` skill. Copying the workflow's
+gates into a project-local skill is `project-skill`. Inventing that skill
+so it runs without headsign is `create-skill-workflow`.

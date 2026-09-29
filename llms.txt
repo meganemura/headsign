@@ -4,13 +4,16 @@ A small phase gate for coding-agent loops. The agent does the work; headsign hol
 
 It is not a general workflow engine, not a chatbot, and not a substitute for the agent's judgment about method.
 
-Agent skills (shipped under `plugin/skills/`): `workflow`, `design-workflow`, `optimize`.
+Agent skills (shipped under `plugin/skills/`): `workflow`, `design-workflow`, `optimize`, `project-skill`, `create-skill-workflow`, `optimize-skill-workflow`.
 
 Load a skill's `SKILL.md` first. It says when the skill applies and which file under that skill's `references/` to open. Open a reference only for the path the entry names.
 
 - `plugin/skills/workflow/SKILL.md` — drive a run. References: `driving.md`, `verdicts.md`, `stopping.md`, `review.md`, `notes.md`.
 - `plugin/skills/design-workflow/SKILL.md` — write or revise a workflow file. References: `procedure.md`, `asking.md`, `vocabulary.md`, `schema.md`, `pitfalls.md`, `checks.md`, `comments.md`.
 - `plugin/skills/optimize/SKILL.md` — assess a finished run. No `references/` directory; the entry is the whole skill.
+- `plugin/skills/project-skill/SKILL.md` — copy a workflow's gates into a project-local skill. References: `gates.md`, `shape.md`.
+- `plugin/skills/create-skill-workflow/SKILL.md` — invent a project-local workflow skill that does not need headsign at runtime. References: `procedure.md`.
+- `plugin/skills/optimize-skill-workflow/SKILL.md` — revise an existing skill. References: `procedure.md`. `optimize` remains the run assessment.
 
 Installed package: the npm `files` list includes `plugin/` and this `llms.txt`.
 
