@@ -8,26 +8,13 @@ that directory is the contributor skill home.
 Named commands, or a file of those command strings: stop and use
 `project-skill`.
 
-## Done and steps
-
-**Done** (contract, written into Goals): finish at human-ready. Every
-local gate has exited 0, CI is green, and AI review is complete. A local
-commit is included when a gate requires one. No push unless the user
-asked. The agent may loop until Done. Wait and fix actuators are
-swappable.
-
-**Steps** (this procedure): Survey, Settle, Write, Check. Each ends at
-its completion criterion. These steps do not poll CI, reply to review
-comments, or install a scheduled agent loop. An unattended loop the user
-wants is a `PROPOSED` line in Self-improve, not a step here.
+Done, Steps, Gates, and the completion criterion for each phase are in
+the entry. This file is the work inside the phase. An unattended loop the
+user wants is a `PROPOSED` line in Self-improve.
 
 **Why and env, one source.** The generated `description` is the only
 when-to-use. The checkout's own spelling is the only gate string. Do not
 copy either into a second section.
-
-**Gates** are exact shell fences in that `SKILL.md`. Exit 0 advances.
-The path above a fence is the agent's. A prose completion line is not a
-gate.
 
 ## Contents
 
@@ -63,17 +50,13 @@ already have, including whether CI and an AI review exist.
 
 Show the user a short inventory, then go on.
 
-**Completion criterion:** The user has seen that inventory. Every command
-is tagged gate candidate, tool, or standing CI. The skill file does not
-exist yet.
-
 ## 2. Settle
 
 Read the repository before you ask. When you ask, offer one recommended
 default from that evidence and what it costs. One gap at a time. If the
 evidence answered it, do not ask.
 
-- **Done.** The contract above. Ask only when the survey contradicts it.
+- **Done.** The entry's contract. Ask only when the survey contradicts it.
 - **Contract.** Whether a structural gate exists, and how far it reaches.
 - **Focus.** Paths the job may touch, and where "not this" is written.
 - **Review.** How independence is produced. Another session or agent is
@@ -82,10 +65,6 @@ evidence answered it, do not ask.
   both.
 - **Runtime.** The repository's own commands. A missing tool stays a
   named candidate in the tool menu.
-
-**Completion criterion:** Every gap that changes a required outcome or a
-constraint you cannot choose is settled, from the repository or from an
-answer to a question that carried a default.
 
 ## 3. The file
 
@@ -104,7 +83,7 @@ Ownership, when the work needs one owner, is a gitignored file such as
 1. **When to use.** The `description` already says this. The body only
    adds a fact the description cannot hold, such as: if `loop.json` shows
    an owner, do not start a second loop. That sentence is not a gate.
-2. **Goals.** Done is the contract above. Impossible: acceptance
+2. **Goals.** Done is the entry's contract. Impossible: acceptance
    contradicts a preserved contract, or a gate can pass only by weakening
    a check. Needs human: missing authority or information, a check that
    cannot pass without inventing work, or standing CI the survey did not
@@ -161,17 +140,8 @@ Tool menu purposes, none of them mandatory:
 Apply section 3. Ask before adding a one-line pointer in AGENTS.md. Name
 one objective the user could try as the first job.
 
-**Completion criterion:** The file is on disk at the confirmed path.
-Gates in that `SKILL.md` are the checkout's exact shell strings. Goals
-state the Done contract. The `description` is the only when-to-use. The
-body has no CI-wait, review-comment loop, or scheduled agent loop.
-
 ## 5. Check
 
 Smoke-test every gate command far enough to see this checkout can run it.
 A missing dependency is not a required gate. Do not write a retrospective
 of this procedure.
-
-**Completion criterion:** Every gate command resolves on this checkout.
-Nothing in Gates is a prose checklist, a vanished command, or a CI-wait.
-This skill stops.

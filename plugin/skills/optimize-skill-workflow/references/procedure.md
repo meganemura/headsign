@@ -31,12 +31,7 @@ commands the acceptance text names.
 
 **Why and env, one source.** The `description` is the only when-to-use.
 The checkout's spelling is the only gate string. A second copy of either
-is the defect.
-
-For a project-local skill, **Done** (contract) is human-ready: local gates
-exited 0, CI green, and AI review complete. **Steps** are not that
-contract. A CI-wait or a review-comment loop in the procedure is a defect.
-Gates are shell fences in `SKILL.md`.
+is the defect. Done and Gates are in the entry.
 
 Give the user three to seven levers from the table that actually apply.
 
@@ -52,7 +47,7 @@ default. A useful method can stay.
 | Classify | A local exit-0 command stays a gate. A helper moves to the tool menu. Standing CI leaves Gates |
 | Why | The description says when. A body that restates it is deleted |
 | Thin steps | A numbered procedure gives way to an objective, Goals, and Gates |
-| Gates | The fence is the checkout's exact shell string, in `SKILL.md`. Exit 0 advances. A prose checklist titled Gate is not one |
+| Gates | Restore the entry's gate. Delete a prose checklist titled Gate |
 | Decouple runtime | Another program's state, a scheduled loop, or a CI-wait leaves the required path. A thin ownership file such as `loop.json` and a real queue take that place when one is needed |
 | Acceptance sync | Ticket text names the same live commands as Gates. A command that is gone is deleted |
 | Review integrity | Another session writes the verdict, or a command checks kind, revision, ticket, and base, with a nonempty human reason |
@@ -81,12 +76,9 @@ would hide the change.
 
 ## 5. Stop
 
-1. The description, on its own, says when to read the skill.
-2. Offer one small way to try it: one gate, or one loop.
-3. List the levers you did not take.
-
-Do not write a retrospective of this procedure. If the skill you edited
-has Self-improve, that section is the one that runs in production.
+The entry's completion criterion ends this skill. Do not write a
+retrospective of this procedure. If the skill you edited has
+Self-improve, that section is the one that runs in production.
 
 | | `create-skill-workflow` | this skill |
 |---|---|---|

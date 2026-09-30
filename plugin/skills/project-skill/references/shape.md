@@ -1,7 +1,7 @@
 # Section order
 
-The generated `SKILL.md` uses this order. Gates are shell fences in this
-file. Exit 0 advances.
+Done and Gates are in the entry. The generated `SKILL.md` uses this order
+for the rest.
 
 **Why and env, one source.** The `description` is the only when-to-use.
 The command strings already named are the only gate commands. Do not copy
@@ -13,17 +13,12 @@ either into a second section.
    needs one owner, a gitignored file such as `loop.json` records it. If
    that file shows an owner, do not start a second loop. That sentence is
    not a gate.
-3. Goals. No step list.
-   - **Done.** Finish at human-ready: every local gate has exited 0, CI is
-     green, and AI review is complete. Include a local commit when a gate
-     requires one. No push unless the user asked. The agent may loop until
-     Done. Wait and fix actuators are swappable.
+3. Goals. Done is the entry's contract. No step list.
    - **Impossible.** Acceptance contradicts a preserved contract, or the
      only way through a gate is to weaken a check.
    - **Needs human.** Missing authority or information, a check that cannot
      pass without inventing work, or standing CI this checkout cannot run.
-4. Gates. One heading per advance. The heading names where exit 0 goes.
-   The fence is in this file.
+4. Gates. The entry's fence. The heading names where exit 0 goes.
 5. Tool menu. Commands that help produce what a gate reads. A gate command
    is not repeated here. Standing CI the user did not name as a gate is
    labeled as not a gate, when it is named at all.

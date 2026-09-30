@@ -1,6 +1,6 @@
 # Copying gates
 
-Write each fence in the generated `SKILL.md`. Exit 0 advances.
+The entry states the gate. This file is how to copy one string.
 
 **Env is the source of truth.** Copy the shell string exactly, as the user
 wrote it or as the named file spells it. One command per line, in the
