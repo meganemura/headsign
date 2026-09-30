@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-09-30
+
+### Changed
+
+- **Create / project / optimize skill entries hold Done, Gates, and completion
+  criteria.** References keep only branch-specific procedure. Human-ready Done
+  is local gates exited 0, CI green, and AI review complete. Invent Steps do
+  not poll CI or drive review-comment loops. Prose is thinner; the checkout's
+  command spelling stays the source of truth for gates.
+
 ## [0.15.1] - 2026-09-30
 
 ### Changed
