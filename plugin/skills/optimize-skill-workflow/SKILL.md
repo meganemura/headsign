@@ -11,45 +11,8 @@ description: >-
 
 # Improve an existing skill
 
-This skill revises a skill that already exists. It does not keep driving
-that skill's daily job. The paired authoring skill is
-`create-skill-workflow`, which writes a new local skill. This one starts
-from a name or a path the user gave.
+Open `references/procedure.md` and follow it. Do not load `references/`
+up front.
 
-`optimize` assesses a finished run and writes that run's disposition. It
-is a different skill. Do not use this one to fill in an assessment record,
-and do not use `optimize` when the user asked to edit a skill file.
-
-This file is the entry. Open the one reference the situation names. Do not
-load `references/` up front.
-
-## What this skill does not do
-
-1. It does not rewrite the skill before the diagnosis and the agreed
-   scope.
-2. It does not edit an installed plugin or a managed catalog copy. Those
-   are read-only. A fork into the repository, or into a skill home the
-   host lets you write, is the proposal.
-3. It does not add a required gate that no command can judge, and it does
-   not leave a vanished command in place and call the sync done.
-4. It does not keep going through diagnosis items the user did not pick.
-5. It does not add a paragraph when a check, a script, or a gate can hold
-   the same lesson.
-
-## Revise it
-
-Open `references/procedure.md` and follow it.
-
-Agree one to three changes. Prefer a structural or gate fix. Apply those.
-A useful method can stay. Show what changed, name one small way to try the
-skill, and list what you left.
-
-## Which reference
-
-| Situation | Open |
-|---|---|
-| Finding the skill, diagnosing it, and applying the agreed edits | `references/procedure.md` |
-
-Writing a new local skill is `create-skill-workflow`. Copying commands the
-user named into one is `project-skill`. Assessing a finished run is
-`optimize`.
+`create-skill-workflow` invents a skill. `project-skill` copies named
+commands. `optimize` assesses a finished run.
