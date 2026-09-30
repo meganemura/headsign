@@ -39,6 +39,21 @@ Give delegated agents the relevant ADR paths and these constraints in their
 task instructions. Ask reviewers to check policy alignment as well as behavior.
 Follow [Maintenance](docs/maintenance.md) for validation and distribution.
 
+## Before a version tag or release
+
+Do not push a `v*` tag, bump for npm, or treat a release as ready until you have
+run the same checks CI runs on this machine and they all exit 0. At minimum:
+
+1. Bump `package.json` **and** every `plugin/**/plugin.json` (and rebuild
+   `plugin/dist` so the bundle version matches).
+2. `npm run typecheck`, `npm run archstrict`, `npm run coverage`, `npm run build`
+3. `git diff --exit-code plugin/dist`
+4. Confirm every `find plugin -maxdepth 2 -name plugin.json` version equals
+   `package.json`
+
+Tags are immutable. If a tag was cut on a red commit, ship the next patch
+after a green local run — do not assume CI will catch what you skipped.
+
 
 <!-- ARCHSTRICT_START -->
 ## archstrict

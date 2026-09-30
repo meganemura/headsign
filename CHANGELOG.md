@@ -9,6 +9,16 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.15.4] - 2026-09-30
+
+### Fixed
+
+- **Align every plugin manifest with the package version before release.**
+  CI requires `package.json` and each `plugin/**/plugin.json` to match; 0.15.3
+  left the manifests at 0.15.1.
+- **Document the local pre-tag gate in AGENTS.md** (via CLAUDE.md): run the same
+  checks CI runs before cutting a `v*` tag.
+
 ## [0.15.3] - 2026-09-30
 
 ### Fixed
