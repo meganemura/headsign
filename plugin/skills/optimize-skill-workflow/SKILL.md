@@ -2,10 +2,11 @@
 name: optimize-skill-workflow
 license: MIT
 description: >-
-  Improve an existing skill the user names. Use when a skill is hard to
-  follow, when its gates require a tool the skill claims not to need, or
-  when acceptance text names a command the checkout cannot run. Assessing
-  a finished run is optimize, not this skill.
+  Revise a skill that already has a name or a path. Use when it is hard
+  to follow, when a gate is prose no command can judge, or when acceptance
+  text names a command the checkout cannot run. Prefer a structural or
+  gate fix over more instructions. Assessing a finished run is optimize,
+  not this skill.
 ---
 
 # Improve an existing skill
@@ -32,13 +33,16 @@ load `references/` up front.
 3. It does not add a required gate that no command can judge, and it does
    not leave a vanished command in place and call the sync done.
 4. It does not keep going through diagnosis items the user did not pick.
+5. It does not add a paragraph when a check, a script, or a gate can hold
+   the same lesson.
 
 ## Revise it
 
 Open `references/procedure.md` and follow it.
 
-Agree one to three changes. Apply those. A useful method can stay. Show
-what changed, name one small way to try the skill, and list what you left.
+Agree one to three changes. Prefer a structural or gate fix. Apply those.
+A useful method can stay. Show what changed, name one small way to try the
+skill, and list what you left.
 
 ## Which reference
 

@@ -2,12 +2,10 @@
 name: project-skill
 license: MIT
 description: >-
-  Write a project-local skill that drives a repository's work by shell
-  gates under .agents/skills/. Use when the user names the commands, or
-  points at scripts, that should decide the work, or asks to copy those
-  command strings out of a file they name. Inventing that skill from a
-  repository survey is create-skill-workflow. This skill writes the file
-  and stops.
+  Copy shell commands the user named into a project-local skill. Use when
+  they name the commands, point at scripts, or name a file that already
+  holds those command strings. If the skill still has to be invented from
+  the checkout, use create-skill-workflow. Writes the file and stops.
 ---
 
 # Write a project-local skill
@@ -20,7 +18,7 @@ the package publishes for downstream users unless the user says that directory
 is the contributor skill home.
 
 The gates are shell commands in that file's body. Exit 0 advances. Anything
-else does not.
+else does not. The fence is the exact shell string.
 
 `create-skill-workflow` is the broader skill. It surveys the repository,
 settles what is missing, and invents the local skill. This one copies
@@ -45,19 +43,15 @@ load `references/` up front.
 5. It does not invent a local skill from a survey. Discovering commands,
    choosing policy, and writing a skill from the repository is
    `create-skill-workflow`.
+6. It does not install a scheduled agent loop, a workflow schedule, or a
+   CI-wait procedure. Gates stay exact shell strings in `SKILL.md`.
 
 ## Write it
 
-Use the commands the user named, or the scripts they pointed at. Copy each
-shell command into the Gates section. The rules are `references/gates.md`.
-The section order is `references/shape.md`.
-
-When the user names a file, copy the shell command strings from that file
-into the same Gates section. Copy them as written. Do not invent a check,
-and do not paraphrase a command.
-
-After writing, confirm every command appears once, inside a gate fence,
-and not again as a second list of commands that must pass.
+Copy the shell strings exactly. The rules are `references/gates.md`. The
+section order is `references/shape.md`. After writing, every command
+appears once, inside a gate fence in `SKILL.md`, and not again as a second
+list of commands that must pass.
 
 ## Which reference
 
