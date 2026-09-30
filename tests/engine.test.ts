@@ -1150,7 +1150,7 @@ phases:
 });
 
 // The run's own directory reached THROUGH a link is not an escape. On macOS `os.tmpdir()` is
-// `/var/folders/...` behind `/private/var`, so a check comparing a resolved parent against an
+// `<tmpdir>/...` behind `/private/var` on macOS, so a check comparing a resolved parent against an
 // unresolved cwd would refuse every entry here — which is why both sides go through realpath.
 test("start: an ordinary entry still clears when the run's own directory sits behind a link", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "headsign-engine-"));
