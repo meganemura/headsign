@@ -9,6 +9,14 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-09-30
+
+### Fixed
+
+- **Rebuild the committed CLI bundle for the release version.** Publish
+  acceptance compares `headsign --version` to `package.json`; the 0.15.2
+  tag still pointed at a 0.15.1 bundle (and that tag cannot be moved).
+
 ## [0.15.2] - 2026-09-30
 
 ### Changed
