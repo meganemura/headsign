@@ -1,5 +1,9 @@
 # ADR-0042: `status` draws the neighbourhood
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-09-16
 - Amends [ADR-0031](0031-when-the-run-entered-the-phase.md): the record gains

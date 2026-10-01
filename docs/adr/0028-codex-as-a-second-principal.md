@@ -1,5 +1,9 @@
 # ADR-0028: Codex as a second principal
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-22
 - Amends [ADR-0001](0001-thin-harness.md): Claude Code and Codex can each be

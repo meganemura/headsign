@@ -1,30 +1,27 @@
 # headsign
 
-A small phase gate for coding-agent loops. The agent does the work; headsign holds run state and runs shell checks that answer ADVANCE / RETRY / PENDING / COMPLETE / ESCALATE / ABORT. Optimization prompts are built in; headsign does not call a model itself.
+headsign provides three skills for creating and improving project-local skills.
+The agent chooses its method from the user's outcome, constraints, and actual
+project checks. It assesses the method during work and at completion, applies
+useful repairs within authority, and verifies affected results.
 
-It is not a general workflow engine, not a chatbot, and not a substitute for the agent's judgment about method.
+Load the selected SKILL.md and the references it requires:
 
-Agent skills (shipped under `plugin/skills/`): `workflow`, `design-workflow`, `optimize`, `project-skill`, `create-skill-workflow`, `optimize-skill-workflow`.
+- skills/create-skill-workflow/SKILL.md: discover checks and create a local skill.
+- skills/project-skill/SKILL.md: create a local skill from named commands or scripts.
+- skills/optimize-skill-workflow/SKILL.md: improve an existing skill.
 
-Load a skill's `SKILL.md` first. It says when the skill applies and which file under that skill's `references/` to open. Open a reference only for the path the entry names.
+Creating a skill does not itself authorize the work it describes. A request
+can authorize both creation and use. Preserve task outcomes, explicit budgets,
+independent-review requirements, publication authority, and the user's stop.
 
-- `plugin/skills/workflow/SKILL.md` — drive a run. References: `driving.md`, `verdicts.md`, `stopping.md`, `review.md`, `notes.md`.
-- `plugin/skills/design-workflow/SKILL.md` — write or revise a workflow file. References: `procedure.md`, `asking.md`, `vocabulary.md`, `schema.md`, `pitfalls.md`, `checks.md`, `comments.md`.
-- `plugin/skills/optimize/SKILL.md` — assess a finished run. No `references/` directory; the entry is the whole skill.
-- `plugin/skills/project-skill/SKILL.md` — copy a workflow's gates into a project-local skill. References: `gates.md`, `shape.md`.
-- `plugin/skills/create-skill-workflow/SKILL.md` — invent a project-local workflow skill that does not need headsign at runtime. References: `procedure.md`.
-- `plugin/skills/optimize-skill-workflow/SKILL.md` — revise an existing skill. References: `procedure.md`. `optimize` remains the run assessment.
+Install with `gh skill install meganemura/headsign --all --agent codex --scope user`
+or `npx skills add meganemura/headsign --skill '*' --agent codex --global`.
+Use checkout paths or complete skill directories for local development.
+Uninstall the old headsign plugin before adopting these skills.
+Installing skills does not disable an older plugin's hooks.
 
-Installed package: the npm `files` list includes `plugin/` and this `llms.txt`.
-
-## Commands
-
-- `headsign start [name] [--workflow <path>] [--no-optimize]` — start a run
-- `headsign next [--accept-graph-change]` — run the current gate; line 1 is the verdict
-- `headsign status` — read-only view of the run (never judges)
-- `headsign abort [reason]` — end the run
-- `headsign validate [name] [--workflow <path>]` — validate a workflow document
-- `headsign claim` — claim driver ownership for a delegated agent
-- `headsign version` / `headsign help`
-
-`next` exit codes: 0 advance/complete, 1 retry/pending, 2 escalate/abort, 3 usage/config. Prefer those verdicts over inventing control flow outside the harness.
+This revision ends CLI and npm distribution. Skills use the project's own
+commands and the host's tools. See docs/migration.md for existing setups,
+docs/workflow-lessons.md for retained knowledge, and docs/adr/0044-skills-only-distribution.md
+for the decision. Historical runtime ADRs describe the retired implementation.

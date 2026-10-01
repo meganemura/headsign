@@ -1,66 +1,55 @@
 # Changing headsign
 
-These instructions govern changes to headsign itself. They are not instructions
-for a consumer repository that uses the plugin.
+These instructions govern headsign itself. Consumer projects keep their own
+goals, constraints, and commands.
 
-Before changing runtime behavior, skills, workflow vocabulary, or product
-guidance, read [ADR-0039](docs/adr/0039-design-for-the-model-that-improves-the-method.md)
-and the ADR that owns the behavior you will change.
-Use [the ADR index](docs/adr/README.md) to locate that decision.
-For optimization behavior, also read
-[ADR-0038](docs/adr/0038-a-run-assesses-its-procedure.md).
+Before changing skills, packaging, or product guidance, read
+[ADR-0039](docs/adr/0039-design-for-the-model-that-improves-the-method.md),
+[ADR-0043](docs/adr/0043-local-skills-improve-during-work.md), and
+[ADR-0044](docs/adr/0044-skills-only-distribution.md).
+Use [the ADR index](docs/adr/README.md) for historical reasons.
 
-Carry these principles into the change:
+Carry these principles into each change:
 
-- Design for more capable future models. Give the model objectives, constraints,
-  facts, and authority. Keep semantic judgment with the model.
-- Keep optimization enabled by default. Create an opportunity to improve the
-  method; do not force edits or reward completed assessment records.
-- Choose consequential outcomes over convenient nearby edits. A larger proposal
-  or a justified decision to retain the method can be the right result.
-- Permit an explicit future bet. State the assumed change, expected value,
-  uncertainty, and reason to reconsider it. Verify present behavior separately.
-- Keep the harness small. Justify added runtime responsibilities and instructions;
-  consider what a stronger model lets us remove.
-- Preserve the user's requested outcomes, authority, budget, and ability to stop.
-  Reversible procedural repairs can use existing task authority.
+- Give the model objectives, constraints, facts, and authority to choose a method.
+- Require method assessment during work when evidence exposes a weakness, and at completion.
+- Apply useful repairs to the current work and verify affected results.
+- Choose consequential improvements; retaining a useful method is valid.
+- Preserve requested outcomes, explicit budgets, independent review, and the user's ability to stop.
+- Keep skills small. Explain any added instruction and consider what better models let us remove.
+- State future assumptions and uncertainty separately from observed behavior.
 
-Before handing over a design change, explain how it follows these principles
-and what observable behavior you verified. Scale the explanation to the change;
-do not create a separate report for a routine fix. Check for instructions that
-would make another agent follow an older, conflicting policy.
+headsign distributes three plain skill directories under `skills/`.
+Do not restore plugin packaging, a CLI, workflow state, hooks, or npm publishing
+as a routine repair. A design change to this boundary requires an explicit
+amendment to ADR-0044 and the user's authority.
 
-If the intended change conflicts with an accepted decision, identify the
-conflict and amend that ADR explicitly. Do not silently override it through
-code, a skill, or a local workaround. Preserve the user's authority over goals
-and constraints when proposing an amendment.
+Follow [Maintenance](docs/maintenance.md). Run the contributor check with
+Node 24:
 
-Give delegated agents the relevant ADR paths and these constraints in their
-task instructions. Ask reviewers to check policy alignment as well as behavior.
-Follow [Maintenance](docs/maintenance.md) for validation and distribution.
+```sh
+node scripts/check.ts
+```
 
-## Before a version tag or release
+Read the changed skills and required references as one set. For behavioral
+changes, exercise relevant scenarios and report what the check cannot establish.
+Check current guides for instructions that conflict with the new behavior.
+Keep the English and Japanese guides aligned.
 
-Do not push a `v*` tag, bump for npm, or treat a release as ready until you have
-run the same checks CI runs on this machine and they all exit 0. At minimum:
+When delegating, include relevant ADR paths, ownership, and task constraints.
+Ask reviewers to check policy alignment and observable behavior.
 
-1. Bump `package.json` **and** every `plugin/**/plugin.json` (and rebuild
-   `plugin/dist` so the bundle version matches).
-2. `npm run typecheck`, `npm run archstrict`, `npm run coverage`, `npm run build`
-3. `git diff --exit-code plugin/dist`
-4. Confirm every `find plugin -maxdepth 2 -name plugin.json` version equals
-   `package.json`
+Before handover, explain design alignment and the behavior verified. A routine
+fix needs a short explanation. If an accepted decision changes, amend it
+explicitly instead of overriding it in a skill.
 
-Tags are immutable. If a tag was cut on a red commit, ship the next patch
-after a green local run — do not assume CI will catch what you skipped.
+## Distribution authority
 
+Run the same check as CI before treating a revision as ready.
+No npm release or runtime build belongs to this repository's current process.
+Keep existing published artifacts and tags intact.
+Git tags and CHANGELOG identify releases; no package manifest carries a version.
 
-<!-- ARCHSTRICT_START -->
-## archstrict
-
-In projects with an `archstrict.config.ts` (module-boundary/architecture linting), run `archstrict rules <path>` BEFORE creating a file or adding an import - it reports the module, tags, and constraints that would govern that path, even before it exists. Run `archstrict check` after editing to confirm.
-
-The full rule reference (every rule's evidence/because/do shape, the config schema, the pre-edit query) is at `node_modules/archstrict/skills/archstrict/SKILL.md` when installed via npm - read it before configuring `archstrict.config.ts`, or when a violation's `do:` text alone isn't enough.
-
-If there is no `archstrict.config.ts`, skip archstrict entirely - it may not be installed here.
-<!-- ARCHSTRICT_END -->
+Obtain explicit approval immediately before external publication, a tag push,
+or changes to registry status. Preparation and local verification can proceed
+under the existing task authority.

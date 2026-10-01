@@ -1,5 +1,9 @@
 # ADR-0008: Multi-session runs — driver ownership, observers, and status
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-25
 - Revised: 2026-07-27 (Decisions 1–3, the environment-derived driver stamp

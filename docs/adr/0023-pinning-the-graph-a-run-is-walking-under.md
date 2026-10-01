@@ -1,5 +1,9 @@
 # ADR-0023: Pinning the graph a run is walking under
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Revised: 2026-09-13 ([ADR-0038](0038-a-run-assesses-its-procedure.md)
   replaces blanket human approval language with task scope and authority.

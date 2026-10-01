@@ -1,5 +1,9 @@
 # ADR-0036: A request for a second question, and the four answers it gets
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-09-04
 - Collects, rather than amends:

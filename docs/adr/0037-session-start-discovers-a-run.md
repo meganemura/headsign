@@ -1,5 +1,9 @@
 # ADR-0037: A running run introduces itself at session start
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Revised: 2026-09-22 (the hooks guide embedded in agy 1.2.7 lists five
   events: `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, and
   `Stop`. Its `PreInvocation` hook calls the same discovery on the first

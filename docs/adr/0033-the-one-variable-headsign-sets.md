@@ -1,5 +1,9 @@
 # ADR-0033: The one variable headsign sets
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-25
 - Amends [ADR-0014](0014-removing-three-unused-knobs.md) §1: its removal of the

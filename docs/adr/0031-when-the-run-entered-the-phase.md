@@ -1,5 +1,9 @@
 # ADR-0031: When the run entered the phase
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-23
 - Amends [ADR-0017](0017-three-budgets-and-the-recoverable-ceiling.md): its

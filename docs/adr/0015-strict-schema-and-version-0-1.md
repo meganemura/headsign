@@ -1,5 +1,9 @@
 # ADR-0015: Rejecting unknown keys, and `version: 0.1`
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-28
 - Amends [ADR-0003](0003-workflow-yaml-vocabulary.md): `version:` now reads

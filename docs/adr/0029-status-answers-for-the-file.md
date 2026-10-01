@@ -1,5 +1,9 @@
 # ADR-0029: `status` answers for the file, not only for the record
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-23
 - Amends [ADR-0023](0023-pinning-the-graph-a-run-is-walking-under.md) §8: the

@@ -1,5 +1,10 @@
 # ADR-0039: Design for the model that improves the method
 
+> Current policy. [ADR-0044](0044-skills-only-distribution.md) applies it to
+> skills-only distribution and retires the runtime mechanisms mentioned below.
+> [ADR-0043](0043-local-skills-improve-during-work.md) carries improvement
+> into project-local work without a continuation hook.
+
 - Status: accepted
 - Date: 2026-09-13
 - Amends [ADR-0001](0001-thin-harness.md): smallness includes the reasoning

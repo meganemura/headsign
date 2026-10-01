@@ -1,5 +1,9 @@
 # ADR-0009: The claim handshake — session identity is hook-side knowledge
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: superseded by [ADR-0010](0010-subagent-stop-identity.md)
 - Date: 2026-07-25
 

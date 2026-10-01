@@ -1,5 +1,9 @@
 # ADR-0018: The seam between `cli.ts` and `engine.ts` — the order of a lap is a routing rule, so the five run operations move
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-28
 

@@ -1,5 +1,9 @@
 # ADR-0007: Verdict authorship — why soft gates are soft
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-25
 

@@ -1,5 +1,9 @@
 # ADR-0041: A command that names its caller
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-09-15
 - Amends [ADR-0013](0013-claim-only-driver-identity.md) §1: the `SubagentStop`

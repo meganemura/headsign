@@ -1,5 +1,9 @@
 # ADR-0035: A phase name has to be a name the run's own maps can hold
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-30
 - Amends [ADR-0015](0015-strict-schema-and-version-0-1.md): its strict schema

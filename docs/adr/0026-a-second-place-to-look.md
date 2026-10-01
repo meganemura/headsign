@@ -1,5 +1,9 @@
 # ADR-0026: Giving the quiet stop a second place to look
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-01
 - Amends [ADR-0025](0025-a-stop-that-passed-and-a-stop-that-never-ran.md):

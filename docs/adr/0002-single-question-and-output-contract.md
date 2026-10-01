@@ -1,5 +1,9 @@
 # ADR-0002: One question (`next`), the output contract, and the transition table
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-23
 - Revised: 2026-08-13 (the `RETRY` block and the exhaustion `ESCALATE` gain a

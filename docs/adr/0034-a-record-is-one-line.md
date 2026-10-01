@@ -1,5 +1,9 @@
 # ADR-0034: A record is one line, and `logLine` is what keeps it one
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-30
 - Amends [ADR-0004](0004-state-attempts-and-cache.md): its `.headsign/log`

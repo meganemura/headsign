@@ -1,5 +1,9 @@
 # ADR-0038: A run assesses its procedure at the boundary
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-09-13
 - Design policy: [ADR-0039](0039-design-for-the-model-that-improves-the-method.md)

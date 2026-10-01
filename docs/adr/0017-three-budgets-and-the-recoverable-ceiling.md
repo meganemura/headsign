@@ -1,5 +1,9 @@
 # ADR-0017: Three budgets, one of which can fire on a healthy run — the global ceiling escalates without ending the run
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-28
 - Revises: [ADR-0002](0002-single-question-and-output-contract.md) — the

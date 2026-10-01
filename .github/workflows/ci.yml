@@ -5,12 +5,9 @@ on:
   push:
     branches: [main]
 
-# Declared here even though the repository default is `read`, because a recipe
-# copied out of this file travels to a repository whose default may not be.
 permissions:
   contents: read
 
-# An overtaken run has nothing left to report.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,74 +15,12 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # The suite spawns a shell per gate check and races processes against a lock;
-    # a wedged one would otherwise burn the default six hours.
-    timeout-minutes: 15
-    permissions:
-      contents: read
+    timeout-minutes: 5
     steps:
-      # Actions are pinned by commit, with the version in a comment. A tag is a
-      # pointer: the same line resolves to different code once an account is
-      # taken. Re-check a SHA against `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`
-      # when raising it — nothing updates these automatically, which is the cost
-      # this pinning accepts.
+      # Pins keep the reviewed action revision stable.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # Not "the current LTS" but the npm that wrote package-lock.json:
-          # lockfileVersion 3 is npm 11, and npm 10 refuses to read it.
           node-version: 24
-          cache: npm
-
-      # `--ignore-scripts` on the line, not only in .npmrc, because whoever copies
-      # this step takes the line and leaves the file behind.
-      - run: npm ci --ignore-scripts
-
-      - run: npm run typecheck
-
-      # Module boundaries. A new violation fails the step. Debt already frozen
-      # in archstrict.todo.json does not: that file only shrinks.
-      - run: npm run archstrict
-
-      # `npm run coverage` rather than `npm test`: it runs the same files with the
-      # same runner and adds three thresholds — 100% of lines and of functions in
-      # `src/`, and a branch floor set below the measured number rather than at
-      # it, because the paths a lock race reaches are covered or not depending on
-      # how that race lands. Running both would race real processes against a lock twice for
-      # one set of assertions, and a suite run twice is a flake surface twice.
-      # A failing test still fails this step first and says so before any table.
-      #
-      # It is here because the thresholds went red and nobody noticed: the
-      # command existed, enforced 100%, and was run by hand or not at all, so it
-      # drifted for a release cycle with one `catch` block uncovered.
-      - run: npm run coverage
-
-      - run: npm run build
-
-      - name: dist matches src
-        run: git diff --exit-code plugin/dist
-
-      # Every manifest that carries a version, not just the first one written. A host whose
-      # manifest lags is not a broken install — it is a silent no-op update, because a plugin
-      # update is decided by comparing that string.
-      # Antigravity reads plugin/plugin.json at the plugin root, so the check includes it.
-      - name: every plugin manifest matches the package version
-        run: |
-          node -e "
-          const fs=require('fs');
-          const want=JSON.parse(fs.readFileSync('./package.json','utf8')).version;
-          const manifests=fs.readdirSync('./plugin',{withFileTypes:true})
-            .flatMap(e=>e.isFile()&&e.name==='plugin.json'
-              ? ['./plugin/plugin.json']
-              : e.isDirectory()?['./plugin/'+e.name+'/plugin.json']:[])
-            .filter(fs.existsSync);
-          if(manifests.length===0){console.error('no plugin manifest found under plugin/');process.exit(1)}
-          let bad=0;
-          for(const m of manifests){
-            const got=JSON.parse(fs.readFileSync(m,'utf8')).version;
-            console.log(got===want?'ok   '+m+' '+got:'MISMATCH '+m+' '+got+' != '+want);
-            if(got!==want)bad++;
-          }
-          if(bad)process.exit(1);
-          "
+          package-manager-cache: false
+      - run: node scripts/check.ts

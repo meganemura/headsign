@@ -1,5 +1,9 @@
 # ADR-0016: Explainability as the fitness function, and the rules for a workflow that edits itself
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-28
 

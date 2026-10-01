@@ -1,5 +1,9 @@
 # ADR-0027: Recording who drove a run
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-08-01
 - Supersedes [ADR-0013](0013-claim-only-driver-identity.md): the clause of

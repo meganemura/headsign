@@ -1,5 +1,9 @@
 # ADR-0040: The run pane is a Claude-only overlay on the shared plugin
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-09-15
 - Amends [ADR-0028](0028-codex-as-a-second-principal.md): the shared plugin

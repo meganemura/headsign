@@ -1,5 +1,9 @@
 # ADR-0010: Sealing driver identity on SubagentStop — the event ADR-0009 got wrong
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-25
 - Supersedes: [ADR-0009](0009-claim-handshake.md)

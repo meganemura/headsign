@@ -9,6 +9,45 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-01
+
+### Migration
+
+Uninstall the old headsign plugin from your agent host, then install headsign
+as ordinary skills. Installing skills does not disable the old plugin's hooks.
+Remove any manually registered headsign hooks and the old CLI installation.
+Preserve your project checks and work records; see [Migration](docs/migration.md).
+This release does not preserve the plugin or CLI interface.
+
+Choose one installer for Codex at user scope:
+
+```sh
+gh skill install meganemura/headsign --all --agent codex --scope user
+```
+
+```sh
+npx skills add meganemura/headsign --skill '*' --agent codex --global
+```
+
+For Claude Code, replace `codex` with `claude-code`.
+
+### Changed
+
+- headsign now distributes three ordinary skills: `create-skill-workflow`,
+  `project-skill`, and `optimize-skill-workflow`.
+  The model chooses its method from outcomes, constraints, and project checks.
+- End CLI and npm distribution. Remove runtime hooks, the state machine, and
+  host overlays, plugin manifests, and marketplace registration.
+  Skill directories now live under `skills/`. Git tags and this changelog
+  identify releases; package manifests are retired.
+- Replace current guides with skill usage and migration instructions.
+  Preserve workflow knowledge in `docs/workflow-lessons.md` and historical ADRs.
+- Project-local skills assess their method during work and at completion.
+  Review feedback can prompt a repair even when local gates pass.
+  Agents apply useful repairs to the current work and verify affected results.
+  Local assessment labels are optional. Authoring can continue into a trial
+  or subsequent work when the user's request includes it.
+
 ## [0.15.4] - 2026-09-30
 
 ### Fixed

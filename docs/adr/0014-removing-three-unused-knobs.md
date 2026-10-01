@@ -1,5 +1,9 @@
 # ADR-0014: Removing three unused knobs — phase `env:`, `on_exhausted:`, and `on_fail: abort`
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-27
 - Revised: 2026-07-28 — [ADR-0015](0015-strict-schema-and-version-0-1.md) is

@@ -1,5 +1,9 @@
 # ADR-0024: The log survives a restart, and the `start` line is the seam
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-30
 - Revises: [ADR-0004](0004-state-attempts-and-cache.md)'s `.headsign/log`

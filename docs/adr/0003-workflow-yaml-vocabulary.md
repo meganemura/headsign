@@ -1,5 +1,9 @@
 # ADR-0003: workflow.yaml vocabulary — what we borrow, what we refuse
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-23
 - Revised: 2026-07-27 (three fields are removed by

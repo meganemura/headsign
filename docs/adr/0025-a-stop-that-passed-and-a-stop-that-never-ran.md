@@ -1,5 +1,9 @@
 # ADR-0025: Telling a stop that passed from a hook that never ran
 
+> Historical runtime record. [ADR-0044](0044-skills-only-distribution.md)
+> supersedes this implementation contract for current headsign.
+> The rationale below describes the retired CLI and its original context.
+
 - Status: accepted
 - Date: 2026-07-30
 - Amends [ADR-0004](0004-state-attempts-and-cache.md): the log gains a twelfth
