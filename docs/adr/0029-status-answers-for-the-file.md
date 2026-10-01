@@ -17,35 +17,17 @@ A run pins the rules it walks under, and a lap reports a difference once
 person or a program that edits the workflow file and does not run a lap leaves
 `state.json` holding nothing about that edit.
 
-`status` reported the record and stopped there, so its output was the same
-before and after such an edit. A report from the author of headsign-view, a
-read-only viewer of a run, carried the measurement:
+`status` reported the stored state. An edit to the workflow file left that
+output unchanged until a lap ran.
 
-```
-$ headsign start                      # a workflow with one phase, entry=a
-$ headsign status
-RUNNING a (attempt 0)
-workflow: pin
-driver: not delegated yet — no agent has claimed this run
+A read-only consumer needs to compare the current workflow with the pinned
+rules without executing another lap. ADR-0004 makes `status` the public reader
+of `state.json`. A stored report cannot establish whether a later edit changed
+the file.
 
-$ # add phase b to workflow.yaml; run no lap
-$ headsign status
-RUNNING a (attempt 0)
-workflow: pin
-driver: not delegated yet — no agent has claimed this run
-```
-
-That viewer draws the graph a run is walking. It reads no field of
-`state.json`, because ADR-0004 makes `status` the one reader of that file and a
-second reader outside the tool would break on every internal rename. Under that
-rule the viewer had one question it could not ask, and the question decides
-whether the picture is true: **is the file on disk the graph this run pinned?**
-
-What it did instead was compare file modification times, and mark the picture
-"cannot confirm" whenever `workflow.yaml` was newer than `state.json`. A
-timestamp is metadata about a write, and the pin is a hash of parsed rules, so
-the two answer different questions and agree only by luck. The viewer was
-guessing, and it was guessing because the public surface held no answer.
+File modification times also cannot establish semantic equivalence. A
+comment-only edit changes a timestamp while leaving the parsed rules unchanged.
+The public command therefore needs to expose the comparison itself.
 
 ## Decision
 
@@ -58,7 +40,7 @@ and compares that with the pin in the record.
 does not.**
 
 - `graph: the file no longer matches the rules this run pinned — …` for a file
-  edited with no report standing. This is the measured gap above.
+  edited with no report standing. This covers edits made between laps.
 - `graph: the file matches the rules this run pinned again — …` for a file put
   back while a report still stands. ADR-0023 §5 makes restoring free and
   silent, and this line is where that restore becomes visible before a lap runs.
@@ -103,9 +85,8 @@ itself on the following lap.
 
 ## Consequences
 
-A read-only consumer can now answer the question that decides whether its
-picture is true, using only the documented output of `status`. headsign-view
-replaces its modification-time comparison with these lines.
+A read-only consumer can compare the current file with the pinned rules
+through the documented output of `status`.
 
 `status` computes one fact rather than only restating recorded ones. That is a
 new kind of work for the command, and the boundary that keeps it honest is the
