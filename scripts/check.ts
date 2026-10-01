@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distribution = resolve(root, "skills");
-const skills = ["create-skill-workflow", "project-skill", "optimize-skill-workflow"];
+const skills = ["create-project-skill", "improve-project-skill"];
 const failures: string[] = [];
 const report = (message: string) => failures.push(message);
 const label = (path: string) => relative(root, path);
@@ -90,5 +90,5 @@ if (failures.length) {
   for (const failure of failures) console.error(failure);
   process.exitCode = 1;
 } else {
-  console.log("Checked three standalone skills and active documentation links.");
+  console.log("Checked two standalone skills and active documentation links.");
 }

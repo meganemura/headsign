@@ -1,4 +1,4 @@
-# Lessons from the workflow runtime
+# Lessons from workflows and skill migrations
 
 headsign's earlier runtime executed checks, held state, and prompted agents to
 continue. These lessons explain what remains useful when an ordinary skill
@@ -28,6 +28,13 @@ evidence. If independent review is required, preserve that independent author.
 The worker can also inspect its whole diff critically. These checks answer
 different questions and can both be useful.
 
+Migration reviews found skills that narrowed when existing checks were required.
+The commands stayed intact, but some work escaped its former checks.
+The revisions restored that scope. The authoring guidance now asks agents to
+compare which work requires each check before and after migration.
+Preserve a check's applicability along with its command and purpose;
+changing the method must preserve required outcomes.
+
 ## Evidence needs an artifact and a scope
 
 A diff check depends on its base. A review depends on the revision it read.
@@ -42,6 +49,23 @@ omit a new test or implementation that will enter the eventual commit.
 After editing the artifact, identify which conclusions need fresh evidence.
 Clearing a verdict protects freshness; it does not establish the honesty or
 competence of the next author.
+
+A retained checker in one migration inspected committed changes. New,
+uncommitted work could leave it with zero inputs and a successful exit.
+The revised skill identified that gap and required direct review of the
+unexamined work. Preserve the intended input scope when choosing evidence.
+
+A migration helper passed isolated tests but failed when the new skill and
+helper were included as inspected files. The complete-artifact trial exposed
+a self-match in the checker's own pattern definition. Earlier fixtures executed
+the helper from outside the inspected checkout.
+
+The repair limited the exception to the checker's own rule definition.
+The actual-artifact trial then passed before and after staging.
+Forbidden references in ordinary text and added helper comments still failed.
+Binary contents required separate review.
+Verify revised artifacts within their actual input scope.
+We retained the existing guidance and corrected the trial.
 
 [ADR-0023](adr/0023-pinning-the-graph-a-run-is-walking-under.md) made changes
 to active rules visible. Its durable lesson is to explain a changed check
@@ -61,6 +85,55 @@ Verify that the replacement supports those obligations.
 Keep the review's subject explicit too: reviewing implementation does not
 replace required review of proposed priorities or acceptance criteria.
 The model can own these responsibilities without recreating phase transitions.
+
+A migration trial restarted a counter while earlier review records remained.
+The checker then accepted an earlier review as evidence for new work.
+The repair gave each evaluation a fresh review location and an explicit input
+that selected it. A subsequent evaluation required new evidence in the fixture.
+An initial repair also rejected newly staged reviews; removing that condition
+preserved valid evidence across staging. Git tracking status did not establish age.
+Test later work with earlier records present, and preserve valid uses when
+repairing a check. These trials checked evidence selection, not review quality.
+
+A later migration review caught a missing client setting for a local test service.
+Starting the service did not configure the application to use it.
+The revised skill named both prerequisites and protected existing local data
+when the checks needed fresh inputs. A scenario reader identified unsafe
+preparation as a reason to report the check unrun. This was an instruction
+trial; it did not establish that the application's acceptance tests passed.
+
+## A local skill's path can also be a package input
+
+During the archstrict migration, a new contributor skill went under `.agents/skills/`.
+The npm manifest included `.agents/` as a whole, which also contains product assets.
+Independent review caught the unintended distribution of contributor guidance.
+The migration narrowed the package entries to the product's manifest, hooks, and MCP files.
+A local package dry run checked the revised contents.
+
+Inspect ignore rules and package inputs when choosing a local skill's location.
+Preserve the intended audience of the instructions and any product assets that
+share their parent directory. A discoverable local path can have distribution
+effects beyond the agent session. This observation concerns packaging, not
+whether the new skill improves product work.
+
+## Helpers can protect the contents of a handoff
+
+During a migration, independent review found two omitted obligations from an
+old helper: a restriction on public commit content and a completion report.
+The first skill preserved tests and independent review but missed these obligations.
+The revision restored both. A separate scenario also exposed unclear work
+selection; local guidance then identified the existing queue and selection rules.
+
+Inspect what each helper protects, including publication and handoff constraints.
+Keep local-only command details within their intended audience and make that
+guidance discoverable. Authorization to execute an action remains a separate question.
+These observations came from migration review and a scenario, not completed product work.
+
+Another migration retained an old definition because the product consumed it
+as historical input. New contributor guidance replaced its operational role.
+An old introductory comment still described it as the current development
+method; clarifying that comment preserved the input while removing conflicting guidance.
+Inspect each caller's purpose before deleting an artifact that served the runtime.
 
 ## A command failure and an unavailable check need different repairs
 
@@ -125,6 +198,12 @@ does not establish that a session is still active.
 Inspect current work before taking over.
 For a single authorized task, the request and working context can suffice.
 Do not create a queue or ownership protocol solely to imitate the old engine.
+
+A migration review found that an evidence helper replaced a shared output
+directory. The repair required a new location for each review. A safe refusal
+test preserved an existing file and stopped before browser launch.
+Image generation remained unverified. Existing ownership guidance covered this
+repair; the observation did not require another coordination mechanism.
 
 ## Improvement belongs inside the current task
 

@@ -13,8 +13,9 @@ The README also documents `gh skill` and `npx skills` installation.
 2. Run `node scripts/check.ts`, the same check CI runs.
    Run `gh skill publish ./skills --dry-run` to validate the skill files.
 3. Exercise changed behavior and report the observations and limits.
-4. Inspect the distribution contents: three skills and their references.
+4. Inspect the distribution contents: two skills and their references.
 5. Give the changelog entry the release tag's version and date.
+   Update pinned installation examples in both READMEs for the new version.
 6. Review the exact diff and release description before external publication.
 
 A version change belongs to an authorized release task. Preparing this

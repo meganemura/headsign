@@ -2,27 +2,26 @@
 
 Skills that help a coding agent create and improve a project's way of working.
 
-[日本語](README.ja.md)
-
 Give the agent the outcome, constraints, and checks the project can run.
 The agent chooses the method, uses those checks, and improves the method when
 feedback exposes a weakness. It applies useful repairs to the current work
 and verifies the affected results before it finishes.
 
-headsign now ships three ordinary skills. They use the host's existing tools
+headsign provides two ordinary skills. They use the host's existing tools
 and the project's commands. They require no headsign CLI, workflow state,
 hooks, npm installation, or build step.
 
 | Skill | Use it when |
 |---|---|
-| [create-skill-workflow](skills/create-skill-workflow/SKILL.md) | The agent needs to discover checks and create a local skill. |
-| [project-skill](skills/project-skill/SKILL.md) | You have named the commands, scripts, or file whose checks the skill should use. |
-| [optimize-skill-workflow](skills/optimize-skill-workflow/SKILL.md) | An existing skill needs a better method, clearer evidence, or repaired checks. |
+| [create-project-skill](skills/create-project-skill/SKILL.md) | Create a local skill from repository evidence or supplied commands. |
+| [improve-project-skill](skills/improve-project-skill/SKILL.md) | Improve an existing local skill from work feedback and evidence. |
 
 ## Install
 
-Choose either installer. These commands install all three skills for Codex
-at user scope:
+For an update from v0.16.0 or an older plugin, read the migration guide in Documentation below.
+
+Choose either installer. These commands install the available skills for Codex
+at user scope from the selected revision:
 
 ```sh
 gh skill install meganemura/headsign --all --agent codex --scope user
@@ -37,9 +36,9 @@ For project scope, use `--scope project` with `gh skill`, or omit `--global`
 with `npx skills`. To select one skill, replace `--all` with its name for
 `gh skill`, or replace `'*'` after `--skill` for `npx skills`.
 
-`gh skill` uses the latest GitHub Release. Add `--pin v0.16.0` to select this
-release explicitly. `npx skills` uses the repository's default branch;
-use `https://github.com/meganemura/headsign/tree/v0.16.0` as its source to
+`gh skill` uses the latest GitHub Release. Add `--pin v0.17.0` to select this
+release. `npx skills` uses the repository's default branch;
+use `https://github.com/meganemura/headsign/tree/v0.17.0` as its source to
 select this release.
 See the [gh skill manual](https://cli.github.com/manual/gh_skill_install)
 and [skills CLI documentation](https://github.com/vercel-labs/skills).
@@ -53,7 +52,7 @@ Check an existing destination before replacing it.
 Ask your agent to use the skill by name. For local development, give it the
 checkout's `SKILL.md` path and keep the references beside it. For example:
 
-> Use create-skill-workflow to create a local skill for this repository.
+> Use create-project-skill to create a local skill for this repository.
 > Discover the checks it can run. Preserve our required outcomes and constraints.
 > Include responsibility for improving the method during work and at completion.
 
@@ -63,7 +62,7 @@ To authorize both, add:
 > Then use the new skill to complete the task we agreed on.
 
 Installing these skills does not disable an older plugin's hooks.
-See the [migration guide](docs/migration.md) before replacing a CLI-based setup.
+Read the migration guide before replacing a CLI-based setup.
 
 ## What the skills ask of the agent
 
@@ -88,3 +87,7 @@ and the lessons from headsign's earlier workflow runtime.
 ## License
 
 [MIT](LICENSE)
+
+---
+
+[Japanese](README.ja.md)

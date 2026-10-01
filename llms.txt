@@ -1,15 +1,14 @@
 # headsign
 
-headsign provides three skills for creating and improving project-local skills.
+headsign provides two skills for creating and improving project-local skills.
 The agent chooses its method from the user's outcome, constraints, and actual
 project checks. It assesses the method during work and at completion, applies
 useful repairs within authority, and verifies affected results.
 
 Load the selected SKILL.md and the references it requires:
 
-- skills/create-skill-workflow/SKILL.md: discover checks and create a local skill.
-- skills/project-skill/SKILL.md: create a local skill from named commands or scripts.
-- skills/optimize-skill-workflow/SKILL.md: improve an existing skill.
+- skills/create-project-skill/SKILL.md: create a local skill from repository evidence or supplied commands.
+- skills/improve-project-skill/SKILL.md: improve an existing project-local skill.
 
 Creating a skill does not itself authorize the work it describes. A request
 can authorize both creation and use. Preserve task outcomes, explicit budgets,
@@ -18,6 +17,7 @@ independent-review requirements, publication authority, and the user's stop.
 Install with `gh skill install meganemura/headsign --all --agent codex --scope user`
 or `npx skills add meganemura/headsign --skill '*' --agent codex --global`.
 Use checkout paths or complete skill directories for local development.
+Version 0.17.0 replaces the three authoring names from v0.16.0; see docs/migration.md.
 Uninstall the old headsign plugin before adopting these skills.
 Installing skills does not disable an older plugin's hooks.
 

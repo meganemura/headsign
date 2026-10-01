@@ -19,7 +19,8 @@ Carry these principles into each change:
 - Keep skills small. Explain any added instruction and consider what better models let us remove.
 - State future assumptions and uncertainty separately from observed behavior.
 
-headsign distributes three plain skill directories under `skills/`.
+headsign distributes two plain skill directories under `skills/`:
+`create-project-skill` and `improve-project-skill`.
 Do not restore plugin packaging, a CLI, workflow state, hooks, or npm publishing
 as a routine repair. A design change to this boundary requires an explicit
 amendment to ADR-0044 and the user's authority.

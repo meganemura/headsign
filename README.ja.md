@@ -8,20 +8,21 @@
 エージェントは方法を選び、検査を使い、フィードバックから弱点が見えたら方法を改善します。
 有用な改善を現在の仕事に適用し、影響する結果を検証してから完了します。
 
-headsign は三つの通常のスキルを提供します。
+headsign は二つの通常のスキルを提供します。
 使うのはホストの既存の道具とプロジェクト自身のコマンドです。
 headsign の CLI、ワークフローの状態管理、hook、npm のインストール、ビルドは必要ありません。
 
 | スキル | 使うとき |
 |---|---|
-| [create-skill-workflow](skills/create-skill-workflow/SKILL.md) | 実行できる検査を調べ、ローカルスキルを作るとき |
-| [project-skill](skills/project-skill/SKILL.md) | スキルに使うコマンド、スクリプト、検査を持つファイルを指定できるとき |
-| [optimize-skill-workflow](skills/optimize-skill-workflow/SKILL.md) | 既存スキルの方法、検証の根拠、検査を改善するとき |
+| [create-project-skill](skills/create-project-skill/SKILL.md) | リポジトリの根拠や指定されたコマンドからローカルスキルを作るとき |
+| [improve-project-skill](skills/improve-project-skill/SKILL.md) | 仕事のフィードバックと根拠から既存のローカルスキルを改善するとき |
 
 ## インストール
 
+v0.16.0 や以前のプラグインから更新する場合は、末尾の文書一覧から移行ガイドを参照してください。
+
 どちらか一方のインストーラーを使います。
-次のコマンドは、三つのスキルを Codex のユーザースコープへ導入します。
+次のコマンドは、選んだリビジョンのスキルを Codex のユーザースコープへ導入します。
 
 ```sh
 gh skill install meganemura/headsign --all --agent codex --scope user
@@ -36,9 +37,9 @@ Claude Code では `codex` を `claude-code` に置き換えます。
 一つだけ導入する場合、`gh skill` は `--all` をスキル名に置き換え、`npx skills` は `--skill` の後の `'*'` をスキル名に置き換えます。
 
 `gh skill` は最新の GitHub Release を使います。
-このリリースを明示する場合は `--pin v0.16.0` を加えます。
+このリリースを選ぶ場合は `--pin v0.17.0` を加えます。
 `npx skills` はリポジトリの既定ブランチを使います。
-このリリースを選ぶ場合は、取得元を `https://github.com/meganemura/headsign/tree/v0.16.0` に変えます。
+このリリースを選ぶ場合は、取得元を `https://github.com/meganemura/headsign/tree/v0.17.0` に変えます。
 詳しくは [gh skill のマニュアル](https://cli.github.com/manual/gh_skill_install)と [skills CLI の文書](https://github.com/vercel-labs/skills)を参照してください。
 
 `skills/` からディレクトリ全体を、ホストのスキル置き場へコピーする方法も使えます。
@@ -50,7 +51,7 @@ Claude Code では `codex` を `claude-code` に置き換えます。
 ローカルで開発する場合は、チェックアウトの `SKILL.md` のパスを渡し、隣の参照ファイルも保持します。
 依頼の例です。
 
-> create-skill-workflow で、このリポジトリのローカルスキルを作ってください。
+> create-project-skill で、このリポジトリのローカルスキルを作ってください。
 > 実行できる検査を調べ、要求された成果と制約を維持してください。
 > 作業中と完了時に方法を改善する責務を含めてください。
 
@@ -60,7 +61,7 @@ Claude Code では `codex` を `claude-code` に置き換えます。
 > 続けて、そのスキルを使って、合意した仕事を完了してください。
 
 これらのスキルを導入しても、古いプラグインの hook は無効になりません。
-CLI を使っていた環境の置き換えは、[移行ガイド](docs/migration.md)を参照してください。
+CLI を使っていた環境の置き換えは、移行ガイドを参照してください。
 
 ## エージェントが担うこと
 

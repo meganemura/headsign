@@ -26,16 +26,24 @@ next step.
 
 When replacing a workflow, extract its outcomes, gates, approvals, and budgets.
 Preserve how check inputs are created and updated at completion so later
-checks retain their meaning. Do not copy the state graph or import past
-counters as fresh authority.
+checks retain their meaning. Include service routing and preparation for each
+attempt when checks change local data; isolate tests from existing data.
+Identify shared check artifacts that need task ownership or isolation.
+Do not copy the state graph or import past counters as fresh authority.
 Inspect project helpers by responsibility, even under a former workflow path.
+Read their constraints on published content and completion reports, including
+actions that the current task does not authorize. Preserve local-only guidance
+within its intended audience when making the replacement discoverable.
+Preserve an existing queue's lookup and selection rules when the task uses it.
 Keep useful evidence or queue helpers until a verified replacement supports
 their removal. Report runtime dependencies that still prevent standalone use;
 do not invent queue, ownership, or identity infrastructure to replace them.
+Treat product compatibility dependencies separately from the development method.
+Preserve required product inputs and label retained historical instructions.
 
 ## Preserve improvement responsibility
 
-For project-local skills, inspect what feedback changes on the next attempt.
+Inspect what feedback changes on the next attempt.
 The revised skill must require assessment when feedback exposes a weakness,
 and at completion. Repeated review corrections may justify critical review
 of the complete change, a better check, or a design change. Let the working
@@ -56,12 +64,16 @@ dedicated state or disposition labels.
 
 ## Verify the revision
 
-Preserve exact command meaning and provenance. Resolve changed paths and
-dependencies; run appropriate checks after inspecting their side effects.
+Preserve exact command meaning, applicability, and provenance. Resolve changed
+paths and dependencies; run appropriate checks after inspecting their side effects.
+Confirm that a check examines the work its result is meant to verify.
+Report required work left unexamined, including gaps behind a successful zero-input result.
 New gates require working implementations and verification. An unavailable
 checker leaves a visible gap, not permission to drop the outcome.
-For migrated checks, exercise affected input creation and completion updates;
-one successful invocation can miss these paths.
+Compare the work that requires each migrated check before and after the change.
+Exercise affected input creation and completion updates,
+including a later task with earlier evidence still present.
+One successful invocation can miss these paths.
 Do not replay destructive or external actions merely to test instructions.
 
 Check the revised guidance against the observation that motivated it and a

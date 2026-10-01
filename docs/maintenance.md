@@ -1,6 +1,6 @@
 # Maintenance
 
-headsign's maintained product is three ordinary skill directories.
+headsign's maintained product is two ordinary skill directories.
 Follow [AGENTS.md](../AGENTS.md) and the current
 [design decisions](adr/README.md).
 

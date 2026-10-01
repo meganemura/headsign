@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-10-01
+- Revised: 2026-10-01, after v0.16.0: unify creation and name both skills by their purpose.
 - Applies [ADR-0039](0039-design-for-the-model-that-improves-the-method.md).
 - Retains [ADR-0043](0043-local-skills-improve-during-work.md)'s improvement responsibility.
 - Supersedes the runtime and distribution contracts in ADR-0001 through
@@ -24,12 +25,24 @@ results. Removing the runtime retains that responsibility.
 
 ## Decision
 
-### Three skills are the product
+### Two skills are the product
 
-Retain `create-skill-workflow`, `project-skill`, and
-`optimize-skill-workflow`. Their names remain stable for existing users.
+Distribute `create-project-skill` and `improve-project-skill`.
 They create or repair project-local skills using the project's actual commands.
 The model chooses the method and order within explicit requirements.
+
+The v0.16.0 decision retained three names for existing users.
+The owner subsequently approved merging `create-skill-workflow` and
+`project-skill` into `create-project-skill`, and renaming
+`optimize-skill-workflow` to `improve-project-skill`.
+This amendment replaces the name-stability commitment. Old names have no aliases.
+
+The model can determine which checks the user supplied and which need discovery.
+One creation entry preserves supplied commands, identifies gaps, and discovers
+additional checks within the request's authority. A copy-only request remains
+copy-only. Improvement retains its own entry for requests about an existing skill.
+Generated skills still assess their method during work and at completion;
+they do not wait for a separate improvement request.
 
 Remove the CLI, runtime state machine, hook implementations, host overlays,
 runtime workflows, and npm publication process from the maintained tree.

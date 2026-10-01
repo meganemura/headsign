@@ -8,7 +8,7 @@ Read these before changing headsign's skills, packaging, or guidance.
 |---|---|
 | [0039](0039-design-for-the-model-that-improves-the-method.md) | Give the model objectives, constraints, evidence, and authority; make consequential improvement the default. |
 | [0043](0043-local-skills-improve-during-work.md) | Assess the method during work and at completion; apply useful repairs and verify current results. |
-| [0044](0044-skills-only-distribution.md) | Distribute three ordinary skills; retire the CLI, npm distribution, hooks, and runtime state. |
+| [0044](0044-skills-only-distribution.md) | Distribute two ordinary skills; retire the CLI, npm distribution, hooks, and runtime state. |
 
 [AGENTS.md](../../AGENTS.md) states the development obligations.
 [Workflow lessons](../workflow-lessons.md) brings earlier knowledge into

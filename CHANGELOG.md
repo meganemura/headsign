@@ -9,6 +9,29 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-01
+
+### Changed
+
+- Merge `create-skill-workflow` and `project-skill` into `create-project-skill`.
+  It accepts repository evidence and supplied commands through one entry.
+  Supplied commands keep their meaning; copy-only requests keep their scope.
+- Rename `optimize-skill-workflow` to `improve-project-skill`.
+  Both skills preserve improvement during work and at completion.
+- Remove the old authoring names without compatibility aliases.
+  See [Migration](docs/migration.md#update-an-existing-skill-installation) before replacing installed copies.
+- Move the English README's Japanese link to the bottom.
+- Check ignore and package rules when choosing a contributor skill's location.
+  The archstrict migration exposed unintended inclusion through a shared directory.
+- Preserve each migrated check's applicability, input preparation, and completion updates.
+  Exercise later tasks with earlier evidence present. Report required work that checks leave unexamined.
+- Inspect helper responsibilities, including publication constraints, handoff details, and queue selection.
+  Keep local-only guidance within its intended audience and preserve required product inputs.
+- Explain delegation through deliverables, ownership, shared resources, and returned evidence.
+  The parent remains responsible for the integrated result.
+- Add generalized migration observations to `docs/workflow-lessons.md`.
+  Distinguish verified repairs, instruction trials, and checks that remain unavailable.
+
 ## [0.16.0] - 2026-10-01
 
 ### Migration

@@ -49,8 +49,8 @@ The session added that case to preserve the intended successful build outcome.
 
 ## Changes to the authoring skills
 
-The three authoring skills now preserve input preparation and updates needed
-for later checks, and verify those paths during migration.
+At the time of this trial, the three authoring skills were updated to preserve
+input preparation and updates needed for later checks, and verify those paths during migration.
 They also preserve the review's subject and include new deliverables within
 that subject.
 These requirements fit the existing migration and evidence guidance.

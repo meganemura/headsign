@@ -5,9 +5,8 @@ the consumer project supplies commands that check the work.
 
 | Part | Responsibility |
 |---|---|
-| `skills/create-skill-workflow/` | Discover the project's checks and create a local skill. |
-| `skills/project-skill/` | Put named commands or scripts into a local skill. |
-| `skills/optimize-skill-workflow/` | Diagnose and repair an existing skill. |
+| `skills/create-project-skill/` | Create a local skill from repository evidence or supplied commands. |
+| `skills/improve-project-skill/` | Diagnose and repair an existing project-local skill. |
 | `scripts/check.ts` | Check repository structure, packaging, and documentation links for contributors. |
 | `docs/` | Explain current use and preserve design knowledge. |
 
@@ -20,6 +19,23 @@ explicit constraints, and independent-review obligations remain binding.
 The skill requires assessment during work when feedback exposes a weakness,
 and at completion. A useful repair must reach the current work and receive
 appropriate verification.
+
+## Work and delegation
+
+A project skill describes the work's requirements and available checks.
+The agent chooses how to reach completion for the task it receives.
+Delegated tasks can use the same skill or different skills when their
+responsibilities need different guidance. Choose the boundary by the deliverable,
+edit ownership, shared resources, and evidence the receiving agent must return.
+
+The parent remains responsible for the requested result and verification after
+integration. Shared files, the Git index, generated output, and test databases
+can require coordination even when agents edit different source files.
+Delegation stays within the user's authority and budget and the host's limits.
+Each agent uses skills within its host execution context. Safe concurrency
+depends on those ownership and resource boundaries.
+
+## Distribution
 
 Installers discover the ordinary `skills/` directories.
 Git tags and CHANGELOG identify releases. The host owns execution, account

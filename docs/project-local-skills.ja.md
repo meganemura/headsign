@@ -10,9 +10,8 @@
 
 | スキル | 入力 | 得られるもの |
 |---|---|---|
-| [create-skill-workflow](../skills/create-skill-workflow/SKILL.md) | リポジトリと目的。検査はこれから調べます。 | チェックアウトの実際のコマンドに基づくローカルスキル |
-| [project-skill](../skills/project-skill/SKILL.md) | 指定されたコマンド、スクリプト、それらを含むファイル | 指定されたコマンドと制約を維持したローカルスキル |
-| [optimize-skill-workflow](../skills/optimize-skill-workflow/SKILL.md) | 既存スキルと、その使用から得た根拠 | 対象を絞った改訂、または現在の方法を維持する理由 |
+| [create-project-skill](../skills/create-project-skill/SKILL.md) | リポジトリと目的。コマンドやスクリプトの指定も受け取ります。 | プロジェクトの根拠に基づき、指定コマンドの意味を保つローカルスキル |
+| [improve-project-skill](../skills/improve-project-skill/SKILL.md) | 既存のローカルスキルと、その使用から得た根拠 | 対象を絞った改訂、または現在の方法を維持する理由 |
 
 選んだ入口と、その入口が指定する参照ファイルを読みます。
 ホストに設定されたスキル置き場へコピーする場合は、ディレクトリ全体を保ちます。

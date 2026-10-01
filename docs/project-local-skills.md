@@ -10,9 +10,8 @@ The checks run through the host's ordinary tools.
 
 | Skill | Input | Result |
 |---|---|---|
-| [create-skill-workflow](../skills/create-skill-workflow/SKILL.md) | A repository and an objective; checks still need discovery. | A local skill grounded in the checkout's commands. |
-| [project-skill](../skills/project-skill/SKILL.md) | Named commands, scripts, or a file that contains them. | A local skill that preserves those commands and constraints. |
-| [optimize-skill-workflow](../skills/optimize-skill-workflow/SKILL.md) | An existing skill and evidence about its use. | A scoped revision, or a reason to retain the method. |
+| [create-project-skill](../skills/create-project-skill/SKILL.md) | A repository and objective, with any supplied commands or scripts. | A local skill grounded in project evidence that preserves supplied command meaning. |
+| [improve-project-skill](../skills/improve-project-skill/SKILL.md) | An existing project-local skill and evidence about its use. | A scoped revision, or a reason to retain the method. |
 
 Read the selected entry and the references it names. Keep the complete
 directory together when copying it to a host's configured skill directory.

@@ -1,8 +1,34 @@
-# Move from the CLI to skills
+# Move to project-local skills
 
-This revision replaces headsign's runtime with three ordinary skills.
+headsign provides two ordinary skills for creation and improvement.
 It does not change an installed package, plugin cache, active session, or
 published release automatically.
+
+## Update an existing skill installation
+
+The names in this checkout replace the three names shipped in v0.16.0:
+
+| Previous name | Current name |
+|---|---|
+| `create-skill-workflow` | `create-project-skill` |
+| `project-skill` | `create-project-skill` |
+| `optimize-skill-workflow` | `improve-project-skill` |
+
+Use the creation skill with either repository evidence or supplied commands.
+It preserves supplied command meaning and discovers missing checks within task authority.
+Use the improvement skill for an existing project-local skill.
+
+Inspect installed copies for local edits before replacing them.
+Install the new names from a revision that contains them, then remove the old
+authoring entries from the host's configured skill directory.
+Update references that invoke the old authoring names.
+Keep generated project skills and their work records; they belong to their projects.
+These names have no compatibility aliases. Published v0.16.0 keeps its original contents.
+
+## Migrate a CLI-based setup
+
+For an older CLI or plugin installation, preserve its work and replace its
+runtime dependencies as described below.
 
 ## Preserve the work before changing its method
 
@@ -27,12 +53,10 @@ later work. Preserve each required review's subject, including new files.
 
 ## Create or repair the local skill
 
-Use [project-skill](../skills/project-skill/SKILL.md) when the source
-commands are already named. Use
-[create-skill-workflow](../skills/create-skill-workflow/SKILL.md) when
-the checks need discovery, or
-[optimize-skill-workflow](../skills/optimize-skill-workflow/SKILL.md)
-when the project already has a suitable skill.
+Use [create-project-skill](../skills/create-project-skill/SKILL.md) to
+create the local skill from supplied commands and repository evidence.
+Use [improve-project-skill](../skills/improve-project-skill/SKILL.md)
+when the project already has a suitable local skill.
 
 State the outcome, constraints, available gates, and completion evidence.
 Carry improvement into the current work: diagnose a weak method, apply the
@@ -70,6 +94,12 @@ Retire the CLI dependency only after checking what invokes it.
 Preserve the consumer's workflow files and records as history unless removal
 is explicitly part of the task. A history file must not remain the current
 instruction to start another headsign run.
+
+A workflow artifact can also serve as product input. Preserve that input's
+contract when replacing the development method. Clarify retained development
+instructions that could be mistaken for current guidance, while preserving
+product input semantics. Route new development through the skill. Retiring
+the product's support for that input is a separate decision.
 
 ## Verify the new method
 
