@@ -24,6 +24,11 @@ retention within remaining budget. It applies repairs to
 the current work, verifies affected results, and preserves useful lessons.
 Assessment must not become recursive improvement work or enlarge the task budget.
 
+After a verified revision, use any feedback route the user has configured for
+reusable findings. Generalize sensitive material before crossing its information
+boundary. Report delivery separately from adoption; continue authorized work
+without waiting for an upstream reply. Feedback does not require a new service.
+
 Finish after the authorized revision and appropriate verification. Report the
 change, evidence, and remaining gaps. If the user requested a trial or ongoing
 work, continue that authorized work; revising its skill does not complete it.

@@ -72,6 +72,12 @@ try {
   for (const entry of readdirSync(distribution)) {
     if (!skills.includes(entry)) report(`skills/${entry}: unexpected distribution entry`);
   }
+  const contributorSkills = resolve(root, ".agents/skills");
+  if (existsSync(contributorSkills)) {
+    for (const path of files(contributorSkills)) {
+      if (path.endsWith(".md")) checkMarkdown(path, root);
+    }
+  }
   for (const path of files(resolve(root, ".github/workflows"))) {
     if (/\bnpm\s+(?:publish|exec\s+--\s+npm\s+publish)\b|registry\.npmjs\.org/.test(read(path))) {
       report(`${label(path)}: npm distribution is retired`);

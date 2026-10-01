@@ -7,6 +7,9 @@ The linked ADRs preserve the original observations and design arguments.
 Their runtime contracts are historical under
 [ADR-0044](adr/0044-skills-only-distribution.md).
 
+The [agent-first assessment](agent-first-assessment.md) applies later usage
+feedback to decision discovery, pending review, command contracts, and method repair.
+
 ## A check's evidence depends on what it reads
 
 A test executes behavior against an assertion. A command that reads an

@@ -32,11 +32,32 @@ Use the project's existing queue or ownership convention when the work needs one
 A single authorized task can proceed without inventing a ticket system or
 persistent workflow state.
 
+Carry applicable owner decisions from available conversations, memory, handoffs,
+and reviews into guidance within the same privacy boundary. Distinguish accepted
+decisions from proposals and superseded guidance.
+For continuation, explain how existing records identify implemented work awaiting
+required review and the scope that review must cover, including later additions.
+Preserve authorized selection rules or stopping conditions when work runs out.
+Keep durable rules in the skill and current progress in the project's work records.
+Refer to those records rather than copying task snapshots into reusable instructions.
+When delegating, identify deliverables, edit ownership, shared resources, and
+returned evidence. The parent remains responsible for the integrated result.
+
+A pending approval blocks that action and its dependent work, while independent authorized work can continue.
+Recorded assumptions can support reversible choices within delegated authority; they do not replace explicit approval.
+For ongoing assignments, a progress report alone does not complete the work.
+Preserve bounded completion, explicit stops, budgets, and blockers that prevent all authorized continuation.
+Evaluate small candidates by their contribution; discover more only within the assignment's selection rules and authority.
+
 For discovery, inspect the actual scripts, CI, tests, and project instructions.
 Name the working directory and prerequisites needed by each command.
 Distinguish a command copied from configuration from one actually executed.
 Report failed or unavailable checks accurately; keep their required outcomes
 visible when execution needs an unresolved prerequisite.
+Compare descriptions of named commands with their implementation or safe observed behavior.
+An existing aggregate command or a small project-local runner can reduce manual
+omissions. Preserve each check's applicability and expose failures and unrun checks.
+Creating a runner requires task authority and verification; it is optional.
 
 For named commands, preserve the supplied command strings.
 A compound shell command is one command; its exit status follows the shell's
@@ -70,6 +91,9 @@ A missing permission or required result is an explicit limitation, not a pass.
 
 Feedback can reveal a weak method even while all local gates pass.
 Repeated review findings warrant examining what the method missed.
+If a repair leaves the same cause or related findings, reassess before another
+isolated repair. An evident method defect warrants assessment on its first occurrence.
+Repeated nonzero exits alone do not establish a shared cause.
 An individual incident can justify a narrow repair; broader conclusions need
 their uncertainty stated.
 
@@ -80,6 +104,9 @@ the gate. Adding a record alone does not repair the method.
 
 Apply the repair to the current work before resubmission or completion.
 Check related parts of the change that the same weakness could affect.
+For a changed rule, read the skill, required references, and affected guidance together.
+Trace the subject across permissions, completion conditions, examples, and stated limits to reconcile current instructions.
+Keep historical records clearly marked rather than rewriting past decisions.
 Verify affected results and preserve reusable lessons in the skill, checks,
 or project documents.
 
@@ -88,6 +115,11 @@ Retaining a useful method is valid. New evidence can justify another pass;
 assessment must not recursively create more improvement work.
 Honor the user's stop and seek authority when a repair changes the requested
 outcome, explicit budget, publication, access, or unrelated work.
+
+After a verified revision, use a user-configured feedback route for reusable findings.
+Generalize sensitive material before sending it outside its original boundary.
+Report delivery separately from adoption and continue authorized work without waiting for a reply.
+Contributors to headsign use its project-local improve-headsign skill to assess received evidence.
 
 The skills express these responsibilities directly.
 [ADR-0039](adr/0039-design-for-the-model-that-improves-the-method.md),

@@ -9,6 +9,11 @@ The README also documents `gh skill` and `npx skills` installation.
 
 ## Prepare a revision
 
+Release verified small corrections as patches without waiting for unrelated features.
+During 0.x, use a minor release for new product capabilities or incompatible contract changes.
+Classify the change by its effect on consumers, not the number of edited files.
+This cadence retains the verification and publication approval requirements below.
+
 1. Update the skills, their references, current guides, and the Unreleased changelog.
 2. Run `node scripts/check.ts`, the same check CI runs.
    Run `gh skill publish ./skills --dry-run` to validate the skill files.

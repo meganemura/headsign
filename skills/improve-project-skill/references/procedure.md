@@ -8,6 +8,12 @@ maintained source over an installed copy. Leave managed installations intact;
 if necessary, fork into a repository or writable skill home and state which
 copy later work must use. Resolve ambiguity when it changes the target.
 
+Include applicable owner decisions from available conversations, memory,
+handoffs, and reviews. Separate accepted decisions from proposals and superseded
+guidance. Resolve material conflicts; report inaccessible context as a gap.
+Keep decisions within their intended audience and discoverable to later workers.
+Do not require a particular memory service or exhaustive history search.
+
 ## Choose a consequential change
 
 Compare the user's objective with observed work and the skill's instructions.
@@ -41,13 +47,39 @@ do not invent queue, ownership, or identity infrastructure to replace them.
 Treat product compatibility dependencies separately from the development method.
 Preserve required product inputs and label retained historical instructions.
 
+Check how a successor finds remaining obligations from existing work and evidence.
+Preserve how to identify implemented work awaiting required review, each review's
+scope, and changes that invalidate its coverage. Include work added after a milestone.
+Preserve authorized selection rules or stopping conditions when the queue is empty.
+An empty queue does not itself authorize more work.
+A pending approval blocks that action and its dependent work; continue independent work already authorized.
+Reversible choices within delegated authority can use recorded assumptions; reversibility does not waive an explicit approval.
+For ongoing assignments, a progress report alone does not complete the work.
+Distinguish bounded completion, explicit stops, exhausted budgets, and blockers that prevent all authorized continuation.
+Evaluate small candidates by their contribution to the objective, not size alone.
+Discover further candidates only when the assignment authorizes it; preserve its selection rules and limits.
+Use existing records rather than requiring a new status vocabulary or state store.
+Keep durable rules in the skill and current progress in the project's work records.
+Reference those records instead of copying task snapshots into reusable instructions.
+For delegated work, preserve deliverables, edit ownership, shared resources,
+and returned evidence. The parent verifies the integrated result.
+
+If manual command lists cause omissions, consider an existing aggregate command
+or a small project-local runner within authority. Preserve applicability,
+prerequisites, and required order. Verify failure propagation and output that
+identifies each result and checks left unrun. A runner is an optional repair.
+
 ## Preserve improvement responsibility
 
 Inspect what feedback changes on the next attempt.
 The revised skill must require assessment when feedback exposes a weakness,
-and at completion. Repeated review corrections may justify critical review
-of the complete change, a better check, or a design change. Let the working
-agent choose from the evidence and retain useful methods with a reason.
+and at completion. When a repair leaves the same failure cause or related
+review findings, require reassessment before another isolated repair.
+An evident method defect warrants assessment on its first occurrence;
+repeated nonzero exits alone do not establish a shared cause.
+Critical review of the complete change, a better check, or a design change
+may help. Let the working agent choose from the evidence and retain useful
+methods with a reason.
 
 Require the agent to apply chosen repairs to the current work, finish the
 requested result, and verify affected conclusions. Preserve required outcomes
@@ -64,8 +96,15 @@ dedicated state or disposition labels.
 
 ## Verify the revision
 
+Read the skill, required references, and affected guidance together for conflicting rules.
+When a rule changes, trace its subject across permissions, completion conditions, examples, and stated limits.
+Reconcile current guidance with the accepted decision; preserve clearly marked historical records.
+
 Preserve exact command meaning, applicability, and provenance. Resolve changed
 paths and dependencies; run appropriate checks after inspecting their side effects.
+Compare guidance about named commands with their implementation or safe observed
+behavior, especially selection rules, ordering, side effects, and failure results.
+Resolve mismatches explicitly; do not silently relax requirements to match code.
 Confirm that a check examines the work its result is meant to verify.
 Report required work left unexamined, including gaps behind a successful zero-input result.
 New gates require working implementations and verification. An unavailable
@@ -75,6 +114,9 @@ Exercise affected input creation and completion updates,
 including a later task with earlier evidence still present.
 One successful invocation can miss these paths.
 Do not replay destructive or external actions merely to test instructions.
+When revising continuation or review scope, exercise a handoff using existing
+records: identify the next obligation, its evidence, and authority to proceed.
+Include pending review or exhausted work when relevant.
 
 Check the revised guidance against the observation that motivated it and a
 case where the existing method should remain. Report inspection and execution

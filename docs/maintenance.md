@@ -4,6 +4,13 @@ headsign's maintained product is two ordinary skill directories.
 Follow [AGENTS.md](../AGENTS.md) and the current
 [design decisions](adr/README.md).
 
+For received feedback and skill changes, use the project-local
+[improve-headsign skill](../.agents/skills/improve-headsign/SKILL.md).
+It guides contributor work and is separate from the two distributed product skills.
+Use existing work records for pending evidence and next actions.
+The owner's personal delivery route is optional for other contributors;
+[ADR-0045](adr/0045-feedback-through-existing-sessions.md) explains the boundary.
+
 ## Verify a change
 
 Run the same check as CI from the checkout with Node 24:
@@ -44,8 +51,9 @@ tickets, internal logs, personal paths, or company information.
 ## Local skill use
 
 Use the checkout's `SKILL.md` path and adjacent references for development.
-An installed plugin is a separate copy; edits here do not update that copy.
-Inspect its source and loaded revision when results differ.
+An installed skill can be a separate copy; checkout edits do not update that copy.
+Inspect installed paths, link targets, update sources, and loaded contents when
+results differ across agent hosts.
 
 Keep consumer work and records intact during migration. See
 [Migration](migration.md) for the transition from old hooks and CLI commands.

@@ -36,6 +36,9 @@ Read the consumer project's current instructions, workflow, active work record,
 and relevant check scripts. Identify the requested outcome, remaining work,
 explicit constraints, current owner, and evidence already obtained.
 Preserve local changes and existing history, including ignored run records.
+Include applicable owner decisions from available conversations, memory, handoffs,
+and reviews. Distinguish accepted decisions from proposals and superseded guidance.
+Keep private decisions within their intended audience; report material gaps.
 
 Separate product checks from runtime bookkeeping. A test command can usually
 remain. A command that asks `headsign next` to advance needs replacement by
@@ -50,6 +53,13 @@ or a revised purpose when the YAML stops governing work.
 Trace input preparation and completion updates as well as the check commands.
 Verify that required evidence remains usable after those updates and during
 later work. Preserve each required review's subject, including new files.
+Preserve how a successor identifies implemented work awaiting required review,
+including additions after a milestone. Identify the records that establish
+review coverage. Keep authorized selection rules or stopping conditions for
+an empty queue. Existing records can support this without a new state store.
+Keep current progress in those records and durable rules in the skill.
+Compare command descriptions with implementation or safe observed behavior;
+resolve mismatches without silently relaxing the owner's requirements.
 
 ## Create or repair the local skill
 

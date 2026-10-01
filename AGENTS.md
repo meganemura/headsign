@@ -3,6 +3,10 @@
 These instructions govern headsign itself. Consumer projects keep their own
 goals, constraints, and commands.
 
+For incoming feedback or changes to headsign's skills, use the project-local
+[improve-headsign skill](.agents/skills/improve-headsign/SKILL.md).
+Its responsibilities guide judgment; adapt the method to the evidence and task authority.
+
 Before changing skills, packaging, or product guidance, read
 [ADR-0039](docs/adr/0039-design-for-the-model-that-improves-the-method.md),
 [ADR-0043](docs/adr/0043-local-skills-improve-during-work.md), and
