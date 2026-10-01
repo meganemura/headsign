@@ -36,9 +36,9 @@ For project scope, use `--scope project` with `gh skill`, or omit `--global`
 with `npx skills`. To select one skill, replace `--all` with its name for
 `gh skill`, or replace `'*'` after `--skill` for `npx skills`.
 
-`gh skill` uses the latest GitHub Release. Add `--pin v0.17.0` to select this
+`gh skill` uses the latest GitHub Release. Add `--pin v0.17.1` to select this
 release. `npx skills` uses the repository's default branch;
-use `https://github.com/meganemura/headsign/tree/v0.17.0` as its source to
+use `https://github.com/meganemura/headsign/tree/v0.17.1` as its source to
 select this release.
 See the [gh skill manual](https://cli.github.com/manual/gh_skill_install)
 and [skills CLI documentation](https://github.com/vercel-labs/skills).
@@ -46,6 +46,13 @@ and [skills CLI documentation](https://github.com/vercel-labs/skills).
 You can also copy a complete directory from `skills/` into your host's
 skill directory. Keep its references beside `SKILL.md`.
 Check an existing destination before replacing it.
+
+When using several agent hosts, check each installed path and any symlink target.
+An installed copy can differ from the authoring checkout, even after installation
+from a local path. A shared installation can also differ from that checkout.
+Confirm which files the agent loads and which source the installer updates;
+an update record alone does not establish the loaded contents.
+Preserve local edits before replacing copies or links.
 
 ## Use a skill
 

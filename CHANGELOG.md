@@ -9,6 +9,22 @@ changes), and a patch bump means fixes only.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-10-02
+
+### Changed
+
+- Release verified small corrections as patches without waiting for unrelated features.
+- Scope approval waits to affected work and preserve authorized continuation after progress reports.
+- Reconcile related instructions when a rule changes, including permissions, completion conditions, examples, and limits.
+- Honor user-configured feedback delivery after a verified skill revision without delaying authorized work.
+- Add a contributor-local improve-headsign skill for evidence-based improvements and resumable handoffs.
+- Carry applicable owner decisions from available work context into project skills.
+- Preserve pending review discovery, review scope, and authorized continuation after a queue becomes empty.
+- Keep current task progress in project records instead of reusable skill instructions.
+- Clarify method reassessment before another isolated repair of a recurring cause.
+- Compare command guidance with behavior and consider verified local runners for repeated manual omissions.
+- Carry delegation boundaries into generated skills and document installation identity across hosts.
+
 ## [0.17.0] - 2026-10-01
 
 ### Changed
